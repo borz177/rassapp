@@ -75,6 +75,7 @@ import { offlineStorage } from "./services/offlineStorage";
 import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
+import { isIOSApp } from './src/platform';
 import { triggerPagePushBack } from './components/transitions/PagePush';
 import { useTheme } from './src/theme/ThemeContext';
 
@@ -277,7 +278,11 @@ const showNotificationModal = (
 
 
 
+    // Оболочка, а не браузер: Electron, Android/iOS (Capacitor). Метка "wv" есть
+    // только в User-Agent Android WebView — на iOS её нет, и без проверки Capacitor
+    // приложение на iPhone показывало лендинг вместо входа.
     const isNative =
+  Capacitor.isNativePlatform() ||
   navigator.userAgent.includes("Electron") ||
   navigator.userAgent.includes("wv")
 
@@ -1123,7 +1128,8 @@ useEffect(() => {
 // который WebView каждый раз подтягивает свежим с сервера — поэтому проверяем именно нативную
 // versionCode и, если на сервере опубликована более новая, предлагаем скачать новый APK.
 useEffect(() => {
-  if (!Capacitor.isNativePlatform()) return;
+  // Только Android: APK ставится в обход магазина. iOS обновляется через App Store.
+  if (Capacitor.getPlatform() !== 'android') return;
   (async () => {
     try {
       const [info, latest] = await Promise.all([CapacitorApp.getInfo(), api.getAppVersion()]);
@@ -1538,7 +1544,11 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         default: return true;
     }
 };
-  const showUpgradeAlert = (reason: string) => { if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); } };
+  const showUpgradeAlert = (reason: string) => {
+    // iOS: звать к оплате нельзя (см. src/platform.ts) — только сообщаем.
+    if (isIOSApp()) { alert(`${reason} Функция недоступна на вашем тарифе.`); return; }
+    if(window.confirm(`${reason} Оформите подписку для доступа.`)) { setCurrentView('TARIFFS'); }
+  };
 
   // 🔔 Опрос счётчика непрочитанных уведомлений (тариф Стандарт+) — раз в 45 сек +
   // немедленное обновление при возврате в приложение (мобильные браузеры сильно тормозят

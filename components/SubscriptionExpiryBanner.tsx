@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { ICONS } from '../constants';
+import { isIOSApp } from '../src/platform';
 
 interface SubscriptionExpiryBannerProps {
   user?: User | null;
@@ -64,6 +65,9 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
     day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'
   });
 
+  // В iOS-сборке звать к оплате нельзя (см. src/platform.ts): плашка только сообщает.
+  const canRenew = !isIOSApp();
+
   const snooze = () => {
     // Прячем на 4 часа, а не до конца дня: при остатке в сутки более долгая пауза
     // означала бы, что напоминание больше не появится вообще.
@@ -99,19 +103,19 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
           isExpired ? 'text-rose-700 dark:text-rose-400' : 'text-amber-700 dark:text-amber-400'
         }`}>
           {isExpired
-            ? 'Учёт остановлен: нельзя оформлять договоры, проводить платежи и вносить изменения. Данные на месте — продлите тариф, чтобы продолжить работу.'
+            ? `Учёт остановлен: нельзя оформлять договоры, проводить платежи и вносить изменения. Данные на месте${canRenew ? ' — продлите тариф, чтобы продолжить работу' : ''}.`
             : `Действует до ${expiryClock}. После этого нельзя будет оформлять договоры и проводить платежи — данные при этом сохранятся.`}
         </p>
 
-        <div className="flex items-center gap-3 mt-3">
-          <button
+        {(canRenew || !isExpired) && <div className="flex items-center gap-3 mt-3">
+          {canRenew && <button
             onClick={onRenew}
             className={`px-4 py-2 rounded-xl text-sm font-bold text-white transition-colors ${
               isExpired ? 'bg-rose-600 hover:bg-rose-700' : 'bg-amber-600 hover:bg-amber-700'
             }`}
           >
             Продлить
-          </button>
+          </button>}
           {!isExpired && (
             <button
               onClick={snooze}
@@ -120,7 +124,7 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
               Напомнить позже
             </button>
           )}
-        </div>
+        </div>}
       </div>
     </div>
   );

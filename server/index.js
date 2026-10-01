@@ -3407,6 +3407,26 @@ app.delete('/api/user/account', auth, async (req, res) => {
       console.error('❌ Не удалось собрать файлы для удаления:', e);
     }
 
+    // Фото товаров — так же, до транзакции.
+    try {
+      const imgs = await client.query(
+        `SELECT img AS url
+           FROM data_items d, jsonb_array_elements_text(
+             CASE WHEN jsonb_typeof(d.data->'images') = 'array' THEN d.data->'images' ELSE '[]'::jsonb END
+           ) img
+          WHERE d.user_id = $1 AND d.type = 'products' AND img LIKE '/uploads/products/%'`,
+        [userId]
+      );
+      for (const row of imgs.rows) {
+        try {
+          await fs.promises.unlink(path.join(productImageDir, path.basename(row.url)));
+          filesDeleted++;
+        } catch (e) { if (e.code !== 'ENOENT') console.error('unlink failed:', e.message); }
+      }
+    } catch (e) {
+      console.error('❌ Не удалось собрать фото товаров для удаления:', e);
+    }
+
     await client.query('BEGIN');
 
     // Подчинённые учётные записи — их данные хранятся под user_id менеджера,
@@ -3423,6 +3443,14 @@ app.delete('/api/user/account', auth, async (req, res) => {
     );
     await client.query('DELETE FROM support_tickets WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM verification_codes WHERE email IN (SELECT email FROM users WHERE id = ANY($1))', [allIds]);
+    // Ключи и токены внешнего доступа: иначе к удалённому аккаунту можно было бы
+    // обращаться по старому ключу. Автобэкап — иначе планировщик продолжил бы
+    // собирать и рассылать копии.
+    await client.query('DELETE FROM api_keys WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM api_idempotency WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM oauth_codes WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM oauth_tokens WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM backup_settings WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM users WHERE id = ANY($1)', [allIds]);
 
     await client.query('COMMIT');

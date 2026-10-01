@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 import ModalPortal from './ModalPortal';
+import { isIOSApp } from '../src/platform';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
 const PLAN_NAMES: Record<string, string> = {
@@ -294,6 +295,45 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
   );
 
   const statusDot = subStatus.expired ? 'bg-rose-500' : subStatus.isWarning ? 'bg-amber-500' : 'bg-emerald-500';
+
+  // iOS: без цен и оплаты (см. src/platform.ts) — только какой тариф подключён и что в нём.
+  if (isIOSApp()) {
+    const current = plans.find(p => p.key === user?.subscription?.plan);
+    return (
+      <div className="space-y-6 animate-fade-in pb-20 max-w-md mx-auto px-2 pt-2">
+        <header className="text-center">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.22em] text-slate-400 dark:text-slate-500">
+            Тариф
+          </p>
+          <h2 className="mt-3 text-3xl font-bold tracking-tight text-slate-900 dark:text-white">
+            «{subStatus.planName}»
+          </h2>
+          <p className="mt-3 inline-flex items-center gap-2 text-sm text-slate-600 dark:text-slate-300">
+            <span className={`h-2 w-2 shrink-0 rounded-full ${statusDot}`} />
+            {subStatus.expired
+              ? 'Срок действия истёк'
+              : `Осталось ${subStatus.daysLeft} ${daysWord(subStatus.daysLeft)}`}
+          </p>
+        </header>
+
+        {current && (
+          <div className="rounded-2xl bg-white dark:bg-slate-800/40 ring-1 ring-slate-200 dark:ring-slate-700/70 p-5">
+            <p className="mb-3 text-xs font-medium text-slate-500 dark:text-slate-400">
+              {current.includes ? `Всё из «${current.includes}», а также:` : 'Что входит:'}
+            </p>
+            <ul className="space-y-3">
+              {current.features.map((feature) => (
+                <li key={feature} className="flex gap-3 text-sm leading-snug text-slate-700 dark:text-slate-200">
+                  <Tick className="text-emerald-500" />
+                  <span>{feature}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 sm:space-y-10 animate-fade-in pb-20 relative">

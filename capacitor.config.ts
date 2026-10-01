@@ -7,7 +7,10 @@ const config: CapacitorConfig = {
 
   server: {
     url: 'https://rassrochka.pro',
-    cleartext: true
+    cleartext: true,
+    // Без сети сайт не загрузится — вместо белого экрана показываем встроенную
+    // страницу с кнопкой «Повторить» (лежит в dist, попадает в приложение при cap sync).
+    errorPath: 'offline.html',
   },
 
   // 🔥 Настройки плагинов для нативного вида

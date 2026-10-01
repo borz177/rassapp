@@ -5,34 +5,38 @@
   "type": "module",
   "main": "electron.cjs",
   "scripts": {
-  "dev": "vite",
-
-  "build": "vite build",
-  "preview": "vite preview",
-
-  "build:web": "vite build",
-
-  "start-electron": "electron .",
-  "build:desktop": "npm run build:web && electron-builder",
-
-  "apk": "npm run build:web && npx cap sync android && cd android && gradlew assembleDebug",
-
-  "apk:release": "npm run build:web && npx cap sync android && cd android && gradlew assembleRelease",
-
-  "build:all": "npm run build:web && npm run build:desktop && npm run apk"
-},
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "build:web": "vite build",
+    "start-electron": "electron .",
+    "build:desktop": "npm run build:web && electron-builder",
+    "apk": "npm run build:web && npx cap sync android && cd android && gradlew assembleDebug",
+    "apk:release": "npm run build:web && npx cap sync android && cd android && gradlew assembleRelease",
+    "ios": "npm run build:web && npx cap sync ios && npx cap open ios",
+    "build:all": "npm run build:web && npm run build:desktop && npm run apk"
+  },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
+    "@capacitor/app": "^8.1.1",
     "@capacitor/assets": "^3.0.5",
     "@capacitor/cli": "^8.2.0",
     "@capacitor/core": "^8.2.0",
+    "@capacitor/filesystem": "^8.1.3",
+    "@capacitor/ios": "^8.5.2",
+    "@capacitor/share": "^8.0.2",
+    "@capacitor/status-bar": "^8.0.3",
     "@google/genai": "^1.40.0",
+    "bcryptjs": "^3.0.3",
+    "html2canvas": "^1.4.1",
     "jspdf": "^4.2.0",
+    "libphonenumber-js": "^1.13.14",
     "lucide-react": "^0.563.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-swipeable": "^7.0.2",
-    "recharts": "^3.7.0"
+    "recharts": "^3.7.0",
+    "xlsx": "https://cdn.sheetjs.com/xlsx-0.20.3/xlsx-0.20.3.tgz"
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.1",

@@ -1,0 +1,48 @@
+<!doctype html>
+<!--
+  Страница для нативных приложений (capacitor.config.ts → server.errorPath).
+  Приложение открывает сайт по адресу server.url, и без сети WebView показывал
+  пустой белый экран. Эта страница лежит внутри приложения и видна без связи.
+-->
+<html lang="ru">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>FinUchet</title>
+  <style>
+    :root { color-scheme: light dark; --bg: #f8fafc; --text: #0f172a; --muted: #64748b; --btn: #4f46e5; }
+    @media (prefers-color-scheme: dark) { :root { --bg: #0f172a; --text: #f1f5f9; --muted: #94a3b8; --btn: #6366f1; } }
+    html, body { height: 100%; margin: 0; }
+    body {
+      background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      display: flex; align-items: center; justify-content: center; text-align: center;
+      padding: env(safe-area-inset-top) 24px env(safe-area-inset-bottom);
+      box-sizing: border-box;
+    }
+    main { max-width: 320px; }
+    img { width: 72px; height: 72px; border-radius: 18px; }
+    h1 { font-size: 20px; margin: 20px 0 8px; }
+    p { font-size: 15px; line-height: 1.45; color: var(--muted); margin: 0 0 24px; }
+    button {
+      appearance: none; border: 0; border-radius: 12px; padding: 14px 28px;
+      background: var(--btn); color: #fff; font-size: 16px; font-weight: 600;
+    }
+    button:active { opacity: .85; }
+  </style>
+</head>
+<body>
+  <main>
+    <img src="icon-192.png" alt="">
+    <h1>Нет подключения</h1>
+    <p>Не удалось связаться с сервером. Проверьте интернет и попробуйте ещё раз.</p>
+    <button id="retry">Повторить</button>
+  </main>
+  <script>
+    var APP_URL = 'https://rassrochka.pro/';
+    document.getElementById('retry').onclick = function () { location.href = APP_URL; };
+    // Связь вернулась сама — не заставляем нажимать кнопку.
+    window.addEventListener('online', function () { location.href = APP_URL; });
+  </script>
+</body>
+</html>
