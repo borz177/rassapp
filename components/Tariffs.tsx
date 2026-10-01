@@ -3,6 +3,7 @@ import { ICONS } from '../constants';
 import { api } from '../services/api';
 import ModalPortal from './ModalPortal';
 import { isIOSApp } from '../src/platform';
+import { PLAN_CATALOG } from '../src/planCatalog';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
 const PLAN_NAMES: Record<string, string> = {
@@ -198,80 +199,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
    * длины, и кнопки внизу оказывались на разной высоте. Так все четыре кнопки на
    * одной линии, а сравнивать тарифы по цене удобнее.
    */
-  const plans: {
-    name: string;
-    key: SubscriptionPlan;
-    basePrice: number;
-    tagline: string;
-    /** Тариф, возможности которого входят целиком */
-    includes?: string;
-    features: string[];
-    featured?: boolean;
-    /** Старший тариф — золотая карточка */
-    gold?: boolean;
-    badge?: string;
-  }[] = [
-    {
-      name: 'Старт',
-      key: 'START',
-      basePrice: 990,
-      tagline: 'Чтобы начать вести учёт',
-      features: [
-        'Базовый учет продаж',
-        '1 инвестор',
-        'База клиентов (до 100)',
-        'Учет расходов',
-      ],
-    },
-    {
-      name: 'Стандарт',
-      key: 'STANDARD',
-      basePrice: 1490,
-      tagline: 'Для растущего дела',
-      includes: 'Старт',
-      features: [
-        '5 инвесторов',
-        'Печать договоров (PDF)',
-        'База клиентов (до 1000)',
-      ],
-      featured: true,
-      badge: 'Популярный',
-    },
-    {
-      name: 'Бизнес',
-      key: 'BUSINESS',
-      basePrice: 1990,
-      tagline: 'Для команды с сотрудниками',
-      includes: 'Стандарт',
-      features: [
-        'Безлимит инвесторов',
-        'Авто-напоминания WhatsApp',
-        'Сотрудники и права доступа',
-        'Приоритетная поддержка',
-      ],
-    },
-    {
-      name: 'Бизнес Pro',
-      key: 'BUSINESS_PRO',
-      basePrice: 2990,
-      tagline: 'Магазин, склад и общая касса',
-      gold: true,
-      includes: 'Бизнес',
-      features: [
-        // Магазин — самое крупное из того, что добавляет тариф, поэтому
-        // стоит первым: человек читает список сверху и редко дочитывает до конца.
-        'Магазин: продажи за наличные и в долг, касса с корзиной и чеком',
-        'Склад: товары с фото, остатки по нескольким складам',
-        'Приход от поставщиков, перемещение, списание, инвентаризация',
-        'Журнал документов и история по каждому товару',
-        'Отчёт по рознице: выручка, маржа, залежавшийся товар',
-        'Модуль «Партнеры» (поставщики)',
-        'Учёт долгов по закупу',
-        'Общая касса — несколько инвесторов на одном счёте',
-        'Автоматическое распределение прибыли по вложению и % каждого инвестора',
-      ],
-    },
-  ];
+  // Каталог тарифов общий с лендингом — src/planCatalog.ts
+  const plans = PLAN_CATALOG;
 
   const rub = (n: number) => n.toLocaleString('ru-RU');
 
