@@ -202,6 +202,10 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   const [journalDocId, setJournalDocId] = useState<string | null>(null);
   const [draftExpenseData, setDraftExpenseData] = useState<any>(null);
   const [operationsAccountId, setOperationsAccountId] = useState<string | null>(null);
+  // Операция, открытая из поиска: лента сразу показывает её (см. Operations)
+  const [operationsFocusId, setOperationsFocusId] = useState<string | null>(null);
+  // Товар, открытый из поиска (см. Warehouse / Products, focusProductId)
+  const [productsFocusId, setProductsFocusId] = useState<string | null>(null);
   const [editingSale, setEditingSale] = useState<Sale | null>(null);
   // Куда вернуться из формы договора, прихода и расхода. Раньше все три
   // всегда закрывались на главную: отмена правки договора выбрасывала из списка
@@ -4090,8 +4094,24 @@ const handleQuickAddCustomer = async (data: {
       setPreviousView(currentView);
       setCurrentView('CUSTOMER_DETAILS');
     },
-    onOpenProducts: () => setCurrentView('MANAGE_PRODUCTS'),
-    onOpenOperations: () => { setOperationsAccountId(null); setCurrentView('OPERATIONS'); },
+    // Товар: при магазине — его карточка на складе, иначе строка в списке товаров
+    onOpenProducts: (productId?: string) => {
+      setProductsFocusId(productId || null);
+      if (shopAvailable) {
+        if (currentView !== 'WAREHOUSE') setPreviousView(currentView);
+        setCurrentView('WAREHOUSE');
+      } else {
+        setCurrentView('MANAGE_PRODUCTS');
+      }
+    },
+    // Операцию — в ленте операций, сразу с её карточкой (Operations, focusOperationId)
+    onOpenOperations: (operationId?: string) => {
+      setOperationsAccountId(null);
+      setOperationsFocusId(operationId || null);
+      // Уже в операциях — «назад» должен вести туда же, куда вёл, а не на них же
+      if (currentView !== 'OPERATIONS') setPreviousView(currentView);
+      setCurrentView('OPERATIONS');
+    },
   };
   // Resume into the customer's details if one was left open when the user tapped away to
   // another tab; tapping "Клиенты" while already in this section resets to the list.
@@ -4808,7 +4828,8 @@ if (!user && !showSplash) {
                   </PagePush>}
               {currentView === 'MANAGE_PRODUCTS' &&
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
-                            onDeleteProduct={handleDeleteProduct} appSettings={appSettings}/>}
+                            onDeleteProduct={handleDeleteProduct} appSettings={appSettings}
+                            focusProductId={productsFocusId} onFocusHandled={() => setProductsFocusId(null)}/>}
               {currentView === 'OPERATIONS' && (
                   <PagePush onClose={() => setCurrentView(previousView)} scrollKey="OPERATIONS">
                     <Operations retailSales={retailSales}
@@ -4817,6 +4838,8 @@ if (!user && !showSplash) {
                       accounts={accounts}
                       customers={customers}
                       initialAccountId={operationsAccountId}
+                      focusOperationId={operationsFocusId}
+                      onFocusHandled={() => setOperationsFocusId(null)}
                       onDelete={handleDeleteOperation}
                       canCancelIncome={!isInvestor && (!isEmployee || !!user?.permissions?.canDelete)}
                       investors={investors}
@@ -5001,6 +5024,8 @@ if (!user && !showSplash) {
                       onDeleteProduct={handleDeleteProductFull}
                       onAddMovement={handleAddStockMovement}
                       onBack={requestClose}
+                      focusProductId={productsFocusId}
+                      onFocusHandled={() => setProductsFocusId(null)}
                     />
                   )}
                 </PagePush>

@@ -51,6 +51,10 @@ interface WarehouseProps {
    * только по ним; список warehouses приходит уже отобранным.
    */
   warehouseScope?: string[] | null;
+  /** Товар, открытый из поиска: склад сразу показывает его карточку */
+  focusProductId?: string | null;
+  /** Просьба выполнена — родитель её снимает, чтобы не повторилась при возврате */
+  onFocusHandled?: () => void;
 }
 
 /**
@@ -108,6 +112,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
   onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc, onAddDocLines,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack, warehouseScope = null,
+  focusProductId = null, onFocusHandled,
 }) => {
   // Три разных занятия под одной крышей: каталог (что у нас за товар),
   // операции (движение) и сами склады (где лежит). Их разделение — не
@@ -119,6 +124,15 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // открывается по троеточию и не должно уводить с экрана.
   const [openProductId, setOpenProductId] = useState<string | null>(null);
   const [menuProduct, setMenuProduct] = useState<Product | null>(null);
+  // 🔎 Из поиска — сразу в карточку товара, а не в начало каталога
+  useEffect(() => {
+    if (!focusProductId) return;
+    onFocusHandled?.();
+    if (products.some(p => p.id === focusProductId)) {
+      setSection('catalog');
+      setOpenProductId(focusProductId);
+    }
+  }, [focusProductId]);
   // Выбор нескольких товаров. Пустой набор — обычный режим: пока ничего не
   // выбрано, каталог ведёт себя как всегда, и лишнего состояния у экрана нет.
   const [selectedIds, setSelectedIds] = useState<string[]>([]);

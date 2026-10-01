@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Product } from '../types';
 import { ICONS } from '../constants';
 
@@ -7,9 +7,30 @@ interface ProductsProps {
   onAddProduct: (name: string, price: number, stock: number) => void;
   onUpdateProduct: (product: Product) => void;
   onDeleteProduct: (id: string) => void;
+  /** Товар, открытый из поиска: список прокручивается к нему и подсвечивает */
+  focusProductId?: string | null;
+  /** Просьба выполнена — родитель её снимает, чтобы не повторилась при возврате */
+  onFocusHandled?: () => void;
 }
 
-const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdateProduct, onDeleteProduct }) => {
+const Products: React.FC<ProductsProps> = ({
+  products, onAddProduct, onUpdateProduct, onDeleteProduct, focusProductId = null, onFocusHandled,
+}) => {
+  // 🔎 Переход из поиска: у этого списка нет карточки товара, поэтому
+  // показываем саму строку — прокручиваем к ней и ненадолго обводим.
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusProductId) return;
+    onFocusHandled?.();
+    if (!products.some(p => p.id === focusProductId)) return;
+    setHighlightId(focusProductId);
+    const scroll = setTimeout(() => {
+      document.querySelector(`[data-product-id="${CSS.escape(focusProductId)}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 120);
+    const fade = setTimeout(() => setHighlightId(null), 2600);
+    return () => { clearTimeout(scroll); clearTimeout(fade); };
+  }, [focusProductId]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<Partial<Product>>({});
   const [isAdding, setIsAdding] = useState(false);
@@ -92,7 +113,10 @@ const Products: React.FC<ProductsProps> = ({ products, onAddProduct, onUpdatePro
 
       <div className="grid gap-4">
         {products.map(p => (
-            <div key={p.id} className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <div key={p.id} data-product-id={p.id}
+                 className={`bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm transition-shadow duration-500 ${
+                   highlightId === p.id ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900' : ''
+                 }`}>
                 {editingId === p.id ? (
                     <div className="space-y-3">
                         <input

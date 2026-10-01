@@ -351,58 +351,90 @@
   will-change: transform, width;
 }
 
+/* Капля — два слоя внешнего вида поверх одной формы:
+   ::before — капсула в покое, ::after — прозрачная линза под пальцем.
+   Раньше вид переключался свойствами самого элемента, а градиенты, размытие
+   под ним и разный набор теней браузер не умеет плавно перетекать — в конце
+   переезда линза одним кадром сменялась капсулой, и посадка выглядела резкой.
+   Слои только проявляются и гаснут (opacity), это переходит идеально плавно. */
 .nav-glass-pill {
   position: absolute;
   inset: 0;
   border-radius: 9999px;
   pointer-events: none;
-  /* На светлой теме белое стекло на белом острове не читалось вовсе —
-     поэтому лёгкая подкраска фирменным цветом, а не прозрачный белый. */
-  background: linear-gradient(180deg, rgba(99, 102, 241, 0.16), rgba(99, 102, 241, 0.08));
-  -webkit-backdrop-filter: blur(12px) saturate(200%);
-  backdrop-filter: blur(12px) saturate(200%);
-  /* Верхний блик и нижняя тень внутри — объём стекла */
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(99, 102, 241, 0.12),
-    0 3px 10px -4px rgba(79, 70, 229, 0.35);
-  /* Пружинистое движение: лёгкий перелёт за цель, как в нативных панелях.
-     Отдельно от width — ширина должна догонять плавно, без отскока. */
+  /* Насколько капля раздувается (--sx/--sy) и вытягивается в пути (--tx/--ty).
+     Значения — для небольшой капли нижней панели; широкие вкладки (TabPill)
+     задают свои, чтобы прибавка в пикселях была той же, а не в разы больше. */
+  --sx: 1.3;
+  --sy: 1.42;
+  --tx: 1.42;
+  --ty: 1.24;
+  /* Размытие под каплей одно на оба вида — его переключение тоже щёлкало бы */
+  -webkit-backdrop-filter: blur(8px) saturate(180%);
+  backdrop-filter: blur(8px) saturate(180%);
   will-change: transform;
 }
-
-/* «Перетекание»: в движении капсула вытягивается по ходу и слегка приседает,
-   в конце возвращает форму. Это то самое ощущение жидкости — без растяжения
-   капсула просто скользит, как твёрдая плашка. */
-.nav-glass-pill--moving {
-  animation: nav-pill-morph 0.46s cubic-bezier(0.34, 1.32, 0.52, 1);
-}
-@keyframes nav-pill-morph {
-  0%   { transform: scale(1, 1); }
-  30%  { transform: scale(1.12, 0.88); }
-  65%  { transform: scale(0.96, 1.04); }
-  100% { transform: scale(1, 1); }
+.nav-glass-pill::before,
+.nav-glass-pill::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
-.dark .nav-glass-pill {
+/* Покой. Нейтральное стекло, как в панели WhatsApp: белое на белом острове не
+   читается, поэтому середина чуть сероватая, а объём дают блик сверху и
+   светлое отражение снизу. Фирменный цвет остался только у иконки активной
+   вкладки — подкрашенная капсула спорила с ней и выглядела плашкой. */
+.nav-glass-pill::before {
+  background: linear-gradient(180deg, rgba(15, 23, 42, 0.035), rgba(15, 23, 42, 0.065));
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.95),
+    inset 0 -1px 1px rgba(255, 255, 255, 0.6),
+    inset 0 0 0 0.5px rgba(15, 23, 42, 0.08);
+  opacity: 1;
+  transition: opacity 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+.dark .nav-glass-pill::before {
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.07));
+  border-color: rgba(255, 255, 255, 0.16);
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.28),
     inset 0 -1px 0 rgba(255, 255, 255, 0.06),
     0 4px 16px -4px rgba(0, 0, 0, 0.5);
 }
 
-/* Кромка капсулы — тонкая и нейтральная, только чтобы отделить стекло от
-   острова. Радужный контур пробовали, но на маленькой капсуле он кричал
-   сильнее самой активной вкладки. */
-.nav-glass-pill::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  border: 1px solid rgba(99, 102, 241, 0.22);
+/* Линза. На белом острове белая заливка и большая тень читались как выпуклая
+   пластиковая кнопка. Стекло держится краем, а не заливкой: середина чуть
+   сероватая, тонкая тёмная кромка, белый блик по верху, светлое «преломление»
+   по низу и едва заметная тень. */
+.nav-glass-pill::after {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0%, rgba(15, 23, 42, 0.035) 55%, rgba(15, 23, 42, 0.07) 100%);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow:
+    inset 0 1px 1px rgba(255, 255, 255, 0.95),
+    inset 0 -1.5px 2px rgba(255, 255, 255, 0.7),
+    inset 0 0 0 0.75px rgba(15, 23, 42, 0.16),
+    inset 0 3px 10px rgba(15, 23, 42, 0.05),
+    0 4px 14px -6px rgba(15, 23, 42, 0.18);
+  opacity: 0;
+  /* Гаснет медленно — вместе с тем, как капля сдувается */
+  transition: opacity 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.dark .nav-glass-pill::before { border-color: rgba(255, 255, 255, 0.16); }
+.dark .nav-glass-pill::after {
+  background: radial-gradient(120% 140% at 50% 0%, rgba(255, 255, 255, 0.26), rgba(255, 255, 255, 0.06) 60%, rgba(255, 255, 255, 0.04));
+  border-color: rgba(255, 255, 255, 0.16);
+  box-shadow:
+    inset 0 1.5px 0 rgba(255, 255, 255, 0.45),
+    inset 0 -2px 4px rgba(0, 0, 0, 0.25),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18),
+    0 12px 30px -6px rgba(0, 0, 0, 0.75);
+}
+
+/* Под пальцем — линза проявляется быстро, на отпускании гаснет медленно */
+.nav-glass-pill--held::after { opacity: 1; transition-duration: 0.18s; }
+.nav-glass-pill--held::before { opacity: 0; transition-duration: 0.18s; }
 
 .nav-island--held {
   transform: scale(1.02);
@@ -422,47 +454,86 @@
   transition: none;
 }
 
-/* Отклик на касание: капсула подрастает и приподнимается над островом — тот же
-   жест, что у карточки, которую взяли в руку. Кривая с перелётом: на нажатии
-   капсула чуть проскакивает нужный размер, на отпускании так же мягко оседает,
-   и рост не выглядит механическим линейным масштабированием.
-   Держится всё время, пока палец на капсуле, — и при простом нажатии, и потом
-   при перетаскивании, чтобы одно не сменялось другим рывком. */
+/* Отклик на касание — «капля», как в панели WhatsApp: под пальцем капсула
+   раздувается и выходит за края острова, становится линзой (вкладка под ней
+   увеличивается — см. tabLens в Layout.tsx), в движении тянется по ходу
+   пальца, а на отпускании плавно сдувается.
+   Размер задаёт inline-transform из Layout.tsx (там же растяжение от скорости),
+   здесь — только как он меняется. */
 .nav-glass-pill {
-  transition:
-    transform 0.28s cubic-bezier(0.34, 1.45, 0.5, 1),
-    box-shadow 0.28s ease;
+  transition: transform 0.34s cubic-bezier(0.34, 1.5, 0.5, 1);
 }
-.nav-glass-pill--held {
-  transform: scale(1.08);
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.95),
-    inset 0 -1px 0 rgba(99, 102, 241, 0.12),
-    0 7px 20px -5px rgba(79, 70, 229, 0.5);
-}
-.dark .nav-glass-pill--held {
-  box-shadow:
-    inset 0 1px 0 rgba(255, 255, 255, 0.32),
-    inset 0 -1px 0 rgba(255, 255, 255, 0.06),
-    0 9px 24px -5px rgba(0, 0, 0, 0.72);
+/* Пока ведут пальцем, растяжение должно успевать за ним — короткий переход */
+.nav-glass-pill--following {
+  transition: transform 0.12s ease-out;
 }
 
-/* Блик, скользящий по стеклу при переезде капсулы */
-.nav-glass-pill::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background: linear-gradient(105deg, transparent 30%, rgba(255, 255, 255, 0.55) 50%, transparent 70%);
-  opacity: 0;
+/* Оседание после отпускания: раздутая капля плавно сдувается до обычной
+   капсулы, без покачиваний — с ними посадка читалась жёсткой. Начальный кадр
+   совпадает с размером при касании (Layout.tsx), чтобы не было скачка. */
+.nav-glass-pill--settle {
+  animation: nav-pill-settle 0.55s cubic-bezier(0.22, 1, 0.36, 1);
 }
-.nav-glass-pill--moving::after {
-  animation: nav-glass-sheen 0.5s ease-out;
+@keyframes nav-pill-settle {
+  0%   { transform: scale(var(--sx), var(--sy)); }
+  100% { transform: scale(1, 1); }
 }
-@keyframes nav-glass-sheen {
-  0%   { opacity: 0; transform: translateX(-40%); }
-  40%  { opacity: 0.8; }
-  100% { opacity: 0; transform: translateX(40%); }
+
+/* Переезд к новой вкладке по нажатию: плавно, без отскока по положению —
+   капля плывёт, а «жидкость» показывает её форма. Длительность анимации
+   совпадает с TRAVEL_MS в Layout.tsx. */
+.nav-glass-track--travel {
+  transition:
+    transform 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    width 0.36s cubic-bezier(0.32, 0.72, 0, 1),
+    opacity 0.25s ease;
+}
+.nav-glass-pill--travel {
+  animation: nav-pill-travel 0.91s;
+}
+/* Первые 0,36 с — путь (столько едет дорожка): раздувание и вытягивание по
+   ходу. К приезду капля в размере «под пальцем», дальше ровно то же оседание,
+   что после перетаскивания: 0,55 с одним отрезком, без покачиваний. */
+@keyframes nav-pill-travel {
+  0%   { transform: scale(1, 1);       animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  15%  { transform: scale(var(--sx), var(--sy)); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  28%  { transform: scale(var(--tx), var(--ty)); animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  40%  { transform: scale(var(--sx), var(--sy)); animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  100% { transform: scale(1, 1); }
+}
+/* Кнопка вкладки. Цвет меняется быстро — вместе с формой иконки (контур ↔
+   заливка, NavIcons.tsx), которая переключается сразу; при общей полусекунде
+   залитая иконка какое-то время оставалась серой. Увеличение под линзой —
+   медленно и плавно, в такт капле. */
+.nav-tab {
+  transition:
+    color 0.2s ease,
+    transform 0.5s cubic-bezier(0.22, 1, 0.36, 1);
+}
+/* Иконка вкладки под каплей — тоже по этому расписанию: увеличивается, пока
+   капля едет, и уменьшается ровно тогда и так же, как капля сдувается. */
+.nav-tab-travel { animation: nav-tab-travel 0.91s; }
+@keyframes nav-tab-travel {
+  0%   { transform: scale(1);    animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  15%  { transform: scale(1.12); }
+  40%  { transform: scale(1.12); animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  100% { transform: scale(1); }
+}
+/* Вид в пути — по тому же расписанию: линза проявляется на старте, держится,
+   пока капля едет, и растворяется, пока она сдувается. Капсула — наоборот. */
+.nav-glass-pill--travel::after { animation: nav-pill-lens-in-out 0.91s; }
+.nav-glass-pill--travel::before { animation: nav-pill-lens-out-in 0.91s; }
+@keyframes nav-pill-lens-in-out {
+  0%   { opacity: 0; animation-timing-function: ease-out; }
+  12%  { opacity: 1; }
+  40%  { opacity: 1; animation-timing-function: cubic-bezier(0.22, 1, 0.36, 1); }
+  100% { opacity: 0; }
+}
+@keyframes nav-pill-lens-out-in {
+  0%   { opacity: 1; animation-timing-function: ease-out; }
+  12%  { opacity: 0; }
+  40%  { opacity: 0; animation-timing-function: cubic-bezier(0.4, 0, 0.6, 1); }
+  100% { opacity: 1; }
 }
 
 /* Без анимаций капсула просто стоит на месте — движение и блик отключаются */
@@ -470,9 +541,10 @@
   .nav-glass-track { transition: opacity 0.2s ease; }
   .nav-island { transition: none; }
   .nav-island--held { transform: none; }
-  .nav-glass-pill { transition: none; }
-  .nav-glass-pill--moving { animation: none; }
-  .nav-glass-pill--moving::after { animation: none; }
+  .nav-glass-pill { transition: none; transform: none !important; }
+  .nav-glass-pill--travel, .nav-glass-pill--settle,
+  .nav-glass-pill--travel::before, .nav-glass-pill--travel::after, .nav-tab-travel { animation: none; }
+  .nav-glass-track--travel { transition: opacity 0.2s ease; }
 }
 
 /* ВЕРХ ЭКРАНА — сплошной шапки нет. Отдельные пузыри висят над контентом,
@@ -722,6 +794,32 @@ input, textarea, [contenteditable] {
 }
 .animate-dialog-out {
   animation: dialog-out 0.18s ease forwards;
+}
+
+/* Сквозной поиск (components/GlobalSearch.tsx).
+   Только появление, и без fill-mode forwards: после него положением листа
+   управляет inline-transform — смахивание пальцем и уход вниз. Застывшая
+   анимация перекрывала бы его, и лист не двигался бы за пальцем. */
+.search-panel-in {
+  animation: dialog-in 0.22s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+@media (max-width: 639px) {
+  .search-panel-in {
+    animation: slide-up-sheet 0.42s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+  }
+}
+.search-backdrop-in {
+  animation: modal-fade-in 0.3s ease backwards;
+}
+@keyframes search-fade-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to   { opacity: 1; transform: none; }
+}
+.search-fade-in {
+  animation: search-fade-in 0.2s ease backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .search-panel-in, .search-backdrop-in, .search-fade-in { animation: none; }
 }
 
 /* ============================================

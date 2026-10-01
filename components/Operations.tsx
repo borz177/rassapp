@@ -25,11 +25,20 @@ interface OperationsProps {
   /** Текущие остатки счетов — предупредить, если отмена прихода уведёт счёт в минус. */
   accountBalances?: Record<string, number>;
   onClose?: () => void;
+  /**
+   * Операция, которую открыли из поиска: лента прокручивается к ней, строка
+   * подсвечивается и сразу открывается её карточка. Иначе человек попадал в
+   * начало ленты и искал запись второй раз, уже глазами.
+   */
+  focusOperationId?: string | null;
+  /** Просьба выполнена — родитель её снимает, чтобы не повторилась при возврате */
+  onFocusHandled?: () => void;
 }
 
 const Operations: React.FC<OperationsProps> = ({ 
     sales, expenses, accounts, customers, employees = [], investors = [], initialAccountId, canFilterByEmployee = false, onDelete,
-    retailSales = [], canCancelIncome = false, accountBalances = {}
+    retailSales = [], canCancelIncome = false, accountBalances = {},
+    focusOperationId = null, onFocusHandled,
 }) => {
   // Отмена расхода: подтверждение с перечислением последствий, а не безликое «вы уверены?»
   const [cancelTarget, setCancelTarget] = useState<any | null>(null);
@@ -246,6 +255,31 @@ const Operations: React.FC<OperationsProps> = ({
 
   }, [sales, expenses, filterType, filterAccountId, filterCategory, filterEmployeeId, customers, accounts, retailSales]);
 
+  // 🔎 Переход из поиска к конкретной операции
+  const [highlightId, setHighlightId] = useState<string | null>(null);
+  useEffect(() => {
+    if (!focusOperationId) return;
+    onFocusHandled?.();
+    const op = operations.find(o => o.id === focusOperationId);
+    if (!op) return; // запись отфильтрована или удалена — остаёмся в начале ленты
+    setHighlightId(op.id);
+    setSelectedOp(op);
+    // Прокрутку — после въезда экрана и восстановления его прежней прокрутки
+    // (PagePush, scrollKey): иначе та вернула бы ленту в старое место.
+    const timer = setTimeout(() => {
+      document.querySelector(`[data-op-id="${CSS.escape(op.id)}"]`)
+        ?.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    }, 380);
+    return () => clearTimeout(timer);
+  }, [focusOperationId]);
+  // Подсветка гаснет не сразу после закрытия карточки, а чуть погодя — чтобы
+  // было видно, где эта запись в ленте.
+  useEffect(() => {
+    if (!highlightId || selectedOp) return;
+    const timer = setTimeout(() => setHighlightId(null), 1600);
+    return () => clearTimeout(timer);
+  }, [highlightId, selectedOp]);
+
   const groupedOperations = useMemo(() => {
     const groups: { title: string; items: typeof operations }[] = [];
     const now = new Date();
@@ -407,8 +441,11 @@ const Operations: React.FC<OperationsProps> = ({
             {group.items.map(op => (
     <div
         key={op.id}
+        data-op-id={op.id}
         onClick={() => setSelectedOp(op)}
-        className={`bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.99] transition-transform border-l-4 ${
+        className={`bg-white dark:bg-slate-800 p-4 rounded-xl shadow-sm flex items-center justify-between cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 active:scale-[0.99] transition-[transform,box-shadow] duration-500 border-l-4 ${
+            highlightId === op.id ? 'ring-2 ring-indigo-500 ring-offset-2 ring-offset-slate-50 dark:ring-offset-slate-900 ' : ''
+        }${
             op.category === 'Salary'
                 ? 'border-l-blue-500'
                 : op.type === 'INCOME'

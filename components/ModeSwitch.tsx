@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useGlassDrop } from './useGlassDrop';
 
 export interface ModeSwitchOption<T extends string> {
   id: T;
@@ -57,8 +58,6 @@ function ModeSwitch<T extends string>({
   optionsRef.current = options;
   const valueRef = useRef(value);
   valueRef.current = value;
-
-  const [moving, setMoving] = useState(false);
 
   // Подпись у только что выбранного режима
   const [revealed, setRevealed] = useState<T | null>(null);
@@ -215,14 +214,10 @@ function ModeSwitch<T extends string>({
     reveal(id);
   };
 
-  // Блик и «перетекание» — только в момент смены режима, не при открытии экрана
-  const firstValue = useRef(true);
-  useEffect(() => {
-    if (firstValue.current) { firstValue.current = false; return; }
-    setMoving(true);
-    const id = setTimeout(() => setMoving(false), 520);
-    return () => clearTimeout(id);
-  }, [value]);
+  // Капля — то же поведение, что в нижней навигации (useGlassDrop): под
+  // пальцем раздувается в линзу, при смене режима нажатием едет, вытягиваясь,
+  // и плавно оседает. Положение по-прежнему ведёт пружина ниже, хук — форму.
+  const drop = useGlassDrop(pressed || dragging, value);
 
   // ─── Перетаскивание ───────────────────────────────────────────────────────
   // Палец нередко отпускают уже за пределами острова — слушаем окно, иначе
@@ -364,7 +359,7 @@ function ModeSwitch<T extends string>({
         className="nav-glass-track"
         style={{ left: 0, top: 0, opacity: 0, transition: 'opacity 0.2s ease' }}
       >
-        <div className={`nav-glass-pill ${pressed || dragging ? 'nav-glass-pill--held' : moving ? 'nav-glass-pill--moving' : ''}`} />
+        <div className={`nav-glass-pill ${drop.pillClass}`} style={drop.pillStyle} />
       </div>
 
       {options.map(opt => {
@@ -394,7 +389,8 @@ function ModeSwitch<T extends string>({
                 : 'text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200'
             }`}
           >
-            <span className="flex shrink-0 items-center">{opt.icon}</span>
+            {/* Значок под каплей увеличен — как под линзой */}
+            <span className={`nav-tab flex shrink-0 items-center ${drop.lens && lit(opt.id) ? (drop.traveling && !(pressed || dragging) ? 'nav-tab-travel' : 'scale-[1.12]') : ''}`}>{opt.icon}</span>
             <span
               className="overflow-hidden whitespace-nowrap transition-[max-width,opacity,margin] duration-[420ms] ease-out"
               style={{

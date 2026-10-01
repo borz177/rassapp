@@ -1,6 +1,7 @@
 
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
+import NavIcon from './NavIcons';
 import PullToRefresh from './PullToRefresh';
 import SyncStatus, { type SyncStatusData } from './SyncStatus';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
@@ -54,6 +55,9 @@ const PLAN_NAMES: Record<SubscriptionPlan, string> = {
     'BUSINESS': 'Бизнес',
     'BUSINESS_PRO': 'Бизнес Pro'
 };
+
+// Длительность переезда капли к новой вкладке — совпадает с nav-pill-travel в index.css
+const TRAVEL_MS = 910;
 
 const Layout: React.FC<LayoutProps> = ({
   children,
@@ -209,13 +213,27 @@ const Layout: React.FC<LayoutProps> = ({
     };
   }, [activeTab, isInvestor, measureTab]);
 
-  // Блик пробегает по стеклу только в момент переезда, а не постоянно
-  useEffect(() => {
-    if (!activeTab) return;
+  // Переезд капли к новой вкладке (nav-glass-pill--travel): раздувается в
+  // линзу, плывёт, вытягиваясь по ходу, и оседает на месте. Раньше она
+  // перескакивала за полсекунды твёрдой плашкой — переход читался рывком.
+  // После перетаскивания переезда нет: капля уже под пальцем, она просто
+  // оседает (nav-glass-pill--settle).
+  const justDragged = useRef(false);
+  const travelTimer = useRef<number | undefined>(undefined);
+  const startTravel = useCallback(() => {
+    window.clearTimeout(travelTimer.current);
     setPillMoving(true);
-    const id = setTimeout(() => setPillMoving(false), 520);
-    return () => clearTimeout(id);
-  }, [activeTab]);
+    travelTimer.current = window.setTimeout(() => setPillMoving(false), TRAVEL_MS);
+  }, []);
+  const prevTab = useRef(activeTab);
+  useEffect(() => {
+    const from = prevTab.current;
+    prevTab.current = activeTab;
+    if (!activeTab || !from || from === activeTab) return;
+    if (justDragged.current) return;
+    startTravel();
+  }, [activeTab, startTravel]);
+  useEffect(() => () => window.clearTimeout(travelTimer.current), []);
 
   const investorPermissions = activeInvestor?.permissions;
   const [showInvestorMobileMenu, setShowInvestorMobileMenu] = useState(false);
@@ -233,7 +251,15 @@ const Layout: React.FC<LayoutProps> = ({
   const dragTabRef = useRef<string | null>(null);
   // active=false, пока палец не сдвинулся дальше порога: до этого жест ещё
   // может оказаться обычным нажатием, и перехватывать его нельзя.
-  const dragRef = useRef<{ id: number; startX: number; startY: number; baseX: number; active: boolean } | null>(null);
+  // pressTab — вкладка, на которую нажали мимо капли: капля перепрыгивает под палец
+  const dragRef = useRef<{ id: number; startX: number; startY: number; baseX: number; active: boolean; pressTab: string | null } | null>(null);
+  // Растяжение капли от скорости пальца (px/мс со знаком), как у жидкости: чем
+  // быстрее ведут, тем сильнее она вытягивается по ходу и сплющивается.
+  const [stretch, setStretch] = useState(0);
+  const velRef = useRef({ x: 0, t: 0 });
+  const relaxTimer = useRef<number | undefined>(undefined);
+  // Плавное оседание после отпускания (nav-glass-pill--settle)
+  const [settling, setSettling] = useState(false);
   // После перетаскивания браузер всё равно шлёт click по кнопке под пальцем —
   // его надо проглотить, иначе переход случится дважды.
   const suppressClick = useRef(false);
@@ -286,9 +312,35 @@ const Layout: React.FC<LayoutProps> = ({
     const grab = 10;
     const inPill = lx >= pill.x - grab && lx <= pill.x + pill.w + grab
                 && ly >= pill.y - grab && ly <= pill.y + pill.h + grab;
-    if (!inPill) return;
-    setPressed(true);
-    dragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, baseX: pill.x, active: false };
+    let baseX = pill.x;
+    let pressTab: string | null = null;
+    if (!inPill) {
+      // Нажали на другую вкладку. Капля пока стоит — подсвечиваем только
+      // иконку, куда перейдём; сам переезд начнётся на отпускании и пойдёт
+      // плавно (startTravel). Если палец поведут, капля встанет под него.
+      pressTab = visibleTabs().find(id => {
+        const g = measureTab(id);
+        return !!g && lx >= g.x && lx <= g.x + g.w && ly >= g.y - grab && ly <= g.y + g.h + grab;
+      }) || null;
+      if (!pressTab) return;
+      baseX = lx - pill.w / 2;
+      dragTabRef.current = pressTab;
+      setDragTab(pressTab);
+    } else {
+      setPressed(true);
+    }
+    velRef.current = { x: e.clientX, t: performance.now() };
+    dragRef.current = { id: e.pointerId, startX: e.clientX, startY: e.clientY, baseX, active: false, pressTab };
+  };
+
+  // Жест оказался не нашим (повели вверх — это прокрутка): капля возвращается домой
+  const cancelPress = () => {
+    dragRef.current = null;
+    setPressed(false);
+    setDragPos(null);
+    setDragTab(null);
+    dragTabRef.current = null;
+    setStretch(0);
   };
 
   const handleNavPointerMove = (e: React.PointerEvent) => {
@@ -298,9 +350,10 @@ const Layout: React.FC<LayoutProps> = ({
     const dy = e.clientY - d.startY;
     if (!d.active) {
       if (Math.abs(dx) < 6) return;                       // ещё не тянут — это обычное нажатие
-      if (Math.abs(dy) > Math.abs(dx)) { dragRef.current = null; return; }  // ведут вверх/вниз — жест не наш
+      if (Math.abs(dy) > Math.abs(dx)) { cancelPress(); return; }  // ведут вверх/вниз — жест не наш
       d.active = true;
       setDragging(true);
+      setPressed(true);
       try { (e.currentTarget as HTMLElement).setPointerCapture(e.pointerId); } catch { /* палец уже отпущен */ }
     }
     const tabs = visibleTabs();
@@ -312,6 +365,16 @@ const Layout: React.FC<LayoutProps> = ({
     if (first && x < first.x) x = first.x - (first.x - x) * 0.3;
     if (last && x > last.x) x = last.x + (x - last.x) * 0.3;
     setDragPos(x);
+
+    // Скорость пальца → растяжение. Сглаживаем, чтобы капля не дрожала от
+    // неровных событий, и отпускаем к нулю, как только палец замер.
+    const now = performance.now();
+    const v = (e.clientX - velRef.current.x) / Math.max(1, now - velRef.current.t);
+    velRef.current = { x: e.clientX, t: now };
+    setStretch(prev => prev * 0.55 + Math.max(-2.5, Math.min(2.5, v)) * 0.45);
+    window.clearTimeout(relaxTimer.current);
+    relaxTimer.current = window.setTimeout(() => setStretch(0), 90);
+
     const near = nearestTab(x, pill.w);
     if (near !== dragTabRef.current) {
       dragTabRef.current = near;
@@ -326,6 +389,18 @@ const Layout: React.FC<LayoutProps> = ({
     const target = commit ? dragTabRef.current : null;   // читаем до сброса
     dragRef.current = null;
     const wasActive = !!d?.active;
+    window.clearTimeout(relaxTimer.current);
+    setStretch(0);
+    if (!wasActive && commit && d?.pressTab && d.pressTab !== activeTab && !(isInvestor && d.pressTab === 'more')) {
+      // Простое нажатие на другую вкладку: капля плывёт к ней сразу, на
+      // отпускании, — переход раздела сделает сама кнопка.
+      const geom = measureTab(d.pressTab);
+      if (geom) { setPill(geom); startTravel(); }
+    }
+    if (wasActive) {
+      justDragged.current = true;
+      window.setTimeout(() => { justDragged.current = false; }, 300);
+    }
     setDragPos(null);
     setDragging(false);
     setDragTab(null);
@@ -340,8 +415,6 @@ const Layout: React.FC<LayoutProps> = ({
     if (willActivate) {
       const geom = measureTab(target);
       if (geom) setPill(geom);              // ставим цель сразу, иначе капсула сначала вернётся к старой
-      setPillMoving(true);
-      window.setTimeout(() => setPillMoving(false), 520);
     }
     goToTab(target);
   };
@@ -362,6 +435,33 @@ const Layout: React.FC<LayoutProps> = ({
 
   // Во время перетаскивания подсвечен раздел под капсулой, а не открытый
   const tabActive = (id: string) => (dragTab ?? activeTab) === id;
+
+  // Пока палец на капле, вкладка под ней увеличена — как под линзой. При
+  // переезде иконка идёт по тому же расписанию, что капля (nav-tab-travel):
+  // иначе она оставалась крупной весь переезд и не успевала осесть вместе с ней.
+  const lensHeld = pressed || dragging;
+  const tabLens = (id: string) =>
+    `nav-tab ${
+      !tabActive(id) ? '' : lensHeld ? 'scale-[1.12]' : pillMoving ? 'nav-tab-travel' : ''
+    }`;
+
+  // Отпустили — капля плавно сдувается (nav-glass-pill--settle)
+  const wasHeld = useRef(false);
+  useEffect(() => {
+    if (lensHeld) { wasHeld.current = true; setSettling(false); return; }
+    if (!wasHeld.current) return;
+    wasHeld.current = false;
+    setSettling(true);
+    const timer = window.setTimeout(() => setSettling(false), 620);
+    return () => window.clearTimeout(timer);
+  }, [lensHeld]);
+
+  // Размер капли: на касании она раздувается и выходит за края острова, в
+  // движении вытягивается по ходу пальца и сплющивается по высоте.
+  const pull = Math.min(Math.abs(stretch) * 0.22, 0.32);
+  const pillScale = lensHeld
+    ? `scale(${(1.3 * (1 + pull)).toFixed(3)}, ${(1.42 * (1 - pull * 0.45)).toFixed(3)})`
+    : 'scale(1, 1)';
 
 
   // Apply Theme
@@ -913,7 +1013,7 @@ const counts = useMemo(() => {
         {pill && (
           <div
             aria-hidden
-            className={`nav-glass-track ${dragging ? 'nav-glass-track--dragging' : ''}`}
+            className={`nav-glass-track ${dragging ? 'nav-glass-track--dragging' : pillMoving ? 'nav-glass-track--travel' : ''}`}
             style={{
               transform: `translate3d(${dragPos ?? pill.x}px, ${pill.y}px, 0)`,
               width: pill.w,
@@ -923,18 +1023,23 @@ const counts = useMemo(() => {
               opacity: pillVisible ? 1 : 0,
             }}
           >
-            <div className={`nav-glass-pill ${pressed || dragging ? 'nav-glass-pill--held' : pillMoving ? 'nav-glass-pill--moving' : ''}`} />
+            <div
+              className={`nav-glass-pill ${
+                lensHeld ? 'nav-glass-pill--held' : settling ? 'nav-glass-pill--settle' : pillMoving ? 'nav-glass-pill--travel' : ''
+              } ${dragging ? 'nav-glass-pill--following' : ''}`}
+              style={{ transform: pillScale }}
+            />
           </div>
         )}
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => setView('DASHBOARD')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${tabActive('dashboard') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
-                {ICONS.Dashboard}
+            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => setView('DASHBOARD')} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('dashboard')} ${tabActive('dashboard') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+                <NavIcon name="home" active={tabActive('dashboard')} />
                 <span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
             {!isInvestor && (
-              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => setView('CASH_REGISTER')} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${tabActive('cash') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
-                  {ICONS.Wallet}
+              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => setView('CASH_REGISTER')} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('cash')} ${tabActive('cash') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+                  <NavIcon name="cash" active={tabActive('cash')} />
                   <span className="text-[10px] mt-1 font-medium">Касса</span>
               </button>
             )}
@@ -953,8 +1058,8 @@ const counts = useMemo(() => {
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`relative z-10 flex flex-col items-center p-2 transition-colors ${tabActive('customers') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
-                  {ICONS.Customers}
+              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('customers')} ${tabActive('customers') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+                  <NavIcon name="customers" active={tabActive('customers')} />
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
             )}
@@ -968,11 +1073,11 @@ const counts = useMemo(() => {
                     }
                 }}
                 ref={el => { tabRefs.current['more'] = el; }}
-                className={`relative z-10 flex flex-col items-center p-2 transition-colors ${
+                className={`relative z-10 flex flex-col items-center p-2 ${tabLens('more')} ${
                     tabActive('more') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'
                 }`}
             >
-                {ICONS.Menu}
+                <NavIcon name="more" active={tabActive('more')} />
                 <span className="text-[10px] mt-1 font-medium">{isInvestor ? 'Профиль' : 'Еще'}</span>
             </button>
 

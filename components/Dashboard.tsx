@@ -9,6 +9,7 @@ import { supplierSupplyDebt } from '../src/supplierLedger';
 import ModeSwitch from './ModeSwitch';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
+import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
 import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
@@ -1517,19 +1518,7 @@ useEffect(() => {
             с ним становится «корнем подложки», и стекло внутри перестало бы
             размывать страницу. */}
         <div className="relative flex p-1.5 rounded-[28px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-          <div
-            aria-hidden
-            className="nav-glass-track"
-            style={{
-              left: 6,
-              top: 6,
-              bottom: 6,
-              width: 'calc(50% - 6px)',
-              transform: activeTab === 'overview' ? 'translateX(0)' : 'translateX(100%)',
-            }}
-          >
-            <div className={`nav-glass-pill ${activeTab === 'upcoming' ? 'nav-glass-pill--moving' : ''}`} />
-          </div>
+          <TabPill index={activeTab === 'overview' ? 0 : 1} count={2} pad={6} />
           <button
             onClick={() => setActiveTab('overview')}
             className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors duration-300 ${
