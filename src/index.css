@@ -783,6 +783,15 @@ input, textarea, [contenteditable] {
 .animate-slide-down-sheet {
   animation: slide-down-sheet 0.28s cubic-bezier(0.32, 0.72, 0, 1) forwards;
 }
+/* Выезд листа Sheet.tsx. В отличие от animate-slide-up-sheet — без fill-mode
+   forwards: после выезда положением правит inline-transform (смахивание пальцем),
+   а застывшая анимация перекрыла бы его, и лист не двигался бы за пальцем. */
+.animate-sheet-in {
+  animation: slide-up-sheet 0.36s cubic-bezier(0.32, 0.72, 0, 1) backwards;
+}
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-in { animation: none; }
+}
 .animate-fade-out {
   animation: fade-out 0.25s ease forwards;
 }
