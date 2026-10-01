@@ -11,6 +11,8 @@
  * докачиваются в кеш заранее — фоном, по три за раз.
  */
 
+import { isBundledApp } from './platform';
+
 /** Имя кеша. Совпадает с правилом runtimeCaching в vite.config.ts */
 export const PRODUCT_IMAGE_CACHE = 'product-images-v1';
 
@@ -57,6 +59,9 @@ let queued: WithImages[] | null = null;
  */
 export const warmProductImages = async (products: WithImages[]): Promise<number> => {
   if (typeof window === 'undefined' || !('caches' in window) || !networkAllows()) return 0;
+  // iOS-приложение: service worker'а там нет, и <img> этот кеш не читает —
+  // докачка только тратила бы трафик.
+  if (isBundledApp()) return 0;
   if (running) { queued = products; return 0; }
   running = true;
   let fetched = 0;

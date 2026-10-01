@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { serverFileUrl } from '../src/platform';
 
 interface ProductImageProps {
   src?: string;
@@ -36,7 +37,7 @@ const ProductImage: React.FC<ProductImageProps> = ({
   if (!src || failed) return <>{fallback}</>;
   return (
     <img
-      src={src}
+      src={serverFileUrl(src)}
       alt={alt}
       className={className}
       loading={loading}

@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 import { hapticSuccess } from './feedback';
+import { publicOrigin } from '../src/platform';
 
 interface ReferralProps {
     onBack: () => void;
@@ -28,7 +29,7 @@ const Referral: React.FC<ReferralProps> = ({ onBack }) => {
 
     // Ведём сразу на /app, а не на «/»: по «/» открывается лендинг, и человеку
     // пришлось бы ещё искать кнопку «Войти». Здесь он сразу попадает на регистрацию.
-    const link = stats ? `${window.location.origin}/app?ref=${stats.code}` : '';
+    const link = stats ? `${publicOrigin()}/app?ref=${stats.code}` : '';
 
     const handleCopy = async () => {
         try {

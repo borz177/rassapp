@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { AppSettings, TermRate } from '../types';
 import { api } from '../services/api';
+import { publicOrigin } from '../src/platform';
 
 const MONTHS_RU = ['января','февраля','марта','апреля','мая','июня',
                    'июля','августа','сентября','октября','ноября','декабря'];
@@ -372,7 +373,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
           }},
         });
       }
-      const cleanUrl = `${window.location.origin}/calc/${companyName}?cfg=${cfgId}`;
+      const cleanUrl = `${publicOrigin()}/calc/${companyName}?cfg=${cfgId}`;
       const copied = await copyToClipboard(cleanUrl);
       if (copied) alert('✨ Ссылка скопирована!');
       else alert(`📋 Скопируйте ссылку вручную:\n\n${cleanUrl}`);

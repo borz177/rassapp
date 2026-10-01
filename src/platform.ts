@@ -10,3 +10,27 @@ import { Capacitor } from '@capacitor/core';
  * она хранится на сервере.
  */
 export const isIOSApp = (): boolean => Capacitor.getPlatform() === 'ios';
+
+/** Боевой сервер: API, файлы и публичные страницы */
+export const SERVER_ORIGIN = 'https://rassrochka.pro';
+
+/**
+ * Интерфейс лежит внутри приложения, а не открыт с сайта.
+ *
+ * Так собирается iOS-приложение (см. capacitor.config.ts): страница открыта с
+ * capacitor://localhost, и относительные адреса (/api, /uploads) ведут внутрь
+ * приложения, а не на сервер. Android и сайт открывают rassrochka.pro напрямую.
+ */
+export const isBundledApp = (): boolean =>
+  typeof location !== 'undefined' && location.protocol === 'capacitor:';
+
+/** Адрес сайта для ссылок, которые человек копирует или отправляет другим */
+export const publicOrigin = (): string =>
+  isBundledApp() ? SERVER_ORIGIN : window.location.origin;
+
+/**
+ * Путь файла на сервере (/uploads/…) → адрес, по которому его можно загрузить.
+ * На сайте путь и так ведёт на сервер; base64, blob: и полные адреса не меняются.
+ */
+export const serverFileUrl = <T extends string | undefined>(src: T): T =>
+  (src && isBundledApp() && src.startsWith('/') ? SERVER_ORIGIN + src : src) as T;

@@ -1,11 +1,19 @@
 import type { CapacitorConfig } from '@capacitor/cli';
 
+// Для какой платформы собираем: конфиг выполняется внутри `npx cap sync ios`
+// (copy/run/update ios), и платформа видна в аргументах команды.
+const forIOS = process.argv.includes('ios');
+
 const config: CapacitorConfig = {
   appId: 'com.finuchet.app',
   appName: 'FinUchet',
   webDir: 'dist',
 
-  server: {
+  // iOS: интерфейс (dist) лежит внутри приложения, к rassrochka.pro оно ходит
+  // только за данными (src/platform.ts → isBundledApp). Сайт в обёртке App Store
+  // отклоняет (правило 4.2), а так приложение и открывается без интернета.
+  // Android по-прежнему открывает сайт: обновляется вместе с ним, без магазина.
+  server: forIOS ? undefined : {
     url: 'https://rassrochka.pro',
     cleartext: true,
     // Без сети сайт не загрузится — вместо белого экрана показываем встроенную

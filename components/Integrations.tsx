@@ -4,6 +4,7 @@ import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
 import { api } from '../services/api';
+import { publicOrigin } from '../src/platform';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -685,8 +686,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
                       <div>
                         <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">Webhook URL</label>
                         <div className="flex gap-2">
-                          <input readOnly className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 font-mono select-all" value={`${window.location.origin}/api/integrations/whatsapp/webhook`} />
-                          <button onClick={() => copyToClipboard(`${window.location.origin}/api/integrations/whatsapp/webhook`)} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 whitespace-nowrap">Копировать</button>
+                          <input readOnly className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 font-mono select-all" value={`${publicOrigin()}/api/integrations/whatsapp/webhook`} />
+                          <button onClick={() => copyToClipboard(`${publicOrigin()}/api/integrations/whatsapp/webhook`)} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 whitespace-nowrap">Копировать</button>
                         </div>
                         <p className="text-[10px] text-slate-400 mt-1">Укажите этот URL в настройках инстанса Green API</p>
                       </div>

@@ -3,6 +3,7 @@ import { offlineStorage } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
 import { mergeInvestor } from '../src/syncMerge';
+import { isBundledApp, SERVER_ORIGIN } from '../src/platform';
 
 // ── Отложенные сохранения инвесторов: от какой версии сделано изменение ─────────
 // Инвестор уходит на сервер целиком. Если сохранение отложено (нет связи), а
@@ -39,6 +40,9 @@ const queueSave = async (collection: string, item: any, intent?: { kind: string;
 };
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
+    // iOS-приложение: интерфейс внутри него, сервер — отдельно (см. src/platform.ts)
+    if (isBundledApp()) return `${SERVER_ORIGIN}/api`;
+
     const { hostname, protocol } = window.location;
 
     // Локальная разработка
@@ -50,7 +54,7 @@ const getBaseUrl = () => {
     return '/api';
 };
 
-const API_URL = getBaseUrl();
+export const API_URL = getBaseUrl();
 
 // База для путей ВНЕ /api — например /uploads/documents/... Локально бэкенд живёт на
 // отдельном порту, в проде это тот же origin, что и фронтенд.

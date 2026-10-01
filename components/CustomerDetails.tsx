@@ -7,7 +7,7 @@ import TopBarBack from './TopBarBack';
 import SubPage from './transitions/SubPage';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
-import { api } from '../services/api';
+import { api, API_URL } from '../services/api';
 
 interface CustomerDetailsProps {
   customer: Customer;
@@ -289,7 +289,7 @@ const DocumentsModal = ({
                 const formData = new FormData();
                 formData.append('file', fileToUpload);
 
-                const res: Response = await fetch('/api/upload/document', {
+                const res: Response = await fetch(`${API_URL}/upload/document`, {
                     method: 'POST',
                     headers: { 'x-auth-token': localStorage.getItem('token') || '' },
                     body: formData

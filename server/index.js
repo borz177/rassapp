@@ -833,8 +833,11 @@ const compressImage = async (inputBuffer, mimetype, maxWidth = 1920, quality = 8
 
 
 // Middleware
+// capacitor://localhost — адрес iOS-приложения: интерфейс лежит внутри него,
+// а данные оно берёт отсюда, то есть с другого источника.
+const IOS_APP_ORIGIN = 'capacitor://localhost';
 app.use(cors({
-  origin: process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro'],
+  origin: [...(process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro']), IOS_APP_ORIGIN],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
   allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key']
@@ -3608,6 +3611,10 @@ app.use('/uploads/products', express.static(productImageDir, {
   index: false,
   dotfiles: 'deny',
   fallthrough: false,
+  // helmet по умолчанию ставит Cross-Origin-Resource-Policy: same-origin, и
+  // iOS-приложение (другой источник) не смогло бы показать фото в <img>.
+  // Фото товаров и так публичные — см. комментарий выше.
+  setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
 }));
 
 /**

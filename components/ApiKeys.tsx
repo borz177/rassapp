@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { api } from '../services/api';
 import { ApiKeyInfo, ApiKeyScope, OAuthConnection } from '../types';
+import { publicOrigin } from '../src/platform';
 
 /**
  * API-ключи: выдача, права и отзыв.
@@ -31,7 +32,7 @@ const SCOPE_LABEL: Record<string, string> = { read: 'чтение', write: 'за
  */
 const openDocs = (event: React.MouseEvent) => {
   event.preventDefault();
-  const url = `${window.location.origin}/api`;
+  const url = `${publicOrigin()}/api`;
   let opened: Window | null = null;
   try {
     opened = window.open(url, '_blank', 'noopener,noreferrer');
