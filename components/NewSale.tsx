@@ -15,6 +15,7 @@ import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setCon
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 import { openPrintPreview } from './PrintPreview';
+import { isIOSApp } from '../src/platform';
 
 interface NewSaleProps {
   initialData: any;
@@ -615,13 +616,18 @@ const regeneratePaymentPlan = (
       if (onShowNotification) {
         onShowNotification(
           '⛔ Подписка истекла',
-          'Срок подписки истёк. Оформите или продлите подписку для создания и редактирования договоров.',
+          // iOS: без призыва оформить подписку (см. src/platform.ts)
+          isIOSApp()
+            ? 'Срок подписки истёк. Создание и редактирование договоров недоступно.'
+            : 'Срок подписки истёк. Оформите или продлите подписку для создания и редактирования договоров.',
           'error',
-          'Перейти к тарифам',
-          () => { /* можно добавить переход к тарифам */ }
+          isIOSApp() ? undefined : 'Перейти к тарифам',
+          isIOSApp() ? undefined : () => { /* можно добавить переход к тарифам */ }
         );
       } else {
-        alert("⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
+        alert(isIOSApp()
+          ? "⛔ Срок подписки истёк. Операции недоступны."
+          : "⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
       }
       return;
     }

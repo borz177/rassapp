@@ -3454,6 +3454,7 @@ app.delete('/api/user/account', auth, async (req, res) => {
     await client.query('DELETE FROM oauth_codes WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM oauth_tokens WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM backup_settings WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM subscription_reminders WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM users WHERE id = ANY($1)', [allIds]);
 
     await client.query('COMMIT');
@@ -6477,6 +6478,9 @@ const backupModule = require('./backup')({
 });
 backupModule.registerRoutes(app);
 backupModule.startScheduler();
+
+// 📧 Письма о конце подписки со ссылкой на оплату (см. subscription-reminders.js)
+require('./subscription-reminders')({ pool, sendEmail }).start();
 
 // 🔹 Очистка старых конфигов (запускается раз в сутки)
 setInterval(async () => {

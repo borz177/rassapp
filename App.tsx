@@ -149,7 +149,12 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   const isSyncingRef = React.useRef(false);
 
   // App State
-  const [currentView, setCurrentView] = useState<ViewState>('DASHBOARD');
+  // ?open=tariffs — ссылка «Оплатить» из письма о конце подписки: сразу тарифы,
+  // а если человек не вошёл, то они же после входа (экран при входе не сбрасывается).
+  // В iOS-приложении витрины тарифов нет (src/platform.ts) — там обычная главная.
+  const [currentView, setCurrentView] = useState<ViewState>(() =>
+    new URLSearchParams(window.location.search).get('open') === 'tariffs' && !isIOSApp()
+      ? 'TARIFFS' : 'DASHBOARD');
 
   const [activeContractTab, setActiveContractTab] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
 
@@ -889,6 +894,11 @@ useEffect(() => {
         setIsPublicMode(true);
         hideSplash();
         return;
+    }
+
+    // Метка ссылки из письма своё сделала (см. currentView) — убираем её из адреса
+    if (searchParams.get('open')) {
+        window.history.replaceState({}, '', window.location.pathname);
     }
 
     // 1.5 Возврат из оплаты тарифа (?payment=success из returnUrl ЮKassa)
@@ -2215,12 +2225,15 @@ const handleSaveSale = async (data: any): Promise<any> => {
 
     // 🔹 Обработка ошибки лимита
     if (error.isLimitError === true) {
+      // iOS: подсказка «оформите/повысьте тариф» и переход к тарифам — призыв к
+      // покупке вне App Store (см. src/platform.ts), там только сам факт.
+      const ios = isIOSApp();
       showNotificationModal(
         '🚫 Лимит превышен',
-        `${error.message}\n\n${error.hint || ''}`.trim(),
+        ios ? error.message : `${error.message}\n\n${error.hint || ''}`.trim(),
         'error',
-        'Перейти к тарифам',
-        () => setCurrentView('TARIFFS')
+        ios ? undefined : 'Перейти к тарифам',
+        ios ? undefined : () => setCurrentView('TARIFFS')
       );
       throw error;
     }
@@ -2637,8 +2650,8 @@ const handleIncomeSubmit = async (data: any) => {
         '🚫 Лимит сотрудников превышен', 
         e.message, 
         'error', 
-        'Перейти к тарифам',
-        () => setCurrentView('TARIFFS')
+        isIOSApp() ? undefined : 'Перейти к тарифам',
+        isIOSApp() ? undefined : () => setCurrentView('TARIFFS')
       );
     } 
     else {

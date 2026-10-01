@@ -10,6 +10,7 @@ import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX
 import { withHtml2canvasTextFix, paymentDocumentTitle, pdfFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
+import { isIOSApp } from '../src/platform';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -315,7 +316,10 @@ const isConfirmingRef = useRef(false);
     e.preventDefault();
 
     if (isSubscriptionExpired) {
-      alert("⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
+      // iOS: без призыва оформить подписку (см. src/platform.ts)
+      alert(isIOSApp()
+        ? "⛔ Срок подписки истёк. Операции недоступны."
+        : "⛔ Срок подписки истёк. Оформите подписку для совершения операций.");
       return;
     }
 
