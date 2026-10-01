@@ -1627,6 +1627,19 @@ export const api = {
         return api.get('/push/subscriptions');
     },
 
+    // Push в iOS-приложении через APNs (см. src/nativePush.ts)
+    getNativePushConfig: async (): Promise<{ ios: boolean }> => {
+        return api.get('/push/native-config');
+    },
+
+    subscribeNativePush: async (token: string): Promise<{ success: boolean }> => {
+        return api.post('/push/native/subscribe', { token, platform: 'ios' });
+    },
+
+    unsubscribeNativePush: async (token: string): Promise<{ success: boolean }> => {
+        return api.post('/push/native/unsubscribe', { token });
+    },
+
     // Цены и скидки задаёт сервер (PLAN_PRICES/DURATION_DISCOUNTS в server/index.js) —
     // он же считает сумму платежа, поэтому витрина должна показывать именно их.
     getPricing: async (): Promise<{

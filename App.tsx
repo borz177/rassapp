@@ -76,6 +76,8 @@ import { StatusBar, Style } from '@capacitor/status-bar';
 import { Capacitor } from '@capacitor/core';
 import { App as CapacitorApp } from '@capacitor/app';
 import { isIOSApp } from './src/platform';
+import { refreshNativePush, forgetNativePushOnLogout } from './src/nativePush';
+import { PushNotifications } from '@capacitor/push-notifications';
 import { triggerPagePushBack } from './components/transitions/PagePush';
 import { useTheme } from './src/theme/ThemeContext';
 
@@ -1137,6 +1139,21 @@ useEffect(() => {
 // 🔹 Установленный APK (нативная оболочка) не обновляется сам по себе, в отличие от веб-кода,
 // который WebView каждый раз подтягивает свежим с сервера — поэтому проверяем именно нативную
 // versionCode и, если на сервере опубликована более новая, предлагаем скачать новый APK.
+// 📱 Push на iPhone: после входа обновляем привязку токена к аккаунту
+// (src/nativePush.ts — без выданного раньше разрешения ничего не делает).
+useEffect(() => {
+  if (user?.id) refreshNativePush();
+}, [user?.id]);
+
+// Нажали на уведомление — открываем список уведомлений
+useEffect(() => {
+  if (!isIOSApp()) return;
+  const handle = PushNotifications.addListener('pushNotificationActionPerformed', () => {
+    setCurrentView('NOTIFICATIONS');
+  });
+  return () => { handle.then(h => h.remove()).catch(() => {}); };
+}, []);
+
 useEffect(() => {
   // Только Android: APK ставится в обход магазина. iOS обновляется через App Store.
   if (Capacitor.getPlatform() !== 'android') return;
@@ -1778,6 +1795,15 @@ const dashboardStats = useMemo(() => {
 
     return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
   }, [reportFilters, sales, accounts, investors, expenses, employees, isManager, profitFromPaymentsOnly]);
+
+  // 📱 Выход из аккаунта на iPhone: сначала отвязать телефон от его уведомлений —
+  // пока жив токен входа, без него сервер запрос не примет. Без сети выход не ждёт
+  // дольше трёх секунд.
+  const afterPushForgotten = (logout: () => void) => {
+    withTimeout(forgetNativePushOnLogout(), 3000, 'push logout')
+      .catch(() => {})
+      .finally(logout);
+  };
 
   const handleAuthSuccess = async (loggedInUser: User) => {
       setUser(loggedInUser);
@@ -4576,12 +4602,12 @@ if (!user && !showSplash) {
         investor={activeInvestor}
         investors={investors}
         appSettings={appSettings}
-        onLogout={() => {
+        onLogout={() => afterPushForgotten(() => {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
           setUser(null);
           setCurrentView('DASHBOARD');
-        }}
+        })}
       />
     );
   })()
@@ -5049,11 +5075,11 @@ if (!user && !showSplash) {
               onUpdateProfile={handleUpdateProfile}
               onBack={requestClose}
               onLogout={() => {
-                const doLogout = () => {
+                const doLogout = () => afterPushForgotten(() => {
                   localStorage.removeItem('user');
                   localStorage.removeItem('token');
                   setUser(null);
-                };
+                });
                 // Очередь живёт в хранилище браузера и привязана к устройству, а
                 // не к учётной записи. Выйти с неотправленными записями — законное
                 // право, но человек должен знать цену. Спрашиваем своим окном, а не

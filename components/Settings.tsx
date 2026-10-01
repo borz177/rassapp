@@ -8,6 +8,8 @@ import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } 
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 import { useTheme, ThemeMode } from '../src/theme/ThemeContext';
+import { isIOSApp } from '../src/platform';
+import { nativePushAvailable, isNativePushSubscribed, enableNativePush, disableNativePush } from '../src/nativePush';
 
 // 🔹 Тянут xlsx — грузим только когда реально открыли импорт/экспорт
 const DataImport = lazy(() => import('./DataImport'));
@@ -186,6 +188,10 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
   const [pushDeviceCount, setPushDeviceCount] = useState<number | null>(null);
   const [isCurrentDeviceSubscribed, setIsCurrentDeviceSubscribed] = useState(false);
   const [isPushBusy, setIsPushBusy] = useState(false);
+  // iPhone: push через APNs (src/nativePush.ts). Блок виден, только когда на
+  // сервере есть ключ APNs: до этого кнопка «Подписать» ничего бы не сделала.
+  const iosApp = isIOSApp();
+  const [nativePushOn, setNativePushOn] = useState(false);
 
   useEffect(() => {
     if (!hasNotificationsAccess) return;
@@ -194,6 +200,11 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
         const subs = await api.getPushSubscriptions();
         setPushDeviceCount(subs.length);
       } catch (e) { /* тихо игнорируем — не критично для остальной страницы */ }
+      if (iosApp) {
+        setNativePushOn(await nativePushAvailable());
+        setIsCurrentDeviceSubscribed(await isNativePushSubscribed());
+        return;
+      }
       try {
         if ('serviceWorker' in navigator && 'PushManager' in window) {
           const reg = await navigator.serviceWorker.ready;
@@ -208,6 +219,15 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
     if (isPushBusy) return;
     setIsPushBusy(true);
     try {
+      if (iosApp) {
+        if (!(await enableNativePush())) {
+          alert('Уведомления запрещены. Разрешите их в Настройках iPhone → FinUchet → Уведомления.');
+          return;
+        }
+        setIsCurrentDeviceSubscribed(true);
+        setPushDeviceCount(prev => (prev ?? 0) + 1);
+        return;
+      }
       if (!('serviceWorker' in navigator) || !('PushManager' in window)) {
         alert('Этот браузер не поддерживает push-уведомления');
         return;
@@ -242,6 +262,12 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
     if (isPushBusy) return;
     setIsPushBusy(true);
     try {
+      if (iosApp) {
+        await disableNativePush();
+        setIsCurrentDeviceSubscribed(false);
+        setPushDeviceCount(prev => Math.max(0, (prev ?? 1) - 1));
+        return;
+      }
       const reg = await navigator.serviceWorker.ready;
       const sub = await reg.pushManager.getSubscription();
       if (sub) {
@@ -402,6 +428,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
 
         localStorage.removeItem('token');
         localStorage.removeItem('user');
+        // Токены push удалённого аккаунта сервер уже стёр — забываем и здесь
+        localStorage.removeItem('finuchet_native_push_token');
         sessionStorage.clear();
 
         if ('caches' in window) {
@@ -737,10 +765,15 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
                       ))}
                   </div>
 
+                  {(!iosApp || nativePushOn) && <>
                   <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
                       <div>
                           <p className="font-medium text-slate-700 dark:text-slate-300">Push-уведомления на устройстве</p>
-                          <p className="text-sm text-slate-500 dark:text-slate-400">Приходят, даже когда вкладка закрыта — если приложение установлено как PWA</p>
+                          <p className="text-sm text-slate-500 dark:text-slate-400">
+                              {iosApp
+                                  ? 'Приходят на iPhone, даже когда приложение закрыто'
+                                  : 'Приходят, даже когда вкладка закрыта — если приложение установлено как PWA'}
+                          </p>
                       </div>
                       <label className="relative inline-flex items-center cursor-pointer shrink-0 ml-3">
                           <input
@@ -779,6 +812,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
                           </button>
                       )}
                   </div>
+                  </>}
               </>
           )}
       </SettingsAccordion>

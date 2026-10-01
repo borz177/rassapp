@@ -40,6 +40,10 @@ const config: CapacitorConfig = {
       launchShowDuration: 0, // Отключаем нативный сплеш (у вас свой есть)
       launchAutoHide: true,
     },
+    PushNotifications: {
+      // Уведомление показываем и когда приложение открыто — иначе iOS его молча глотает
+      presentationOptions: ['badge', 'sound', 'alert'],
+    },
     Keyboard: {
       resize: 'none', // Не менять размер WebView при открытии клавиатуры
       resizeOnFullScreen: true,

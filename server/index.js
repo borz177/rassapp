@@ -47,6 +47,8 @@ if (PUSH_ENABLED) {
 } else if (webpush) {
   console.warn('⚠️ VAPID_PUBLIC_KEY/VAPID_PRIVATE_KEY не заданы — push-уведомления отключены');
 }
+// Push на iPhone (нативное приложение) — через APNs, см. apns.js
+const apns = require('./apns').createApns();
 
 
 const app = express();
@@ -598,8 +600,30 @@ const NOTIFICATION_EVENT_TOGGLE_KEYS = {
   TASK_ASSIGNED: 'taskDue',
   TASK_DONE: 'taskDue',
 };
+// 🔔 Push на устройства нативных приложений (iPhone), с автоочисткой мёртвых токенов
+const sendNativePushToUser = async (userId, title, body) => {
+  if (!apns.enabled) return;
+  try {
+    const { rows } = await pool.query(
+      `SELECT token, environment FROM native_push_tokens WHERE user_id = $1 AND platform = 'ios'`,
+      [userId]
+    );
+    for (const row of rows) {
+      const result = await apns.send(row.token, { title, body }, row.environment);
+      if (result.gone) {
+        await pool.query(`DELETE FROM native_push_tokens WHERE token = $1`, [row.token]);
+      } else if (result.ok && result.environment !== row.environment) {
+        await pool.query(`UPDATE native_push_tokens SET environment = $2 WHERE token = $1`, [row.token, result.environment]);
+      }
+    }
+  } catch (e) {
+    console.error('❌ sendNativePushToUser error:', e);
+  }
+};
+
 // 🔔 Отправка Web Push всем подпискам пользователя (с автоочисткой протухших подписок)
 const sendPushToUser = async (userId, title, body) => {
+  await sendNativePushToUser(userId, title, body);
   if (!PUSH_ENABLED) return;
   try {
     const subsResult = await pool.query(
@@ -1200,6 +1224,21 @@ await pool.query(`
   );
 `);
 await pool.query(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON push_subscriptions(user_id);`);
+
+// Токены устройств нативных приложений (пока — iPhone через APNs). Веб-push сюда
+// не подходит: у него другая подписка (endpoint + ключи), у APNs — один токен.
+// environment — в какой среде APNs токен сработал (production / sandbox), см. apns.js
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS native_push_tokens (
+    token TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    platform TEXT NOT NULL,
+    environment TEXT,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+await pool.query(`CREATE INDEX IF NOT EXISTS idx_native_push_tokens_user_id ON native_push_tokens(user_id);`);
 
 // === ЖУРНАЛ ДЕЙСТВИЙ АДМИНА ===
 await pool.query(`
@@ -3440,6 +3479,7 @@ app.delete('/api/user/account', auth, async (req, res) => {
     await client.query('DELETE FROM data_items WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM notifications WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM push_subscriptions WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM native_push_tokens WHERE user_id = ANY($1)', [allIds]);
     await client.query(
       'DELETE FROM support_messages WHERE ticket_id IN (SELECT id FROM support_tickets WHERE user_id = ANY($1))',
       [allIds]
@@ -6067,12 +6107,67 @@ app.post('/api/push/unsubscribe', auth, async (req, res) => {
   }
 });
 
+// 📱 Нативные push (iPhone): включены ли на сервере. Пока ключа APNs нет,
+// приложение не показывает пункт push вовсе — нерабочая кнопка хуже, чем никакой.
+app.get('/api/push/native-config', auth, async (req, res) => {
+  res.json({ ios: apns.enabled });
+});
+
+// Привязать токен устройства к аккаунту. Тот же токен у другого аккаунта —
+// на телефоне вошли под другим пользователем: уведомления теперь его.
+app.post('/api/push/native/subscribe', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { token, platform } = req.body || {};
+    if (platform !== 'ios' || typeof token !== 'string' || !/^[0-9a-fA-F]{32,200}$/.test(token)) {
+      return res.status(400).json({ msg: 'Некорректный токен устройства' });
+    }
+
+    const featureAccess = await checkFeatureAccess(targetUserId, 'notifications');
+    if (!featureAccess.allowed) {
+      return res.status(403).json({ msg: featureAccess.msg, hint: featureAccess.hint });
+    }
+
+    await pool.query(`
+      INSERT INTO native_push_tokens (token, user_id, platform)
+      VALUES ($1, $2, $3)
+      ON CONFLICT (token) DO UPDATE SET
+        user_id = EXCLUDED.user_id, platform = EXCLUDED.platform, updated_at = CURRENT_TIMESTAMP
+    `, [token.toLowerCase(), targetUserId, platform]);
+
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/push/native/subscribe error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+app.post('/api/push/native/unsubscribe', auth, async (req, res) => {
+  try {
+    const targetUserId = getTargetUserId(req.user);
+    const { token } = req.body || {};
+    if (typeof token !== 'string') return res.status(400).json({ msg: 'Отсутствует токен' });
+    await pool.query(
+      `DELETE FROM native_push_tokens WHERE token = $1 AND user_id = $2`,
+      [token.toLowerCase(), targetUserId]
+    );
+    res.json({ success: true });
+  } catch (err) {
+    console.error('POST /api/push/native/unsubscribe error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
 // Список подписанных устройств — для отображения в Настройках
 app.get('/api/push/subscriptions', auth, async (req, res) => {
   try {
     const targetUserId = getTargetUserId(req.user);
+    // Веб-подписки и токены iPhone вместе: человеку важно число устройств, а не способ доставки
     const result = await pool.query(
-      `SELECT id, endpoint, user_agent, created_at FROM push_subscriptions WHERE user_id = $1 ORDER BY created_at DESC`,
+      `SELECT id, endpoint, user_agent, created_at FROM push_subscriptions WHERE user_id = $1
+       UNION ALL
+       SELECT 'native_' || left(token, 12), NULL, 'iPhone', created_at FROM native_push_tokens WHERE user_id = $1
+       ORDER BY created_at DESC`,
       [targetUserId]
     );
     res.json(result.rows.map(r => ({
