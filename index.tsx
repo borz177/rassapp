@@ -9,16 +9,22 @@ import { ThemeProvider } from './src/theme/ThemeContext';
 import AppDialogs from './components/AppDialogs';
 import { installAlertOverride } from './src/dialogs';
 import { registerSW } from 'virtual:pwa-register';
+import { isDesktopShell } from './src/platform';
 
-// Register Service Worker for PWA offline support
-const updateSW = registerSW({
-  onNeedRefresh() {
-    console.log('New content available, reload to update.');
-  },
-  onOfflineReady() {
-    console.log('App is ready to work offline.');
-  },
-});
+// Register Service Worker for PWA offline support.
+// В настольном приложении интерфейс и так внутри (electron.cjs) — без него.
+if (isDesktopShell()) {
+  navigator.serviceWorker?.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
+} else {
+  registerSW({
+    onNeedRefresh() {
+      console.log('New content available, reload to update.');
+    },
+    onOfflineReady() {
+      console.log('App is ready to work offline.');
+    },
+  });
+}
 
 // 🔒 Отложенные куски кода запрашиваются вне дерева React — например, когда пользователь
 // открывает экран, а сборка на сервере уже сменилась. Такая ошибка до границы ошибок не

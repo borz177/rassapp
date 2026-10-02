@@ -8,7 +8,7 @@ import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } 
 import { api } from '../services/api';
 import { offlineStorage } from '../services/offlineStorage';
 import { useTheme, ThemeMode } from '../src/theme/ThemeContext';
-import { isIOSApp } from '../src/platform';
+import { isIOSApp, isDesktopShell } from '../src/platform';
 import { nativePushAvailable, isNativePushSubscribed, enableNativePush, disableNativePush } from '../src/nativePush';
 import { appAlert } from '../src/dialogs';
 
@@ -192,6 +192,8 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
   // iPhone: push через APNs (src/nativePush.ts). Блок виден, только когда на
   // сервере есть ключ APNs: до этого кнопка «Подписать» ничего бы не сделала.
   const iosApp = isIOSApp();
+  // В настольном приложении веб-push не работает (Electron) — блок не показываем
+  const desktopApp = isDesktopShell();
   const [nativePushOn, setNativePushOn] = useState(false);
 
   useEffect(() => {
@@ -206,6 +208,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
         setIsCurrentDeviceSubscribed(await isNativePushSubscribed());
         return;
       }
+      if (desktopApp) return;
       try {
         if ('serviceWorker' in navigator && 'PushManager' in window) {
           const reg = await navigator.serviceWorker.ready;
@@ -766,7 +769,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
                       ))}
                   </div>
 
-                  {(!iosApp || nativePushOn) && <>
+                  {(!iosApp || nativePushOn) && !desktopApp && <>
                   <div className="flex items-center justify-between mt-5 pt-4 border-t border-slate-100 dark:border-slate-700">
                       <div>
                           <p className="font-medium text-slate-700 dark:text-slate-300">Push-уведомления на устройстве</p>

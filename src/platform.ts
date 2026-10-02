@@ -11,6 +11,14 @@ import { Capacitor } from '@capacitor/core';
  */
 export const isIOSApp = (): boolean => Capacitor.getPlatform() === 'ios';
 
+/**
+ * Открыто в настольном приложении (Electron, см. preload.js). Интерфейс там
+ * лежит внутри приложения, поэтому service worker не нужен (и мешал бы: отдавал
+ * бы из кэша прежнюю версию), а веб-push в Electron не работает вовсе.
+ */
+export const isDesktopShell = (): boolean =>
+  typeof window !== 'undefined' && !!(window as any).finuchetShell;
+
 /** Боевой сервер: API, файлы и публичные страницы */
 export const SERVER_ORIGIN = 'https://rassrochka.pro';
 
