@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import ManagementShareSheet from './ManagementShareSheet';
 import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
@@ -329,6 +330,7 @@ const AccountActionModal = ({
     isManager,
     onUpdateAccount,
     onToggleHidden,
+    onManagementShare,
     onDelete,
     usage,
     appSettings,
@@ -343,6 +345,8 @@ const AccountActionModal = ({
     isManager: boolean;
     onUpdateAccount?: (acc: Account) => void;
     onToggleHidden: (acc: Account) => void;
+    /** Доля за управление — только у общего пула */
+    onManagementShare?: (acc: Account) => void;
     onDelete?: (id: string) => void;
     /** Сколько операций привязано к счёту — от этого зависит, можно ли удалять */
     usage: number;
@@ -423,6 +427,21 @@ const AccountActionModal = ({
                                 <div>
                                     <span className="font-medium">Редактировать</span>
                                     <p className="text-xs text-slate-400 dark:text-slate-500">Изменить название счета</p>
+                                </div>
+                            </button>
+                        )}
+
+                        {isManager && onManagementShare && account.type === 'POOL' && (
+                            <button
+                                onClick={() => { onManagementShare(account); onClose(); }}
+                                className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-950/40 rounded-xl flex items-center gap-3 transition-all group"
+                            >
+                                <span className="w-8 h-8 bg-fuchsia-50 dark:bg-fuchsia-900/30 rounded-lg flex items-center justify-center text-fuchsia-600 dark:text-fuchsia-400 transition-all">
+                                    {ICONS.Users}
+                                </span>
+                                <div>
+                                    <span className="font-medium">Доля за управление</span>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500">Кому идёт остаток прибыли после инвесторов</p>
                                 </div>
                             </button>
                         )}
@@ -513,6 +532,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [managementAccount, setManagementAccount] = useState<Account | null>(null);
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
   const [activeMenuAccount, setActiveMenuAccount] = useState<Account | null>(null);
 
@@ -646,12 +666,13 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
   // и окно оставалось висеть над списком счетов. Порядок проверок — от самого
   // верхнего слоя к нижнему.
   useBackInterceptor(
-    !!(showProfitDetails || showInvestorProfitDetails || selectedSharedAccount || editingAccount || activeMenuAccount),
+    !!(showProfitDetails || showInvestorProfitDetails || selectedSharedAccount || editingAccount || managementAccount || activeMenuAccount),
     () => {
       if (showProfitDetails) { setShowProfitDetails(false); return; }
       if (showInvestorProfitDetails) { setShowInvestorProfitDetails(false); return; }
       if (selectedSharedAccount) { setSelectedSharedAccount(null); return; }
       if (editingAccount) { setEditingAccount(null); return; }
+      if (managementAccount) { setManagementAccount(null); return; }
       setActiveMenuAccount(null);
     }
   );
@@ -1217,6 +1238,9 @@ const investorProfitPayouts = useMemo(() => {
       {editingAccount && onUpdateAccount && (
         <EditAccountModal account={editingAccount} onClose={() => setEditingAccount(null)} onUpdate={onUpdateAccount} />
       )}
+      {managementAccount && onUpdateAccount && (
+        <ManagementShareSheet account={managementAccount} investors={investors} onClose={() => setManagementAccount(null)} onSave={onUpdateAccount} />
+      )}
 
       {/* Account Cards */}
       {accounts.length === 0 ? (
@@ -1462,7 +1486,7 @@ const investorProfitPayouts = useMemo(() => {
       )}
 
       {activeMenuAccount && (
-        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden}
+        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} onManagementShare={setManagementAccount}
           onDelete={onDeleteAccount} usage={accountUsage[activeMenuAccount.id] || 0}
           appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
       )}

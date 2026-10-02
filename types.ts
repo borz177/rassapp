@@ -207,6 +207,13 @@ export interface Account {
   isArchived?: boolean;
   initialBalance?: number;
   lossEvents?: LossEvent[]; // Убытки пула (Исламские финансы: мушарака/мудараба)
+  /**
+   * Доля за управление (только POOL). Остаток прибыли после долей инвесторов по
+   * умолчанию менеджера; здесь его можно отдать участникам, которые ведут дело,
+   * — в процентах от этого остатка. Что не распределено, остаётся менеджеру.
+   * См. getAccountShares в shared/profit.js.
+   */
+  managerShareSplit?: { investorId: string; percent: number }[];
 }
 
 export interface Partnership {

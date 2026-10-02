@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { percentError } from '../src/investorPercent';
 import { Account, Investor, InvestorPermissions } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount, formatDate, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
@@ -275,7 +276,7 @@ const Investors: React.FC<InvestorsProps> = ({
           action={{
             label: editingId ? 'Готово' : 'Добавить',
             submit: true,
-            disabled: !formName.trim() || formProfitPercentage === '' || (!!editingId && !formDirty),
+            disabled: !formName.trim() || formProfitPercentage === '' || !!percentError(formProfitPercentage) || (!!editingId && !formDirty),
           }}
           onSubmit={handleSubmit}
           confirmClose={() => !formDirty || appConfirm({
@@ -312,10 +313,10 @@ const Investors: React.FC<InvestorsProps> = ({
                   </span>
                 </SheetField>
               )}
-              <SheetField label="Процент прибыли">
+              <SheetField label="Процент прибыли" hint={percentError(formProfitPercentage)}>
                 <span className="flex items-baseline gap-1">
                   <input className={`${sheetInputClass} font-semibold`} value={formProfitPercentage} onChange={e => setFormProfitPercentage(e.target.value)}
-                         type="number" inputMode="decimal" placeholder="0" required />
+                         type="number" inputMode="decimal" min={0} max={100} placeholder="0" required />
                   <span className="text-[16px] text-slate-400">%</span>
                 </span>
               </SheetField>

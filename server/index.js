@@ -2844,6 +2844,15 @@ app.get('/api/data', auth, async (req, res) => {
         SELECT d.* FROM data_items d
         INNER JOIN data_items acc ON d.data->>'accountId' = acc.data->>'id'
         WHERE d.type IN ('sales', 'expenses') AND acc.type = 'accounts' AND acc.data->>'ownerId' = $1
+        UNION
+        -- Общий пул: владельца (ownerId) у него нет, участники — в poolMemberIds.
+        -- Без этого участник пула, вошедший под своим логином, видел пустой кабинет.
+        SELECT * FROM data_items WHERE type = 'accounts' AND data->>'type' = 'POOL' AND data->'poolMemberIds' ? $1
+        UNION
+        SELECT d.* FROM data_items d
+        INNER JOIN data_items acc ON d.data->>'accountId' = acc.data->>'id' AND acc.user_id = d.user_id
+        WHERE d.type IN ('sales', 'expenses') AND acc.type = 'accounts'
+          AND acc.data->>'type' = 'POOL' AND acc.data->'poolMemberIds' ? $1
       `;
       params = [targetUserId];
     } else {
@@ -2874,6 +2883,30 @@ app.get('/api/data', auth, async (req, res) => {
         }
       }
     });
+
+    // Остальные участники пулов инвестора. Без них доля считалась бы так, будто весь
+    // капитал пула — его (100% вместо реальных 30%), и кабинет показывал бы чужую
+    // прибыль своей. Отдаём только то, что нужно для расчёта долей, — без имён и контактов.
+    if (req.user.role === 'investor') {
+      const co = await pool.query(
+        `SELECT DISTINCT ON (inv.data->>'id') inv.data FROM data_items acc
+         INNER JOIN data_items inv ON inv.user_id = acc.user_id AND inv.type = 'investors'
+           AND acc.data->'poolMemberIds' ? (inv.data->>'id')
+         WHERE acc.type = 'accounts' AND acc.data->>'type' = 'POOL'
+           AND acc.data->'poolMemberIds' ? $1 AND inv.data->>'id' <> $1`,
+        [targetUserId]
+      );
+      co.rows.forEach(({ data }) => result.investors.push({
+        id: data.id,
+        userId: data.userId,
+        name: 'Участник пула',
+        initialAmount: data.initialAmount,
+        profitPercentage: data.profitPercentage,
+        joinedDate: data.joinedDate,
+        leftPoolDate: data.leftPoolDate,
+        investmentPeriods: data.investmentPeriods,
+      }));
+    }
 
     // Fetch Employees
     let employees = [];
@@ -6554,11 +6587,13 @@ app.get('/api/my-bonus', auth, async (req, res) => {
 
     const ownerId = me.manager_id;
     const rows = await pool.query(
-      `SELECT type, data FROM data_items WHERE user_id = $1 AND type IN ('sales','accounts','investors','expenses')`,
+      `SELECT type, data FROM data_items WHERE user_id = $1 AND type IN ('sales','accounts','investors','expenses','settings')`,
       [ownerId]
     );
-    const byType = { sales: [], accounts: [], investors: [], expenses: [] };
+    const byType = { sales: [], accounts: [], investors: [], expenses: [], settings: [] };
     rows.rows.forEach(r => { if (byType[r.type]) byType[r.type].push(r.data); });
+    // «Прибыль только с платежей» — та же настройка, что у менеджера в приложении
+    const paymentsOnly = !!byType.settings[0]?.profitFromPaymentsOnly;
 
     const { getEmployeeProfitAccrued, getEmployeeSalaryPaid } = await getProfitModule();
     const employee = {
@@ -6568,7 +6603,7 @@ app.get('/api/my-bonus', auth, async (req, res) => {
       profitSource: me.profit_source || 'MANAGER',
       profitSince: toDateString(me.profit_since),
     };
-    const accrued = getEmployeeProfitAccrued(employee, byType.sales, byType.accounts, byType.investors);
+    const accrued = getEmployeeProfitAccrued(employee, byType.sales, byType.accounts, byType.investors, undefined, paymentsOnly);
     const paid = getEmployeeSalaryPaid(req.user.id, byType.expenses);
 
     res.json({

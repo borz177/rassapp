@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { percentError } from '../src/investorPercent';
 import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
@@ -1268,7 +1269,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
           subtitle={editName.trim() || investor.name}
           onClose={() => setShowEdit(false)}
           cancelLabel="Отмена"
-          action={{ label: 'Готово', submit: true, disabled: !editName.trim() || editProfit === '' || !editDirty }}
+          action={{ label: 'Готово', submit: true, disabled: !editName.trim() || editProfit === '' || !!percentError(editProfit) || !editDirty }}
           onSubmit={handleEditSubmit}
           confirmClose={() => !editDirty || appConfirm({
             title: 'Закрыть без сохранения?',
@@ -1292,11 +1293,11 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
             <SheetSection title="Условия" hint={editError
               ? <span className="text-rose-600 dark:text-rose-400">{editError}</span>
-              : isPoolMember ? 'Доля прибыли начисляется по договорам, оформленным с даты входа. После сохранения прибыль пересчитается.' : undefined}>
-              <SheetField label="Процент прибыли">
+              : isPoolMember ? 'Инвестор получает долю прибыли, заработанной после его входа, — и по новым договорам, и по старым. После сохранения прибыль пересчитается.' : undefined}>
+              <SheetField label="Процент прибыли" hint={percentError(editProfit)}>
                 <span className="flex items-baseline gap-1">
                   <input className={`${sheetInputClass} font-semibold`} value={editProfit} onChange={e => setEditProfit(e.target.value)}
-                         type="number" inputMode="decimal" required />
+                         type="number" inputMode="decimal" min={0} max={100} required />
                   <span className="text-[16px] text-slate-400">%</span>
                 </span>
               </SheetField>
