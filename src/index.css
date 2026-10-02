@@ -1160,14 +1160,24 @@ input, textarea, [contenteditable] {
     overflow-y: auto;
     overscroll-behavior: contain;
     border-radius: var(--shell-radius);
-    background: rgba(248, 250, 252, 0.95) !important;
-    border: 1px solid rgba(255, 255, 255, 0.6);
-    box-shadow: 0 24px 60px -16px rgba(15, 23, 42, 0.35), 0 2px 8px rgba(15, 23, 42, 0.08);
+    /* Матовое стекло, как у боковой панели. Без backdrop-filter: он сделал бы
+       карточку точкой отсчёта для position: fixed внутри неё, и открытые поверх
+       страницы съехали бы. Обои и так размывает само окно (vibrancy). */
+    background: rgba(241, 245, 249, 0.72) !important;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.6),
+      0 24px 60px -16px rgba(15, 23, 42, 0.35),
+      0 2px 8px rgba(15, 23, 42, 0.08);
   }
   .dark.shell-floating .shell-main {
-    background: rgba(15, 23, 42, 0.86) !important;
-    border-color: rgba(255, 255, 255, 0.08);
-    box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.2);
+    /* Ровно материал боковой панели */
+    background: rgba(17, 20, 32, 0.66) !important;
+    border-color: rgba(255, 255, 255, 0.09);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 24px 60px -12px rgba(0, 0, 0, 0.45),
+      0 2px 8px rgba(0, 0, 0, 0.18);
   }
 
   /* Открытые поверх раздела страницы встают ровно в ту же карточку */
@@ -1177,10 +1187,13 @@ input, textarea, [contenteditable] {
     bottom: var(--shell-gap);
     left: var(--shell-content-left);
     border-radius: var(--shell-radius);
-    background: rgb(248, 250, 252) !important;
+    /* Стекло — у карточки под ней; сама страница прозрачная, а раздел под ней
+       скрыт (см. .shell-content ниже), чтобы не просвечивал */
+    background: transparent !important;
+    visibility: visible;
   }
-  .dark.shell-floating .page-push-layer {
-    background: rgb(15, 23, 42) !important;
+  .shell-floating .shell-content:has(.page-push-layer) {
+    visibility: hidden;
   }
 
   /* Закреплённые внизу полосы — в пределах карточки, а не всего окна */
@@ -1281,5 +1294,12 @@ input, textarea, [contenteditable] {
     font-weight: 650;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
+  }
+}
+@media (min-width: 768px) {
+  /* Корни страниц на весь экран (min-h-screen) заливают себя сплошным цветом
+     или градиентом — внутри стеклянной карточки это тёмный/светлый прямоугольник */
+  .shell-floating :is(.shell-main, .page-push-layer) .min-h-screen {
+    background: transparent !important;
   }
 }

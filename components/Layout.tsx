@@ -875,7 +875,7 @@ const counts = useMemo(() => {
 
       {/* Main Content Area - Updated margins and centering */}
       <main className="shell-main flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">
-        <div className="relative w-full max-w-7xl mx-auto flex-1 min-h-0">
+        <div className="shell-content relative w-full max-w-7xl mx-auto flex-1 min-h-0">
             {children}
         </div>
       </main>
