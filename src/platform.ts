@@ -19,6 +19,14 @@ export const isIOSApp = (): boolean => Capacitor.getPlatform() === 'ios';
 export const isDesktopShell = (): boolean =>
   typeof window !== 'undefined' && !!(window as any).finuchetShell;
 
+/**
+ * Приложение для Mac с парящими панелями (html.shell-floating, см. index.html).
+ * Там экраны могут выглядеть по-своему — места больше, окно как у родных
+ * приложений macOS. Сайт, Windows и телефоны этого не видят.
+ */
+export const isMacShell = (): boolean =>
+  typeof document !== 'undefined' && document.documentElement.classList.contains('shell-floating');
+
 /** Боевой сервер: API, файлы и публичные страницы */
 export const SERVER_ORIGIN = 'https://rassrochka.pro';
 

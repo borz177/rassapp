@@ -45,7 +45,9 @@ const getBaseUrl = () => {
 
     const { hostname, protocol } = window.location;
 
-    // Локальная разработка
+    // Локальная разработка. VITE_API_URL — если порт 5000 занят (на Mac его
+    // держит приёмник AirPlay), сервер запускают на другом.
+    if (import.meta.env.DEV && import.meta.env.VITE_API_URL) return import.meta.env.VITE_API_URL;
     if (hostname === 'localhost' || hostname.startsWith('192.168.')) {
         return `${protocol}//${hostname === 'localhost' ? '127.0.0.1' : hostname}:5000/api`;
     }
