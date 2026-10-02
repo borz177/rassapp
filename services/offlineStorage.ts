@@ -8,6 +8,17 @@ const STORES = {
   FILES: 'files'  // 🔹 Хранилище для файлов
 };
 
+/** Кто сейчас работает: вошедший пользователь, а после потери входа — тот, кто был */
+export const sessionOwnerId = (): string | undefined => {
+  for (const key of ['user', 'finuchet_session_user']) {
+    try {
+      const id = JSON.parse(localStorage.getItem(key) || 'null')?.id;
+      if (id) return String(id);
+    } catch { /* битая запись — смотрим следующую */ }
+  }
+  return undefined;
+};
+
 interface SyncItem {
   id: string;
   type: string;
@@ -24,6 +35,9 @@ interface SyncItem {
   // Версия записи, от которой сделано отложенное изменение: при отправке к серверной
   // версии применяется только разница (см. queueSave в api.ts, mergeInvestor).
   base?: any;
+  // Чья это запись. Очередь хранится на устройстве, а не в учётной записи: если
+  // после потери входа войдут под другим аккаунтом, чужое отправлять нельзя.
+  ownerId?: string;
 }
 
 interface CacheItem {
@@ -82,6 +96,7 @@ class OfflineStorage {
       const store = transaction.objectStore(STORES.SYNC_QUEUE);
 
       const syncItem: SyncItem = {
+        ownerId: sessionOwnerId(),
         ...item,
         id: crypto.randomUUID(),
         timestamp: Date.now(),

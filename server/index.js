@@ -864,7 +864,9 @@ app.use(cors({
   origin: [...(process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro']), IOS_APP_ORIGIN],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key']
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key'],
+  // Иначе iOS-приложение (другой origin) не увидит продлённый токен
+  exposedHeaders: ['x-renewed-token']
 }));
 
 
@@ -1403,10 +1405,10 @@ const auth = (req, res, next) => {
   const token = req.header('x-auth-token');
   if (!token) return res.status(401).json({ code: 'NO_TOKEN', msg: 'Нет токена' });
 
+  let decoded;
   try {
-    const decoded = jwt.verify(token, JWT_SECRET);
+    decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
-    next();
   } catch (e) {
     // В middleware auth на сервере:
 if (e.name === 'TokenExpiredError') {
@@ -1417,7 +1419,25 @@ if (e.name === 'TokenExpiredError') {
 }
     return res.status(401).json({ code: 'INVALID_TOKEN', msg: 'Невалидный токен' });
   }
+
+  // Скользящий срок: кто пользуется приложением, тот не вылетает. Токену старше
+  // недели выдаём новый на полные 90 дней (заголовок x-renewed-token, клиент
+  // его сохраняет). Данные для нового берём из базы, а не из старого токена:
+  // удалённый пользователь продления не получит, сменившаяся роль обновится.
+  const ageSec = Math.floor(Date.now() / 1000) - (decoded.iat || 0);
+  if (ageSec < TOKEN_RENEW_AFTER_SEC) return next();
+  pool.query('SELECT id, role, manager_id FROM users WHERE id = $1', [decoded.id])
+    .then(r => {
+      const u = r.rows[0];
+      if (u) {
+        const fresh = jwt.sign({ id: u.id, role: u.role, managerId: u.manager_id }, JWT_SECRET, { expiresIn: '90d' });
+        res.setHeader('x-renewed-token', fresh);
+      }
+    })
+    .catch(err => console.error('❌ Token renew:', err.message))
+    .finally(() => next());
 };
+const TOKEN_RENEW_AFTER_SEC = 7 * 24 * 3600;
 
 const adminAuth = (req, res, next) => {
   auth(req, res, () => {

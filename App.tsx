@@ -50,7 +50,7 @@ import { warmProductImages } from './src/productImageCache';
 import { watchWindowFocus } from './src/windowFocus';
 import { investorRelinkPlan } from './src/investorRelink';
 import { manualIncomeKind, investorAfterIncomeCancel } from './src/incomeCancel';
-import { api } from './services/api';
+import { api, loseSession, lostSessionUser, SESSION_USER_KEY } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
 
@@ -236,17 +236,14 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   contracts: Array<{ id: string; productName: string }>;
 } | null>(null);
 
-const [showSessionExpiredModal, setShowSessionExpiredModal] = useState(false);
+// Вход потерян посреди работы (токен истёк/отозван): вместо приложения —
+// экран входа с e-mail того, кто работал. См. loseSession в services/api.ts.
+const [lostSession, setLostSession] = useState<{ email?: string } | null>(() => lostSessionUser());
 
   // 🎁 Поздравление о начисленных реферальных днях. Одно окно на все накопившиеся
   // награды: если человек неделю не заходил, а за это время оплатили трое, он увидит
   // одно сообщение о 30 днях, а не три подряд.
   const [referralBonus, setReferralBonus] = useState<{ count: number; days: number } | null>(null);
-const [sessionMessage, setSessionMessage] = useState('');
-const [sessionHandlers, setSessionHandlers] = useState<{
-  onConfirm: () => void;
-  onCancel: () => void;
-} | null>(null);
 
 // 🔹 Возврат из оплаты тарифа (?payment=success): статус активной проверки подписки
 const [paymentReturnStatus, setPaymentReturnStatus] = useState<'checking' | 'success' | 'timeout' | null>(null);
@@ -676,18 +673,12 @@ useEffect(() => {
   }, [user?.id, user?.role]);
 
  useEffect(() => {
-  (window as any).__onSessionExpired = (
-    message: string,
-    onConfirm: () => void,
-    onCancel: () => void
-  ) => {
-    setSessionMessage(message);
-    setSessionHandlers({ onConfirm, onCancel });
-    setShowSessionExpiredModal(true);
+  (window as any).__onSessionLost = () => {
+    setLostSession(lostSessionUser() || {});
+    setUser(null);
   };
-
   return () => {
-    delete (window as any).__onSessionExpired;
+    delete (window as any).__onSessionLost;
   };
 }, []);
 
@@ -919,7 +910,12 @@ useEffect(() => {
     const token = localStorage.getItem('token');
     const localUserStr = localStorage.getItem('user');
     let localUser: User | null = null;
-    if (localUserStr) {
+    if (localUserStr && !token) {
+        // Пользователь есть, входа нет — раньше приложение открывалось как обычно,
+        // и каждое сохранение падало с «Нет токена». Просим войти снова.
+        loseSession();
+        setLostSession(lostSessionUser() || {});
+    } else if (localUserStr) {
         try {
             localUser = JSON.parse(localUserStr);
             if (localUser) setUser(localUser);
@@ -1086,12 +1082,12 @@ useEffect(() => {
 // Слушатель регистрируется один раз при монтировании; актуальное состояние читается из рефа,
 // чтобы не пересоздавать нативный listener на каждый чих (currentView меняется очень часто).
 const backHandlerStateRef = useRef({
-  showSessionExpiredModal, showSupportChat, showNotification,
+  showSupportChat, showNotification,
   showTemplateUpdateModal, showBlockedDeleteModal, showDeleteConfirm, currentView
 });
 useEffect(() => {
   backHandlerStateRef.current = {
-    showSessionExpiredModal, showSupportChat, showNotification,
+    showSupportChat, showNotification,
     showTemplateUpdateModal, showBlockedDeleteModal, showDeleteConfirm, currentView
   };
 });
@@ -1104,9 +1100,6 @@ useEffect(() => {
 
   CapacitorApp.addListener('backButton', () => {
     const s = backHandlerStateRef.current;
-
-    // Модалка истёкшей сессии не должна закрываться назад — это принудительный ре-логин.
-    if (s.showSessionExpiredModal) return;
 
     if (s.showSupportChat) { setShowSupportChat(false); return; }
     if (s.showNotification) { setShowNotification(false); return; }
@@ -1810,8 +1803,12 @@ const dashboardStats = useMemo(() => {
   };
 
   const handleAuthSuccess = async (loggedInUser: User) => {
+      localStorage.removeItem(SESSION_USER_KEY);
+      setLostSession(null);
       setUser(loggedInUser);
       await loadData(loggedInUser);
+      // Записи, отложенные, пока входа не было, — отправляем сразу
+      handleSync();
   };
 
   // Второй аргумент — счёт, в контексте которого нажали. Его передаёт блок
@@ -2584,11 +2581,8 @@ const handleIncomeSubmit = async (data: any) => {
                 });
                 updateList(setSales, savedSale);
             } catch (err: any) {
-                // 🔒 При TOKEN_EXPIRED api.saveItem УЖЕ положил платёж в офлайн-очередь
-                // (services/api.ts) и лишь после этого пробрасывает ошибку — платёж не
-                // потерян и досинхронизируется после повторного входа. Раньше это тоже
-                // считалось провалом: локальное изменение откатывалось, а пользователь
-                // видел "не удалось сохранить" про платёж, который на самом деле сохранён.
+                // 🔒 Потерю входа api.saveItem обрабатывает сам: платёж в очереди,
+                // результат — как без связи. Ветка ниже — на случай старого поведения.
                 if (err?.message === 'TOKEN_EXPIRED') {
                     console.warn('⚠️ Сессия истекла во время сохранения платежа — платёж в офлайн-очереди, будет применён после входа');
                     return;
@@ -4502,6 +4496,9 @@ if (showSplash || isLoading) {
 }
 // 🔹 ПРОВЕРКА АВТОРИЗАЦИИ (перед Layout!)
 if (!user && !showSplash) {
+  if (lostSession) {
+    return <Auth onLogin={handleAuthSuccess} sessionEmail={lostSession.email} />;
+  }
   const isPWA = window.matchMedia('(display-mode: standalone)').matches;
 
   // В PWA или нативном приложении — сразу Auth
@@ -4630,6 +4627,7 @@ if (!user && !showSplash) {
         onLogout={() => afterPushForgotten(() => {
           localStorage.removeItem('token');
           localStorage.removeItem('user');
+          localStorage.removeItem(SESSION_USER_KEY);
           setUser(null);
           setCurrentView('DASHBOARD');
         })}
@@ -5108,6 +5106,7 @@ if (!user && !showSplash) {
                 const doLogout = () => afterPushForgotten(() => {
                   localStorage.removeItem('user');
                   localStorage.removeItem('token');
+                  localStorage.removeItem(SESSION_USER_KEY);
                   setUser(null);
                 });
                 // Очередь живёт в хранилище браузера и привязана к устройству, а
@@ -5654,55 +5653,6 @@ if (!user && !showSplash) {
           Закрыть
         </button>
       </div>
-    </div>
-  </div>
-)}
-
-{showSessionExpiredModal && (
-  <div
-    className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/70 backdrop-blur-sm animate-fade-in"
-    onClick={() => sessionHandlers?.onCancel()}
-  >
-    <div
-      className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 space-y-5 animate-scale-in"
-      onClick={e => e.stopPropagation()}
-    >
-      {/* Иконка */}
-      <div className="w-16 h-16 bg-amber-100 dark:bg-amber-900/30 text-amber-600 rounded-full flex items-center justify-center mx-auto text-3xl">
-        <svg className="w-8 h-8" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-        </svg>
-      </div>
-
-      {/* Заголовок */}
-      <div className="text-center space-y-2">
-        <h3 className="text-2xl font-bold text-slate-800 dark:text-white">
-          ⏳ Сессия истекла
-        </h3>
-        <p className="text-slate-600 dark:text-slate-300">
-          {sessionMessage}
-        </p>
-      </div>
-
-      {/* Информация */}
-      <div className="bg-slate-50 dark:bg-slate-700/50 rounded-xl p-4 space-y-2 text-sm">
-        <p className="text-slate-600 dark:text-slate-300">
-          Ваша сессия завершилась из-за истечения срока действия токена.
-        </p>
-        <p className="text-slate-500 dark:text-slate-400 text-xs">
-          Для продолжения работы необходимо войти в систему заново.
-        </p>
-      </div>
-
-      {/* Кнопки */}
-        <div className="pt-2">
-            <button
-                onClick={() => sessionHandlers?.onConfirm()}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl font-semibold shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30 transition-all hover:scale-105 active:scale-95"
-            >
-                Войти снова
-            </button>
-        </div>
     </div>
   </div>
 )}

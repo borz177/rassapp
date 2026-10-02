@@ -26,6 +26,8 @@ import {
 
 interface AuthProps {
     onLogin: (user: any) => void;
+    /** Вход потерян посреди работы: e-mail того, кто работал, — подставляем */
+    sessionEmail?: string;
 }
 
 type AuthMode = 'LOGIN' | 'REGISTER' | 'RESET';
@@ -59,7 +61,7 @@ const FIELD = 'w-full p-3.5 border border-slate-200 dark:border-slate-600 bg-whi
 const LABEL = 'block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1.5';
 const PRIMARY = 'w-full p-4 rounded-xl font-bold text-white transition-colors disabled:opacity-60 disabled:cursor-not-allowed flex items-center justify-center gap-2';
 
-const Auth: React.FC<AuthProps> = ({ onLogin }) => {
+const Auth: React.FC<AuthProps> = ({ onLogin, sessionEmail }) => {
     const [mode, setMode] = useState<AuthMode>('LOGIN');
     const [step, setStep] = useState<AuthStep>('EMAIL');
     const [legalView, setLegalView] = useState<LegalView>('NONE');
@@ -73,13 +75,13 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     useEffect(() => {
         let code = '';
         try { code = localStorage.getItem('pending_referral') || ''; } catch { /* нет localStorage */ }
-        if (code) {
+        if (code && !sessionEmail) {
             setReferralCode(code);
             setMode('REGISTER');   // пришёл по приглашению — сразу форма регистрации
         }
     }, []);
 
-    const [email, setEmail] = useState('');
+    const [email, setEmail] = useState(sessionEmail || '');
     const [code, setCode] = useState('');
     const [name, setName] = useState('');
     const [password, setPassword] = useState('');
@@ -95,6 +97,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
     const codeRef = useRef<HTMLInputElement>(null);
     const nameRef = useRef<HTMLInputElement>(null);
     const newPasswordRef = useRef<HTMLInputElement>(null);
+    const loginPasswordRef = useRef<HTMLInputElement>(null);
 
     useEffect(() => {
         let interval: number;
@@ -110,6 +113,8 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
         const target = step === 'CODE' ? codeRef.current
             : step === 'DETAILS' ? nameRef.current
             : step === 'NEW_PASSWORD' ? newPasswordRef.current
+            // E-mail уже подставлен — осталось ввести пароль
+            : mode === 'LOGIN' && sessionEmail && email === sessionEmail ? loginPasswordRef.current
             : emailRef.current;
         const id = window.setTimeout(() => target?.focus(), 80);
         return () => window.clearTimeout(id);
@@ -312,6 +317,15 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                         </div>
                     )}
 
+                    {sessionEmail && mode === 'LOGIN' && !error && (
+                        <div className="bg-amber-50 dark:bg-amber-900/25 border border-amber-200 dark:border-amber-900/50 rounded-xl p-3 mb-4">
+                            <p className="text-sm font-semibold text-amber-900 dark:text-amber-200">Войдите снова</p>
+                            <p className="text-xs text-amber-800 dark:text-amber-300/90 mt-0.5">
+                                Вход устарел. Всё, что вы успели внести, сохранено на этом устройстве и отправится сразу после входа.
+                            </p>
+                        </div>
+                    )}
+
                     {/* role="alert" — чтобы экранный диктор прочитал ошибку сразу */}
                     {error && (
                         <div role="alert" className="bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 p-3 rounded-xl text-sm mb-4">
@@ -349,6 +363,7 @@ const Auth: React.FC<AuthProps> = ({ onLogin }) => {
                                 </div>
                                 <div className="relative">
                                     <input
+                                        ref={loginPasswordRef}
                                         id="login-password"
                                         name="password"
                                         type={showPassword ? 'text' : 'password'}

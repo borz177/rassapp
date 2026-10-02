@@ -1,5 +1,5 @@
 import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope, OAuthConnection, OAuthClientInfo, OAuthClientCreated} from "../types";
-import { offlineStorage } from "./offlineStorage";
+import { offlineStorage, sessionOwnerId } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
 import { mergeInvestor } from '../src/syncMerge';
@@ -132,6 +132,33 @@ const addPendingNotifRead = (id: string) => {
     localStorage.setItem(PENDING_NOTIF_READS_KEY, JSON.stringify([...set]));
 };
 
+// ── Потеря входа ──────────────────────────────────────────────────────────────
+// Раньше при отказе сервера в токене показывалось окно «Сессия истекла», а
+// в памяти оставался пользователь без токена: следующие сохранения уходили
+// без него и падали с «Нет токена», а платёж казался потерянным. Теперь потеря
+// входа — одно событие: запоминаем, кто работал, убираем токен и просим
+// приложение показать вход с его e-mail. Записи, которые не дошли, уже лежат
+// в очереди и уедут после входа (см. saveItem/deleteItem и sync).
+export const SESSION_USER_KEY = 'finuchet_session_user';
+const AUTH_ENDPOINT_RE = /\/auth\/(login|register|verify|resend|reset-password|forgot|send-code)/;
+
+export const loseSession = (message?: string) => {
+  try {
+    const u = JSON.parse(localStorage.getItem('user') || 'null');
+    if (u?.id) localStorage.setItem(SESSION_USER_KEY, JSON.stringify({ id: u.id, email: u.email, name: u.name }));
+  } catch { /* нет пользователя — e-mail просто не подставится */ }
+  localStorage.removeItem('token');
+  localStorage.removeItem('user');
+  localStorage.removeItem('refreshToken');
+  (window as any).__onSessionLost?.(message);
+};
+
+/** Нужно ли входить снова — и под каким e-mail */
+export const lostSessionUser = (): { id: string; email?: string; name?: string } | null => {
+  if (localStorage.getItem('token')) return null;
+  try { return JSON.parse(localStorage.getItem(SESSION_USER_KEY) || 'null'); } catch { return null; }
+};
+
 const fetchWithAuth = async (
   url: string,
   options: RequestInit & { timeout?: number } = {}
@@ -169,60 +196,29 @@ const fetchWithAuth = async (
 
     clearTimeout(timeoutId);
 
-    if (res.status === 401) {
-      // Окно «Сессия истекла» уместно ровно в одном случае: человек работал, и
-      // его токен перестал приниматься. Всё остальное — не конец сессии:
-      //
-      // • токена не было вовсе. Так выглядит запрос до входа (приложение
-      //   пробует синхронизироваться на старте) — и человек, ещё не успев
-      //   ввести пароль, получал поверх формы окно про истёкший токен;
-      // • это вход, регистрация или сброс пароля. Там 401 означает «неверный
-      //   пароль» и должен показаться строкой в форме, а не модальным окном.
-      //
-      // В обоих случаях отдаём ответ как есть: вызывающий код сам покажет
-      // сообщение сервера.
-      const hadToken = !!localStorage.getItem('token');
-      const isAuthEndpoint = /\/auth\/(login|register|verify|resend|reset-password|forgot)/.test(url);
-      if (!hadToken || isAuthEndpoint) return res;
+    // Сервер продлил токен (скользящий срок, см. auth в server/index.js).
+    // Только если вход ещё есть: ответ мог прийти уже после выхода.
+    const renewed = res.headers.get('x-renewed-token');
+    if (renewed && localStorage.getItem('token')) localStorage.setItem('token', renewed);
 
-      console.warn('🔒 Auth error detected:', res.status, res.url);
+    if (res.status === 401) {
+      // Вход, регистрация, сброс пароля: 401 там значит «неверный пароль» —
+      // это строка в форме, а не конец сессии. Отдаём ответ как есть.
+      if (AUTH_ENDPOINT_RE.test(url)) return res;
+
       let errorMessage = '';
       try {
         const errorData = await res.clone().json();
         errorMessage = errorData?.msg || errorData?.message || '';
       } catch (e) {}
 
-      localStorage.removeItem('token');
-      localStorage.removeItem('user');
-      localStorage.removeItem('refreshToken');
+      // Токена не было, и никто не работал — это запрос до входа (например,
+      // синхронизация на старте). Ответ как есть, без шума.
+      const hadToken = !!localStorage.getItem('token');
+      if (!hadToken && !localStorage.getItem('user')) return res;
 
-      if (typeof window !== 'undefined' && (window as any).showNotification) {
-        (window as any).showNotification('⏳ Сессия истекла', errorMessage || 'Войдите в систему снова', 'warning');
-        if (!window.location.pathname.includes('/login')) {
-          setTimeout(() => { window.location.replace('/login?expired=1'); }, 300);
-        }
-        throw new Error('TOKEN_EXPIRED');
-      }
-
-      if (typeof window !== 'undefined') {
-        (window as any).__sessionExpiredData = { message: errorMessage || 'Сессия истекла', show: true };
-        return new Promise((resolve) => {
-          (window as any).__sessionExpiredHandlers = {
-            onConfirm: () => {
-              (window as any).__sessionExpiredData.show = false;
-              setTimeout(() => { window.location.replace('/login?expired=1'); }, 200);
-              resolve(new Response(JSON.stringify({ redirected: true })));
-            }
-          };
-          if ((window as any).__onSessionExpired) {
-            (window as any).__onSessionExpired(
-              errorMessage || 'Сессия истекла',
-              (window as any).__sessionExpiredHandlers.onConfirm,
-              () => {}
-            );
-          }
-        });
-      }
+      console.warn('🔒 Auth error detected:', res.status, res.url);
+      loseSession(errorMessage || 'Сессия истекла');
       throw new Error('TOKEN_EXPIRED');
     }
     // ---------------------------------------------------------------------------------
@@ -276,6 +272,11 @@ export const api = {
 
   // 3️⃣ И ТОЛЬКО ПОТОМ проверяем онлайн-статус
   if (!navigator.onLine) {
+    return { success: false, syncedCollections: new Set() };
+  }
+  // Без входа сервер отклонит каждую запись, и после пяти отказов они
+  // пометились бы «не отправлено» навсегда. Ждём входа.
+  if (!localStorage.getItem('token')) {
     return { success: false, syncedCollections: new Set() };
   }
 
@@ -387,7 +388,10 @@ export const api = {
     };
 
     const baseCollections = ['customers', 'accounts', 'investors', 'products'];
-    const pending = queue.filter(item => !item.failed);
+    // Записи другого аккаунта (вошли под другим после потери входа) не
+    // отправляем — они ждут, пока вернётся их владелец.
+    const me = sessionOwnerId();
+    const pending = queue.filter(item => !item.failed && (!item.ownerId || !me || item.ownerId === me));
 
     // 1. Базовые сущности (SAVE)
     for (const item of pending) {
@@ -509,10 +513,11 @@ export const api = {
             await offlineStorage.setCache('user_me', user);
             return user;
         } catch (error: any) {
+            // Вход потерян — не отдаём кэш: вызывающий вернул бы в приложение
+            // пользователя без токена, ровно то состояние, из которого уводим.
+            if (error.message === 'TOKEN_EXPIRED') throw error;
             // 🔥 ЛОВИМ ЛЮБЫЕ СЕТЕВЫЕ ОШИБКИ И ОТДАЕМ КЭШ
-            const isNetworkError =
-                error.message === 'TOKEN_EXPIRED' ||
-                isNetworkFailure(error);
+            const isNetworkError = isNetworkFailure(error);
 
             if (isNetworkError) {
                 const cachedUser = await offlineStorage.getCache('user_me');
@@ -782,6 +787,14 @@ export const api = {
         return { ...item, _isOffline: true };
       }
 
+      // Входа нет (истёк или потерян) — запрос заведомо отклонят. Сохраняем
+      // в очередь и просим войти: запись уедет сразу после входа.
+      if (!localStorage.getItem('token')) {
+        await queueSave(type, item, options?.intent);
+        loseSession();
+        return { ...item, _isOffline: true };
+      }
+
       try {
         // 🔥 fetchWithAuth сам добавит заголовки
         const res = await fetchWithAuth(`${API_URL}/data/${type}`, {
@@ -813,11 +826,11 @@ export const api = {
 
         } catch (error: any) {
   if (error.message === 'TOKEN_EXPIRED') {
-    // 🔒 Сессия истекла посреди сохранения — кладём в очередь, чтобы данные применились
-    // после повторного входа, а не пропали при жёстком редиректе на /login.
+    // 🔒 Сессия истекла посреди сохранения — запись в очереди, после входа
+    // уедет сама. Для вызывающего это то же, что сохранение без связи.
     console.warn("📦 Queuing for offline sync (session expired mid-save)");
     await queueSave(type, item, options?.intent);
-    throw error;
+    return { ...item, _isOffline: true };
   }
 
   console.warn("⚠️ Save error:", error);
@@ -981,6 +994,11 @@ export const api = {
     await offlineStorage.addToQueue({ type: 'deleteItem', collection: type, itemId: id });
     return { success: true, isOffline: true };
   }
+  if (!localStorage.getItem('token')) {
+    await offlineStorage.addToQueue({ type: 'deleteItem', collection: type, itemId: id });
+    loseSession();
+    return { success: true, isOffline: true };
+  }
 
   try {
     await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
@@ -997,7 +1015,7 @@ export const api = {
         collection: type,
         itemId: id
       });
-      throw error;
+      return { success: true, isOffline: true };
     }
 
     // 🔥 Отличаем реальный сетевой обрыв от настоящего отказа сервера (например,
