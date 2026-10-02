@@ -28,6 +28,8 @@ interface AccountHeadProps {
   canMoveMoney?: boolean;
   onAction: (action: string, payload?: any) => void;
   showCents?: boolean;
+  /** Справа в ленте счетов на компьютере — переключатель «Рассрочка / Наличные» */
+  trailing?: React.ReactNode;
 }
 
 const EYE = (
@@ -57,7 +59,7 @@ const ACTIONS = [
 
 const AccountHead: React.FC<AccountHeadProps> = ({
   accounts, accountBalances, selectedAccountId, onSelectAccount,
-  hideBalance, onToggleHideBalance, canMoveMoney = true, onAction, showCents = false,
+  hideBalance, onToggleHideBalance, canMoveMoney = true, onAction, showCents = false, trailing,
 }) => {
   const [pickerOpen, setPickerOpen] = useState(false);
 
@@ -108,7 +110,7 @@ const AccountHead: React.FC<AccountHeadProps> = ({
             );
           })}
         </div>
-
+        {trailing && <div className="ml-auto shrink-0">{trailing}</div>}
       </div>
 
       <div className="md:hidden flex flex-col items-center pt-1 pb-2">

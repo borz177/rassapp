@@ -927,9 +927,28 @@ const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const macShell = isMacShell();
+  const [overviewMode, setOverviewMode] = useState<'installments' | 'cash'>('installments');
+  // Mac и Windows: «Рассрочка / Наличные» — не отдельной строкой, а справа в
+  // ленте счетов. Оба выбора отвечают на один вопрос — что показывать, и
+  // лишняя строка над графиком уходит. Подписи словами: мышью значки не угадать.
+  const modeSegment = macShell && showShopTab ? (
+    <div role="radiogroup" aria-label="Что показать на главной"
+         className="glass-surface flex items-center gap-0.5 p-1 rounded-full">
+      {([['installments', 'Рассрочка'], ['cash', 'Наличные']] as const).map(([id, label]) => (
+        <button key={id} type="button" role="radio" aria-checked={overviewMode === id}
+                onClick={() => setOverviewMode(id)}
+                className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
+                  overviewMode === id
+                    ? 'mode-seg-on bg-indigo-600 text-white shadow-sm'
+                    : 'text-slate-600 dark:text-slate-300 hover:text-indigo-600'
+                }`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  ) : null;
   // Рассрочка и розница — два разных дела с разными числами, и складывать их в
   // один экран значило бы мешать «сколько мне должны» с «сколько наторговали».
-  const [overviewMode, setOverviewMode] = useState<'installments' | 'cash'>('installments');
   const [showSupplierDebt, setShowSupplierDebt] = useState(false);
   // Долг перед поставщиками: закуп по договору минус уже выплаченное. Флаг
   // isPartnerDebtPaid проверяем первым — он закрывает договор, даже если суммы
@@ -1595,7 +1614,7 @@ useEffect(() => {
         {/* Overview Tab.
             Рассрочка и наличные — один выбор, поэтому один остров со стеклянной
             капсулой, как у нижней навигации: капсулу можно перевести пальцем. */}
-        {activeTab === 'overview' && showShopTab && (
+        {activeTab === 'overview' && showShopTab && !macShell && (
           <ModeSwitch
             className="w-fit mx-auto"
             ariaLabel="Что показать на главной"
@@ -1624,6 +1643,7 @@ useEffect(() => {
             onAction={onAction}
             showCents={appSettings.showCents}
             supplierDebt={supplierDebt.supply}
+            accountTrailing={modeSegment}
           />
         )}
 
@@ -1639,6 +1659,7 @@ useEffect(() => {
                   canMoveMoney={canMoveMoney}
                   onAction={onAction}
                   showCents={appSettings.showCents}
+                  trailing={modeSegment}
                 />
 
                 {macShell && (

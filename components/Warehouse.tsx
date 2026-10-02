@@ -1,9 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import PriceListSheet from './PriceListSheet';
 import UnitPicker from './UnitPicker';
 import { DEFAULT_UNIT, isPackUnit, packLabel, parseLegacyUnit, unitOf } from '../src/units';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { applyStockDelta, listedWarehouses, productOnWarehouse, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
+import { getSellerPhone, applyStockDelta, listedWarehouses, productOnWarehouse, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
 import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
@@ -181,6 +182,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // Отсканировали код, которого в каталоге нет, — предлагаем завести товар с ним.
   const [unknownCode, setUnknownCode] = useState<string | null>(null);
   const [labelIds, setLabelIds] = useState<string[] | null>(null);
+  const [showPriceList, setShowPriceList] = useState(false);
   // Товар заводят прямо из прихода по отсканированному коду: после сохранения
   // он должен сам встать в документ, ради которого его и заводили.
   const [opsPending, setOpsPending] = useState<string | null>(null);
@@ -690,6 +692,16 @@ const Warehouse: React.FC<WarehouseProps> = ({
         {/* Действие принадлежит вкладке: на операциях добавлять нечего, а
             «+ Склад» на своей вкладке живёт там же, где «+ Товар» на своей —
             рука ищет кнопку в одном месте. */}
+        {section === 'catalog' && (
+          <button onClick={() => setShowPriceList(true)}
+                  title="Прайс-лист в PDF с фото товаров"
+                  className="px-4 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-sm active:scale-95 transition-transform shrink-0 flex items-center gap-1.5">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><polyline points="14 2 14 8 20 8" /><line x1="8" y1="13" x2="16" y2="13" /><line x1="8" y1="17" x2="13" y2="17" />
+            </svg>
+            <span className="hidden sm:inline">Прайс-лист</span>
+          </button>
+        )}
         {section === 'catalog' && (
           <button onClick={() => openNew()}
                   className="px-4 py-2 rounded-xl bg-indigo-600 text-white font-bold text-sm active:scale-95 transition-transform shrink-0">
@@ -1554,6 +1566,16 @@ const Warehouse: React.FC<WarehouseProps> = ({
       />
     )}
 
+    {showPriceList && (
+      <PriceListSheet
+        products={products.filter(p => !p.isArchived)}
+        selectedIds={selectedIds}
+        stockOf={stockOf}
+        companyName={appSettings?.companyName}
+        phone={getSellerPhone(user, appSettings) || undefined}
+        onClose={() => setShowPriceList(false)}
+      />
+    )}
     {labelIds && (
       <LabelPrintSheet
         products={products.filter(p => labelIds.includes(p.id))}

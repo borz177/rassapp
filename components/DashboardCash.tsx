@@ -22,6 +22,8 @@ interface DashboardCashProps {
   onSelectCustomer?: (id: string) => void;
   onAction: (action: string, payload?: any) => void;
   showCents?: boolean;
+  /** Переключатель режима справа в ленте счетов (компьютер, приложение) */
+  accountTrailing?: React.ReactNode;
   /** Долг за товар, принятый на склад накладной. К рассрочке отношения не имеет. */
   supplierDebt?: { rows: { supplierId: string; name: string; amount: number }[]; total: number };
 }
@@ -63,7 +65,7 @@ const plural = (n: number, one: string, few: string, many: string) => {
 const DashboardCash: React.FC<DashboardCashProps> = ({
   retailSales, products, customers = [], accounts = [], accountBalances = {},
   selectedAccountId = null, onSelectAccount, hideBalance = false, onToggleHideBalance,
-  canMoveMoney = true, onSelectCustomer, onAction, showCents = false, supplierDebt,
+  canMoveMoney = true, onSelectCustomer, onAction, showCents = false, supplierDebt, accountTrailing,
 }) => {
   const [debtOpen, setDebtOpen] = useState(false);
   const [supplierDebtOpen, setSupplierDebtOpen] = useState(false);
@@ -154,6 +156,7 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
           canMoveMoney={canMoveMoney}
           onAction={onAction}
           showCents={showCents}
+          trailing={accountTrailing}
         />
       )}
 
