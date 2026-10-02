@@ -90,7 +90,7 @@ const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, sub
     return (
         <div className={`group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1`}>
             <div className="flex items-center justify-between mb-3">
-                <div className={`p-2.5 bg-gradient-to-br ${c.bg} text-white rounded-xl shadow-lg ${c.shadow} group-hover:scale-110 transition-transform text-base leading-none`}>{icon}</div>
+                <div className={`rep-kpi-icon p-2.5 bg-gradient-to-br ${c.bg} text-white rounded-xl shadow-lg ${c.shadow} group-hover:scale-110 transition-transform text-base leading-none`}>{icon}</div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.light}`}>{badge}</span>
             </div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 leading-tight">{label}</p>
@@ -737,7 +737,7 @@ const Reports: React.FC<ReportsProps> = ({
     const isShopTab = showShop && reportTab === 'shop';
 
     return (
-        <div className="min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-slate-900 pb-24 w-full">
+        <div className="reports-root min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-slate-900 pb-24 w-full">
             <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6 animate-in fade-in slide-in-from-top-4 duration-500">
 
                 {/* Header */}
@@ -1240,7 +1240,7 @@ const Reports: React.FC<ReportsProps> = ({
                         )}
 
                         {/* Summary gradient card */}
-                        <div className="bg-gradient-to-br from-indigo-600 via-indigo-550 to-indigo-700 p-6 rounded-2xl shadow-xl text-white">
+                        <div className="rep-summary bg-gradient-to-br from-indigo-600 via-indigo-550 to-indigo-700 p-6 rounded-2xl shadow-xl text-white">
                             <div className="flex items-center gap-2 mb-5">
                                 <span className="w-1 h-4 bg-white/50 rounded-full"></span>
                                 <h4 className="text-sm font-bold text-indigo-100 uppercase tracking-wider">Итог периода</h4>
