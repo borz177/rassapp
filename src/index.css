@@ -1166,7 +1166,7 @@ input, textarea, [contenteditable] {
     /* В обеих темах — ровно материал боковой панели: тёмное матовое стекло.
        В светлой теме карточки на нём остаются белыми (как в сводках visionOS),
        а текст, лежащий прямо на стекле, светлеет — см. блок ниже. */
-    background: rgba(17, 20, 32, 0.66) !important;
+    background: rgba(51, 65, 85, 0.58) !important;
     border: 1px solid rgba(255, 255, 255, 0.09);
     color: #e2e8f0;
     box-shadow:
@@ -1354,7 +1354,7 @@ input, textarea, [contenteditable] {
   /* Закреплённые полосы (даты в журнале, шапки списков) в светлой теме —
      тёмное стекло с размытием: под ними прокручивается содержимое */
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) .sticky:is([class*="bg-slate-50"], [class*="bg-white/8"], [class*="bg-white/9"]) {
-    background-color: rgba(17, 20, 32, 0.82) !important;
+    background-color: rgba(51, 65, 85, 0.88) !important;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border-color: rgba(255, 255, 255, 0.08) !important;
