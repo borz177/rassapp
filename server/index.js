@@ -675,6 +675,48 @@ const createNotification = async (userId, type, title, body, data = null) => {
   }
 };
 
+// 📣 Рассылки администратора.
+// Видит рассылку тот, кто был зарегистрирован на момент отправки: новому
+// пользователю вся прошлая история (устаревшие объявления) приходила
+// непрочитанной. Условие подставляется в запросы к broadcast_messages.
+const broadcastSinceSql = (userParam) =>
+  `created_at >= COALESCE((SELECT created_at FROM users WHERE id = ${userParam}), '-infinity'::timestamp)`;
+
+// Выключен ли у пользователя тумблер «Уведомления → От администратора».
+// Раньше тумблер был, но ни на что не влиял.
+const broadcastsMuted = async (userId) => {
+  const r = await pool.query(
+    `SELECT data->'notifications' AS n FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+    [`settings_${userId}`, userId]
+  );
+  const n = r.rows[0]?.n;
+  return !!n && (n.enabled === false || n.events?.adminBroadcast === false);
+};
+
+// Push о рассылке — тем, у кого есть подписка на push и не выключены уведомления
+// от администратора. Идёт в фоне: ответ администратору не ждёт сотни отправок.
+const pushBroadcast = async (title, message, targetRole) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT u.id, s.data->'notifications' AS n FROM users u
+      LEFT JOIN data_items s ON s.id = 'settings_' || u.id AND s.user_id = u.id AND s.type = 'settings'
+      WHERE u.role <> 'admin' AND ($1::text IS NULL OR u.role = $1)
+        AND (EXISTS (SELECT 1 FROM push_subscriptions p WHERE p.user_id = u.id)
+          OR EXISTS (SELECT 1 FROM native_push_tokens t WHERE t.user_id = u.id))
+    `, [targetRole || null]);
+    const body = message.length > 180 ? `${message.slice(0, 177)}…` : message;
+    let sent = 0;
+    for (const { id, n } of rows) {
+      if (n && (n.enabled === false || n.events?.adminBroadcast === false || n.pushEnabled === false)) continue;
+      await sendPushToUser(id, title, body);
+      sent++;
+    }
+    console.log(`📣 Рассылка «${title}»: push отправлен ${sent} пользователям`);
+  } catch (e) {
+    console.error('❌ pushBroadcast error:', e);
+  }
+};
+
 // 🔔 Уведомить ВСЕХ админов о новом сообщении от пользователя в техподдержку
 // (каждый админ сам решает, получать ли это, через свой тумблер "Сообщения от пользователей").
 const notifyAdminsOfSupportMessage = async (fromUserId, title, body, data) => {
@@ -5683,8 +5725,9 @@ app.get('/api/support/tickets', auth, async (req, res) => {
         WHERE is_active = TRUE 
         AND (target_role IS NULL OR target_role = $1)
         AND NOT (read_by_users @> $2::jsonb)
+        AND ${broadcastSinceSql('$3')}
         ORDER BY created_at DESC
-      `, [userRole, JSON.stringify([userId])]);
+      `, [userRole, JSON.stringify([userId]), userId]);
     }
 
     const totalUnread = tickets.reduce((sum, t) => sum + t.unreadCount, 0) + broadcastResult.rows.length;
@@ -5926,11 +5969,11 @@ app.get('/api/notifications', auth, async (req, res) => {
     // Рассылки от администратора не архивируются — у архива своего смысла для них нет,
     // поэтому они попадают только в обычную (неархивную) ленту.
     let broadcastItems = [];
-    if (!archived && req.user.role !== 'admin') {
+    if (!archived && req.user.role !== 'admin' && !(await broadcastsMuted(req.user.id))) {
       // Те же рамки, что и у обычных уведомлений. Без курсора рассылки
       // приходили бы заново с каждой подгруженной страницей.
-      const bParams = [req.user.role];
-      let bFilters = '';
+      const bParams = [req.user.role, req.user.id];
+      let bFilters = ` AND ${broadcastSinceSql('$2')}`;
       if (cursor) {
         bParams.push(cursor);
         bFilters += ` AND created_at < $${bParams.length}`;
@@ -5998,12 +6041,13 @@ app.get('/api/notifications/unread-count', auth, async (req, res) => {
     );
 
     let broadcastCount = 0;
-    if (req.user.role !== 'admin') {
+    if (req.user.role !== 'admin' && !(await broadcastsMuted(req.user.id))) {
       const broadcastResult = await pool.query(`
         SELECT COUNT(*) as count FROM broadcast_messages
         WHERE is_active = TRUE AND (target_role IS NULL OR target_role = $1)
         AND NOT (read_by_users @> $2::jsonb)
-      `, [req.user.role, JSON.stringify([req.user.id])]);
+        AND ${broadcastSinceSql('$3')}
+      `, [req.user.role, JSON.stringify([req.user.id]), req.user.id]);
       broadcastCount = parseInt(broadcastResult.rows[0].count, 10);
     }
 
@@ -6359,8 +6403,43 @@ app.post('/api/admin/support/broadcast', adminAuth, async (req, res) => {
     `, [broadcastId, req.user.id, title.trim(), message.trim(), targetRole || null]);
 
     res.json({ success: true, broadcastId });
+    pushBroadcast(title.trim(), message.trim(), targetRole || null);
   } catch (err) {
     console.error('Broadcast error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Отправленные рассылки: что ушло, кому и сколько прочитали. Без списка ошибочную
+// рассылку нельзя было даже найти, не то что убрать.
+app.get('/api/admin/support/broadcasts', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      SELECT b.id, b.title, b.message, b.target_role, b.is_active, b.created_at,
+             jsonb_array_length(COALESCE(b.read_by_users, '[]'::jsonb)) AS read_count,
+             (SELECT COUNT(*) FROM users u WHERE u.role <> 'admin'
+                AND (b.target_role IS NULL OR u.role = b.target_role)
+                AND COALESCE(u.created_at, '-infinity'::timestamp) <= b.created_at) AS audience
+      FROM broadcast_messages b ORDER BY b.created_at DESC LIMIT 50
+    `);
+    res.json(rows.map(r => ({
+      id: r.id, title: r.title, message: r.message, targetRole: r.target_role,
+      isActive: r.is_active, createdAt: r.created_at,
+      readCount: Number(r.read_count) || 0, audience: Number(r.audience) || 0,
+    })));
+  } catch (err) {
+    console.error('List broadcasts error:', err);
+    res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// Отозвать рассылку: у тех, кто не прочитал, она пропадает. Запись остаётся в списке.
+app.post('/api/admin/support/broadcasts/:id/retract', adminAuth, async (req, res) => {
+  try {
+    await pool.query(`UPDATE broadcast_messages SET is_active = FALSE WHERE id = $1`, [req.params.id]);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Retract broadcast error:', err);
     res.status(500).json({ msg: 'Server error' });
   }
 });

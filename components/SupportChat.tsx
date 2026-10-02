@@ -209,7 +209,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
                     ✕
                   </button>
                 </div>
-                <p className="text-sm text-gray-700 dark:text-slate-300 mt-1">{broadcast.message}</p>
+                <p className="text-sm text-gray-700 dark:text-slate-300 mt-1 whitespace-pre-line">{broadcast.message}</p>
                 <p className="text-xs text-gray-500 dark:text-slate-400 mt-2">
                   {new Date(broadcast.created_at).toLocaleDateString('ru-RU')}
                 </p>

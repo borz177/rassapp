@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { api } from '../services/api';
 import { ICONS } from '../constants';
 import { appConfirm } from '../src/dialogs';
+import BroadcastSheet from './BroadcastSheet';
 
 interface AdminSupportPanelProps {
   onBack: () => void;
@@ -117,9 +118,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
   const [debouncedSearch, setDebouncedSearch] = useState('');
 
   const [showBroadcastForm, setShowBroadcastForm] = useState(false);
-  const [broadcastData, setBroadcastData] = useState({ title: '', message: '', targetRole: '' });
   const [isSending, setIsSending] = useState(false);
-  const [isBroadcasting, setIsBroadcasting] = useState(false);
   const [isInitialLoading, setIsInitialLoading] = useState(true);
   const [showQuickReplies, setShowQuickReplies] = useState(false);
 
@@ -260,24 +259,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
     }
   };
 
-  const sendBroadcast = async () => {
-    if (!broadcastData.title.trim() || !broadcastData.message.trim()) {
-      alert('Заполните заголовок и текст сообщения');
-      return;
-    }
-    setIsBroadcasting(true);
-    try {
-      await api.post('/admin/support/broadcast', broadcastData);
-      setShowBroadcastForm(false);
-      setBroadcastData({ title: '', message: '', targetRole: '' });
-      alert('Рассылка отправлена');
-    } catch (error) {
-      console.error('Failed to send broadcast:', error);
-      alert('Не удалось отправить рассылку');
-    } finally {
-      setIsBroadcasting(false);
-    }
-  };
+
 
   // Группируем сообщения по дням для разделителей в переписке
   const messageGroups = useMemo(() => {
@@ -681,68 +663,7 @@ const AdminSupportPanel: React.FC<AdminSupportPanelProps> = ({ onBack }) => {
         </div>
       </div>
 
-      {/* Модалка рассылки */}
-      {showBroadcastForm && (
-        <div
-          className="fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-[100] p-0 sm:p-4 animate-modal-fade-in"
-          onClick={() => setShowBroadcastForm(false)}
-        >
-          <div
-            className="bg-white dark:bg-slate-800 p-5 sm:p-6 rounded-t-3xl sm:rounded-3xl w-full sm:max-w-md max-h-[90vh] overflow-y-auto shadow-2xl animate-slide-up-sheet safe-area-pb"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <div className="bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 p-2 rounded-lg">
-                {ICONS.Megaphone}
-              </div>
-              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Массовая рассылка</h3>
-            </div>
-
-            <input
-              type="text"
-              value={broadcastData.title}
-              onChange={e => setBroadcastData(prev => ({ ...prev, title: e.target.value }))}
-              placeholder="Заголовок"
-              className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-3 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500"
-            />
-
-            <select
-              value={broadcastData.targetRole}
-              onChange={e => setBroadcastData(prev => ({ ...prev, targetRole: e.target.value }))}
-              className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 rounded-xl mb-3 text-sm focus:ring-2 focus:ring-purple-500 bg-white dark:bg-slate-900 dark:text-white"
-            >
-              <option value="">Все пользователи</option>
-              <option value="manager">Менеджеры</option>
-              <option value="employee">Сотрудники</option>
-              <option value="investor">Инвесторы</option>
-            </select>
-
-            <textarea
-              value={broadcastData.message}
-              onChange={e => setBroadcastData(prev => ({ ...prev, message: e.target.value }))}
-              placeholder="Текст сообщения..."
-              rows={4}
-              className="w-full px-4 py-3 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl mb-4 text-sm focus:ring-2 focus:ring-purple-500 focus:border-purple-500 resize-none"
-            />
-
-            <div className="flex gap-3">
-              <button
-                onClick={() => setShowBroadcastForm(false)}
-                className="flex-1 px-4 py-3 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700 font-medium"
-              >
-                Отмена
-              </button>
-              <button
-                onClick={sendBroadcast}
-                disabled={isBroadcasting}
-                className="flex-1 px-4 py-3 bg-purple-600 text-white rounded-xl hover:bg-purple-700 disabled:opacity-50 font-medium shadow-sm"
-              >
-                {isBroadcasting ? 'Отправка...' : 'Отправить'}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {showBroadcastForm && <BroadcastSheet onClose={() => setShowBroadcastForm(false)} />}
     </div>
   );
 };
