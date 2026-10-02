@@ -11,5 +11,5 @@ contextBridge.exposeInMainWorld('electronAPI', {
 // рабочим столом отдельными карточками. См. .shell-floating в src/index.css.
 contextBridge.exposeInMainWorld('finuchetShell', {
   platform: process.platform,
-  floating: process.platform === 'darwin',
+  floating: process.platform === 'darwin' || process.platform === 'win32',
 })

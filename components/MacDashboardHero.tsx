@@ -79,7 +79,7 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, showCents })
             {greeting(now.getHours())}{firstName ? `, ${firstName}` : ''} <span aria-hidden>👋</span>
           </h1>
           <p className="mt-1 text-[15px] text-slate-500 dark:text-slate-400">
-            {now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })} · вот как идут дела
+            {now.toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long' })}
           </p>
         </div>
       </div>

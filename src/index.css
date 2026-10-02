@@ -1107,20 +1107,21 @@ input, textarea, [contenteditable] {
     display: block;
     position: fixed;
     inset: 0 0 auto 0;
-    height: var(--shell-gap);
+    height: var(--shell-top);
     z-index: 60;
     -webkit-app-region: drag;
   }
 
   .shell-floating {
     --shell-gap: 12px;
+    --shell-top: var(--shell-gap);
     --shell-radius: 24px;
     --shell-sidebar-w: 16rem;
     --shell-content-left: calc(var(--shell-sidebar-w) + var(--shell-gap) * 2);
   }
 
   .shell-floating .shell-sidebar {
-    top: var(--shell-gap);
+    top: var(--shell-top);
     left: var(--shell-gap);
     bottom: var(--shell-gap);
     height: auto;
@@ -1150,7 +1151,7 @@ input, textarea, [contenteditable] {
   /* Содержимое — своя карточка, листается внутри себя */
   .shell-floating .shell-main {
     position: fixed;
-    top: var(--shell-gap);
+    top: var(--shell-top);
     right: var(--shell-gap);
     bottom: var(--shell-gap);
     left: var(--shell-content-left);
@@ -1185,7 +1186,7 @@ input, textarea, [contenteditable] {
 
   /* Открытые поверх раздела страницы встают ровно в ту же карточку */
   .shell-floating .page-push-layer {
-    top: var(--shell-gap);
+    top: var(--shell-top);
     right: var(--shell-gap);
     bottom: var(--shell-gap);
     left: var(--shell-content-left);
@@ -1541,4 +1542,54 @@ input, textarea, [contenteditable] {
     margin-top: 4px;
     font-size: 12px;
   }
+}
+
+/* ── Mac, Отчёты: плитки как на Главной ──────────────────────────────────────
+   Метка (Получено, 66%…) сверху, сумма крупно по центру, под ней цветная черта,
+   ниже подпись и пояснение. */
+@media (min-width: 768px) {
+  .shell-floating .rep-kpi { --dot: #94a3b8; display: flex; flex-direction: column; align-items: center; text-align: center; justify-content: center; min-height: 150px; padding: 18px 16px; border-radius: 22px; }
+  .shell-floating .rep-kpi:hover { transform: translateY(-2px); }
+  .shell-floating .rep-kpi-emerald, .shell-floating .rep-kpi-teal { --dot: #10b981; }
+  .shell-floating .rep-kpi-sky { --dot: #0ea5e9; }
+  .shell-floating .rep-kpi-indigo { --dot: #6366f1; }
+  .shell-floating .rep-kpi-purple { --dot: #a855f7; }
+  .shell-floating .rep-kpi-amber { --dot: #f59e0b; }
+  .shell-floating .rep-kpi-red { --dot: #ef4444; }
+
+  .shell-floating .rep-kpi > div:first-child { justify-content: center; margin-bottom: 10px; order: 0; }
+  .shell-floating .rep-kpi > p:nth-child(3) {
+    order: 1;
+    font-size: 24px;
+    line-height: 1.15;
+    letter-spacing: -0.02em;
+    font-variant-numeric: tabular-nums;
+  }
+  .shell-floating .rep-kpi > p:nth-child(3)::after {
+    content: "";
+    display: block;
+    width: 28px;
+    height: 3px;
+    margin: 10px auto 0;
+    border-radius: 9999px;
+    background: var(--dot);
+    opacity: 0.85;
+  }
+  .shell-floating .rep-kpi > p:nth-child(2) {
+    order: 2;
+    margin: 10px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b !important;
+  }
+  .dark.shell-floating .rep-kpi > p:nth-child(2) { color: #94a3b8 !important; }
+  .shell-floating .rep-kpi > p:nth-child(4) { order: 3; margin-top: 2px; }
+}
+
+/* ── Windows: кнопки окна рисует система справа сверху (titleBarOverlay, 40px) —
+   панели начинаются ниже них; места под «светофор» Mac в боковой панели не нужно */
+@media (min-width: 768px) {
+  .shell-floating.shell-win { --shell-top: 44px; }
+  .shell-floating.shell-win .shell-sidebar-grip { display: none; }
+  .shell-floating.shell-win .shell-sidebar-head { padding-top: 1.5rem; }
 }

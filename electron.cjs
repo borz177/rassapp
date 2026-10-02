@@ -6,6 +6,10 @@ const { pathToFileURL } = require("url")
 // FINUCHET_URL — для проверки оболочки против локальной сборки (npm run dev)
 const APP_URL = process.env.FINUCHET_URL || "https://rassrochka.pro/app"
 const isMac = process.platform === "darwin"
+const isWin = process.platform === "win32"
+// Акрил (полупрозрачное окно) есть только в Windows 11 22H2+ (сборка 22621).
+// На старых — то же оформление панелей, но над сплошным тёмным фоном окна.
+const winAcrylic = isWin && Number(require("os").release().split(".")[2] || 0) >= 22621
 
 // ── Интерфейс внутри приложения (как в iOS-сборке) ─────────────────────────────
 // Страницы, стили и скрипты берутся из сборки (dist/ внутри приложения), а не
@@ -62,6 +66,16 @@ function createWindow() {
     vibrancy: "under-window",
     visualEffectState: "active",
     backgroundColor: "#00000000",
+  } : isWin ? {
+    // Windows: без системной рамки заголовка — панели висят отдельно, как на Mac.
+    // Кнопки «свернуть/развернуть/закрыть» система рисует поверх, справа сверху.
+    minWidth: 960,
+    minHeight: 600,
+    titleBarStyle: "hidden",
+    titleBarOverlay: { color: "#00000000", symbolColor: "#e2e8f0", height: 40 },
+    ...(winAcrylic
+      ? { backgroundMaterial: "acrylic", backgroundColor: "#00000000" }
+      : { backgroundColor: "#1e293b" }),
   } : { minWidth: 380 }),
 
   webPreferences: {

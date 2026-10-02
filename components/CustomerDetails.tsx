@@ -651,7 +651,7 @@ ${customer.name}!
                             customerId: customer.id,
                             customerName: customer.name,
                         })}
-                        className="shrink-0 flex items-center gap-1.5 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 px-3 py-2 rounded-lg font-semibold text-sm hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
+                        className="shrink-0 flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-lg font-semibold text-sm shadow-sm hover:bg-indigo-700 active:scale-95 transition"
                         title="Создать задачу по клиенту"
                     >
                         {ICONS.Tasks}

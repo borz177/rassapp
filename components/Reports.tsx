@@ -88,7 +88,7 @@ interface KpiCardProps {
 const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, subtext }) => {
     const c = COLOR_MAP[color];
     return (
-        <div className={`group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1`}>
+        <div className={`rep-kpi rep-kpi-${color} group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1`}>
             <div className="flex items-center justify-between mb-3">
                 <div className={`rep-kpi-icon p-2.5 bg-gradient-to-br ${c.bg} text-white rounded-xl shadow-lg ${c.shadow} group-hover:scale-110 transition-transform text-base leading-none`}>{icon}</div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.light}`}>{badge}</span>
