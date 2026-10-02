@@ -1166,7 +1166,7 @@ input, textarea, [contenteditable] {
     /* В обеих темах — ровно материал боковой панели: тёмное матовое стекло.
        В светлой теме карточки на нём остаются белыми (как в сводках visionOS),
        а текст, лежащий прямо на стекле, светлеет — см. блок ниже. */
-    background: rgba(51, 65, 85, 0.58) !important;
+    background: rgba(71, 85, 105, 0.55) !important;
     border: 1px solid rgba(255, 255, 255, 0.09);
     color: #e2e8f0;
     box-shadow:
@@ -1354,7 +1354,7 @@ input, textarea, [contenteditable] {
   /* Закреплённые полосы (даты в журнале, шапки списков) в светлой теме —
      тёмное стекло с размытием: под ними прокручивается содержимое */
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) .sticky:is([class*="bg-slate-50"], [class*="bg-white/8"], [class*="bg-white/9"]) {
-    background-color: rgba(51, 65, 85, 0.88) !important;
+    background-color: rgba(71, 85, 105, 0.9) !important;
     -webkit-backdrop-filter: blur(20px);
     backdrop-filter: blur(20px);
     border-color: rgba(255, 255, 255, 0.08) !important;
@@ -1363,7 +1363,8 @@ input, textarea, [contenteditable] {
 @media (min-width: 768px) {
   /* Акцентный текст (активная вкладка, ссылки) прямо на тёмном стекле — светлее */
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(.text-indigo-600, .text-indigo-700, .text-purple-600, .text-blue-600):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
-    color: var(--color-primary-300, #a5b4fc);
+    /* На светлом графитовом стекле синий терялся — почти белый */
+    color: #f8fafc;
   }
 }
 
@@ -1470,5 +1471,19 @@ input, textarea, [contenteditable] {
   .shell-floating .dash-stat > .relative.mt-auto,
   .shell-floating .dash-stat > .z-10 {
     margin-top: 0;
+  }
+}
+
+@media (min-width: 768px) {
+  /* Светлая тема: боковая панель — тем же графитовым стеклом, что и содержимое */
+  .shell-floating:not(.dark) .shell-sidebar {
+    background: rgba(71, 85, 105, 0.55);
+    border-color: rgba(255, 255, 255, 0.14);
+  }
+  .shell-floating:not(.dark) .shell-sidebar :is(.text-slate-400, .text-slate-500) {
+    color: #e2e8f0;
+  }
+  .shell-floating:not(.dark) .shell-sidebar :is(.border-slate-800, .shell-sidebar-head, .shell-sidebar-foot) {
+    border-color: rgba(255, 255, 255, 0.12);
   }
 }
