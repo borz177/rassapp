@@ -15,6 +15,8 @@ import { formatCurrency } from '../src/utils';
  */
 
 interface Props {
+  /** greeting — приветствие (над вкладками), chart — график (под вкладками и счетами) */
+  part: 'greeting' | 'chart';
   userName?: string;
   sales: Sale[];
   showCents?: boolean;
@@ -33,7 +35,7 @@ const compact = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace('.', ',')} млн`
   : n >= 1000 ? `${Math.round(n / 1000)} тыс` : String(Math.round(n));
 
-const MacDashboardHero: React.FC<Props> = ({ userName, sales, showCents }) => {
+const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, showCents }) => {
   const [range, setRange] = useState<6 | 12>(12);
   const now = new Date();
   const firstName = (userName || '').trim().split(/\s+/)[0];
@@ -69,8 +71,8 @@ const MacDashboardHero: React.FC<Props> = ({ userName, sales, showCents }) => {
   const delta = prevMonth > 0 ? Math.round((thisMonth - prevMonth) / prevMonth * 100) : null;
   const total = data.reduce((s, d) => s + d.value, 0);
 
-  return (
-    <section className="mac-hero space-y-5">
+  if (part === 'greeting') return (
+    <section className="mac-hero">
       <div className="flex items-end justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-[30px] leading-tight font-semibold tracking-tight text-slate-900 dark:text-white truncate">
@@ -81,7 +83,11 @@ const MacDashboardHero: React.FC<Props> = ({ userName, sales, showCents }) => {
           </p>
         </div>
       </div>
+    </section>
+  );
 
+  return (
+    <section className="mac-hero">
       <div className="mac-card p-6">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>

@@ -1515,9 +1515,10 @@ useEffect(() => {
             Компонент сам запрашивает числа с сервера и прячется, если процента нет. */}
         {user?.role === 'employee' && <MyBonusCard />}
 
-        {/* Приложение для Mac: приветствие и график поступлений над вкладками */}
+        {/* Приложение для Mac: приветствие над вкладками, график — под счетами */}
         {macShell && (
           <MacDashboardHero
+            part="greeting"
             userName={user?.name}
             sales={selectedAccountId ? sales.filter(s => s.accountId === selectedAccountId) : sales}
             showCents={appSettings.showCents}
@@ -1639,6 +1640,14 @@ useEffect(() => {
                   onAction={onAction}
                   showCents={appSettings.showCents}
                 />
+
+                {macShell && (
+                  <MacDashboardHero
+                    part="chart"
+                    sales={selectedAccountId ? sales.filter(s => s.accountId === selectedAccountId) : sales}
+                    showCents={appSettings.showCents}
+                  />
+                )}
 
                 {/* Карточки статистики: 2 в ряд на мобилках, 4 на больших экранах */}
                <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">

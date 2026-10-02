@@ -1487,3 +1487,58 @@ input, textarea, [contenteditable] {
     border-color: rgba(255, 255, 255, 0.12);
   }
 }
+
+/* ── Mac: плитки Главной — сумма сверху, подпись снизу ───────────────────────
+   Сумма крупно по центру; под ней тонкая линия и подпись с цветной точкой.
+   Цвет точки — от значка плитки (сам значок на Mac скрыт), так у каждой
+   плитки сохраняется свой смысловой цвет: долг — янтарный, просрочка —
+   красный, оборот — синий, собрано и полученное — зелёный. */
+@media (min-width: 768px) {
+  .shell-floating .dash-stat { --dot: #94a3b8; }
+  .shell-floating .dash-stat:has(.dash-stat-icon[class*="amber"]) { --dot: #f59e0b; }
+  .shell-floating .dash-stat:has(.dash-stat-icon[class*="red"]) { --dot: #ef4444; }
+  .shell-floating .dash-stat:has(.dash-stat-icon[class*="blue"]) { --dot: #3b82f6; }
+  .shell-floating .dash-stat:has(.dash-stat-icon[class*="emerald"]),
+  .shell-floating .dash-stat:has(.dash-stat-icon[class*="bg-gradient"]) { --dot: #10b981; }
+  .shell-floating .dash-stat:has(.dash-stat-icon[class*="indigo"]) { --dot: #6366f1; }
+
+  .shell-floating .dash-stat-icon { display: none !important; }
+  .shell-floating .dash-stat > .z-10:not(.dash-stat-icon) {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+  }
+  /* Сумма сверху, под ней короткая цветная черта — цвет смысла плитки */
+  .shell-floating .dash-stat > .z-10 > p:nth-child(2) {
+    order: -1;
+    font-size: 28px;
+    line-height: 1.1;
+    margin: 0;
+  }
+  .shell-floating .dash-stat > .z-10 > p:nth-child(2)::after {
+    content: "";
+    display: block;
+    width: 28px;
+    height: 3px;
+    margin: 12px auto 0;
+    border-radius: 9999px;
+    background: var(--dot);
+    opacity: 0.85;
+  }
+  /* Подпись — под чертой */
+  .shell-floating .dash-stat > .z-10 > p:first-child {
+    margin: 10px 0 0;
+    font-size: 13px;
+    font-weight: 600;
+    line-height: 1.3;
+    letter-spacing: 0.01em;
+    color: #64748b !important;
+  }
+  .dark.shell-floating .dash-stat > .z-10 > p:first-child { color: #94a3b8 !important; }
+  /* Пояснения («Октябрь», «Нажмите для деталей») — под подписью, тише */
+  .shell-floating .dash-stat > .z-10 > p:nth-child(n+3) {
+    margin-top: 4px;
+    font-size: 12px;
+  }
+}
