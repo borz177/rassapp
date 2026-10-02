@@ -1198,6 +1198,16 @@ input, textarea, [contenteditable] {
   .shell-floating .shell-content:has(.page-push-layer) {
     visibility: hidden;
   }
+  /* Страница, поверх которой открыта ещё одна (Инвесторы → инвестор), тоже
+     скрыта: иначе сквозь стекло верхней просвечивал бы её список. Верхняя
+     бывает и вложенной в неё, и соседней после неё — оба случая. */
+  .shell-floating .page-push-layer:has(.page-push-layer),
+  .shell-floating .page-push-layer:has(~ .page-push-layer) {
+    visibility: hidden;
+  }
+  .shell-floating .page-push-layer:has(.page-push-layer) .page-push-layer:not(:has(.page-push-layer)):not(:has(~ .page-push-layer)) {
+    visibility: visible;
+  }
 
   /* Закреплённые внизу полосы — в пределах карточки, а не всего окна */
   .shell-floating .shell-fixed-bar {
@@ -1317,7 +1327,7 @@ input, textarea, [contenteditable] {
    Корни страниц с градиентом (min-h-screen) уже прозрачные — тоже не подложка. */
 @media (min-width: 768px) {
   /* Почти белые плашки (от 80 процентов) — белые карточки; более прозрачные — тёмное стекло */
-  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is([class*="bg-white/8"], [class*="bg-white/9"]) {
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is([class*="bg-white/8"], [class*="bg-white/9"]):not(.sticky) {
     background-color: #fff !important;
   }
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) [class*="bg-white/"]:not([class*="bg-white/8"]):not([class*="bg-white/9"]) {
@@ -1327,16 +1337,32 @@ input, textarea, [contenteditable] {
 
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(
     .text-slate-900, .text-slate-800, .text-slate-700, .text-gray-900, .text-gray-800, .text-gray-700, .text-black
-  ):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
+  ):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
     color: #f1f5f9;
   }
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(
     .text-slate-600, .text-slate-500, .text-gray-600, .text-gray-500
-  ):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
+  ):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
     color: #cbd5e1;
   }
   /* Светлые карточки задают тёмный текст своим детям без класса цвета */
-  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], .mac-card, .dash-stat) {
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], .mac-card, .dash-stat) {
     color: #0f172a;
+  }
+}
+@media (min-width: 768px) {
+  /* Закреплённые полосы (даты в журнале, шапки списков) в светлой теме —
+     тёмное стекло с размытием: под ними прокручивается содержимое */
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) .sticky:is([class*="bg-slate-50"], [class*="bg-white/8"], [class*="bg-white/9"]) {
+    background-color: rgba(17, 20, 32, 0.82) !important;
+    -webkit-backdrop-filter: blur(20px);
+    backdrop-filter: blur(20px);
+    border-color: rgba(255, 255, 255, 0.08) !important;
+  }
+}
+@media (min-width: 768px) {
+  /* Акцентный текст (активная вкладка, ссылки) прямо на тёмном стекле — светлее */
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(.text-indigo-600, .text-indigo-700, .text-purple-600, .text-blue-600):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"]:not(.sticky), [class*="bg-white/9"]:not(.sticky), [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root, .sticky), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
+    color: var(--color-primary-300, #a5b4fc);
   }
 }
