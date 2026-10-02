@@ -725,7 +725,9 @@ const counts = useMemo(() => {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col md:flex-row font-sans">
+    <div className="shell-root min-h-screen bg-slate-50 dark:bg-slate-900 flex flex-col md:flex-row font-sans">
+      {/* Приложение для Mac: за полосу над панелями окно перетаскивается (заголовка у окна нет) */}
+      <div aria-hidden className="shell-drag" />
       {/* Верх экрана: сплошной шапки нет. Над контентом висят два отдельных
           пузыря — название компании и уведомления, — а между ними страница
           просматривается насквозь и уходит под чёлку.
@@ -788,8 +790,10 @@ const counts = useMemo(() => {
       </header>
 
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
-        <div className="p-6 border-b border-slate-800">
+      <aside className="shell-sidebar hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
+        {/* Приложение для Mac: здесь кнопки окна, и за эту полосу окно перетаскивается */}
+        <div aria-hidden className="shell-sidebar-grip" />
+        <div className="shell-sidebar-head p-6 border-b border-slate-800">
           <div className="flex items-center justify-between gap-2">
             <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
               {appSettings.companyName}
@@ -848,7 +852,7 @@ const counts = useMemo(() => {
         </nav>
 
         {user && (
-             <div className="p-4 border-t border-slate-800">
+             <div className="shell-sidebar-foot p-4 border-t border-slate-800">
                 <button onClick={onNavigateToProfile} className="w-full flex items-center gap-3 p-3 rounded-xl hover:bg-slate-800 transition-colors">
                     <div className="w-10 h-10 bg-indigo-500 rounded-full flex items-center justify-center font-bold">
                         {user.name.charAt(0).toUpperCase()}
@@ -870,7 +874,7 @@ const counts = useMemo(() => {
       {onPullRefresh && <PullToRefresh onRefresh={onPullRefresh} />}
 
       {/* Main Content Area - Updated margins and centering */}
-      <main className="flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">
+      <main className="shell-main flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">
         <div className="relative w-full max-w-7xl mx-auto flex-1 min-h-0">
             {children}
         </div>

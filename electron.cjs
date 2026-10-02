@@ -1,7 +1,8 @@
 const { app, BrowserWindow, Menu, shell } = require("electron")
 const path = require("path")
 
-const APP_URL = "https://rassrochka.pro/app"
+// FINUCHET_URL — для проверки оболочки против локальной сборки (npm run dev)
+const APP_URL = process.env.FINUCHET_URL || "https://rassrochka.pro/app"
 const isMac = process.platform === "darwin"
 
 let win = null
@@ -10,13 +11,27 @@ function createWindow() {
   win = new BrowserWindow({
   width: 1300,
   height: 900,
-  minWidth: 380,
   title: "FinUchet",
   autoHideMenuBar: true,
   // На Mac иконка берётся из сборки (.icns), а не из окна
   icon: isMac ? undefined : path.join(__dirname, "build", "icon.ico"),
 
+  // Mac: окно без заголовка и полупрозрачное — боковая панель и содержимое висят
+  // над размытым рабочим столом отдельными карточками. Кнопки окна встают внутрь
+  // боковой панели. Уже 960 px окно не делаем: там сайт переходит на телефонную
+  // раскладку с нижней навигацией, а она для этого оформления не рассчитана.
+  ...(isMac ? {
+    minWidth: 960,
+    minHeight: 600,
+    titleBarStyle: "hiddenInset",
+    trafficLightPosition: { x: 28, y: 30 },
+    vibrancy: "under-window",
+    visualEffectState: "active",
+    backgroundColor: "#00000000",
+  } : { minWidth: 380 }),
+
   webPreferences: {
+    preload: path.join(__dirname, "preload.js"),
     // Chromium по умолчанию душит таймеры в свёрнутом или перекрытом окне, и фоновая
     // синхронизация раз в 5 минут фактически переставала работать: приложение открыто,
     // но данные не обновлялись, пока окно не развернут. Для настольного приложения,

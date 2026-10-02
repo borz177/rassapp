@@ -1,5 +1,6 @@
 import { useEffect, useLayoutEffect, type RefObject } from 'react';
 import { getScrollPosition, saveScrollPosition } from '../scrollMemory';
+import { rootScroller, rootScrollTop, rootScrollTo } from '../rootScroll';
 
 /**
  * Запоминает и восстанавливает прокрутку под ключом `key` — как в мобильных приложениях,
@@ -25,15 +26,15 @@ export function useScrollRestoration(
     if (ref) {
       if (ref.current) ref.current.scrollTop = y;
     } else {
-      window.scrollTo(0, y);
+      rootScrollTo(y);
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [key, active]);
 
   useEffect(() => {
     if (!key) return;
-    const target: EventTarget = ref?.current ?? window;
-    const read = () => (ref?.current ? ref.current.scrollTop : window.scrollY);
+    const target: EventTarget = ref?.current ?? rootScroller() ?? window;
+    const read = () => (ref?.current ? ref.current.scrollTop : rootScrollTop());
 
     // Держим последнее значение в переменной, а не перечитываем DOM в cleanup: React
     // отвязывает ref от узла (ref.current становится null) до того, как отрабатывают

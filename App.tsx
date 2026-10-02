@@ -50,6 +50,7 @@ import { warmProductImages } from './src/productImageCache';
 import { watchWindowFocus } from './src/windowFocus';
 import { investorRelinkPlan } from './src/investorRelink';
 import { manualIncomeKind, investorAfterIncomeCancel } from './src/incomeCancel';
+import { rootScrollTo } from './src/rootScroll';
 import { api, loseSession, lostSessionUser, SESSION_USER_KEY } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
@@ -1227,7 +1228,7 @@ useEffect(() => {
   if (!TAB_ROOTS.includes(currentView)) return;
   if (lastTabRootRef.current === currentView) return;
   lastTabRootRef.current = currentView;
-  window.scrollTo({ top: 0, behavior: 'auto' });
+  rootScrollTo(0);
 }, [currentView]);
 
 

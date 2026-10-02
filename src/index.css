@@ -1085,3 +1085,114 @@ input, textarea, [contenteditable] {
 
 
 }
+/* ── Приложение для Mac: парящие панели ───────────────────────────────────────
+   Класс .shell-floating ставит index.html, когда страница открыта в приложении
+   для Mac (preload.js → window.finuchetShell.floating). Окно там полупрозрачное
+   (vibrancy в electron.cjs), заголовка нет, кнопки окна — внутри боковой панели.
+   Боковая панель и содержимое — две отдельные карточки над размытым рабочим
+   столом. Содержимое листается внутри своей карточки (см. src/rootScroll.ts),
+   поэтому её края всегда на месте. Сайт, Windows и телефоны это не затрагивает. */
+.shell-drag,
+.shell-sidebar-grip { display: none; }
+
+@media (min-width: 768px) {
+  html.shell-floating,
+  html.shell-floating body,
+  .shell-floating .shell-root {
+    background: transparent !important;
+  }
+
+  /* Полоса над панелями — за неё окно перетаскивается */
+  .shell-floating .shell-drag {
+    display: block;
+    position: fixed;
+    inset: 0 0 auto 0;
+    height: var(--shell-gap);
+    z-index: 60;
+    -webkit-app-region: drag;
+  }
+
+  .shell-floating {
+    --shell-gap: 12px;
+    --shell-radius: 24px;
+    --shell-sidebar-w: 16rem;
+    --shell-content-left: calc(var(--shell-sidebar-w) + var(--shell-gap) * 2);
+  }
+
+  .shell-floating .shell-sidebar {
+    top: var(--shell-gap);
+    left: var(--shell-gap);
+    bottom: var(--shell-gap);
+    height: auto;
+    border-radius: var(--shell-radius);
+    background: rgba(17, 20, 32, 0.66);
+    -webkit-backdrop-filter: blur(40px) saturate(1.6);
+    backdrop-filter: blur(40px) saturate(1.6);
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    box-shadow:
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 24px 60px -12px rgba(0, 0, 0, 0.45),
+      0 2px 8px rgba(0, 0, 0, 0.18);
+  }
+  /* Кнопки окна стоят в левом верхнем углу панели — освобождаем им место */
+  .shell-floating .shell-sidebar-grip {
+    display: block;
+    flex-shrink: 0;
+    height: 40px;
+    -webkit-app-region: drag;
+  }
+  .shell-floating .shell-sidebar-head { padding-top: 0.25rem; }
+  .shell-floating .shell-sidebar-head,
+  .shell-floating .shell-sidebar-foot {
+    border-color: rgba(255, 255, 255, 0.07);
+  }
+
+  /* Содержимое — своя карточка, листается внутри себя */
+  .shell-floating .shell-main {
+    position: fixed;
+    top: var(--shell-gap);
+    right: var(--shell-gap);
+    bottom: var(--shell-gap);
+    left: var(--shell-content-left);
+    margin: 0 !important;
+    width: auto;
+    height: auto;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    border-radius: var(--shell-radius);
+    background: rgba(248, 250, 252, 0.95) !important;
+    border: 1px solid rgba(255, 255, 255, 0.6);
+    box-shadow: 0 24px 60px -16px rgba(15, 23, 42, 0.35), 0 2px 8px rgba(15, 23, 42, 0.08);
+  }
+  .dark.shell-floating .shell-main {
+    background: rgba(15, 23, 42, 0.86) !important;
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 24px 60px -12px rgba(0, 0, 0, 0.55), 0 2px 8px rgba(0, 0, 0, 0.2);
+  }
+
+  /* Открытые поверх раздела страницы встают ровно в ту же карточку */
+  .shell-floating .page-push-layer {
+    top: var(--shell-gap);
+    right: var(--shell-gap);
+    bottom: var(--shell-gap);
+    left: var(--shell-content-left);
+    border-radius: var(--shell-radius);
+    background: rgb(248, 250, 252) !important;
+  }
+  .dark.shell-floating .page-push-layer {
+    background: rgb(15, 23, 42) !important;
+  }
+
+  /* Закреплённые внизу полосы — в пределах карточки, а не всего окна */
+  .shell-floating .shell-fixed-bar {
+    left: var(--shell-content-left);
+    right: var(--shell-gap);
+  }
+}
+@media (min-width: 768px) {
+  /* Кнопка поддержки — внутри карточки содержимого, а не на её крае */
+  .shell-floating .shell-support-fab {
+    right: calc(var(--shell-gap) + 1.25rem);
+    bottom: calc(var(--shell-gap) + 1.25rem);
+  }
+}

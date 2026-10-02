@@ -18,6 +18,12 @@
             document.querySelector('meta[name="theme-color"]').setAttribute('content', '#0f172a');
           }
         } catch (e) {}
+        // Приложение для Mac (Electron): парящие панели над размытым окном
+        try {
+          if (window.finuchetShell && window.finuchetShell.floating) {
+            document.documentElement.classList.add('shell-floating');
+          }
+        } catch (e) {}
       })();
     </script>
 

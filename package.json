@@ -58,6 +58,7 @@
     "electronVersion": "40.8.0",
     "files": [
       "dist/**/*",
+      "preload.js",
       "electron.cjs",
       "build/**/*",
       "package.json",

@@ -72,7 +72,7 @@ const SupportButton: React.FC<SupportButtonProps> = ({
   return (
     <button
       onClick={handleClick}
-      className={`fixed bottom-6 right-6 w-14 h-14
+      className={`shell-support-fab fixed bottom-6 right-6 w-14 h-14
                  text-white rounded-full shadow-lg
                  flex items-center justify-center
                  transition-all duration-200

@@ -294,7 +294,7 @@ const ProductPickerPage: React.FC<ProductPickerPageProps> = ({
           справа на десктопе как раз под этот пузырь, а снизу на телефоне —
           выше нижней навигации, за которой кнопка пряталась целиком. */}
       {multi && (
-        <div className="fixed left-0 right-0 md:left-64 z-40 px-4 md:px-10 pointer-events-none
+        <div className="shell-fixed-bar fixed left-0 right-0 md:left-64 z-40 px-4 md:px-10 pointer-events-none
                         bottom-[calc(5.5rem+env(safe-area-inset-bottom,0px))] md:bottom-6">
           <div className="max-w-7xl mx-auto md:pr-24 pointer-events-auto">
           <button type="button" onClick={() => onApply?.(items)}
