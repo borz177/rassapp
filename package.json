@@ -10,11 +10,12 @@
     "preview": "vite preview",
     "build:web": "vite build",
     "start-electron": "electron .",
-    "build:desktop": "npm run build:web && electron-builder",
+    "build:desktop": "npm run build:web && electron-builder --win",
     "apk": "npm run build:web && npx cap sync android && cd android && gradlew assembleDebug",
     "apk:release": "npm run build:web && npx cap sync android && cd android && gradlew assembleRelease",
     "ios": "npm run build:web && npx cap sync ios && npx cap open ios",
-    "build:all": "npm run build:web && npm run build:desktop && npm run apk"
+    "build:all": "npm run build:web && npm run build:desktop && npm run apk",
+    "build:mac": "npm run build:web && electron-builder --mac"
   },
   "dependencies": {
     "@capacitor/android": "^8.2.0",
@@ -59,7 +60,8 @@
       "dist/**/*",
       "electron.cjs",
       "build/**/*",
-      "package.json"
+      "package.json",
+      "!node_modules/**/*"
     ],
     "directories": {
       "buildResources": "build",
@@ -79,6 +81,43 @@
     "nsis": {
       "oneClick": false,
       "allowToChangeInstallationDirectory": true
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "universal"
+          ]
+        }
+      ],
+      "icon": "build/icon.png",
+      "category": "public.app-category.finance",
+      "identity": "-",
+      "hardenedRuntime": false
+    },
+    "dmg": {
+      "title": "FinUchet",
+      "contents": [
+        {
+          "x": 150,
+          "y": 190
+        },
+        {
+          "x": 390,
+          "y": 190,
+          "type": "link",
+          "path": "/Applications"
+        }
+      ],
+      "window": {
+        "width": 540,
+        "height": 380
+      }
+    },
+    "npmRebuild": false,
+    "extraMetadata": {
+      "version": "1.0.1"
     }
   }
 }
