@@ -1163,15 +1163,18 @@ input, textarea, [contenteditable] {
     /* Матовое стекло, как у боковой панели. Без backdrop-filter: он сделал бы
        карточку точкой отсчёта для position: fixed внутри неё, и открытые поверх
        страницы съехали бы. Обои и так размывает само окно (vibrancy). */
-    background: rgba(241, 245, 249, 0.72) !important;
-    border: 1px solid rgba(255, 255, 255, 0.55);
+    /* В обеих темах — ровно материал боковой панели: тёмное матовое стекло.
+       В светлой теме карточки на нём остаются белыми (как в сводках visionOS),
+       а текст, лежащий прямо на стекле, светлеет — см. блок ниже. */
+    background: rgba(17, 20, 32, 0.66) !important;
+    border: 1px solid rgba(255, 255, 255, 0.09);
+    color: #e2e8f0;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.6),
-      0 24px 60px -16px rgba(15, 23, 42, 0.35),
-      0 2px 8px rgba(15, 23, 42, 0.08);
+      inset 0 1px 0 rgba(255, 255, 255, 0.08),
+      0 24px 60px -12px rgba(0, 0, 0, 0.45),
+      0 2px 8px rgba(0, 0, 0, 0.18);
   }
   .dark.shell-floating .shell-main {
-    /* Ровно материал боковой панели */
     background: rgba(17, 20, 32, 0.66) !important;
     border-color: rgba(255, 255, 255, 0.09);
     box-shadow:
@@ -1301,5 +1304,39 @@ input, textarea, [contenteditable] {
      или градиентом — внутри стеклянной карточки это тёмный/светлый прямоугольник */
   .shell-floating :is(.shell-main, .page-push-layer) .min-h-screen {
     background: transparent !important;
+  }
+}
+
+/* ── Mac, светлая тема: текст прямо на тёмном стекле ──────────────────────────
+   Карточки, поля и плашки со светлым фоном остаются как были (тёмный текст на
+   белом). Всё, что лежит прямо на стекле — заголовки страниц, подписи разделов,
+   пустые состояния, — перекрашивается в светлое. «Прямо на стекле» = нет
+   светлой подложки ни у самого элемента, ни у его предков. Полупрозрачно-белые
+   плашки (bg-white/60 и т.п.) на тёмном стекле смотрелись бы мутно-серыми —
+   они становятся тёмным стеклом и тоже считаются «стеклом», а не подложкой.
+   Корни страниц с градиентом (min-h-screen) уже прозрачные — тоже не подложка. */
+@media (min-width: 768px) {
+  /* Почти белые плашки (от 80 процентов) — белые карточки; более прозрачные — тёмное стекло */
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is([class*="bg-white/8"], [class*="bg-white/9"]) {
+    background-color: #fff !important;
+  }
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) [class*="bg-white/"]:not([class*="bg-white/8"]):not([class*="bg-white/9"]) {
+    background-color: rgba(255, 255, 255, 0.08) !important;
+    border-color: rgba(255, 255, 255, 0.1) !important;
+  }
+
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(
+    .text-slate-900, .text-slate-800, .text-slate-700, .text-gray-900, .text-gray-800, .text-gray-700, .text-black
+  ):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
+    color: #f1f5f9;
+  }
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(
+    .text-slate-600, .text-slate-500, .text-gray-600, .text-gray-500
+  ):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], [class*="bg-gray-50"], [class*="bg-gray-100"], [class*="bg-gradient"]:not(.min-h-screen), [class*="bg-indigo-50"], [class*="bg-amber-50"], [class*="bg-emerald-50"], [class*="bg-rose-50"], [class*="bg-red-50"], [class*="bg-blue-50"], [class*="bg-green-50"], [class*="bg-purple-50"], [class*="bg-yellow-50"], .mac-card, .dash-stat, input, textarea, select) *):not(:is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], .mac-card, .dash-stat)) {
+    color: #cbd5e1;
+  }
+  /* Светлые карточки задают тёмный текст своим детям без класса цвета */
+  .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"], [class*="bg-slate-50"]:not(.shell-main, .page-push-layer, .shell-root), [class*="bg-slate-100"], .mac-card, .dash-stat) {
+    color: #0f172a;
   }
 }
