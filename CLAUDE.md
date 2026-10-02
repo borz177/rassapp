@@ -30,7 +30,7 @@ npm run ios                  # build:web + capacitor sync ios + open Xcode
 npm run build:all            # build:web + build:desktop + apk
 ```
 
-Backend (separate install, run from `server/`):
+Backend (separate install, run from `server/`; `server/package.json`/lock mirror production exactly — add backend deps there, never only on the server or in the root `package.json`, which the frontend deploy prunes):
 ```bash
 cd server
 npm install

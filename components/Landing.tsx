@@ -105,10 +105,14 @@ const STEPS = [
   { title: 'Принимайте платежи', text: 'Приложение напомнит клиентам, сведёт кассу и посчитает прибыль.' },
 ];
 
+// Снимки демо-аккаунта «Рассрочка Плюс»: выдуманные клиенты, условные телефоны.
+// Настоящие данные клиентов на публичный сайт не попадают.
 const SCREENS = [
-  { id: 'dashboard', label: 'Главная', img: '/screens/dashboard.png', text: 'Долги, просрочки, поступления и касса — на одном экране.' },
-  { id: 'contracts', label: 'Договоры', img: '/screens/contracts.png', text: 'Все договоры с остатком, статусом и ближайшим платежом.' },
-  { id: 'customers', label: 'Клиенты', img: '/screens/customers.png', text: 'Карточка клиента: договоры, платежи, документы и заметки.' },
+  { id: 'dashboard', label: 'Главная', img: '/screens/app-dashboard.jpg', text: 'Долги, просрочки, поступления и прибыль — на одном экране.' },
+  { id: 'contracts', label: 'Договоры', img: '/screens/app-contracts.jpg', text: 'Все договоры с оплаченным, остатком и сроком.' },
+  { id: 'customers', label: 'Клиенты', img: '/screens/app-customers.jpg', text: 'База клиентов с поиском по имени и телефону.' },
+  { id: 'reports', label: 'Отчёты', img: '/screens/app-reports.jpg', text: 'Поступления, прибыль ваша и инвесторов, маржа за любой период.' },
+  { id: 'warehouse', label: 'Склад', img: '/screens/app-warehouse.jpg', text: 'Товары, остатки и наценка — для магазина в тарифе «Бизнес Pro».' },
 ];
 
 const FAQ = [
@@ -156,9 +160,130 @@ const useReveal = () => {
 
 const rub = (n: number) => n.toLocaleString('ru-RU');
 
+/**
+ * Карусель экранов в окне браузера: стрелки, точки с подписями, свайп пальцем
+ * и автопрокрутка, которая ждёт, пока человек сам листает или навёл мышь.
+ */
+const ScreensCarousel: React.FC = () => {
+  const [index, setIndex] = useState(0);
+  const [dragX, setDragX] = useState(0);
+  const [dragging, setDragging] = useState(false);
+  const [paused, setPaused] = useState(false);
+  const drag = useRef<{ x0: number; y0: number; t0: number; horizontal: boolean | null } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const count = SCREENS.length;
+  const go = (i: number) => setIndex((i + count) % count);
+
+  // Автопрокрутка — только пока карусель видна и её не трогают
+  const [visible, setVisible] = useState(false);
+  useEffect(() => {
+    const el = rootRef.current;
+    if (!el || typeof IntersectionObserver === 'undefined') { setVisible(true); return; }
+    const io = new IntersectionObserver(([e]) => setVisible(e.isIntersecting), { threshold: 0.3 });
+    io.observe(el);
+    return () => io.disconnect();
+  }, []);
+  useEffect(() => {
+    if (paused || !visible || dragging || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    const timer = setTimeout(() => go(index + 1), 5000);
+    return () => clearTimeout(timer);
+  }, [index, paused, visible, dragging]);
+
+  const onPointerDown = (e: React.PointerEvent) => {
+    if (e.pointerType === 'mouse') return; // мышью листают стрелками
+    drag.current = { x0: e.clientX, y0: e.clientY, t0: performance.now(), horizontal: null };
+  };
+  const onPointerMove = (e: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d) return;
+    const dx = e.clientX - d.x0;
+    const dy = e.clientY - d.y0;
+    if (d.horizontal === null) {
+      if (Math.hypot(dx, dy) < 8) return;
+      d.horizontal = Math.abs(dx) > Math.abs(dy);
+      if (!d.horizontal) { drag.current = null; return; } // листают страницу
+      setDragging(true);
+      setPaused(true);
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    }
+    setDragX(dx);
+  };
+  const onPointerUp = () => {
+    const d = drag.current;
+    drag.current = null;
+    if (!d || !d.horizontal) return;
+    const v = dragX / Math.max(1, performance.now() - d.t0);
+    if (dragX < -60 || v < -0.4) go(index + 1);
+    else if (dragX > 60 || v > 0.4) go(index - 1);
+    setDragX(0);
+    setDragging(false);
+  };
+
+  const current = SCREENS[index];
+
+  return (
+    <div ref={rootRef} onMouseEnter={() => setPaused(true)} onMouseLeave={() => setPaused(false)}
+         onKeyDown={e => { if (e.key === 'ArrowRight') go(index + 1); if (e.key === 'ArrowLeft') go(index - 1); }}
+         role="region" aria-roledescription="карусель" aria-label="Экраны приложения">
+      <div className="relative mx-auto max-w-5xl rounded-[22px] bg-white dark:bg-slate-800 ring-1 ring-slate-200/80 dark:ring-white/10 shadow-[0_50px_100px_-40px_rgba(30,41,59,.55)] overflow-hidden">
+        {/* Строка окна браузера */}
+        <div className="flex items-center gap-1.5 h-10 px-4 border-b border-slate-200/70 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/40">
+          <span className="w-3 h-3 rounded-full bg-rose-400" /><span className="w-3 h-3 rounded-full bg-amber-400" /><span className="w-3 h-3 rounded-full bg-emerald-400" />
+          <span className="mx-auto h-6 w-full max-w-[260px] rounded-lg bg-white dark:bg-white/5 ring-1 ring-slate-200/70 dark:ring-white/10 text-[11px] text-slate-400 flex items-center justify-center">
+            rassrochka.pro
+          </span>
+          <span className="w-[54px]" />
+        </div>
+
+        <div className="relative overflow-hidden touch-pan-y select-none bg-slate-50"
+             onPointerDown={onPointerDown} onPointerMove={onPointerMove} onPointerUp={onPointerUp} onPointerCancel={onPointerUp}>
+          <div className="flex" style={{
+            transform: `translateX(calc(${-index * 100}% + ${dragX}px))`,
+            transition: dragging ? 'none' : 'transform 0.6s cubic-bezier(0.32, 0.72, 0, 1)',
+          }}>
+            {SCREENS.map((sc, i) => (
+              <img key={sc.id} src={sc.img} alt={sc.label} draggable={false}
+                   loading={i === 0 ? 'eager' : 'lazy'}
+                   aria-hidden={i !== index}
+                   className="w-full shrink-0 aspect-[16/10] object-cover object-left-top" />
+            ))}
+          </div>
+
+          {/* Стрелки — на широком экране, на телефоне листают пальцем */}
+          {[-1, 1].map(dir => (
+            <button key={dir} type="button" onClick={() => { go(index + dir); setPaused(true); }}
+                    aria-label={dir < 0 ? 'Предыдущий экран' : 'Следующий экран'}
+                    className={`hidden sm:flex absolute top-1/2 -translate-y-1/2 ${dir < 0 ? 'left-4' : 'right-4'} w-11 h-11 rounded-full items-center justify-center
+                                bg-white/85 dark:bg-slate-800/85 backdrop-blur ring-1 ring-slate-200/80 dark:ring-white/10 shadow-lg text-slate-700 dark:text-white
+                                hover:scale-105 active:scale-95 transition-transform`}>
+              <Icon d={dir < 0 ? <path d="m15 18-6-6 6-6" /> : <path d="m9 18 6-6-6-6" />} size={20} />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Подписи-точки: какой экран и куда листать */}
+      <div className="mt-6 flex flex-wrap items-center justify-center gap-2">
+        {SCREENS.map((sc, i) => (
+          <button key={sc.id} type="button" onClick={() => { go(i); setPaused(true); }} aria-current={i === index}
+                  className={`relative h-9 px-4 rounded-full text-[14px] font-semibold overflow-hidden transition-colors ${
+                    i === index
+                      ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900'
+                      : 'bg-white text-slate-600 ring-1 ring-slate-200 hover:text-slate-900 dark:bg-white/5 dark:text-slate-300 dark:ring-white/10'
+                  }`}>
+            {sc.label}
+          </button>
+        ))}
+      </div>
+      <p key={current.id} className="mt-4 text-center text-[16px] text-slate-600 dark:text-slate-300 animate-modal-fade-in" aria-live="polite">
+        {current.text}
+      </p>
+    </div>
+  );
+};
+
 export default function Landing() {
   const [scrolled, setScrolled] = useState(false);
-  const [screen, setScreen] = useState(SCREENS[0].id);
   const [months, setMonths] = useState<1 | 3 | 6 | 12>(1);
   const [prices, setPrices] = useState<Record<string, number>>({});
   const [discounts, setDiscounts] = useState<Record<number, number>>(DURATION_DISCOUNTS);
@@ -194,7 +319,6 @@ export default function Landing() {
       .catch(() => { /* остаются цены каталога */ });
   }, []);
 
-  const current = SCREENS.find(s => s.id === screen) || SCREENS[0];
 
   return (
     <div className="landing min-h-screen bg-[#f7f8fb] dark:bg-[#0b1020] text-slate-900 dark:text-white antialiased selection:bg-indigo-200/70 dark:selection:bg-indigo-500/40">
@@ -224,7 +348,7 @@ export default function Landing() {
             <span className="text-[17px] font-bold tracking-tight">FinUchet</span>
           </a>
           <div className="hidden md:flex items-center gap-1 text-[14px] font-medium text-slate-600 dark:text-slate-300">
-            {[['#features', 'Возможности'], ['#how', 'Как начать'], ['#pricing', 'Тарифы'], ['#faq', 'Вопросы'], ['/api', 'API']].map(([to, label]) => (
+            {[['#features', 'Возможности'], ['#screens', 'Интерфейс'], ['#pricing', 'Тарифы'], ['#faq', 'Вопросы'], ['/api', 'API']].map(([to, label]) => (
               <a key={to} href={to} className="px-3 py-2 rounded-xl hover:text-slate-900 dark:hover:text-white hover:bg-slate-900/5 dark:hover:bg-white/5 transition-colors">{label}</a>
             ))}
           </div>
@@ -287,7 +411,7 @@ export default function Landing() {
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-400" /><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
                 <span className="ml-3 h-5 flex-1 max-w-[220px] rounded-md bg-slate-100 dark:bg-white/5 text-[10px] text-slate-400 flex items-center px-2">rassrochka.pro</span>
               </div>
-              <img src="/screens/dashboard.png" alt="Главный экран FinUchet" className="w-full aspect-[16/10] object-cover object-left-top" />
+              <img src="/screens/app-dashboard.jpg" alt="Главный экран FinUchet" className="w-full aspect-[16/10] object-cover object-left-top" />
             </div>
 
             <div className="float-a absolute -left-2 sm:-left-10 top-[22%] flex items-center gap-2.5 sm:gap-3 pl-2.5 sm:pl-3 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-2xl bg-white/90 dark:bg-slate-800/90 ring-1 ring-slate-200/70 dark:ring-white/10 shadow-xl backdrop-blur">
@@ -331,27 +455,15 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* ── Экраны ── */}
-      <section className="px-5 pb-20 sm:pb-28">
-        <div className="mx-auto max-w-6xl rounded-[32px] bg-slate-900 dark:bg-white/[0.03] ring-1 ring-slate-900 dark:ring-white/10 text-white p-6 sm:p-10 lg:p-14 overflow-hidden relative">
-          <div className="absolute -right-32 -top-32 w-96 h-96 rounded-full bg-indigo-500/30 blur-3xl pointer-events-none" />
-          <div className="relative grid lg:grid-cols-[0.8fr_1.2fr] gap-10 items-center">
-            <div>
-              <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-300">Интерфейс</p>
-              <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[30px] sm:text-[40px] leading-tight font-extrabold tracking-[-0.03em]">Понятно с первого дня</h2>
-              <p data-reveal data-reveal-delay="2" className="mt-4 text-[16px] text-slate-300">{current.text}</p>
-              <div data-reveal data-reveal-delay="3" className="mt-7 inline-grid grid-cols-3 gap-1 p-1 rounded-2xl bg-white/10 ring-1 ring-white/10">
-                {SCREENS.map(s => (
-                  <button key={s.id} type="button" onClick={() => setScreen(s.id)}
-                          className={`h-10 px-4 rounded-xl text-[14px] font-semibold transition-all ${screen === s.id ? 'bg-white text-slate-900 shadow' : 'text-white/70 hover:text-white'}`}>
-                    {s.label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div data-reveal data-reveal-delay="2" className="rounded-2xl overflow-hidden ring-1 ring-white/15 shadow-2xl bg-white">
-              <img key={current.id} src={current.img} alt={current.label} className="w-full aspect-[16/10] object-cover object-left-top animate-modal-fade-in" />
-            </div>
+      {/* ── Экраны: карусель в окне компьютера ── */}
+      <section id="screens" className="scroll-mt-24 px-5 pb-20 sm:pb-28">
+        <div className="mx-auto max-w-6xl">
+          <div className="max-w-2xl mx-auto text-center">
+            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Интерфейс</p>
+            <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[32px] sm:text-[44px] leading-tight font-extrabold tracking-[-0.03em]">Понятно с первого дня</h2>
+          </div>
+          <div data-reveal data-reveal-delay="2" className="mt-12">
+            <ScreensCarousel />
           </div>
         </div>
       </section>
