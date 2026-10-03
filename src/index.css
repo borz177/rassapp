@@ -1604,12 +1604,21 @@ input, textarea, [contenteditable] {
   .shell-floating .mac-tile:active { transform: scale(0.98); }
 }
 
-/* ── Mac/Windows: карточки остальных страниц чуть круглее ── */
+/* ── Карточки круглее — везде: сайт, телефоны, Mac и Windows ──
+   Только карточки (белая или тёмная подложка), не кнопки и не поля ввода.
+   Карточки с отдельно заданными углами (прилипшие к краю) не трогаем.
+   На телефоне чуть меньше: узкой карточке большой радиус съедает углы текста. */
+:is(.rounded-xl, .rounded-2xl):is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]):not(button, input, select, textarea, a, [class*="rounded-t-"], [class*="rounded-b-"], [class*="rounded-l-"], [class*="rounded-r-"]) {
+  border-radius: 18px;
+}
+.rounded-3xl:is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]):not(button, input, select, textarea, a, [class*="rounded-t-"], [class*="rounded-b-"], [class*="rounded-l-"], [class*="rounded-r-"]) {
+  border-radius: 24px;
+}
 @media (min-width: 768px) {
-  .shell-floating :is(.shell-main, .page-push-layer) :is(.rounded-xl, .rounded-2xl):is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]):not(button, input, select, textarea, a) {
+  :is(.rounded-xl, .rounded-2xl):is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]):not(button, input, select, textarea, a, [class*="rounded-t-"], [class*="rounded-b-"], [class*="rounded-l-"], [class*="rounded-r-"]) {
     border-radius: 20px;
   }
-  .shell-floating :is(.shell-main, .page-push-layer) .rounded-3xl:is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]) {
+  .rounded-3xl:is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]):not(button, input, select, textarea, a, [class*="rounded-t-"], [class*="rounded-b-"], [class*="rounded-l-"], [class*="rounded-r-"]) {
     border-radius: 26px;
   }
 }
