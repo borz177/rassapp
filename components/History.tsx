@@ -1,55 +1,65 @@
 import React, { useMemo, useState } from 'react';
 import Operations from './Operations';
 import Journal from './Journal';
-import TabPill from './TabPill';
-import DocumentCard from './DocumentCard';
-import SubPage from './transitions/SubPage';
+import ModalPortal from './ModalPortal';
+import SelectSheet from './SelectSheet';
 import UnsyncedMark from './UnsyncedMark';
 import { buildMoneyOperations, type MoneyOperation } from '../src/moneyOperations';
-import { buildJournalDocs, KIND_LABEL, type JournalDoc } from '../src/journalDocs';
+import { buildJournalDocs, KIND_LABEL, type DocKind, type JournalDoc } from '../src/journalDocs';
 import { formatCurrency } from '../src/utils';
 
 /**
- * Общая история магазина: деньги и товар на одном экране.
+ * Общая история магазина: деньги и товар одной лентой.
  *
  * С магазином раньше было две истории в разных разделах — «История операций»
  * в Кассе (куда ушли деньги) и «Журнал» в Складе (куда ушёл товар), и чтобы
- * понять, что происходило за день, человек открывал обе. Теперь:
+ * понять, что происходило за день, человек открывал обе. Теперь это одна лента
+ * по дням — платежи, расходы, чеки, приходы, списания — и одна кнопка фильтра,
+ * в которой собраны и денежные отборы (счёт, категория, сотрудник, приход или
+ * расход), и складские (тип документа, долг).
  *
- * — «Все» — одна лента по дням: платежи, расходы, чеки, приходы, списания;
- * — «Деньги» — прежняя история операций со всеми её фильтрами;
- * — «Товар» — прежний журнал документов со всеми его действиями.
+ * Строки лента рисует сама, а открывает их окнами самих Operations и Journal
+ * (режим modalsOnly): отмена расхода, печать, приём оплаты и удаление с
+ * откатом остатков работают ровно так же, как на их собственных экранах, и
+ * живут в одном месте.
  *
- * Две последние — те же самые компоненты, без копий: их правила (отмена
- * расхода, удаление прихода с откатом остатков) живут в одном месте. Лента
- * «Все» строки рисует сама, а открывает их теми же окнами: денежную операцию —
- * окнами Operations (modalsOnly), документ — той же карточкой DocumentCard.
- *
- * Обычный чек — одновременно и деньги, и товар. В ленте «Все» он одной строкой
- * «Продажа №…», а не двумя; оплаты долга по чеку в долг — отдельными строками
- * денег, как и в кассе.
+ * Обычный чек — одновременно и деньги, и товар: здесь он одной строкой
+ * «Продажа №…», а не двумя. Оплаты долга по чеку в долг — строками денег.
  */
 
 type OperationsProps = React.ComponentProps<typeof Operations>;
 type JournalProps = React.ComponentProps<typeof Journal>;
-type Tab = 'ALL' | 'MONEY' | 'GOODS';
 
 interface HistoryProps {
   money: OperationsProps;
   goods: JournalProps;
-  /** С какой вкладки открыть: из карточки счёта или из поиска — сразу «Деньги» */
-  initialTab?: Tab;
 }
 
 type FeedItem =
   | { kind: 'money'; id: string; date: string; op: MoneyOperation }
   | { kind: 'doc'; id: string; date: string; doc: JournalDoc };
 
-const TABS: { id: Tab; label: string }[] = [
+type TypeFilter = 'ALL' | 'MONEY_IN' | 'MONEY_OUT' | DocKind;
+type PayFilter = 'ALL' | 'DEBT' | 'PAID';
+
+const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
   { id: 'ALL', label: 'Все' },
-  { id: 'MONEY', label: 'Деньги' },
-  { id: 'GOODS', label: 'Товар' },
+  { id: 'MONEY_IN', label: 'Поступления' },
+  { id: 'MONEY_OUT', label: 'Расходы' },
+  { id: 'SALE', label: 'Продажи' },
+  { id: 'CONTRACT', label: 'Договоры' },
+  { id: 'IN', label: 'Приход товара' },
+  { id: 'TRANSFER', label: 'Перемещение' },
+  { id: 'WRITE_OFF', label: 'Списание' },
+  { id: 'INVENTORY', label: 'Инвентаризация' },
 ];
+
+// Те же подписи категорий, что в истории операций
+const CATEGORY_LABEL: Record<string, string> = {
+  General: 'Общее', Rent: 'Аренда', Salary: 'Зарплата', Marketing: 'Маркетинг', Taxes: 'Налоги',
+  Equipment: 'Оборудование', 'Investment Return': 'Выплата инвестора', 'Себестоимость': 'Закуп', 'Продажа': 'Приход',
+};
+const categoryLabel = (c: string) => CATEGORY_LABEL[c] || c;
 
 const dayKey = (d: string) => {
   const x = new Date(d);
@@ -85,13 +95,21 @@ const ReceiptIcon = (
   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 2v20l3-2 3 2 2-2 2 2 3-2 3 2V2l-3 2-3-2-2 2-2-2-3 2Z" /><path d="M8 9h8M8 13h6" /></svg>
 );
 
-const History: React.FC<HistoryProps> = ({ money, goods, initialTab = 'ALL' }) => {
-  const [tab, setTab] = useState<Tab>(initialTab);
+const History: React.FC<HistoryProps> = ({ money, goods }) => {
   const [search, setSearch] = useState('');
-  // Денежная операция из ленты «Все» открывается окнами Operations
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [type, setType] = useState<TypeFilter>('ALL');
+  // Из карточки счёта приходят с уже выбранным счётом
+  const [accountId, setAccountId] = useState<string>(money.initialAccountId || '');
+  const [category, setCategory] = useState('ALL');
+  const [employeeId, setEmployeeId] = useState('');
+  const [pay, setPay] = useState<PayFilter>('ALL');
+  // Запросы окнам Operations / Journal
   const [focusOpId, setFocusOpId] = useState<string | null>(null);
-  const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const [docOpenId, setDocOpenId] = useState<string | null>(null);
+  const [docMenuId, setDocMenuId] = useState<string | null>(null);
   const cents = goods.appSettings.showCents;
+  const employees = money.employees || [];
 
   const ops = useMemo(() => buildMoneyOperations({
     sales: money.sales, expenses: money.expenses, accounts: money.accounts, customers: money.customers,
@@ -105,24 +123,44 @@ const History: React.FC<HistoryProps> = ({ money, goods, initialTab = 'ALL' }) =
   }), [goods.retailSales, goods.movements, goods.products, goods.customers, goods.warehouses,
     goods.suppliers, goods.appSettings.companyName, goods.contracts]);
 
+  const categories = useMemo(
+    () => Array.from(new Set(ops.map(o => o.category).filter(Boolean))).sort(),
+    [ops]);
+
   const feed = useMemo(() => {
     // Обычный чек уже есть документом «Продажа» — денежную строку того же чека не дублируем
     const saleDocIds = new Set(docs.filter(d => d.kind === 'SALE' && d.sale).map(d => d.sale!.id));
     const q = search.trim().toLowerCase();
+    const moneyType = type === 'ALL' || type === 'MONEY_IN' || type === 'MONEY_OUT';
+    const docType = type === 'ALL' || !moneyType;
+
+    const moneyItems = !moneyType || pay !== 'ALL' ? [] : ops
+      .filter(op => !(op.isRetail && saleDocIds.has(op.id)))
+      .filter(op => type !== 'MONEY_IN' || op.type === 'INCOME')
+      .filter(op => type !== 'MONEY_OUT' || op.type === 'EXPENSE')
+      .filter(op => !accountId || op.accountId === accountId)
+      .filter(op => category === 'ALL' || op.category === category)
+      .filter(op => !employeeId || op.raw?.createdByUserId === employeeId)
+      .filter(op => !q
+        || op.title.toLowerCase().includes(q)
+        || String(op.description || '').toLowerCase().includes(q));
+
+    // Категория — понятие денег: выбрана — документы склада не показываем.
+    // Счёт есть только у чека; складские накладные к счёту не привязаны.
+    const docItems = !docType || category !== 'ALL' ? [] : docs
+      .filter(d => type === 'ALL' || d.kind === type)
+      .filter(d => !accountId || d.sale?.accountId === accountId)
+      .filter(d => !employeeId || d.authorId === employeeId)
+      .filter(d => pay === 'ALL' || (pay === 'DEBT' ? d.debt > 0 : d.debt === 0))
+      .filter(d => !q
+        || d.number.toLowerCase().includes(q)
+        || d.to.toLowerCase().includes(q)
+        || d.from.toLowerCase().includes(q)
+        || d.lines.some(l => l.name.toLowerCase().includes(q)));
+
     const items: FeedItem[] = [
-      ...ops
-        .filter(op => !(op.isRetail && saleDocIds.has(op.id)))
-        .filter(op => !q
-          || op.title.toLowerCase().includes(q)
-          || String(op.description || '').toLowerCase().includes(q))
-        .map(op => ({ kind: 'money' as const, id: `m_${op.id}`, date: op.date, op })),
-      ...docs
-        .filter(d => !q
-          || d.number.toLowerCase().includes(q)
-          || d.to.toLowerCase().includes(q)
-          || d.from.toLowerCase().includes(q)
-          || d.lines.some(l => l.name.toLowerCase().includes(q)))
-        .map(doc => ({ kind: 'doc' as const, id: `d_${doc.id}`, date: doc.date, doc })),
+      ...moneyItems.map(op => ({ kind: 'money' as const, id: `m_${op.id}`, date: op.date, op })),
+      ...docItems.map(doc => ({ kind: 'doc' as const, id: `d_${doc.id}`, date: doc.date, doc })),
     ];
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
@@ -133,90 +171,160 @@ const History: React.FC<HistoryProps> = ({ money, goods, initialTab = 'ALL' }) =
       if (last && last[0] === key) last[1].push(it);
       else groups.push([key, [it]]);
     }
-    return { groups, count: items.length };
-  }, [ops, docs, search]);
+    // Деньги по текущему отбору: продажа за наличные — тоже поступление
+    const income = moneyItems.filter(o => o.type === 'INCOME').reduce((s, o) => s + o.amount, 0)
+      + docItems.filter(d => d.kind === 'SALE' && d.sale && !d.sale.isCredit).reduce((s, d) => s + d.total, 0);
+    const expense = moneyItems.filter(o => o.type === 'EXPENSE').reduce((s, o) => s + o.amount, 0);
+    return { groups, count: items.length, income, expense };
+  }, [ops, docs, search, type, accountId, category, employeeId, pay]);
 
-  const openedDoc = docs.find(d => d.id === openDocId) || null;
-  const tabIndex = TABS.findIndex(t => t.id === tab);
+  const filtersActive = type !== 'ALL' || !!accountId || category !== 'ALL' || !!employeeId || pay !== 'ALL';
+  const resetFilters = () => { setType('ALL'); setAccountId(''); setCategory('ALL'); setEmployeeId(''); setPay('ALL'); };
+  const activeLabels = [
+    type !== 'ALL' && TYPE_FILTERS.find(t => t.id === type)?.label,
+    accountId && (money.accounts.find(a => a.id === accountId)?.name || 'Счёт'),
+    category !== 'ALL' && categoryLabel(category),
+    employeeId && employees.find(e => e.id === employeeId)?.name,
+    pay === 'DEBT' ? 'С долгом' : pay === 'PAID' ? 'Без долга' : '',
+  ].filter(Boolean) as string[];
 
   return (
     <div className="space-y-4 pb-20 w-full">
-      <header className="flex items-end justify-between gap-3">
-        <div className="min-w-0">
+      <header className="flex items-center gap-3">
+        <div className="min-w-0 flex-1">
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white">История</h2>
-          <p className="text-sm text-slate-500 dark:text-slate-400">Деньги и товар — всё, что происходило</p>
+          <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
+            {feed.count} {feed.count % 10 === 1 && feed.count % 100 !== 11 ? 'операция'
+              : [2, 3, 4].includes(feed.count % 10) && ![12, 13, 14].includes(feed.count % 100) ? 'операции' : 'операций'}
+            {feed.income > 0 && <> · пришло <span className="font-semibold">{formatCurrency(feed.income, cents)} ₽</span></>}
+            {feed.expense > 0 && <> · ушло <span className="font-semibold">{formatCurrency(feed.expense, cents)} ₽</span></>}
+          </p>
         </div>
+        <button type="button" onClick={() => setFiltersOpen(true)}
+                className={`relative shrink-0 w-11 h-11 rounded-xl flex items-center justify-center transition-colors ${
+                  filtersActive
+                    ? 'bg-indigo-600 text-white'
+                    : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300'
+                }`}
+                aria-label="Фильтры" title="Фильтры">
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+          </svg>
+        </button>
       </header>
 
-      <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-        <TabPill index={tabIndex} count={TABS.length} pad={4} />
-        {TABS.map(t => (
-          <button key={t.id} type="button" onClick={() => setTab(t.id)}
-                  className={`relative z-10 flex-1 py-2.5 text-sm font-bold rounded-xl transition-colors ${
-                    tab === t.id ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500'
-                  }`}>
-            {t.label}
+      <input value={search} onChange={e => setSearch(e.target.value)}
+             placeholder="Поиск по клиенту, товару или номеру"
+             className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400" />
+
+      {/* Что сейчас отобрано — видно без открытия фильтра */}
+      {filtersActive && (
+        <div className="flex flex-wrap items-center gap-2 -mt-1">
+          {activeLabels.map(l => (
+            <span key={l} className="px-3 py-1 rounded-full text-xs font-semibold bg-indigo-600 text-white">{l}</span>
+          ))}
+          <button type="button" onClick={resetFilters}
+                  className="px-2 py-1 text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600">
+            ✕ Сбросить
           </button>
-        ))}
-      </div>
+        </div>
+      )}
 
-      {tab === 'MONEY' && <Operations {...money} embedded />}
-      {tab === 'GOODS' && <Journal {...goods} embedded initialDocId={null} />}
-
-      {tab === 'ALL' && (
-        <>
-          <input value={search} onChange={e => setSearch(e.target.value)}
-                 placeholder="Поиск по клиенту, товару или номеру"
-                 className="w-full p-3 rounded-xl border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-sm text-slate-700 dark:text-slate-200 outline-none focus:border-indigo-400" />
-
-          {feed.groups.length === 0 ? (
-            <p className="text-sm text-slate-500 dark:text-slate-400 py-10 text-center">
-              {search ? 'Ничего не найдено.' : 'Операций пока нет.'}
-            </p>
-          ) : (
-            <div className="space-y-4">
-              {feed.groups.map(([key, items]) => (
-                <div key={key}>
-                  <p className="px-1 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400">{dayTitle(key)}</p>
-                  <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 overflow-hidden">
-                    {items.map(it => it.kind === 'money' ? (
-                      <MoneyRow key={it.id} op={it.op} cents={cents} onOpen={() => setFocusOpId(it.op.id)} />
-                    ) : (
-                      <DocRow key={it.id} doc={it.doc} cents={cents} onOpen={() => setOpenDocId(it.doc.id)} />
-                    ))}
-                  </div>
-                </div>
-              ))}
+      {feed.groups.length === 0 ? (
+        <p className="text-sm text-slate-500 dark:text-slate-400 py-10 text-center">
+          {search || filtersActive ? 'Ничего не найдено.' : 'Операций пока нет.'}
+        </p>
+      ) : (
+        <div className="space-y-4">
+          {feed.groups.map(([key, items]) => (
+            <div key={key}>
+              <p className="px-1 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400">{dayTitle(key)}</p>
+              <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 overflow-hidden">
+                {items.map(it => it.kind === 'money' ? (
+                  <MoneyRow key={it.id} op={it.op} cents={cents} onOpen={() => setFocusOpId(it.op.id)} />
+                ) : (
+                  <DocRow key={it.id} doc={it.doc} cents={cents}
+                          onOpen={() => setDocOpenId(it.doc.id)} onMenu={() => setDocMenuId(it.doc.id)} />
+                ))}
+              </div>
             </div>
-          )}
-
-          {/* Окна денежной операции — те же, что во вкладке «Деньги» */}
-          <Operations {...money} modalsOnly focusOperationId={focusOpId} onFocusHandled={() => setFocusOpId(null)} />
-        </>
+          ))}
+        </div>
       )}
 
-      {openedDoc && (
-        <SubPage onClose={() => setOpenDocId(null)}>
-          {(close: () => void) => (
-            <DocumentCard
-              doc={openedDoc}
-              accounts={goods.accounts}
-              appSettings={goods.appSettings}
-              employees={goods.employees}
-              user={goods.user}
-              onBack={close}
-              onSelectCustomer={goods.onSelectCustomer}
-              onAcceptPayment={goods.onAcceptPayment}
-              customers={goods.customers}
-              suppliers={goods.suppliers}
-              onUpdateSale={goods.onUpdateSale}
-              onUpdateStockDoc={goods.onUpdateStockDoc}
-              onAddDocLines={goods.onAddDocLines}
-              products={goods.products}
-            />
-          )}
-        </SubPage>
+      {filtersOpen && (
+        <ModalPortal>
+          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
+               onClick={() => setFiltersOpen(false)}>
+            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4 max-h-[88vh] overflow-y-auto"
+                 onClick={e => e.stopPropagation()}>
+              <h3 className="font-bold text-slate-800 dark:text-white">Фильтры</h3>
+
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Что показать</p>
+                <div className="flex flex-wrap gap-2">
+                  {TYPE_FILTERS.map(f => (
+                    <button key={f.id} type="button" onClick={() => setType(f.id)}
+                            className={`px-3.5 py-2 rounded-full text-xs font-bold ${
+                              type === f.id
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}>{f.label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <SelectSheet label="Счёт" title="Счёт" value={accountId} onChange={setAccountId}
+                options={[
+                  { id: '', name: 'Все счета' },
+                  ...money.accounts.filter(a => !a.isArchived || a.id === accountId).map(a => ({ id: a.id, name: a.name })),
+                ]} />
+
+              <SelectSheet label="Категория" title="Категория" value={category} onChange={setCategory}
+                options={[{ id: 'ALL', name: 'Все категории' }, ...categories.map(c => ({ id: c, name: categoryLabel(c) }))]} />
+
+              {/* Сотрудник — инструмент менеджера, как и в истории операций */}
+              {employees.length > 0 && money.canFilterByEmployee && (
+                <SelectSheet label="Сотрудник" title="Сотрудник" value={employeeId} onChange={setEmployeeId}
+                  options={[{ id: '', name: 'Все сотрудники' }, ...employees.map(e => ({ id: e.id, name: e.name }))]} />
+              )}
+
+              <div>
+                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Долг по документу</p>
+                <div className="flex gap-2">
+                  {([['ALL', 'Все'], ['DEBT', 'С долгом'], ['PAID', 'Без долга']] as const).map(([id, label]) => (
+                    <button key={id} type="button" onClick={() => setPay(id)}
+                            className={`flex-1 py-2 rounded-xl text-xs font-bold ${
+                              pay === id
+                                ? 'bg-indigo-600 text-white'
+                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
+                            }`}>{label}</button>
+                  ))}
+                </div>
+              </div>
+
+              <div className="flex gap-2 pt-1">
+                <button type="button" onClick={resetFilters}
+                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
+                  Сбросить
+                </button>
+                <button type="button" onClick={() => setFiltersOpen(false)}
+                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
+                  Показать {feed.count}
+                </button>
+              </div>
+            </div>
+          </div>
+        </ModalPortal>
       )}
+
+      {/* Окна денежной операции и документа — те же, что на их собственных экранах */}
+      <Operations {...money} initialAccountId={null} modalsOnly
+                  focusOperationId={focusOpId || money.focusOperationId}
+                  onFocusHandled={() => { setFocusOpId(null); money.onFocusHandled?.(); }} />
+      <Journal {...goods} modalsOnly initialDocId={null}
+               requestOpenId={docOpenId} requestMenuId={docMenuId}
+               onRequestHandled={() => { setDocOpenId(null); setDocMenuId(null); }} />
     </div>
   );
 };
@@ -247,35 +355,42 @@ const MoneyRow: React.FC<{ op: MoneyOperation; cents?: boolean; onOpen: () => vo
   );
 };
 
-const DocRow: React.FC<{ doc: JournalDoc; cents?: boolean; onOpen: () => void }> = ({ doc, cents, onOpen }) => {
+const DocRow: React.FC<{ doc: JournalDoc; cents?: boolean; onOpen: () => void; onMenu: () => void }> = ({ doc, cents, onOpen, onMenu }) => {
   const isSale = doc.kind === 'SALE';
   return (
-    <button type="button" onClick={onOpen}
-            className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/30 transition-colors">
-      <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${isSale
-        ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
-        : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}>
-        {isSale ? ReceiptIcon : BoxIcon}
-      </span>
-      <span className="min-w-0 flex-1">
-        <span className="flex items-center gap-1.5">
-          <UnsyncedMark id={doc.sale?.id || doc.movements?.[0]?.id} />
-          <span className="font-semibold text-[15px] text-slate-800 dark:text-white truncate">
-            {KIND_LABEL[doc.kind]} №{doc.number}
+    <div className="flex items-stretch">
+      <button type="button" onClick={onOpen}
+              className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-2 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/30 transition-colors">
+        <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${isSale
+          ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+          : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}>
+          {isSale ? ReceiptIcon : BoxIcon}
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="flex items-center gap-1.5">
+            <UnsyncedMark id={doc.sale?.id || doc.movements?.[0]?.id} />
+            <span className="font-semibold text-[15px] text-slate-800 dark:text-white truncate">
+              {KIND_LABEL[doc.kind]} №{doc.number}
+            </span>
           </span>
+          <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
+            {timeOf(doc.date)} · {doc.from} › {doc.to}
+          </span>
+          {doc.debt > 0 && (
+            <span className="block text-[11px] font-bold text-rose-500 mt-0.5">Долг {formatCurrency(doc.debt, cents)} ₽</span>
+          )}
         </span>
-        <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
-          {timeOf(doc.date)} · {doc.from} › {doc.to}
+        <span className={`shrink-0 font-bold tabular-nums ${isSale && doc.debt === 0
+          ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-white'}`}>
+          {isSale && doc.debt === 0 ? '+' : ''}{formatCurrency(doc.total, cents)} ₽
         </span>
-        {doc.debt > 0 && (
-          <span className="block text-[11px] font-bold text-rose-500 mt-0.5">Долг {formatCurrency(doc.debt, cents)} ₽</span>
-        )}
-      </span>
-      <span className={`shrink-0 font-bold tabular-nums ${isSale && doc.debt === 0
-        ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-white'}`}>
-        {isSale && doc.debt === 0 ? '+' : ''}{formatCurrency(doc.total, cents)} ₽
-      </span>
-    </button>
+      </button>
+      {/* Печать, приём оплаты, удаление — то же меню, что в журнале */}
+      <button type="button" onClick={onMenu} aria-label="Действия" title="Действия"
+              className="shrink-0 w-10 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700/50">
+        ⋮
+      </button>
+    </div>
   );
 };
 

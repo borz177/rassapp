@@ -4877,7 +4877,6 @@ if (!user && !showSplash) {
                         «История операций» в Кассе и «Журнал» в Складе, и за картиной дня ходили в оба. */}
                     {shopAvailable && !isInvestor ? (
                       <History
-                        initialTab={operationsAccountId || operationsFocusId ? 'MONEY' : 'ALL'}
                         money={moneyProps}
                         goods={{
                           retailSales: scopedRetailSales,

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import type {
   Account, AppSettings, Customer, Expense, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
@@ -47,6 +47,18 @@ interface JournalProps {
   initialDocId?: string | null;
   /** Внутри общей истории (History.tsx): без своего заголовка и стрелки назад */
   embedded?: boolean;
+  /**
+   * Только окна (карточка документа, меню действий, удаление) без ленты:
+   * общая история рисует строки сама, а открывает их этими окнами — чтобы
+   * печать, приём оплаты и удаление с откатом остатков работали там так же.
+   */
+  modalsOnly?: boolean;
+  /** Открыть карточку документа (по id документа журнала) */
+  requestOpenId?: string | null;
+  /** Открыть меню действий документа */
+  requestMenuId?: string | null;
+  /** Запрос выполнен — родитель его снимает */
+  onRequestHandled?: () => void;
 }
 
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
@@ -100,6 +112,7 @@ const Journal: React.FC<JournalProps> = ({
   employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale, initialDocId = null,
   onDeleteStockDoc, expenses = [], allowNegativeStock = false, embedded = false,
+  modalsOnly = false, requestOpenId = null, requestMenuId = null, onRequestHandled,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
@@ -155,6 +168,17 @@ const Journal: React.FC<JournalProps> = ({
 
   const opened = docs.find(d => d.id === openId) || null;
 
+  // Запросы общей истории: открыть документ или его меню
+  useEffect(() => {
+    if (!requestOpenId && !requestMenuId) return;
+    const doc = docs.find(d => d.id === (requestOpenId || requestMenuId));
+    if (doc) {
+      if (requestOpenId) { setOpenId(doc.id); setDetailTab('INFO'); }
+      else setMenuFor(doc);
+    }
+    onRequestHandled?.();
+  }, [requestOpenId, requestMenuId]);
+
   const docReversal = useMemo(
     () => (deletingDoc ? stockDocReversal(deletingDoc.movements || [], products) : null),
     [deletingDoc, products]
@@ -175,7 +199,8 @@ const Journal: React.FC<JournalProps> = ({
   // ─── Лента документов ─────────────────────────────────────────────────────
   return (
     <>
-    <div className="space-y-3 pb-10">
+    <div className={modalsOnly ? '' : 'space-y-3 pb-10'}>
+      {!modalsOnly && (<>
       <div className="flex items-center gap-3">
         {/* На десктопе стрелка не нужна: раздел виден в сайдбаре, и уходить
             из него некуда — это не подстраница, а сам раздел. */}
@@ -256,6 +281,8 @@ const Journal: React.FC<JournalProps> = ({
           ))}
         </div>
       )}
+
+      </>)}
 
       {filtersOpen && (
         <ModalPortal>
