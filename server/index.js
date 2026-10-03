@@ -3274,6 +3274,11 @@ app.post('/api/data/:type', auth, async (req, res) => {
           });
 
           for (const newPayment of newPayments) {
+            // Человек сам подтвердил, что это отдельный платёж с той же суммой и
+            // датой (клиент платит за два месяца двумя суммами в один день).
+            // Повтор ТОГО ЖЕ платежа при плохой связи сюда не доходит вовсе: у него
+            // тот же id, и он не попадает в newPayments.
+            if (newPayment.confirmedRepeat) continue;
             const isDuplicate = await checkPaymentDuplicate(
               existingSale,
               newPayment.amount,

@@ -12,6 +12,7 @@ import { getAppSettings } from '../services/storage';
 import { sendWhatsAppFile } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
+import { contractScheduleRows } from '../src/contractSchedule';
 import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX, type ContractData } from '../src/contractTemplates';
 import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
@@ -105,42 +106,6 @@ const checkDuplicateSale = (
   });
 };
 
-
-/**
- * График для печатного договора: каждое фактическое поступление — своя строка с
- * датой и суммой, ещё не покрытые месяцы — только дата, без суммы.
- *
- * Покрытие считаем от ОБЩЕЙ суммы реальных платежей, а не по флагу isPaid у
- * планового слота: флаг бывает неактуален, и рядом с уже оплаченной датой
- * оставался «призрачный» пустой дубль той же даты.
- *
- * Один расчёт на печать и на PDF: раньше их было два, и разойдись они — клиент
- * получил бы график, отличающийся от того, что ему дали подписать.
- */
-const contractScheduleRows = (sale: Sale) => {
-  const plan = sale.paymentPlan || [];
-  const real = plan.filter(p => p.isRealPayment === true);
-  let surplus = real.reduce((sum, p) => sum + p.amount, 0);
-
-  const uncovered = plan
-    .filter(p => p.isRealPayment !== true)
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .filter(p => {
-      if (surplus >= p.amount - 0.01) { surplus -= p.amount; return false; }
-      return true;
-    });
-
-  let debt = sale.totalAmount - sale.downPayment;
-  return [
-    ...real.map(p => ({ date: p.date, paid: p.amount })),
-    ...uncovered.map(p => ({ date: p.date, paid: 0 })),
-  ]
-    .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-    .map(p => {
-      if (p.paid > 0) debt -= p.paid;
-      return { date: p.date, paid: p.paid, remaining: Math.max(0, debt) };
-    });
-};
 
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,

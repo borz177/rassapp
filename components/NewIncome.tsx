@@ -6,11 +6,13 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, saleProfitMargin } from '../src/utils';
+import { contractScheduleRows } from '../src/contractSchedule';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { withHtml2canvasTextFix, paymentDocumentTitle, pdfFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 import { isIOSApp } from '../src/platform';
+import { appConfirm } from '../src/dialogs';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -69,6 +71,8 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [discountValue, setDiscountValue] = useState('');
 
   const isSubmittingRef = useRef(false);
+  // Человек подтвердил, что платёж с той же суммой и датой — отдельный, а не повтор
+  const repeatConfirmedRef = useRef(false);
 const isConfirmingRef = useRef(false);
 
   const contractRef = useRef<HTMLDivElement>(null);
@@ -331,14 +335,31 @@ const isConfirmingRef = useRef(false);
     if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
     if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
 
-    if (sourceType === 'CUSTOMER' && selectedSale) {
-      const isDuplicate = selectedSale.paymentPlan.some(p =>
+    // Такой же платёж (сумма и день) уже есть. Раньше это был жёсткий запрет, и
+    // клиент, который платит за два месяца двумя одинаковыми суммами в один день,
+    // не мог внести второй. Теперь — вопрос: повтор того же платежа при плохой
+    // связи сюда не попадает (он идёт с тем же номером и просто перезаписывается),
+    // а вот случайный повторный ввод человеком — попадает, и человек решает сам.
+    if (sourceType === 'CUSTOMER' && selectedSale && !repeatConfirmedRef.current) {
+      const same = selectedSale.paymentPlan.find(p =>
         p.isPaid && p.isRealPayment &&
         Math.abs(p.amount - numAmount) < 0.01 &&
         new Date(p.date).toDateString() === new Date(date).toDateString()
       );
-      if (isDuplicate) {
-        alert("⚠️ Платёж с такой суммой и датой уже зачислен!");
+      if (same) {
+        const at = (same as any).actualDate
+          ? ` в ${new Date((same as any).actualDate).toLocaleTimeString('ru-RU', { hour: '2-digit', minute: '2-digit' })}`
+          : '';
+        appConfirm({
+          title: 'Такой платёж уже внесён',
+          message: `${numAmount.toLocaleString('ru-RU')} ₽ за ${new Date(date).toLocaleDateString('ru-RU')} уже зачислен${at}. Это ещё один, отдельный платёж?`,
+          confirmLabel: 'Да, внести ещё',
+          cancelLabel: 'Нет',
+        }).then(ok => {
+          if (!ok) return;
+          repeatConfirmedRef.current = true;
+          handleSubmit(e);
+        });
         return;
       }
     }
@@ -389,6 +410,8 @@ const commonData = {
   discountAmount: isDiscountApplied ? discountAmount : 0,
   discountPercent: isDiscountApplied ? discountPercentDisplay : 0,
   isFullRepaymentWithDiscount: isDiscountApplied,
+  // Сервер такой платёж дублем не считает — человек подтвердил его сам
+  confirmedRepeat: repeatConfirmedRef.current || undefined,
   overpaymentAmount: isOverpayment ? numAmount - fullDebt : 0 // 🆕 Сохраняем переплату
 };
 
@@ -462,6 +485,7 @@ const commonData = {
   };
 
   const handleCancel = () => {
+    repeatConfirmedRef.current = false;
     setShowConfirmModal(false);
     setIsSubmitting(false);
     isSubmittingRef.current = false;
@@ -479,37 +503,11 @@ const commonData = {
     if (!selectedSale || !selectedCustomer) return null;
 
     const plan = selectedSale.paymentPlan || [];
-    const real = plan.filter(p => p.isPaid && p.isRealPayment !== false);
-
     // Платёж, который принимают прямо сейчас. В договоре его ещё нет: PDF
     // собирается ДО сохранения — форма должна быть на экране, пока с неё
-    // снимают снимок. Без этой строки клиент получал документ, где только что
-    // внесённых денег не видно вовсе.
+    // снимают снимок. Без него клиент получал документ без только что внесённых денег.
     const payingNow = Number(String(amount).replace(',', '.')) || 0;
-    const paidRows = [
-      ...real.map(p => ({ date: p.date, paid: p.amount })),
-      ...(payingNow > 0 ? [{ date, paid: payingNow }] : []),
-    ];
-
-    let surplus = paidRows.reduce((sum, p) => sum + p.paid, 0);
-    const uncovered = plan
-      .filter(p => !p.isPaid || p.isRealPayment === false)
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .filter(p => {
-        if (surplus >= p.amount - 0.01) { surplus -= p.amount; return false; }
-        return true;
-      });
-
-    let debt = selectedSale.totalAmount - selectedSale.downPayment;
-    const rows = [
-      ...paidRows,
-      ...uncovered.map(p => ({ date: p.date, paid: 0 })),
-    ]
-      .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
-      .map(p => {
-        if (p.paid > 0) debt -= p.paid;
-        return { date: p.date, paid: p.paid, remaining: Math.max(0, debt) };
-      });
+    const rows = contractScheduleRows(selectedSale, { date, amount: payingNow });
 
     const { html, styles } = buildContractFragment(
       resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),

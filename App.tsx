@@ -2546,6 +2546,7 @@ const handleIncomeSubmit = async (data: any) => {
                     isPaid: true,
                     isRealPayment: true,
                     recordedByUserId: user.id,
+                    ...(data.confirmedRepeat ? { confirmedRepeat: true } : {}),
                     // 🆕 Метаданные скидки — для истории и отчётов
                     discountAmount: discountAmount,
                     discountPercent: discountPercent,
@@ -2562,8 +2563,10 @@ const handleIncomeSubmit = async (data: any) => {
                     actualDate: data.actualDate,
                     isPaid: true,
                     isRealPayment: true,
-                    recordedByUserId: user.id
-                });
+                    recordedByUserId: user.id,
+                    // Человек подтвердил: отдельный платёж с той же суммой и датой (см. NewIncome)
+                    ...(data.confirmedRepeat ? { confirmedRepeat: true } : {}),
+                } as any);
             }
 
             // 🔒 remainingAmount и isPaid плановых слотов пересчитываются здесь же, единым
