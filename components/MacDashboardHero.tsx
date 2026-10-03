@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Sale } from '../types';
+import { Sale, RetailSale } from '../types';
 import { formatCurrency } from '../src/utils';
 
 /**
@@ -19,6 +19,11 @@ interface Props {
   part: 'greeting' | 'chart';
   userName?: string;
   sales: Sale[];
+  /**
+   * Наличные (розница): график продаж по чекам, а не поступлений по договорам.
+   * Передан — график строится по ним.
+   */
+  retailSales?: RetailSale[];
   showCents?: boolean;
 }
 
@@ -35,7 +40,8 @@ const compact = (n: number) =>
   n >= 1_000_000 ? `${(n / 1_000_000).toFixed(n >= 10_000_000 ? 0 : 1).replace('.', ',')} млн`
   : n >= 1000 ? `${Math.round(n / 1000)} тыс` : String(Math.round(n));
 
-const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, showCents }) => {
+const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales, showCents }) => {
+  const retail = !!retailSales;
   const [range, setRange] = useState<6 | 12>(12);
   const now = new Date();
   const firstName = (userName || '').trim().split(/\s+/)[0];
@@ -55,7 +61,11 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, showCents })
       const k = key(d);
       if (buckets.has(k)) buckets.set(k, (buckets.get(k) || 0) + amount);
     };
-    for (const s of sales) {
+    if (retailSales) {
+      // Продажа считается в день чека на всю сумму — и за наличные, и в долг:
+      // это выручка магазина, а не деньги в кассе
+      for (const r of retailSales) if (!r.isCancelled) add(r.date, Number(r.total) || 0);
+    } else for (const s of sales) {
       if (String(s.customerId || '').startsWith('system_')) continue;
       add(s.startDate, Number(s.downPayment) || 0);
       for (const p of s.paymentPlan || []) {
@@ -64,7 +74,7 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, showCents })
     }
     return months.map(d => ({ label: MONTHS[d.getMonth()], value: buckets.get(key(d)) || 0, full: d }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, range]);
+  }, [sales, retailSales, range]);
 
   const thisMonth = data[data.length - 1]?.value || 0;
   const prevMonth = data[data.length - 2]?.value || 0;
@@ -91,7 +101,7 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, showCents })
       <div className="mac-card p-6">
         <div className="flex items-start justify-between gap-4 mb-4">
           <div>
-            <p className="text-[15px] font-semibold text-slate-900 dark:text-white">Поступления от клиентов</p>
+            <p className="text-[15px] font-semibold text-slate-900 dark:text-white">{retail ? 'Продажи за наличные' : 'Поступления от клиентов'}</p>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-[28px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
                 {formatCurrency(thisMonth, showCents)} <span className="text-[18px] text-slate-400">₽</span>

@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import MacDashboardHero from './MacDashboardHero';
+import { isMacShell } from '../src/platform';
 import type { Account, Customer, Product, RetailSale } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, retailPaidAmount, retailRemaining } from '../src/utils';
@@ -159,6 +161,9 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
           trailing={accountTrailing}
         />
       )}
+
+      {/* Mac/Windows: продажи по месяцам — как график поступлений на вкладке «Рассрочка» */}
+      {isMacShell() && <MacDashboardHero part="chart" sales={[]} retailSales={live} showCents={showCents} />}
 
       {/* Долг встаёт рядом с выручкой, а не под ней: это две стороны одного
           вопроса «сколько заработали и сколько из этого ещё не получили».
