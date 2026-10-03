@@ -45,6 +45,8 @@ interface JournalProps {
    * а не в ленту журнала, которую человек и не открывал.
    */
   initialDocId?: string | null;
+  /** Внутри общей истории (History.tsx): без своего заголовка и стрелки назад */
+  embedded?: boolean;
 }
 
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
@@ -97,7 +99,7 @@ const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale, initialDocId = null,
-  onDeleteStockDoc, expenses = [], allowNegativeStock = false,
+  onDeleteStockDoc, expenses = [], allowNegativeStock = false, embedded = false,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
@@ -177,9 +179,9 @@ const Journal: React.FC<JournalProps> = ({
       <div className="flex items-center gap-3">
         {/* На десктопе стрелка не нужна: раздел виден в сайдбаре, и уходить
             из него некуда — это не подстраница, а сам раздел. */}
-        <TopBarBack onClick={onBack} hideOnDesktop />
+        {!embedded && <TopBarBack onClick={onBack} hideOnDesktop />}
         <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-bold text-slate-800 dark:text-white">Журнал</h2>
+          {!embedded && <h2 className="text-xl font-bold text-slate-800 dark:text-white">Журнал</h2>}
           <p className="text-xs text-slate-500 dark:text-slate-400">
             {totals.count} докум.{totals.debt > 0 ? ` · долг ${formatCurrency(totals.debt, cents)} ₽` : ''}
           </p>

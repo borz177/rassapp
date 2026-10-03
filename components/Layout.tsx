@@ -548,19 +548,9 @@ const counts = useMemo(() => {
     // чего программу открывают.
     { id: 'CREATE_SALE' as const, label: 'Оформить', icon: ICONS.AddSmall, action: 'CREATE_SALE', visible: !isInvestor },
     { id: 'PARTNER' as const, label: 'Бизнес-партнёр', icon: ICONS.Star, visible: !!user?.partnerPercent },
-    {
-      // Склад и журнал — про один и тот же товар, но с разных сторон: где
-      // лежит и какими бумагами двигался. Держать их отдельными пунктами
-      // верхнего уровня значило бы дважды говорить о складе.
-      id: 'WAREHOUSE' as const,
-      label: 'Склад',
-      icon: ICONS.Archive,
-      visible: showShop,
-      subItems: [
-        { label: 'Склад', action: 'GOTO_WAREHOUSE', icon: ICONS.Archive },
-        { label: 'Журнал', action: 'JOURNAL', icon: ICONS.List },
-      ]
-    },
+    // Склад — одним пунктом. Его журнал документов теперь внутри общей
+    // «Истории» (Касса → История): деньги и товар на одном экране.
+    { id: 'WAREHOUSE' as const, label: 'Склад', icon: ICONS.Archive, visible: showShop },
     {
       id: 'CASH_REGISTER' as const,
       label: 'Касса',
@@ -619,9 +609,6 @@ const counts = useMemo(() => {
     else { setIsMenuOpen(true); setIsMenuClosing(false); }
   };
 
-  // Раздел склада в меню действий по умолчанию свёрнут: список действий должен
-  // читаться целиком с одного взгляда.
-  const [shopGroupOpen, setShopGroupOpen] = useState(false);
 
   const toggleMenu = (id: string) => {
     if (expandedMenu === id) {
@@ -935,42 +922,11 @@ const counts = useMemo(() => {
                   <span className="font-semibold text-[15px]">Склад</span>
                 </button>
               )}
-              {/* История бывает двух видов, и это разные вопросы: «куда ушли
-                  деньги» и «куда ушёл товар». С магазином их два, поэтому пункт
-                  раскрывается; без магазина спрашивать нечего — ведёт сразу в кассовую. */}
-              {showShop ? (
-                <>
-                  <button onClick={() => setShopGroupOpen(v => !v)}
-                          className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                    <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
-                    <span className="font-semibold text-[15px] flex-1 text-left">Все операции</span>
-                    <span className={`text-slate-400 transition-transform duration-200 ${shopGroupOpen ? 'rotate-90' : ''}`}>
-                      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <polyline points="9 18 15 12 9 6"/>
-                      </svg>
-                    </span>
-                  </button>
-                  {shopGroupOpen && (
-                    <div className="ml-8 pl-3 border-l border-slate-200 dark:border-slate-600 space-y-0.5">
-                      <button onClick={() => handleActionClick('OPERATIONS')}
-                              className="w-full flex items-center gap-3 px-3 py-3 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                        <span className="opacity-70 scale-90">{ICONS.Wallet}</span>
-                        <span className="font-semibold text-[14px]">Касса</span>
-                      </button>
-                      <button onClick={() => handleActionClick('JOURNAL')}
-                              className="w-full flex items-center gap-3 px-3 py-3 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                        <span className="opacity-70 scale-90">{ICONS.Archive}</span>
-                        <span className="font-semibold text-[14px]">Склад</span>
-                      </button>
-                    </div>
-                  )}
-                </>
-              ) : (
-                <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
-                  <span className="font-semibold text-[15px]">Все операции</span>
-                </button>
-              )}
+              {/* Одна история на всё: с магазином в ней и деньги, и товар (History.tsx) */}
+              <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
+                <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
+                <span className="font-semibold text-[15px]">Все операции</span>
+              </button>
               {/* Только у партнёров: остальным пункт не нужен и только путал бы.
                   Процент приходит вместе с профилем, сами суммы — уже на странице. */}
               {/* Пока касса не вынесена на главный экран, отсюда она —

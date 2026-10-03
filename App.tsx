@@ -20,6 +20,7 @@ import InvestorDetails from './components/InvestorDetails';
 import Employees from './components/Employees';
 import EmployeeActivity from './components/EmployeeActivity';
 import Operations from './components/Operations';
+import History from './components/History';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
 import Profile from './components/Profile';
@@ -4851,26 +4852,63 @@ if (!user && !showSplash) {
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
                             onDeleteProduct={handleDeleteProduct} appSettings={appSettings}
                             focusProductId={productsFocusId} onFocusHandled={() => setProductsFocusId(null)}/>}
-              {currentView === 'OPERATIONS' && (
+              {currentView === 'OPERATIONS' && (() => {
+                  // Свойства истории денег — одни для отдельного экрана и для общей истории
+                  const moneyProps = {
+                    retailSales,
+                    sales: isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales,
+                    expenses: isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses,
+                    accounts,
+                    customers,
+                    initialAccountId: operationsAccountId,
+                    focusOperationId: operationsFocusId,
+                    onFocusHandled: () => setOperationsFocusId(null),
+                    onDelete: handleDeleteOperation,
+                    canCancelIncome: !isInvestor && (!isEmployee || !!user?.permissions?.canDelete),
+                    investors,
+                    employees: isInvestor ? [] : employees,
+                    canFilterByEmployee: isManager && !isEmployee && !isInvestor,
+                    accountBalances,
+                    appSettings,
+                  };
+                  return (
                   <PagePush onClose={() => setCurrentView(previousView)} scrollKey="OPERATIONS">
-                    <Operations retailSales={retailSales}
-                      sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
-                      expenses={isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses}
-                      accounts={accounts}
-                      customers={customers}
-                      initialAccountId={operationsAccountId}
-                      focusOperationId={operationsFocusId}
-                      onFocusHandled={() => setOperationsFocusId(null)}
-                      onDelete={handleDeleteOperation}
-                      canCancelIncome={!isInvestor && (!isEmployee || !!user?.permissions?.canDelete)}
-                      investors={investors}
-                      employees={isInvestor ? [] : employees}
-                      canFilterByEmployee={isManager && !isEmployee && !isInvestor}
-                      accountBalances={accountBalances}
-                      appSettings={appSettings}
-                    />
+                    {/* С магазином деньги и товар — один экран (History.tsx): раньше это были
+                        «История операций» в Кассе и «Журнал» в Складе, и за картиной дня ходили в оба. */}
+                    {shopAvailable && !isInvestor ? (
+                      <History
+                        initialTab={operationsAccountId || operationsFocusId ? 'MONEY' : 'ALL'}
+                        money={moneyProps}
+                        goods={{
+                          retailSales: scopedRetailSales,
+                          movements: scopedMovements,
+                          products,
+                          customers,
+                          warehouses: scopedWarehouses,
+                          suppliers,
+                          accounts,
+                          employees,
+                          contracts: sales,
+                          appSettings,
+                          user,
+                          onBack: () => setCurrentView(previousView),
+                          onSelectCustomer: handleSelectCustomer,
+                          onAcceptPayment: handleInitiateRetailPayment,
+                          onUpdateSale: handleUpdateRetailSale,
+                          onUpdateStockDoc: handleUpdateStockDoc,
+                          onAddDocLines: handleAddDocLines,
+                          onDeleteSale: handleDeleteRetailSale,
+                          onDeleteStockDoc: handleDeleteStockDoc,
+                          expenses,
+                          allowNegativeStock: !!appSettings.shopAllowNegativeStock,
+                        }}
+                      />
+                    ) : (
+                      <Operations {...moneyProps} />
+                    )}
                   </PagePush>
-              )}
+                  );
+              })()}
               {currentView === 'REPORTS' && reportData && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                     <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
