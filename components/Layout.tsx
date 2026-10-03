@@ -560,7 +560,8 @@ const counts = useMemo(() => {
         { label: 'Счета', action: 'GOTO_CASH_REGISTER', icon: ICONS.Wallet },
         { label: 'Приход', action: 'INCOME', icon: ICONS.Income },
         { label: 'Расход', action: 'EXPENSE', icon: ICONS.Expense },
-        { label: 'История', action: 'OPERATIONS', icon: ICONS.List },
+        // С магазином история — отдельный пункт «Журнал» (деньги и товар вместе), см. ниже
+        { label: 'История', action: 'OPERATIONS', icon: ICONS.List, visible: !showShop },
       ]
     },
     {
@@ -575,6 +576,9 @@ const counts = useMemo(() => {
         { label: 'Все', tab: 'ALL', icon: ICONS.List, count: counts.all, visible: true },
       ]
     },
+    // С магазином — один журнал: деньги и товар одной лентой (History.tsx).
+    // Сразу после договоров: туда заглядывают так же часто, как в них.
+    { id: 'OPERATIONS' as const, label: 'Журнал', icon: ICONS.List, visible: showShop && !isInvestor },
     {
         id: 'OPERATIONS' as const,
         label: 'История',

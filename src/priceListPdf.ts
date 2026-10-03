@@ -10,7 +10,7 @@ import { withHtml2canvasTextFix, safeFileName } from './contractPdf';
  * страница — отдельный лист A4, раскладка фиксированная, поэтому разбивка на
  * страницы считается заранее, а не браузером.
  *
- * Фото товаров перед вёрсткой загружаются и ужимаются до 480 px в JPEG: в снимок
+ * Фото товаров перед вёрсткой загружаются и ужимаются до PHOTO_MAX в JPEG: в снимок
  * идут уже готовые data-адреса (никаких запросов и CORS во время съёмки), а
  * PDF на сотню товаров весит единицы мегабайт, а не сотни.
  */
@@ -32,6 +32,13 @@ export interface PriceListOptions {
 }
 
 const PAGE_W = 794;   // A4 при 96 dpi
+// Чёткость снимка страницы: ×3 — около 290 dpi, печатное качество. При ×2
+// (190 dpi) мелкий текст цен и названий на печати и при увеличении в
+// телефоне выглядел мыльным.
+const RENDER_SCALE = 3;
+// Фото в карточке занимает около 220 px страницы, то есть ~660 px снимка —
+// берём с запасом, чтобы фото не было мутнее текста вокруг.
+const PHOTO_MAX = 900;
 const PAGE_H = 1123;
 const PAD = 44;
 const HEADER_FIRST = 128; // шапка первой страницы
@@ -61,18 +68,32 @@ const loadPhoto = async (src: string | undefined): Promise<string | null> => {
     const res = await fetch(serverFileUrl(src), { mode: 'cors', cache: 'force-cache' });
     if (!res.ok) return null;
     const bitmap = await createImageBitmap(await res.blob());
-    const max = 480;
-    const k = Math.min(1, max / Math.max(bitmap.width, bitmap.height));
+    const k = Math.min(1, PHOTO_MAX / Math.max(bitmap.width, bitmap.height));
+    const w = Math.round(bitmap.width * k), h = Math.round(bitmap.height * k);
+    // Уменьшаем ступенями, не больше чем вдвое за шаг: одним шагом из 4000 px в
+    // 900 браузер сглаживает грубо, и на краях товара появлялась «лесенка».
+    let stepSrc: CanvasImageSource = bitmap;
+    let sw = bitmap.width, sh = bitmap.height;
+    while (sw / 2 > w) {
+      const step = document.createElement('canvas');
+      step.width = Math.round(sw / 2); step.height = Math.round(sh / 2);
+      const sctx = step.getContext('2d');
+      if (!sctx) break;
+      sctx.imageSmoothingQuality = 'high';
+      sctx.drawImage(stepSrc, 0, 0, step.width, step.height);
+      stepSrc = step; sw = step.width; sh = step.height;
+    }
     const canvas = document.createElement('canvas');
-    canvas.width = Math.round(bitmap.width * k);
-    canvas.height = Math.round(bitmap.height * k);
+    canvas.width = w;
+    canvas.height = h;
     const ctx = canvas.getContext('2d');
     if (!ctx) return null;
+    ctx.imageSmoothingQuality = 'high';
     ctx.fillStyle = '#fff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
-    ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+    ctx.drawImage(stepSrc, 0, 0, canvas.width, canvas.height);
     bitmap.close?.();
-    return canvas.toDataURL('image/jpeg', 0.82);
+    return canvas.toDataURL('image/jpeg', 0.9);
   } catch {
     return null;
   }
@@ -229,11 +250,11 @@ export const priceListPdfBlob = async (
       if ((document as any).fonts?.ready) await (document as any).fonts.ready.catch(() => {});
       const page = host.querySelector('.pl-page') as HTMLElement;
       const canvas = await withHtml2canvasTextFix(() => html2canvas(page, {
-        scale: 2, backgroundColor: '#ffffff', logging: false, scrollX: 0, scrollY: 0,
+        scale: RENDER_SCALE, backgroundColor: '#ffffff', logging: false, scrollX: 0, scrollY: 0,
       }));
       if (i > 0) pdf.addPage();
       // JPEG: на страницах фотографии — PNG весил бы в разы больше
-      pdf.addImage(canvas.toDataURL('image/jpeg', 0.9), 'JPEG', 0, 0, 210, 297);
+      pdf.addImage(canvas.toDataURL('image/jpeg', 0.93), 'JPEG', 0, 0, 210, 297);
     }
   } finally {
     host.remove();

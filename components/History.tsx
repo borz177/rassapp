@@ -1,8 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import Operations from './Operations';
 import Journal from './Journal';
-import ModalPortal from './ModalPortal';
-import SelectSheet from './SelectSheet';
+import GlassSheet, { SheetSection, SheetSegmented } from './GlassSheet';
 import UnsyncedMark from './UnsyncedMark';
 import { buildMoneyOperations, type MoneyOperation } from '../src/moneyOperations';
 import { buildJournalDocs, KIND_LABEL, type DocKind, type JournalDoc } from '../src/journalDocs';
@@ -42,17 +41,36 @@ type FeedItem =
 type TypeFilter = 'ALL' | 'MONEY_IN' | 'MONEY_OUT' | DocKind;
 type PayFilter = 'ALL' | 'DEBT' | 'PAID';
 
-const TYPE_FILTERS: { id: TypeFilter; label: string }[] = [
+const TYPE_FILTERS: { id: TypeFilter; label: string; group?: 'money' | 'goods' }[] = [
   { id: 'ALL', label: 'Все' },
-  { id: 'MONEY_IN', label: 'Поступления' },
-  { id: 'MONEY_OUT', label: 'Расходы' },
-  { id: 'SALE', label: 'Продажи' },
-  { id: 'CONTRACT', label: 'Договоры' },
-  { id: 'IN', label: 'Приход товара' },
-  { id: 'TRANSFER', label: 'Перемещение' },
-  { id: 'WRITE_OFF', label: 'Списание' },
-  { id: 'INVENTORY', label: 'Инвентаризация' },
+  { id: 'MONEY_IN', label: 'Поступления', group: 'money' },
+  { id: 'MONEY_OUT', label: 'Расходы', group: 'money' },
+  { id: 'SALE', label: 'Продажи', group: 'goods' },
+  { id: 'CONTRACT', label: 'Договоры', group: 'goods' },
+  { id: 'IN', label: 'Приход товара', group: 'goods' },
+  { id: 'TRANSFER', label: 'Перемещение', group: 'goods' },
+  { id: 'WRITE_OFF', label: 'Списание', group: 'goods' },
+  { id: 'INVENTORY', label: 'Инвентаризация', group: 'goods' },
 ];
+
+const FilterChip: React.FC<{ on: boolean; onClick: () => void; children: React.ReactNode }> = ({ on, onClick, children }) => (
+  <button type="button" onClick={onClick} aria-pressed={on}
+          className={`inline-flex items-center gap-1.5 px-3.5 py-2 rounded-full text-[13px] font-semibold transition-all active:scale-95 ${on
+            ? 'bg-indigo-600 text-white shadow-sm shadow-indigo-600/30'
+            : 'bg-slate-100 dark:bg-white/10 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-white/15'}`}>
+    {on && (
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M20 6 9 17l-5-5" /></svg>
+    )}
+    {children}
+  </button>
+);
+
+const ChipGroup: React.FC<{ label: string; children: React.ReactNode }> = ({ label, children }) => (
+  <div>
+    <p className="text-[12px] font-medium text-slate-400 dark:text-slate-500 mb-2">{label}</p>
+    <div className="flex flex-wrap gap-2">{children}</div>
+  </div>
+);
 
 // Те же подписи категорий, что в истории операций
 const CATEGORY_LABEL: Record<string, string> = {
@@ -192,7 +210,7 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
     <div className="space-y-4 pb-20 w-full">
       <header className="flex items-center gap-3">
         <div className="min-w-0 flex-1">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">История</h2>
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Журнал</h2>
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
             {feed.count} {feed.count % 10 === 1 && feed.count % 100 !== 11 ? 'операция'
               : [2, 3, 4].includes(feed.count % 10) && ![12, 13, 14].includes(feed.count % 100) ? 'операции' : 'операций'}
@@ -253,69 +271,81 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
       )}
 
       {filtersOpen && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setFiltersOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4 max-h-[88vh] overflow-y-auto"
-                 onClick={e => e.stopPropagation()}>
-              <h3 className="font-bold text-slate-800 dark:text-white">Фильтры</h3>
+        <GlassSheet
+          title="Фильтры"
+          subtitle={`Найдётся ${feed.count}`}
+          onClose={() => setFiltersOpen(false)}
+          cancelLabel="Закрыть"
+          action={{ label: 'Показать', onClick: close => close() }}
+        >
+          <div className="space-y-6">
+            {/* Что показать — двумя группами: деньги и товар. Так видно, что
+                это одна лента из двух источников, а не десяток разрозненных типов. */}
+            <SheetSection title="Что показать">
+              <div className="px-4 py-3.5 space-y-3">
+                <FilterChip on={type === 'ALL'} onClick={() => setType('ALL')}>Всё подряд</FilterChip>
+                <ChipGroup label="Деньги">
+                  {TYPE_FILTERS.filter(f => f.group === 'money').map(f => (
+                    <FilterChip key={f.id} on={type === f.id} onClick={() => setType(type === f.id ? 'ALL' : f.id)}>{f.label}</FilterChip>
+                  ))}
+                </ChipGroup>
+                <ChipGroup label="Товар">
+                  {TYPE_FILTERS.filter(f => f.group === 'goods').map(f => (
+                    <FilterChip key={f.id} on={type === f.id} onClick={() => setType(type === f.id ? 'ALL' : f.id)}>{f.label}</FilterChip>
+                  ))}
+                </ChipGroup>
+              </div>
+            </SheetSection>
 
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Что показать</p>
-                <div className="flex flex-wrap gap-2">
-                  {TYPE_FILTERS.map(f => (
-                    <button key={f.id} type="button" onClick={() => setType(f.id)}
-                            className={`px-3.5 py-2 rounded-full text-xs font-bold ${
-                              type === f.id
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                            }`}>{f.label}</button>
+            {money.accounts.length > 1 && (
+              <SheetSection title="Счёт">
+                <div className="px-4 py-3.5 flex flex-wrap gap-2">
+                  <FilterChip on={!accountId} onClick={() => setAccountId('')}>Все счета</FilterChip>
+                  {money.accounts.filter(a => !a.isArchived || a.id === accountId).map(a => (
+                    <FilterChip key={a.id} on={accountId === a.id} onClick={() => setAccountId(accountId === a.id ? '' : a.id)}>{a.name}</FilterChip>
                   ))}
                 </div>
-              </div>
+              </SheetSection>
+            )}
 
-              <SelectSheet label="Счёт" title="Счёт" value={accountId} onChange={setAccountId}
-                options={[
-                  { id: '', name: 'Все счета' },
-                  ...money.accounts.filter(a => !a.isArchived || a.id === accountId).map(a => ({ id: a.id, name: a.name })),
-                ]} />
-
-              <SelectSheet label="Категория" title="Категория" value={category} onChange={setCategory}
-                options={[{ id: 'ALL', name: 'Все категории' }, ...categories.map(c => ({ id: c, name: categoryLabel(c) }))]} />
-
-              {/* Сотрудник — инструмент менеджера, как и в истории операций */}
-              {employees.length > 0 && money.canFilterByEmployee && (
-                <SelectSheet label="Сотрудник" title="Сотрудник" value={employeeId} onChange={setEmployeeId}
-                  options={[{ id: '', name: 'Все сотрудники' }, ...employees.map(e => ({ id: e.id, name: e.name }))]} />
-              )}
-
-              <div>
-                <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-2">Долг по документу</p>
-                <div className="flex gap-2">
-                  {([['ALL', 'Все'], ['DEBT', 'С долгом'], ['PAID', 'Без долга']] as const).map(([id, label]) => (
-                    <button key={id} type="button" onClick={() => setPay(id)}
-                            className={`flex-1 py-2 rounded-xl text-xs font-bold ${
-                              pay === id
-                                ? 'bg-indigo-600 text-white'
-                                : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300'
-                            }`}>{label}</button>
+            {categories.length > 0 && (
+              <SheetSection title="Категория" hint="Категории есть только у денег — с выбранной категорией документы склада скрываются.">
+                <div className="px-4 py-3.5 flex flex-wrap gap-2">
+                  <FilterChip on={category === 'ALL'} onClick={() => setCategory('ALL')}>Все</FilterChip>
+                  {categories.map(c => (
+                    <FilterChip key={c} on={category === c} onClick={() => setCategory(category === c ? 'ALL' : c)}>{categoryLabel(c)}</FilterChip>
                   ))}
                 </div>
-              </div>
+              </SheetSection>
+            )}
 
-              <div className="flex gap-2 pt-1">
-                <button type="button" onClick={resetFilters}
-                        className="flex-1 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold text-sm">
-                  Сбросить
-                </button>
-                <button type="button" onClick={() => setFiltersOpen(false)}
-                        className="flex-1 py-2.5 rounded-xl bg-indigo-600 text-white font-bold text-sm">
-                  Показать {feed.count}
-                </button>
+            {/* Сотрудник — инструмент менеджера, как и в истории операций */}
+            {employees.length > 0 && money.canFilterByEmployee && (
+              <SheetSection title="Кто провёл">
+                <div className="px-4 py-3.5 flex flex-wrap gap-2">
+                  <FilterChip on={!employeeId} onClick={() => setEmployeeId('')}>Все</FilterChip>
+                  {employees.map(e => (
+                    <FilterChip key={e.id} on={employeeId === e.id} onClick={() => setEmployeeId(employeeId === e.id ? '' : e.id)}>{e.name}</FilterChip>
+                  ))}
+                </div>
+              </SheetSection>
+            )}
+
+            <SheetSection title="Долг по документу">
+              <div className="px-4 py-3">
+                <SheetSegmented value={pay} onChange={setPay}
+                  options={[{ id: 'ALL', label: 'Все' }, { id: 'DEBT', label: 'С долгом' }, { id: 'PAID', label: 'Без долга' }]} />
               </div>
-            </div>
+            </SheetSection>
+
+            {filtersActive && (
+              <button type="button" onClick={resetFilters}
+                      className="w-full py-3 rounded-2xl text-[15px] font-semibold text-rose-600 dark:text-rose-400 bg-white/70 dark:bg-white/5 active:opacity-70">
+                Сбросить все фильтры
+              </button>
+            )}
           </div>
-        </ModalPortal>
+        </GlassSheet>
       )}
 
       {/* Окна денежной операции и документа — те же, что на их собственных экранах */}
