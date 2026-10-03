@@ -38,6 +38,63 @@ const queueSave = async (collection: string, item: any, intent?: { kind: string;
     ...(base !== undefined ? { base } : {}),
   } as any);
 };
+
+// ── Порядок записей одной и той же записи ───────────────────────────────────────
+// Договор и платёж уходят на сервер целиком, и сервер хранит последнюю пришедшую
+// версию. Раньше отложенная версия могла приехать ПОСЛЕ более новой:
+//   платёж 1 — связь плохая, договор ушёл в очередь;
+//   связь вернулась, платёж 2 — договор (с обоими платежами) ушёл сразу;
+//   очередь догнала — и записала поверх версию только с платежом 1.
+// Платёж 2 пропадал с экрана при следующем обновлении, и его вносили заново.
+// Отсюда три правила:
+//   — записи одного объекта идут строго по очереди (writeChains);
+//   — пока в очереди есть неотправленная версия объекта, новая встаёт за ней,
+//     а не обгоняет её напрямую;
+//   — дошла новая версия — старые версии того же объекта из очереди убираются:
+//     они уже целиком в ней (интерфейс собирает новую версию поверх старой).
+const writeChains = new Map<string, Promise<unknown>>();
+const serializeWrite = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
+  const prev = writeChains.get(key) || Promise.resolve();
+  const run = prev.catch(() => {}).then(fn);
+  writeChains.set(key, run);
+  run.catch(() => {}).finally(() => { if (writeChains.get(key) === run) writeChains.delete(key); });
+  return run;
+};
+const recordIdOf = (q: any): string | undefined => q?.payload?.id ?? q?.itemId;
+
+/** В очереди ждёт отправки версия этого объекта (отвергнутые сервером — не в счёт) */
+const hasPendingFor = async (collection: string, id: string): Promise<boolean> => {
+  const queue = await offlineStorage.getQueue().catch(() => [] as any[]);
+  return queue.some((q: any) => !q.failed && q.collection === collection && recordIdOf(q) === id);
+};
+
+/** Дошла версия объекта — более ранние сохранения его из очереди больше не нужны */
+const dropSupersededSaves = async (collection: string, id: string, before: number, exceptId?: string) => {
+  const queue = await offlineStorage.getQueue().catch(() => [] as any[]);
+  for (const q of queue as any[]) {
+    if (q.id !== exceptId && q.type === 'saveItem' && q.collection === collection
+        && q.payload?.id === id && q.timestamp <= before) {
+      await offlineStorage.removeFromQueue(q.id).catch(() => {});
+    }
+  }
+};
+
+// Запись встала в очередь при живой связи (за более ранней версией) — отправляем
+// очередь сразу, а не через пять минут. Шла синхронизация — она повторится.
+let resyncRequested = false;
+const kickSync = () => { setTimeout(() => { api.sync().catch(() => {}); }, 0); };
+
+/**
+ * Сервер ответил, но исход записи неизвестен или отказ временный: 5xx (сервер
+ * перезапускается, упал после записи), 408/429, вместо JSON — страница
+ * провайдера или обрезанный ответ при смене сети. Такая запись не отвергнута —
+ * её надо повторить, а не откатывать на экране: при откате человек вносил
+ * операцию ещё раз, а первая, уже записанная, потом появлялась — и выходил дубль.
+ * Повтор безопасен: запись идёт с тем же id и просто перезаписывается.
+ */
+const transientError = (message: string) => Object.assign(new Error(message), { isTransient: true });
+const isRetryableStatus = (status: number) => status >= 500 || status === 408 || status === 429;
+
 // Helper to determine the API URL dynamically
 const getBaseUrl = () => {
     // iOS-приложение: интерфейс внутри него, сервер — отдельно (см. src/platform.ts)
@@ -269,6 +326,8 @@ export const api = {
   // 2️⃣ ПОТОМ проверяем, не запущена ли она прямо сейчас
   if (isSyncing) {
     console.log('⏳ Sync already in progress, skipping');
+    // То, что встало в очередь во время отправки, не должно ждать следующего круга
+    resyncRequested = true;
     return { success: false, syncedCollections: new Set() };
   }
 
@@ -310,6 +369,16 @@ export const api = {
       try {
         let res: Response;
         let sent: any = null;
+        // Позже в очереди есть более новая версия того же объекта — эта целиком
+        // в ней. Не шлём: иначе сервер на миг получил бы старую версию, а при
+        // обрыве между ними она так бы и осталась. Инвесторов это не касается —
+        // их правки сливаются по разнице (mergeInvestor) и идут все по порядку.
+        if (item.type === 'saveItem' && !MERGED_COLLECTIONS.has(item.collection) && item.payload?.id
+            && pending.some(q => q !== item && q.type === 'saveItem' && q.collection === item.collection
+              && q.payload?.id === item.payload.id && q.timestamp > item.timestamp)) {
+          await offlineStorage.removeFromQueue(item.id);
+          return true;
+        }
         if (item.type === 'saveItem') {
           sent = item.payload;
           if (MERGED_COLLECTIONS.has(item.collection) && item.base !== undefined && item.payload?.id) {
@@ -335,16 +404,38 @@ export const api = {
 
         if (res.ok) {
           await offlineStorage.removeFromQueue(item.id);
+          // Отвергнутые раньше версии того же объекта устарели: после повтора при
+          // следующем запуске они записали бы старое поверх только что отправленного
+          if (item.type === 'saveItem' && item.payload?.id) {
+            await dropSupersededSaves(item.collection, item.payload.id, item.timestamp, item.id);
+          }
           if (item.collection) syncedCollections.add(item.collection);
           return true;
         } else {
           const errorText = await res.text().catch(() => '');
+          let errorCode = '';
+          try { errorCode = JSON.parse(errorText)?.code || ''; } catch { /* не JSON */ }
 
           // 409 — сервер говорит «это у меня уже есть» (например, дубликат
           // платежа). Значит запись доехала раньше, и цель элемента очереди
           // выполнена: убираем его, а не копим бесконечные попытки. Иначе он
           // висел бы в списке неотправленного навсегда, хотя терять нечего —
           // и человек привыкал бы не обращать внимания на предупреждение.
+          // Но не всякий 409 — «уже есть». ID_TAKEN: запись НЕ сохранена (id занят
+          // чужой записью). «Дубликат платежа»: сервер отверг всю версию договора,
+          // потому что в ней платёж с той же суммой и датой, что уже зачислен, — а
+          // повтор того же платежа (тот же id) сервер дубликатом не считает, значит
+          // это другая запись, и в этой же версии могли быть и другие, настоящие
+          // платежи. Выбросить молча — потерять их; оставляем как «не отправлено»
+          // с причиной, решает человек.
+          const isDuplicatePayment = /Дубликат платежа/.test(errorText);
+          if (res.status === 409 && (errorCode === 'ID_TAKEN' || isDuplicatePayment)) {
+            item.retryCount = (item.retryCount || 0) + 1;
+            try { item.error = JSON.parse(errorText)?.msg || errorText; } catch { item.error = errorText; }
+            item.failed = true;
+            await offlineStorage.updateQueueItem(item);
+            return false;
+          }
           if (res.status === 409) {
             console.warn(`↩️ ${item.collection}/${item.payload?.id || item.itemId}: сервер уже имеет эту запись — снимаем из очереди`);
             await offlineStorage.removeFromQueue(item.id);
@@ -359,8 +450,7 @@ export const api = {
           item.error = errorText || `HTTP ${res.status}`;
           // 5xx/408/429 — сервер временно недоступен/перегружен, это неотличимо от плохой
           // связи и МОЖЕТ получиться позже — такие элементы ретраим бесконечно, не удаляя.
-          const isRetryableStatus = res.status >= 500 || res.status === 408 || res.status === 429;
-          if (!isRetryableStatus && item.retryCount > 5) {
+          if (!isRetryableStatus(res.status) && item.retryCount > 5) {
             // Сервер стабильно и явно отклоняет запрос (валидация/конфликт/права) — дальше
             // ретраить бессмысленно. Но элемент НЕ удаляется из очереди: раньше он тихо
             // выбрасывался из syncQueue, из-за чего несинхронизированный договор при
@@ -426,6 +516,7 @@ export const api = {
     return { success: false, syncedCollections };
   } finally {
     isSyncing = false; // 🔹 Гарантированный сброс в любом случае
+    if (resyncRequested) { resyncRequested = false; kickSync(); }
   }
 },
 
@@ -778,7 +869,26 @@ export const api = {
      * оба «Договором». Смысл операции знает только тот, кто её затеял, — он его и
      * передаёт.
      */
-    saveItem: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[]; intent?: { kind: string; label?: string } }): Promise<any> => {
+    saveItem: (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[]; intent?: { kind: string; label?: string } }): Promise<any> => {
+      if (!item?.id) return api.saveItemNow(type, item, options);
+      // Записи одного объекта — строго по очереди (см. writeChains выше)
+      return serializeWrite(`${type}:${item.id}`, async () => {
+        if (await hasPendingFor(type, item.id)) {
+          // Более ранняя версия ещё не отправлена — встаём за ней, а не обгоняем.
+          // Это не «нет связи»: человеку предупреждение не показываем.
+          console.log(`📦 ${type}/${item.id}: earlier version still queued — queuing behind it`);
+          await queueSave(type, item, options?.intent);
+          kickSync();
+          return item;
+        }
+        const startedAt = Date.now();
+        const saved = await api.saveItemNow(type, item, options);
+        if (!saved?._isOffline) await dropSupersededSaves(type, item.id, startedAt);
+        return saved;
+      });
+    },
+
+    saveItemNow: async (type: string, item: any, options?: { skipLimitCheck?: boolean; sales?: Sale[]; intent?: { kind: string; label?: string } }): Promise<any> => {
       console.log(`💾 Saving ${type}:`, { id: item.id });
 
       // Связи нет — сразу в очередь, без восьмисекундного ожидания. Результат
@@ -816,10 +926,15 @@ export const api = {
             throw limitError;
           }
 
+          if (isRetryableStatus(res.status)) {
+            throw transientError(`HTTP ${res.status}: ${errorData.msg || errorData.error || 'сервер временно недоступен'}`);
+          }
           throw new Error(errorData.msg || errorData.error || `Failed to save ${type}`);
         }
 
-        const savedItem = await res.json();
+        // Ответ «успех», но не JSON или оборван (смена сети на середине, страница
+        // провайдера) — запись, скорее всего, дошла, но наверняка не знаем: повторим.
+        const savedItem = await res.json().catch(() => { throw transientError('Ответ сервера не прочитан'); });
         console.log(`✅ Saved ${type}: ${item.id}`);
         // Запись дошла — значит связь жива, и следующие можно пробовать сразу.
         markNetworkUp();
@@ -840,7 +955,7 @@ export const api = {
   const isLimitError = error.isLimitError === true;
   
   // 🔹 ИСПРАВЛЕННАЯ ПРОВЕРКА: теперь ловит таймауты и отмены
-  const isNetworkError = isNetworkFailure(error);
+  const isNetworkError = isNetworkFailure(error) || error?.isTransient === true;
 
   // Сверка с лимитом без сети — только для записи в лог, без отказа.
   //
@@ -881,7 +996,8 @@ export const api = {
 
   if (isNetworkError && !isLimitError) {
     // Следующие записи этой же пачки ждать таймаут уже не будут.
-    markNetworkDown();
+    // Временный отказ сервера — не обрыв связи: следующие записи пусть пробуют.
+    if (!error?.isTransient) markNetworkDown();
     console.log("📦 Queuing for offline sync (network/timeout)");
     await queueSave(type, item, options?.intent);
     
@@ -989,7 +1105,19 @@ export const api = {
       return res.json();
     },
 
-    deleteItem: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
+    deleteItem: (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> =>
+      serializeWrite(`${type}:${id}`, async () => {
+        // Неотправленное сохранение этого объекта ещё в очереди — удаление за ним,
+        // иначе очередь потом «воскресила» бы удалённое
+        if (await hasPendingFor(type, id)) {
+          await offlineStorage.addToQueue({ type: 'deleteItem', collection: type, itemId: id });
+          kickSync();
+          return { success: true };
+        }
+        return api.deleteItemNow(type, id);
+      }),
+
+    deleteItemNow: async (type: string, id: string): Promise<{ success: boolean; isOffline?: boolean }> => {
   // Удаление обычно идёт пачкой вместе с записями — по тем же причинам не ждём
   // таймаут на каждом, если связь только что оборвалась.
   if (skipNetworkAttempt()) {
@@ -1003,9 +1131,11 @@ export const api = {
   }
 
   try {
-    await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
+    const res = await fetchWithAuth(`${API_URL}/data/${type}/${id}`, {
       method: 'DELETE'
     });
+    // Сервер временно недоступен — удаление не выполнено, повторим из очереди
+    if (isRetryableStatus(res.status)) throw transientError(`HTTP ${res.status}`);
     markNetworkUp();
     return { success: true };
   } catch (error: any) {
@@ -1024,14 +1154,14 @@ export const api = {
     // "нельзя удалить поставщика с непогашенным долгом") — раньше сюда попадала
     // ЛЮБАЯ ошибка и молча уходила в офлайн-очередь, из-за чего легитимный отказ
     // сервера через 5 неудачных попыток синхронизации тихо исчезал без следа.
-    const isNetworkError = isNetworkFailure(error);
+    const isNetworkError = isNetworkFailure(error) || error?.isTransient === true;
 
     if (!isNetworkError) {
       console.error("❌ Delete rejected by server (not queued):", error.message || error);
       throw error;
     }
 
-    markNetworkDown();
+    if (!error?.isTransient) markNetworkDown();
     console.warn("Offline mode: queuing delete", error);
     await offlineStorage.addToQueue({
       type: 'deleteItem',

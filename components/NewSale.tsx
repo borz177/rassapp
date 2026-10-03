@@ -234,6 +234,11 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и двойных кликов
   const [isSubmitting, setIsSubmitting] = useState(false);
+  // Номер нового договора — один на всё заполнение формы. Раньше «Повторить»
+  // после ошибки давал договору новый номер, и если первая попытка всё же дошла
+  // до сервера, у клиента оказывалось два одинаковых договора. С тем же номером
+  // повтор просто перезаписывает ту же запись.
+  const newSaleIdRef = useRef<string | null>(null);
   const [duplicateWarning, setDuplicateWarning] = useState<string | null>(null);
 
 // 🔹 Сводка по уже зафиксированным (оплаченным/реальным) платежам —
@@ -713,7 +718,8 @@ const regeneratePaymentPlan = (
         ? new Date(formData.paymentDate).getDate()
         : new Date(formData.startDate).getDate();
 
-      const saleId = formData.id || `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
+      const saleId = formData.id
+        || (newSaleIdRef.current ??= `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`);
 
       let finalStartDate = formData.startDate;
       const now = new Date();
@@ -828,6 +834,7 @@ if (mode === 'CASH') {
       setCreatedSale(savedSale && savedSale.id ? savedSale : fullSaleObject);
       setShowConfirmModal(false);
       setShowSuccessModal(true);
+      newSaleIdRef.current = null; // следующий договор — уже новый
       hapticSuccess(); // короткий двойной отклик — операция завершена
 
     } catch (error: any) {

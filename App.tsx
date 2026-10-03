@@ -613,6 +613,19 @@ useEffect(() => {
   // handleSync (isSyncingRef) и в api.sync().
 }, [user]);
 
+// 📶 Пока в очереди есть неотправленное — пробуем каждые 20 секунд, а не раз в пять минут.
+// При смене сети (Wi-Fi → мобильный) событие 'online' не приходит: браузер считает,
+// что связь была всё время. Платёж или договор лежал на одном устройстве до пяти минут,
+// на других его не было — и его вносили второй раз.
+const hasPendingWrites = syncStatus.pending > 0;
+useEffect(() => {
+  if (!user || !hasPendingWrites) return;
+  const t = setInterval(() => {
+    if (navigator.onLine && document.visibilityState === 'visible') handleSync();
+  }, 20000);
+  return () => clearInterval(t);
+}, [user, hasPendingWrites]);
+
 // 🔄 Обновление при возврате в приложение.
 //
 // Основной сценарий: договор внесли на телефоне, а на компьютере приложение открыто,
