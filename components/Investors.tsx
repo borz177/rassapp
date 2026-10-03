@@ -1,8 +1,10 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import ViewModeToggle, { useViewMode } from './ViewModeToggle';
+import { isMacShell } from '../src/platform';
 import { percentError } from '../src/investorPercent';
 import { Account, Investor, InvestorPermissions } from '../types';
 import { ICONS } from '../constants';
-import { getInvestorAccount, formatDate, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
+import { getInvestorAccount, formatDate, formatCurrency, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
 import { SuccessCheck, hapticSuccess, haptic } from './feedback';
 import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetSegmented, sheetInputClass } from './GlassSheet';
 import { appConfirm } from '../src/dialogs';
@@ -28,6 +30,9 @@ const Investors: React.FC<InvestorsProps> = ({
     lockedInvestorIds = []
 }) => {
   const accounts: Account[] = accountsProp || [];
+  const macShell = isMacShell();
+  const [viewMode, setViewMode] = useViewMode('investors');
+  const tiles = macShell && viewMode === 'tiles';
   const [isAdding, setIsAdding] = useState(false);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [search, setSearch] = useState('');
@@ -239,14 +244,15 @@ const Investors: React.FC<InvestorsProps> = ({
             <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Инвесторы</h2>
             <p className="text-slate-500 dark:text-slate-400 text-sm">Партнеры и их счета</p>
         </div>
-        {(
+        <div className="flex items-center gap-3">
+            {macShell && <ViewModeToggle value={viewMode} onChange={setViewMode} />}
             <button
                 onClick={(e) => { e.stopPropagation(); setIsAdding(true); }}
-                className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium"
+                className="bg-indigo-600 text-white px-4 py-2 rounded-xl text-sm font-medium flex items-center gap-1"
             >
                 {ICONS.AddSmall} Добавить
             </button>
-        )}
+        </div>
       </header>
 
       {investors.length > 0 && (
@@ -401,7 +407,8 @@ const Investors: React.FC<InvestorsProps> = ({
         </GlassSheet>
       )}
 
-      <div className="grid gap-4">
+      {/* Mac/Windows: плитки в несколько колонок; пояснения и пустые состояния — во всю ширину */}
+      <div className={tiles ? 'grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 [&>:not(.mac-tile)]:col-span-full' : 'grid gap-4'}>
         {investors.length === 0 && (
             <div className="text-center py-8 text-slate-400">Нет инвесторов</div>
         )}
@@ -439,6 +446,31 @@ const Investors: React.FC<InvestorsProps> = ({
             const isPoolMember = acc?.type === 'POOL';
             // Сверх лимита тарифа: данные сохранены, но работать с инвестором нельзя
             const isLocked = lockedInvestorIds.includes(inv.id);
+            if (tiles) return (
+            <button key={inv.id} type="button"
+                onClick={() => { if (!isLocked) onViewDetails?.(inv); }}
+                className={`mac-tile bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-5 flex flex-col items-center text-center ${isLocked ? 'opacity-60 cursor-not-allowed' : ''} ${savedId === inv.id ? 'animate-row-saved' : ''}`}>
+                <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold text-xl ring-4 ring-white/70 dark:ring-white/5 shadow-sm">
+                    {inv.name.charAt(0)}
+                </div>
+                <h3 className="mt-3 font-semibold text-[15px] text-slate-800 dark:text-white leading-tight truncate max-w-full">{inv.name}</h3>
+                <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400 truncate max-w-full">
+                    {isPoolMember ? `Пул: ${acc!.name}` : inv.email || inv.phone || 'Личный счёт'}
+                </p>
+                <span className="mt-3 block h-[3px] w-7 rounded-full opacity-85" style={{ background: isLocked ? '#f59e0b' : '#8b5cf6' }} />
+                <p className="mt-2.5 text-[19px] font-semibold tabular-nums text-slate-900 dark:text-white">
+                    {formatCurrency(inv.initialAmount || 0, false)} ₽
+                </p>
+                <p className="text-[12px] text-slate-500 dark:text-slate-400">
+                    вложено · <span className="font-semibold text-indigo-600 dark:text-indigo-300">{inv.profitPercentage}% прибыли</span>
+                </p>
+                {(isLocked || (isPoolMember && inv.leftPoolDate)) && (
+                    <span className="mt-2 text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full">
+                        {isLocked ? '🔒 Сверх лимита тарифа' : new Date(inv.leftPoolDate!) <= new Date() ? `Вышел: ${formatDate(inv.leftPoolDate)}` : `Выйдет: ${formatDate(inv.leftPoolDate)}`}
+                    </span>
+                )}
+            </button>
+            );
             return (
             <div key={inv.id}
                 onClick={() => { if (!isLocked) onViewDetails?.(inv); }}

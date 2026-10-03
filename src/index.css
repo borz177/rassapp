@@ -1593,3 +1593,13 @@ input, textarea, [contenteditable] {
   .shell-floating.shell-win .shell-sidebar-grip { display: none; }
   .shell-floating.shell-win .shell-sidebar-head { padding-top: 1.5rem; }
 }
+
+/* ── Mac/Windows: плитки списков (Клиенты, Инвесторы) ── */
+@media (min-width: 768px) {
+  .shell-floating .mac-tile {
+    border-radius: 22px;
+    transition: transform 0.25s cubic-bezier(0.2, 0.8, 0.2, 1), box-shadow 0.25s ease;
+  }
+  .shell-floating .mac-tile:hover { transform: translateY(-3px); }
+  .shell-floating .mac-tile:active { transform: scale(0.98); }
+}
