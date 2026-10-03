@@ -1,4 +1,6 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
+import { useModeOrder } from '../src/modeOrder';
+import SwapModesButton from './SwapModesButton';
 import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, Supplier, StockLocation } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { ICONS } from '../constants';
@@ -147,7 +149,11 @@ const NewSale: React.FC<NewSaleProps> = ({
   warehouses = [],
 }) => {
   const supplierList: Supplier[] = suppliers || [];
-  const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(initialData.type || 'INSTALLMENT');
+  const [modeOrder, swapModeOrder] = useModeOrder();
+  // Новая продажа без магазина открывается на том, что стоит первым. С магазином
+  // «Наличные» уводят в розничную продажу — туда сами не переходим, только порядок.
+  const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(
+    initialData.type || (!initialData.id && !onOpenRetail && modeOrder[0] === 'cash' ? 'CASH' : 'INSTALLMENT'));
   const [roundingMode, setRoundingMode] = useState<'NONE' | 'DOWN' | 'UP'>(
     initialData.roundingMode || 'NONE'
   );
@@ -1136,16 +1142,26 @@ if (mode === 'CASH') {
         </div>
       )}
 
-      <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-        <TabPill index={mode === 'INSTALLMENT' ? 0 : 1} count={2} />
+      <div className="flex items-center gap-2">
+      {!formData.id && <SwapModesButton onClick={swapModeOrder} />}
+      <div className="relative flex-1 flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+        <TabPill index={modeOrder.indexOf(mode === 'INSTALLMENT' ? 'installments' : 'cash')} count={2} />
+        {modeOrder.map(m => m === 'installments' ? (
+          <React.Fragment key={m}>
         <button type="button" onClick={() => !formData.id && updateMode('INSTALLMENT')} disabled={!!formData.id}
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'INSTALLMENT' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Рассрочка</button>
+          </React.Fragment>
+        ) : (
+          <React.Fragment key={m}>
         {/* При включённом магазине наличные ведут в розничную продажу: там корзина,
             количество и списание со склада. Договор с нулевым сроком для этого не
             нужен, а держать две формы для одного и того же — верный путь к тому,
             что данные разъедутся. */}
         <button type="button" onClick={() => { if (formData.id) return; if (onOpenRetail) onOpenRetail(); else updateMode('CASH'); }} disabled={!!formData.id}
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'CASH' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
+          </React.Fragment>
+        ))}
+      </div>
       </div>
       {formData.id && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-2">

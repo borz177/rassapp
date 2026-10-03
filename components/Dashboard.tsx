@@ -1,4 +1,6 @@
 import React, { useMemo, useState, useEffect } from 'react';
+import { useModeOrder } from '../src/modeOrder';
+import SwapModesButton from './SwapModesButton';
 import MacDashboardHero from './MacDashboardHero';
 import { isMacShell } from '../src/platform';
 import ProfitTotalsModal from './ProfitTotalsModal';
@@ -927,32 +929,16 @@ const Dashboard: React.FC<DashboardProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const macShell = isMacShell();
-  // Порядок «Рассрочка / Наличные» выбирает сам человек: кто торгует в основном
-  // за наличные, ставит их первыми — и Главная открывается сразу на них.
-  const MODE_ORDER_KEY = 'finuchet_mode_order';
-  const [modeOrder, setModeOrder] = useState<('installments' | 'cash')[]>(() => {
-    try { return localStorage.getItem(MODE_ORDER_KEY) === 'cash' ? ['cash', 'installments'] : ['installments', 'cash']; }
-    catch { return ['installments', 'cash']; }
-  });
-  const swapModeOrder = () => setModeOrder(prev => {
-    const next = [prev[1], prev[0]];
-    try { localStorage.setItem(MODE_ORDER_KEY, next[0]); } catch { /* не критично */ }
-    return next;
-  });
+  // Порядок «Рассрочка / Наличные» — общий на всё приложение (src/modeOrder.ts).
+  // Главная открывается на первом.
+  const [modeOrder, swapModeOrder] = useModeOrder();
   const [overviewMode, setOverviewMode] = useState<'installments' | 'cash'>(() => modeOrder[0]);
   // Mac и Windows: «Рассрочка / Наличные» — не отдельной строкой, а справа в
   // ленте счетов. Оба выбора отвечают на один вопрос — что показывать, и
   // лишняя строка над графиком уходит. Подписи словами: мышью значки не угадать.
   const modeSegment = macShell && showShopTab ? (
     <div className="flex items-center gap-2">
-    <button type="button" onClick={swapModeOrder}
-            title="Поменять местами: первым будет то, с чего открывается Главная"
-            aria-label="Поменять местами «Рассрочка» и «Наличные»"
-            className="glass-surface w-9 h-9 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-300 hover:text-indigo-600 active:scale-95 transition">
-      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-        <path d="M7 4 3 8l4 4" /><path d="M3 8h14" /><path d="m17 20 4-4-4-4" /><path d="M21 16H7" />
-      </svg>
-    </button>
+    <SwapModesButton onClick={swapModeOrder} className="w-9 h-9" />
     <div role="radiogroup" aria-label="Что показать на главной"
          className="glass-surface flex items-center gap-0.5 p-1 rounded-full">
       {modeOrder.map(id => [id, id === 'installments' ? 'Рассрочка' : 'Наличные'] as const).map(([id, label]) => (

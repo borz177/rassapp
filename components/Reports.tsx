@@ -1,4 +1,6 @@
 import React, { useMemo, useState } from 'react';
+import { useModeOrder } from '../src/modeOrder';
+import SwapModesButton from './SwapModesButton';
 import TabPill from './TabPill';
 import ShopReportBody from './ShopReportBody';
 import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product, StockMovement} from '../types';
@@ -136,7 +138,9 @@ const Reports: React.FC<ReportsProps> = ({
     // Рассрочка и магазин считаются по разным данным: договоры с графиком против
     // розничных чеков. Смешивать их в одном отчёте нельзя — выручка сложилась бы,
     // а маржа и средний чек потеряли смысл. Поэтому вкладки, а не общий свод.
-    const [reportTab, setReportTab] = useState<'installments' | 'shop'>('installments');
+    const [modeOrder, swapModeOrder] = useModeOrder();
+    // Отчёт открывается на той вкладке, что стоит первой
+    const [reportTab, setReportTab] = useState<'installments' | 'shop'>(() => modeOrder[0] === 'cash' ? 'shop' : 'installments');
     const hasInvestors = investors.length > 0;
     const showInvestorBreakdown = filters.accountId === 'ALL' && investors.length > 1;
 
@@ -778,16 +782,22 @@ const Reports: React.FC<ReportsProps> = ({
                 </header>
 
                 {showShop && (
-                  <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
-                    <TabPill index={reportTab === 'installments' ? 0 : 1} count={2} pad={4} />
-                    <button onClick={() => setReportTab('installments')}
+                  <div className="flex items-center gap-2">
+                  <SwapModesButton onClick={swapModeOrder} />
+                  <div className="relative flex-1 flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+                    <TabPill index={modeOrder.indexOf(reportTab === 'shop' ? 'cash' : 'installments')} count={2} pad={4} />
+                    {modeOrder.map(m => m === 'installments' ? (
+                    <button key={m} onClick={() => setReportTab('installments')}
                             className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors ${
                               reportTab === 'installments' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500'
                             }`}>Рассрочка</button>
-                    <button onClick={() => setReportTab('shop')}
+                    ) : (
+                    <button key={m} onClick={() => setReportTab('shop')}
                             className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-xl transition-colors ${
                               reportTab === 'shop' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
                             }`}>Наличные</button>
+                    ))}
+                  </div>
                   </div>
                 )}
 
