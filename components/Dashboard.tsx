@@ -937,12 +937,12 @@ const Dashboard: React.FC<DashboardProps> = ({
   // ленте счетов. Оба выбора отвечают на один вопрос — что показывать, и
   // лишняя строка над графиком уходит. Подписи словами: мышью значки не угадать.
   const modeSegment = macShell && showShopTab ? (
-    <div className="flex items-center gap-2">
-    <SwapModesButton onClick={swapModeOrder} className="w-9 h-9" />
     <div role="radiogroup" aria-label="Что показать на главной"
          className="glass-surface flex items-center gap-0.5 p-1 rounded-full">
-      {modeOrder.map(id => [id, id === 'installments' ? 'Рассрочка' : 'Наличные'] as const).map(([id, label]) => (
-        <button key={id} type="button" role="radio" aria-checked={overviewMode === id}
+      {modeOrder.map(id => [id, id === 'installments' ? 'Рассрочка' : 'Наличные'] as const).map(([id, label], i) => (
+        <React.Fragment key={id}>
+        {i === 1 && <SwapModesButton onClick={swapModeOrder} className="!w-7 !h-7 mx-0.5" />}
+        <button type="button" role="radio" aria-checked={overviewMode === id}
                 onClick={() => setOverviewMode(id)}
                 className={`px-4 py-1.5 rounded-full text-xs font-bold transition-colors ${
                   overviewMode === id
@@ -951,8 +951,8 @@ const Dashboard: React.FC<DashboardProps> = ({
                 }`}>
           {label}
         </button>
+        </React.Fragment>
       ))}
-    </div>
     </div>
   ) : null;
   // Рассрочка и розница — два разных дела с разными числами, и складывать их в

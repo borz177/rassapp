@@ -782,9 +782,7 @@ const Reports: React.FC<ReportsProps> = ({
                 </header>
 
                 {showShop && (
-                  <div className="flex items-center gap-2">
-                  <SwapModesButton onClick={swapModeOrder} />
-                  <div className="relative flex-1 flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+                  <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
                     <TabPill index={modeOrder.indexOf(reportTab === 'shop' ? 'cash' : 'installments')} count={2} pad={4} />
                     {modeOrder.map(m => m === 'installments' ? (
                     <button key={m} onClick={() => setReportTab('installments')}
@@ -797,7 +795,8 @@ const Reports: React.FC<ReportsProps> = ({
                               reportTab === 'shop' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500'
                             }`}>Наличные</button>
                     ))}
-                  </div>
+                    {/* Между вкладками, на стыке — поверх, чтобы капля вкладок считала половины как прежде */}
+                    <SwapModesButton onClick={swapModeOrder} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 !w-9 !h-9" />
                   </div>
                 )}
 

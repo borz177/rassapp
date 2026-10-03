@@ -1142,9 +1142,7 @@ if (mode === 'CASH') {
         </div>
       )}
 
-      <div className="flex items-center gap-2">
-      {!formData.id && <SwapModesButton onClick={swapModeOrder} />}
-      <div className="relative flex-1 flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
+      <div className="relative flex p-1 rounded-[26px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
         <TabPill index={modeOrder.indexOf(mode === 'INSTALLMENT' ? 'installments' : 'cash')} count={2} />
         {modeOrder.map(m => m === 'installments' ? (
           <React.Fragment key={m}>
@@ -1161,7 +1159,9 @@ if (mode === 'CASH') {
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'CASH' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
           </React.Fragment>
         ))}
-      </div>
+        {!formData.id && (
+          <SwapModesButton onClick={swapModeOrder} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 !w-9 !h-9" />
+        )}
       </div>
       {formData.id && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-2">
