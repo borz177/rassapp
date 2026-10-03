@@ -1,5 +1,6 @@
 import React, { useState, useMemo } from 'react'; // Добавили useMemo
 import ViewModeToggle, { useViewMode } from './ViewModeToggle';
+import type { CustomerSegment } from '../src/customerSegments';
 import { isMacShell } from '../src/platform';
 import { calculateSaleOverdue, formatCurrency } from '../src/utils';
 import { Customer, Sale } from '../types';
@@ -27,7 +28,23 @@ interface CustomersProps {
   isActive?: boolean;
   /** Договоры — для долга и просрочки на карточке (приложение Mac/Windows) */
   sales?: Sale[];
+  /**
+   * С включённым магазином — в каких разделах клиент (рассрочка, розница; см.
+   * src/customerSegments.ts). Есть — над списком переключатель разделов.
+   */
+  segmentOf?: (id: string) => Set<CustomerSegment>;
 }
+
+type SegmentFilter = 'ALL' | CustomerSegment;
+const SEGMENT_KEY = 'finuchet_customers_segment';
+
+// Разделы — иконками: подписи «Рассрочка / Розница» заняли бы полстроки рядом
+// с поиском, а смысл иконок раскрывает подсказка и число рядом.
+const SEGMENTS: { id: SegmentFilter; label: string; icon: React.ReactNode }[] = [
+  { id: 'ALL', label: 'Все клиенты', icon: <><circle cx="9" cy="8" r="3.5" /><path d="M2.5 20a6.5 6.5 0 0 1 13 0" /><path d="M16 4.5a3.5 3.5 0 0 1 0 7" /><path d="M18 14.5a6.5 6.5 0 0 1 3.5 5.5" /></> },
+  { id: 'INSTALLMENT', label: 'Рассрочка', icon: <><rect x="4" y="3" width="16" height="18" rx="2.5" /><path d="M8 8h8M8 12h8M8 16h5" /></> },
+  { id: 'RETAIL', label: 'Розница', icon: <><path d="M3 4h2.2l2.3 11.2a1.5 1.5 0 0 0 1.5 1.2h8.3a1.5 1.5 0 0 0 1.5-1.1L21 8H6" /><circle cx="9.5" cy="20" r="1.3" /><circle cx="17" cy="20" r="1.3" /></> },
+];
 
 
 const Customers: React.FC<CustomersProps> = ({
@@ -37,7 +54,19 @@ const Customers: React.FC<CustomersProps> = ({
   canScanPassport = false,
   isActive = true,
   sales = [],
+  segmentOf,
 }) => {
+  const [segment, setSegmentState] = useState<SegmentFilter>(() => {
+    try { const v = localStorage.getItem(SEGMENT_KEY); return v === 'INSTALLMENT' || v === 'RETAIL' ? v : 'ALL'; } catch { return 'ALL'; }
+  });
+  const setSegment = (v: SegmentFilter) => {
+    setSegmentState(v);
+    try { localStorage.setItem(SEGMENT_KEY, v); } catch { /* не критично */ }
+  };
+  const activeSegment: SegmentFilter = segmentOf ? segment : 'ALL';
+  const segmentCount = (id: SegmentFilter) => id === 'ALL'
+    ? customers.length
+    : customers.filter(c => segmentOf?.(c.id).has(id)).length;
   const macShell = isMacShell();
   const [viewMode, setViewMode] = useViewMode('customers');
   const tiles = macShell && viewMode === 'tiles';
@@ -66,17 +95,18 @@ const Customers: React.FC<CustomersProps> = ({
   // === ЛОГИКА ФИЛЬТРАЦИИ И СОРТИРОВКИ ОТ А ДО Я ===
   const sortedFilteredCustomers = useMemo(() => {
     return customers
+      .filter(c => activeSegment === 'ALL' || !!segmentOf?.(c.id).has(activeSegment))
       .filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
         c.phone.includes(searchTerm)
       )
       .sort((a, b) => a.name.localeCompare(b.name)); // Сортировка по алфавиту
-  }, [customers, searchTerm]);
+  }, [customers, searchTerm, activeSegment, segmentOf]);
 
 
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
-      <header className="flex justify-between items-center">
+      <header className="flex flex-wrap justify-between items-center gap-x-3 gap-y-2">
         <div>
           <h2 className="text-2xl font-bold text-slate-800 dark:text-white">Клиенты</h2>
           <p className="text-slate-500 dark:text-slate-400 text-sm">
@@ -84,6 +114,25 @@ const Customers: React.FC<CustomersProps> = ({
           </p>
         </div>
         <div className="flex items-center gap-3">
+        {segmentOf && (
+          <div role="radiogroup" aria-label="Раздел" className="glass-surface flex items-center gap-0.5 p-1 rounded-full">
+            {SEGMENTS.map(sg => {
+              const on = activeSegment === sg.id;
+              const n = segmentCount(sg.id);
+              return (
+                <button key={sg.id} type="button" role="radio" aria-checked={on}
+                        title={`${sg.label}: ${n}`} aria-label={`${sg.label}: ${n}`}
+                        onClick={() => setSegment(sg.id)}
+                        className={`h-8 flex items-center justify-center gap-1 rounded-full transition-colors ${on ? 'px-2.5' : 'w-9'} ${
+                          on ? 'mode-seg-on bg-indigo-600 text-white shadow-sm' : 'text-slate-500 dark:text-slate-300 hover:text-indigo-600'
+                        }`}>
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">{sg.icon}</svg>
+                  {on && <span className="text-xs font-bold tabular-nums">{n}</span>}
+                </button>
+              );
+            })}
+          </div>
+        )}
         {macShell && <ViewModeToggle value={viewMode} onChange={setViewMode} />}
         <button
           onClick={() => setIsAdding(true)}

@@ -31,6 +31,8 @@ interface RetailSaleProps {
   /** Распознавание паспорта в форме нового клиента */
   canScanPassport?: boolean;
   /** Завести клиента прямо из выбора, не уходя из чека */
+  /** Клиенты рассрочки: в выборе покупателя они ниже, находятся поиском */
+  customerSecondaryIds?: ReadonlySet<string>;
   onQuickAddCustomer?: (data: {
     name: string; phone: string; address?: string;
     passportSeries?: string; passportNumber?: string; passportIssuedBy?: string;
@@ -65,7 +67,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
  * никому не понадобятся.
  */
 const RetailSale: React.FC<RetailSaleProps> = ({
-  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, warehouses = [], onQuickAddCustomer,
+  products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, warehouses = [], onQuickAddCustomer, customerSecondaryIds,
   allowNegativeStock = false, canScanPassport = false,
   existingSales = [], onSubmit, onBack, showCents = false,
 }) => {
@@ -656,6 +658,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
               title="Выберите клиента"
               canScanPassport={canScanPassport}
               items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))}
+              secondaryIds={customerSecondaryIds}
+              secondaryLabel="Клиенты рассрочки"
               onSelect={id => { setCustomerId(id); setIsCredit(true); close(); }}
               onCancel={close}
               onAddNew={async data => {

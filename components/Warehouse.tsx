@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import PriceListSheet from './PriceListSheet';
 import UnitPicker from './UnitPicker';
 import { DEFAULT_UNIT, isPackUnit, packLabel, parseLegacyUnit, unitOf } from '../src/units';
+import { nextSku, skuOwner } from '../src/sku';
 import type { Account, AppSettings, Customer, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { getSellerPhone, applyStockDelta, listedWarehouses, productOnWarehouse, stockOnWarehouse, stockInScope, scopeStockMovements } from '../src/utils';
@@ -429,12 +430,21 @@ const Warehouse: React.FC<WarehouseProps> = ({
     setOrder(next);
   };
 
+  // Следующий свободный артикул без учёта самого редактируемого товара
+  const autoSku = useMemo(
+    () => nextSku(products.filter(p => p.id !== editing?.id)),
+    [products, editing]
+  );
+  const skuTakenBy = showForm ? skuOwner(products, form.sku, editing?.id) : undefined;
+
   const openNew = (barcode?: string) => {
     setEditing(null);
     // Склад берём тот, на который сейчас смотрят, иначе основной: товар заводят
     // там, где он лежит перед глазами.
     setForm({
       ...emptyForm,
+      // Артикул — сразу следующий по порядку (src/sku.ts); его можно поменять
+      sku: nextSku(products),
       barcodeDraft: barcode || '',
       warehouseId: warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter,
     });
@@ -1265,7 +1275,23 @@ const Warehouse: React.FC<WarehouseProps> = ({
             <div className="grid grid-cols-2 gap-x-2 gap-y-3">
               <label className="block min-w-0">
                 <span className={`${labelCls} mb-1`}>Артикул</span>
-                <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))} placeholder="Необязательно" className={inputCls} />
+                <span className="relative block">
+                  <input value={form.sku} onChange={e => setForm(prev => ({ ...prev, sku: e.target.value }))}
+                         placeholder="Необязательно" className={`${inputCls} pr-16`} />
+                  {/* Следующий номер по порядку — и для нового товара, и для старого без артикула */}
+                  {form.sku.trim() !== autoSku && (
+                    <button type="button" onClick={() => setForm(prev => ({ ...prev, sku: autoSku }))}
+                            title={`Подставить ${autoSku}`}
+                            className="absolute right-1.5 top-1/2 -translate-y-1/2 px-2 py-1 rounded-lg text-[11px] font-bold bg-indigo-50 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-300 active:scale-95">
+                      Авто
+                    </button>
+                  )}
+                </span>
+                {skuTakenBy && (
+                  <span className="block mt-1 text-[11px] font-medium text-amber-600 dark:text-amber-400 truncate">
+                    Уже у «{skuTakenBy.name}»
+                  </span>
+                )}
               </label>
               <label className="block min-w-0">
                 <span className={`${labelCls} mb-1`}>Категория</span>

@@ -83,7 +83,7 @@ const PriceListSheet: React.FC<Props> = ({ products, selectedIds, stockOf, compa
   return (
     <GlassSheet
       title="Прайс-лист"
-      subtitle={`${items.length} ${items.length === 1 ? 'товар' : 'товаров'} в PDF${withPhoto < items.length && items.length ? ` · с фото ${withPhoto}` : ''}`}
+      subtitle={`${items.length} ${items.length === 1 ? 'товар' : 'товаров'} в PDF${prefs.layout !== 'table' && withPhoto < items.length && items.length ? ` · с фото ${withPhoto}` : ''}`}
       onClose={onClose}
       cancelLabel="Отмена"
       action={{ label: busy || 'Создать PDF', onClick: make, disabled: !items.length || !!busy }}
@@ -103,9 +103,11 @@ const PriceListSheet: React.FC<Props> = ({ products, selectedIds, stockOf, compa
         <SheetSection title="Вид">
           <div className="px-4 py-3">
             <SheetSegmented value={prefs.layout} onChange={v => set('layout', v)}
-                            options={[{ id: 'grid', label: 'Карточки с фото' }, { id: 'list', label: 'Список' }]} />
+                            options={[{ id: 'grid', label: 'Карточки' }, { id: 'list', label: 'Список' }, { id: 'table', label: 'Таблица' }]} />
             <p className="mt-2 text-[12px] text-slate-500 dark:text-slate-400">
-              {prefs.layout === 'grid' ? 'До 9 товаров на странице, крупные фото — как витрина.' : 'До 12 товаров на странице — компактно, когда товаров много.'}
+              {prefs.layout === 'grid' ? 'До 9 товаров на странице, крупные фото — как витрина.'
+                : prefs.layout === 'list' ? 'До 12 товаров на странице с фото — компактно, когда товаров много.'
+                : 'Как в 1С: артикул, наименование, цена, по категориям. Без фото, текст в PDF настоящий — его можно скопировать и перевести в Excel или Word.'}
             </p>
           </div>
         </SheetSection>
@@ -142,7 +144,8 @@ const PriceListSheet: React.FC<Props> = ({ products, selectedIds, stockOf, compa
         <SheetSection title="Показывать" hint="Цена закупа и маржа в прайс не попадают никогда.">
           <SheetToggle label="Остаток на складе" description="«В наличии: 5 шт» или «под заказ»"
                        checked={prefs.showStock} onChange={v => set('showStock', v)} tone="indigo" />
-          <SheetToggle label="Артикул" checked={prefs.showSku} onChange={v => set('showSku', v)} tone="indigo" />
+          <SheetToggle label="Артикул" description={prefs.layout === 'table' ? 'Отдельной колонкой' : undefined}
+                       checked={prefs.showSku} onChange={v => set('showSku', v)} tone="indigo" />
         </SheetSection>
 
         {!items.length && (

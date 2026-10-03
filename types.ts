@@ -335,6 +335,12 @@ export interface Customer {
    * значение там, где его нет.
    */
   birthDate?: string;
+  /**
+   * Где клиента завели: 'RETAIL' — в кассе магазина. Нужно только пока у него
+   * нет ни договоров, ни чеков; дальше раздел определяется историей
+   * (src/customerSegments.ts).
+   */
+  segment?: 'INSTALLMENT' | 'RETAIL';
 
 }
 

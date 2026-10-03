@@ -212,8 +212,26 @@ export const saveContractPdf = async (blob: Blob, fileName: string): Promise<voi
       reader.readAsDataURL(blob);
     });
     const saved = await Filesystem.writeFile({ path: name, data: base64, directory: Directory.Cache });
-    await Share.share({ title: name, url: saved.uri, dialogTitle: 'Сохранить или отправить' });
+    // Только файл: с title и url мессенджеры (WhatsApp, Telegram) добавляли к
+    // документу ещё и подпись-ссылку, и клиент получал два сообщения.
+    await Share.share({ files: [saved.uri], dialogTitle: 'Сохранить или отправить' });
     return;
+  }
+
+  // Телефон в браузере: системное «Поделиться» с самим файлом. Раньше файл
+  // открывался в просмотрщике по временной ссылке blob:…, и при отправке оттуда
+  // вместе с PDF уходила эта ссылка — у получателя она не открывается.
+  // На компьютере — обычное скачивание: окно «Поделиться» там не к месту.
+  const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
+  const file = typeof File === 'function' ? new File([blob], name, { type: 'application/pdf' }) : null;
+  if (touch && file && navigator.canShare?.({ files: [file] })) {
+    try {
+      await navigator.share({ files: [file] });
+      return;
+    } catch (e: any) {
+      // Человек закрыл окно — это ответ, а не сбой: не скачиваем вместо него
+      if (e?.name === 'AbortError') return;
+    }
   }
 
   const url = URL.createObjectURL(blob);

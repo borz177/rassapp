@@ -21,6 +21,7 @@ import Employees from './components/Employees';
 import EmployeeActivity from './components/EmployeeActivity';
 import Operations from './components/Operations';
 import History from './components/History';
+import { buildSegmentIndex } from './src/customerSegments';
 import Settings from './components/Settings';
 import Reports from './components/Reports';
 import Profile from './components/Profile';
@@ -3323,6 +3324,21 @@ const confirmDeleteCustomer = async () => {
     [retailSales, stockMovements, warehouseScope]
   );
 
+  // Клиенты рассрочки и покупатели розницы (src/customerSegments.ts): с магазином
+  // при продаже в кассе показываем своих, остальные находятся поиском.
+  const customerSegments = useMemo(
+    () => buildSegmentIndex(customers, sales, retailSales),
+    [customers, sales, retailSales]
+  );
+  const notInstallmentIds = useMemo(
+    () => new Set(shopAvailable ? customers.filter(c => !customerSegments.of(c.id).has('INSTALLMENT')).map(c => c.id) : []),
+    [customers, customerSegments, shopAvailable]
+  );
+  const notRetailIds = useMemo(
+    () => new Set(customers.filter(c => !customerSegments.of(c.id).has('RETAIL')).map(c => c.id)),
+    [customers, customerSegments]
+  );
+
   // Склад, с которого торгует магазин. Выбор склада в чеке — лишний вопрос
   // кассиру: точка продажи почти всегда одна, а её счёт задан в карточке склада.
   // У сотрудника со своими складами — основной из них или первый.
@@ -4037,6 +4053,7 @@ const createCustomerQuick = async (data: {
   passportIssuedBy?: string;
   photo?: string;
   birthDate?: string;
+  segment?: 'INSTALLMENT' | 'RETAIL';
 }) => {
   if (!user) return;
   if (!checkAccess('WRITE')) {
@@ -4061,6 +4078,7 @@ const createCustomerQuick = async (data: {
     allowWhatsappNotification: true,
     documents: [],
     createdAt: new Date().toISOString(),
+    ...(data.segment ? { segment: data.segment } : {}),
   };
   const saved = await api.saveItem('customers', newCustomer);
   updateList(setCustomers, saved);
@@ -4826,6 +4844,7 @@ if (!user && !showSplash) {
                   <Customers
                       customers={customers}
                       sales={sales}
+                      segmentOf={shopAvailable ? customerSegments.of : undefined}
                       canScanPassport={checkAccess('AI')}
                       onAddCustomer={handleAddCustomer}
                       onSelectCustomer={handleSelectCustomer}
@@ -4956,6 +4975,7 @@ if (!user && !showSplash) {
                   title: c.name,
                   subtitle: c.phone
               }))} canScanPassport={checkAccess('AI')} onSelect={(id) => handleSelection('customerId', id)}
+                                                                   secondaryIds={notInstallmentIds} secondaryLabel="Покупатели розницы"
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
               {(currentView === 'EMPLOYEES' || currentView === 'EMPLOYEE_ACTIVITY') && (
@@ -5014,7 +5034,9 @@ if (!user && !showSplash) {
                       onSubmit={handleRetailSale}
                       allowNegativeStock={!!appSettings.shopAllowNegativeStock}
                       canScanPassport={checkAccess('AI')}
-                      onQuickAddCustomer={createCustomerQuick}
+                      // Заведённый в кассе — покупатель розницы, пока у него нет договоров
+                      onQuickAddCustomer={data => createCustomerQuick({ ...data, segment: 'RETAIL' })}
+                      customerSecondaryIds={notRetailIds}
                       onBack={requestClose}
                     />
                   )}

@@ -15,7 +15,8 @@ import { withHtml2canvasTextFix, safeFileName } from './contractPdf';
  * PDF на сотню товаров весит единицы мегабайт, а не сотни.
  */
 
-export type PriceListLayout = 'grid' | 'list';
+/** grid — карточки с фото, list — список с фото, table — таблица как в 1С (настоящий текст) */
+export type PriceListLayout = 'grid' | 'list' | 'table';
 
 export interface PriceListOptions {
   title: string;
@@ -229,6 +230,11 @@ export const priceListPdfBlob = async (
   o: PriceListOptions,
   onProgress?: (text: string) => void
 ): Promise<Blob> => {
+  // Таблица — без фото и без снимков страниц: настоящий текст (src/priceListTable.ts)
+  if (o.layout === 'table') {
+    const { priceListTableBlob } = await import('./priceListTable');
+    return priceListTableBlob(products, o, onProgress);
+  }
   onProgress?.('Загружаем фото…');
   const photos = await loadAll(products, (d, t) => onProgress?.(`Фото ${d} из ${t}`));
   const pages = paginate(products, o);

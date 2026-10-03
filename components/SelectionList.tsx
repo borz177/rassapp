@@ -26,16 +26,47 @@ interface SelectionListProps {
   }) => unknown;
   /** Распознавание паспорта — только там, где его разрешает тариф */
   canScanPassport?: boolean;
+  /**
+   * Записи другого раздела (клиенты рассрочки при продаже в кассе и наоборот).
+   * В списке их нет, чтобы не мешали искать своих, но поиск их находит —
+   * отдельной группой ниже, а кнопка внизу показывает их целиком.
+   */
+  secondaryIds?: ReadonlySet<string>;
+  /** Как назвать ту группу: «Клиенты рассрочки» */
+  secondaryLabel?: string;
 }
 
-const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, onCancel, onAddNew, canScanPassport = false }) => {
+const SelectionList: React.FC<SelectionListProps> = ({
+  title, items, onSelect, onCancel, onAddNew, canScanPassport = false, secondaryIds, secondaryLabel = 'Остальные',
+}) => {
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
+  const [showSecondary, setShowSecondary] = useState(false);
 
-  // New Customer Form State
-  const filteredItems = items.filter(item =>
-    item.title.toLowerCase().includes(search.toLowerCase()) ||
-    (item.subtitle && item.subtitle.toLowerCase().includes(search.toLowerCase()))
+  const q = search.toLowerCase();
+  const matching = items.filter(item =>
+    item.title.toLowerCase().includes(q) ||
+    (item.subtitle && item.subtitle.toLowerCase().includes(q))
+  );
+  const isSecondary = (id: string) => !!secondaryIds?.has(id);
+  const filteredItems = matching.filter(i => !isSecondary(i.id));
+  const secondaryAll = items.filter(i => isSecondary(i.id));
+  const secondaryItems = search || showSecondary ? matching.filter(i => isSecondary(i.id)) : [];
+
+  const renderItem = (item: SelectionItem) => (
+    <div
+        key={item.id}
+        onClick={() => onSelect(item.id)}
+        className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm active:bg-slate-50 dark:active:bg-slate-700 cursor-pointer flex justify-between items-center"
+    >
+        <div>
+        <h3 className="font-bold text-slate-800 dark:text-white">{item.title}</h3>
+        {item.subtitle && <p className="text-sm text-slate-500 dark:text-slate-400">{item.subtitle}</p>}
+        </div>
+        <div className="text-slate-300 dark:text-slate-600">
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
+        </div>
+    </div>
   );
 
   // Заполняем только пустые поля: набранное руками важнее — его вводили
@@ -74,23 +105,21 @@ const SelectionList: React.FC<SelectionListProps> = ({ title, items, onSelect, o
             </button>
 
             <div className="flex-1 overflow-y-auto space-y-2">
-                {filteredItems.map(item => (
-                <div
-                    key={item.id}
-                    onClick={() => onSelect(item.id)}
-                    className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm active:bg-slate-50 dark:active:bg-slate-700 cursor-pointer flex justify-between items-center"
-                >
-                    <div>
-                    <h3 className="font-bold text-slate-800 dark:text-white">{item.title}</h3>
-                    {item.subtitle && <p className="text-sm text-slate-500 dark:text-slate-400">{item.subtitle}</p>}
-                    </div>
-                    <div className="text-slate-300 dark:text-slate-600">
-                        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
-                    </div>
-                </div>
-                ))}
-                {filteredItems.length === 0 && (
+                {filteredItems.map(renderItem)}
+                {filteredItems.length === 0 && secondaryItems.length === 0 && (
                     <div className="text-center py-10 text-slate-400 dark:text-slate-500">Ничего не найдено</div>
+                )}
+                {secondaryItems.length > 0 && (
+                    <>
+                      <p className="px-1 pt-3 text-xs font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">{secondaryLabel}</p>
+                      {secondaryItems.map(renderItem)}
+                    </>
+                )}
+                {!search && !showSecondary && secondaryAll.length > 0 && (
+                    <button type="button" onClick={() => setShowSecondary(true)}
+                            className="w-full py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600">
+                      Показать: {secondaryLabel.toLowerCase()} ({secondaryAll.length})
+                    </button>
                 )}
             </div>
           </>
