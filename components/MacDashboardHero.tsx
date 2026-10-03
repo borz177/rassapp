@@ -42,37 +42,27 @@ const compact = (n: number) =>
   : n >= 1000 ? `${Math.round(n / 1000)} тыс` : String(Math.round(n));
 
 /**
- * Светлая / тёмная тема — прямо на Главной, без похода в Настройки.
+ * Светлая / тёмная тема — одной круглой кнопкой на Главной, без похода в
+ * Настройки. Показывает, КУДА переключит: в светлой теме луна, в тёмной солнце.
  * Выбор сохраняется так же, как в Настройках (режим «Системная» там остаётся).
  */
 const ThemeSwitch: React.FC = () => {
   const { resolvedTheme, setMode } = useTheme();
-  const opts = [
-    { id: 'light' as const, label: 'Светлая', icon: (
-      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round">
-        <circle cx="12" cy="12" r="4" />
-        <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
-      </svg>) },
-    { id: 'dark' as const, label: 'Тёмная', icon: (
-      <svg viewBox="0 0 24 24" className="w-4 h-4" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-        <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
-      </svg>) },
-  ];
+  const dark = resolvedTheme === 'dark';
+  const label = dark ? 'Светлая тема' : 'Тёмная тема';
   return (
-    <div role="radiogroup" aria-label="Тема" className="glass-surface shrink-0 flex p-1 rounded-full">
-      {opts.map(o => {
-        const on = resolvedTheme === o.id;
-        return (
-          <button key={o.id} type="button" role="radio" aria-checked={on} title={o.label}
-                  onClick={() => setMode(o.id)}
-                  className={`flex items-center gap-1.5 px-3 h-8 rounded-full text-[13px] font-medium transition-colors ${on
-                    ? 'bg-white dark:bg-white/15 text-slate-900 dark:text-white shadow-sm'
-                    : 'text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'}`}>
-            {o.icon}<span>{o.label}</span>
-          </button>
-        );
-      })}
-    </div>
+    <button type="button" onClick={() => setMode(dark ? 'light' : 'dark')} title={label} aria-label={label}
+            className="glass-surface shrink-0 w-11 h-11 rounded-full flex items-center justify-center text-slate-500 dark:text-amber-300 hover:text-indigo-600 dark:hover:text-amber-200 active:scale-95 transition">
+      <svg key={resolvedTheme} viewBox="0 0 24 24" className="w-5 h-5 theme-switch-icon" fill="none" stroke="currentColor"
+           strokeWidth={2} strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+        {dark ? (<>
+          <circle cx="12" cy="12" r="4" />
+          <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41" />
+        </>) : (
+          <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z" />
+        )}
+      </svg>
+    </button>
   );
 };
 
@@ -119,7 +109,7 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
 
   if (part === 'greeting') return (
     <section className="mac-hero">
-      <div className="flex items-end justify-between gap-4">
+      <div className="flex items-center justify-between gap-4">
         <div className="min-w-0">
           <h1 className="text-[30px] leading-tight font-semibold tracking-tight text-slate-900 dark:text-white truncate">
             {greeting(now.getHours())}{firstName ? `, ${firstName}` : ''}

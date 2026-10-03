@@ -2,6 +2,8 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import ModalPortal from './ModalPortal';
 import { search, groupHits, KIND_TITLES, SearchData, SearchHit, SearchKind } from '../src/search';
 
+const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+
 /**
  * Сквозной поиск: одно поле на клиентов, договоры, товары и операции.
  *
@@ -294,7 +296,8 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     >
       <Icon d={SEARCH_ICON} size={16} />
       <span className="flex-1 text-left">Поиск</span>
-      <span className="text-[10px] font-bold text-slate-500 border border-slate-600 rounded px-1.5 py-0.5">Ctrl K</span>
+      {/* На Mac сочетание — ⌘K, «Ctrl K» там сбивает с толку */}
+      <span className="text-[11px] font-medium text-slate-500 tracking-wide">{IS_MAC ? '⌘K' : 'Ctrl K'}</span>
     </button>
   ) : (
     <button

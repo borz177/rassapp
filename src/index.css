@@ -1641,3 +1641,8 @@ html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[clas
     inset 0 1px 0 rgba(255, 255, 255, 0.05),
     0 10px 28px -16px rgba(0, 0, 0, 0.6);
 }
+
+/* Кнопка темы на Главной: иконка мягко поворачивается при смене */
+.theme-switch-icon { animation: theme-switch-in .35s cubic-bezier(.2,.8,.2,1); }
+@keyframes theme-switch-in { from { transform: rotate(-90deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .theme-switch-icon { animation: none; } }

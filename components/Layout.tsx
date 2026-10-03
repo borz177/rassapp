@@ -793,27 +793,11 @@ const counts = useMemo(() => {
       <aside className="shell-sidebar hidden md:flex flex-col w-64 bg-slate-900 text-white h-screen fixed left-0 top-0 overflow-y-auto z-20">
         {/* Приложение для Mac: здесь кнопки окна, и за эту полосу окно перетаскивается */}
         <div aria-hidden className="shell-sidebar-grip" />
-        <div className="shell-sidebar-head p-6 border-b border-slate-800">
+        <div className="shell-sidebar-head px-6 pt-6 pb-3">
           <div className="flex items-center justify-between gap-2">
-            <h1 className="text-2xl font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
+            <h1 className="min-w-0 line-clamp-2 break-words text-[22px] leading-[1.15] font-bold tracking-tight bg-gradient-to-r from-indigo-400 to-purple-400 bg-clip-text text-transparent">
               {appSettings.companyName}
             </h1>
-            {/* Обновление стоит рядом с колокольчиком: это единственный
-                постоянный угол на десктопе, и строкой ниже уже живёт состояние
-                синхронизации — действие и его результат оказываются вместе. */}
-            {onPullRefresh && (
-              <button
-                onClick={runManualRefresh}
-                disabled={manualRefreshing || isSyncing}
-                className="p-2 rounded-full text-slate-400 hover:bg-slate-800 hover:text-white shrink-0 disabled:opacity-60"
-                aria-label="Обновить данные"
-                title="Обновить данные"
-              >
-                <span className={`block ${manualRefreshing || isSyncing ? 'animate-spin' : ''}`}>
-                  {ICONS.Refresh}
-                </span>
-              </button>
-            )}
             {showNotificationsBell && (
               <button
                 onClick={onOpenNotifications}
@@ -831,16 +815,32 @@ const counts = useMemo(() => {
           </div>
           {/* Поиск сразу под названием: за ним приходят чаще, чем за любым
               пунктом меню, и на компьютере он всегда на виду. */}
-          {searchSidebar && <div className="mt-3">{searchSidebar}</div>}
+          {searchSidebar && <div className="mt-4">{searchSidebar}</div>}
 
-          <div className="mt-2 flex gap-2 items-center flex-wrap">
-              {/*{!isOnline && <span className="text-[10px] font-bold text-amber-400 bg-amber-900/30 border border-amber-800 px-2 py-0.5 rounded">Офлайн режим</span>}*/}
-              {isOnline && isSyncing && <span className="text-[10px] font-bold text-blue-400 bg-blue-900/30 border border-blue-800 px-2 py-0.5 rounded">Синхронизация...</span>}
-              {/* Отвечает на вопрос «свежее ли это?» без единого нажатия —
-                  чаще нужна как раз подпись, а не сама кнопка. */}
-              {!isSyncing && lastSyncedAt && (
-                <span className="text-[10px] text-slate-500">Обновлено {timeAgoRu(lastSyncedAt)}</span>
-              )}
+          {/* Состояние и действие в одной строке: «↻ обновлено только что» само
+              кнопка обновления. Отдельная кнопка рядом с колокольчиком и отдельная
+              плашка «Синхронизация…» загромождали шапку тремя элементами про одно. */}
+          <div className="mt-2 flex gap-2 items-center flex-wrap min-h-[20px]">
+              {onPullRefresh ? (
+                <button
+                  type="button"
+                  onClick={runManualRefresh}
+                  disabled={manualRefreshing || isSyncing}
+                  title="Обновить данные"
+                  className="group flex items-center gap-1.5 -ml-1 px-1 py-0.5 rounded-md text-[11px] text-slate-400 hover:text-white disabled:hover:text-slate-400 transition-colors"
+                >
+                  <span className={`inline-flex w-3.5 h-3.5 [&>svg]:w-3.5 [&>svg]:h-3.5 ${manualRefreshing || isSyncing ? 'animate-spin' : ''}`}>
+                    {ICONS.Refresh}
+                  </span>
+                  <span>
+                    {manualRefreshing || isSyncing
+                      ? 'Обновляем…'
+                      : lastSyncedAt ? `Обновлено ${timeAgoRu(lastSyncedAt)}` : 'Обновить'}
+                  </span>
+                </button>
+              ) : (!isSyncing && lastSyncedAt && (
+                <span className="text-[11px] text-slate-500">Обновлено {timeAgoRu(lastSyncedAt)}</span>
+              ))}
               {syncStatus && onRetrySync && (
                 <SyncStatus status={syncStatus} isOnline={isOnline} isSyncing={isSyncing} onRetry={onRetrySync} onDiscard={onDiscardSyncItem} />
               )}
