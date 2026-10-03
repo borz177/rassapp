@@ -2,14 +2,14 @@ import React, { useState } from 'react';
 
 /**
  * Плитки или список — для списков в приложении Mac/Windows (Клиенты, Инвесторы).
- * Выбор свой у каждого списка и запоминается на устройстве.
+ * По умолчанию — привычный список; выбор свой у каждого списка и запоминается.
  */
 export type ViewMode = 'tiles' | 'list';
 
 export const useViewMode = (key: string): [ViewMode, (m: ViewMode) => void] => {
   const storageKey = `finuchet_view_${key}`;
   const [mode, setMode] = useState<ViewMode>(() => {
-    try { return localStorage.getItem(storageKey) === 'list' ? 'list' : 'tiles'; } catch { return 'tiles'; }
+    try { return localStorage.getItem(storageKey) === 'tiles' ? 'tiles' : 'list'; } catch { return 'list'; }
   });
   const set = (m: ViewMode) => {
     setMode(m);

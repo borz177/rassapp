@@ -1603,3 +1603,13 @@ input, textarea, [contenteditable] {
   .shell-floating .mac-tile:hover { transform: translateY(-3px); }
   .shell-floating .mac-tile:active { transform: scale(0.98); }
 }
+
+/* ── Mac/Windows: карточки остальных страниц чуть круглее ── */
+@media (min-width: 768px) {
+  .shell-floating :is(.shell-main, .page-push-layer) :is(.rounded-xl, .rounded-2xl):is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]):not(button, input, select, textarea, a) {
+    border-radius: 20px;
+  }
+  .shell-floating :is(.shell-main, .page-push-layer) .rounded-3xl:is(.bg-white, [class*="bg-white/"], [class*="dark:bg-slate-800"]) {
+    border-radius: 26px;
+  }
+}

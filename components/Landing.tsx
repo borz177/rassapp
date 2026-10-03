@@ -398,10 +398,18 @@ export default function Landing() {
               <a href="/downloads/finuchet-setup.exe" download className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white/70 dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10 font-semibold hover:bg-white dark:hover:bg-white/10 transition-colors">
                 <Icon d={I.windows} size={16} /> Windows
               </a>
+              <a href="/downloads/finuchet-mac.dmg" download className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white/70 dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10 font-semibold hover:bg-white dark:hover:bg-white/10 transition-colors">
+                <Icon d={I.apple} size={16} /> Mac
+              </a>
               <a href="#iphone" className="inline-flex items-center gap-1.5 h-9 px-3.5 rounded-xl bg-white/70 dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10 font-semibold hover:bg-white dark:hover:bg-white/10 transition-colors">
                 <Icon d={I.apple} size={16} /> iPhone
               </a>
             </div>
+            {/* Mac-версия пока без подписи Apple: при первом запуске macOS спрашивает
+                разрешения. Объясняем заранее, иначе человек решит, что файл битый. */}
+            <p data-reveal data-reveal-delay="4" className="mt-2 text-[12px] text-slate-400 dark:text-slate-500 text-center lg:text-left">
+              Mac: перетащите FinUchet в «Программы». При первом запуске — «Системные настройки → Конфиденциальность и безопасность → Всё равно открыть».
+            </p>
           </div>
 
           {/* Витрина: настоящий экран приложения и карточки-уведомления вокруг */}
