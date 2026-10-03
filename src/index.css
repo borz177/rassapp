@@ -1588,10 +1588,38 @@ input, textarea, [contenteditable] {
 
 /* ── Windows: кнопки окна рисует система справа сверху (titleBarOverlay, 40px) —
    панели начинаются ниже них; места под «светофор» Mac в боковой панели не нужно */
+/* На Windows панели не висят над фоном окна, а занимают его целиком: боковая
+   панель слева на всю высоту, страница — всё остальное, между ними тонкая линия.
+   На Mac под отступами — размытый рабочий стол (vibrancy), на Windows 10 там был
+   бы сплошной фон окна — «окно за окном». */
 @media (min-width: 768px) {
-  .shell-floating.shell-win { --shell-top: 44px; }
+  .shell-floating.shell-win {
+    --shell-gap: 0px;
+    --shell-top: 0px;
+    --shell-radius: 0px;
+    --shell-win-bar: 40px; /* высота кнопок окна (titleBarOverlay в electron.cjs) */
+    --shell-content-left: var(--shell-sidebar-w);
+  }
   .shell-floating.shell-win .shell-sidebar-grip { display: none; }
   .shell-floating.shell-win .shell-sidebar-head { padding-top: 1.5rem; }
+  .shell-floating.shell-win .shell-sidebar {
+    border: 0;
+    border-right: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: none;
+  }
+  .shell-floating.shell-win .shell-main {
+    border: 0;
+    box-shadow: none;
+    /* Сверху справа система рисует кнопки окна — содержимое начинается под ними */
+    padding-top: calc(var(--shell-win-bar) + 0.5rem) !important;
+  }
+  .shell-floating.shell-win .page-push-layer { top: var(--shell-win-bar); }
+  /* Полоса перетаскивания окна — только над страницей: над боковой панелью она
+     перекрыла бы колокольчик и обновление */
+  .shell-floating.shell-win .shell-drag {
+    left: var(--shell-content-left);
+    height: var(--shell-win-bar);
+  }
 }
 
 /* ── Mac/Windows: плитки списков (Клиенты, Инвесторы) ── */
