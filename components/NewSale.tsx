@@ -1,6 +1,5 @@
 import React, {useState, useMemo, useEffect, useRef} from 'react';
 import { useModeOrder } from '../src/modeOrder';
-import SwapModesButton from './SwapModesButton';
 import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, Supplier, StockLocation } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { ICONS } from '../constants';
@@ -114,7 +113,8 @@ const NewSale: React.FC<NewSaleProps> = ({
   warehouses = [],
 }) => {
   const supplierList: Supplier[] = suppliers || [];
-  const [modeOrder, swapModeOrder] = useModeOrder();
+  // Порядок вкладок — общий; менять его здесь незачем, это делают на Главной и в Отчётах
+  const [modeOrder] = useModeOrder();
   // Новая продажа без магазина открывается на том, что стоит первым. С магазином
   // «Наличные» уводят в розничную продажу — туда сами не переходим, только порядок.
   const [mode, setMode] = useState<'INSTALLMENT' | 'CASH'>(
@@ -1131,9 +1131,6 @@ if (mode === 'CASH') {
                 className={`relative z-10 flex-1 py-3 text-sm font-bold rounded-lg transition-colors ${mode === 'CASH' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'} ${formData.id ? 'cursor-not-allowed opacity-70' : ''}`}>Наличные</button>
           </React.Fragment>
         ))}
-        {!formData.id && (
-          <SwapModesButton onClick={swapModeOrder} className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-20 !w-9 !h-9" />
-        )}
       </div>
       {formData.id && (
           <p className="text-[10px] text-slate-400 dark:text-slate-500 -mt-2">
