@@ -1588,42 +1588,21 @@ input, textarea, [contenteditable] {
 
 /* ── Windows: кнопки окна рисует система справа сверху (titleBarOverlay, 40px) —
    панели начинаются ниже них; места под «светофор» Mac в боковой панели не нужно */
-/* Windows 11 (Acrylic): панели — отдельные карточки над размытым рабочим столом,
-   как на Mac. Кнопки окна система рисует справа сверху (titleBarOverlay, 40px) —
-   панели начинаются ниже них; места под «светофор» Mac в боковой панели не нужно. */
+/* Windows: кнопки окна система рисует справа сверху (titleBarOverlay, 40px).
+   Отдельной полосы под них не держим — сверху тот же отступ, что по бокам, а
+   кнопки встают в правый верхний угол карточки страницы, на её пустой верхний
+   край (у содержимого там свой отступ). За этот край окно и перетаскивается.
+   Места под «светофор» Mac в боковой панели не нужно. */
 @media (min-width: 768px) {
-  .shell-floating.shell-win { --shell-top: 44px; --shell-win-bar: 40px; }
+  .shell-floating.shell-win { --shell-win-bar: 40px; }
   .shell-floating.shell-win .shell-sidebar-grip { display: none; }
   .shell-floating.shell-win .shell-sidebar-head { padding-top: 1.5rem; }
-}
-
-/* Windows 10 (размытия нет): карточки над сплошным фоном окна выглядели бы как
-   «окно за окном». Поэтому панели занимают окно целиком: боковая панель слева на
-   всю высоту, страница — всё остальное, между ними тонкая линия. */
-@media (min-width: 768px) {
-  .shell-floating.shell-flat {
-    --shell-gap: 0px;
-    --shell-top: 0px;
-    --shell-radius: 0px;
-    --shell-content-left: var(--shell-sidebar-w);
-  }
-  .shell-floating.shell-flat .shell-sidebar {
-    border: 0;
-    border-right: 1px solid rgba(255, 255, 255, 0.08);
-    box-shadow: none;
-  }
-  .shell-floating.shell-flat .shell-main {
-    border: 0;
-    box-shadow: none;
-    /* Сверху справа система рисует кнопки окна — содержимое начинается под ними */
-    padding-top: calc(var(--shell-win-bar) + 0.5rem) !important;
-  }
-  .shell-floating.shell-flat .page-push-layer { top: var(--shell-win-bar); }
-  /* Полоса перетаскивания окна — только над страницей: над боковой панелью она
-     перекрыла бы колокольчик и обновление */
-  .shell-floating.shell-flat .shell-drag {
+  .shell-floating.shell-win .shell-drag {
+    top: var(--shell-gap);
     left: var(--shell-content-left);
+    right: var(--shell-gap);
     height: var(--shell-win-bar);
+    border-radius: var(--shell-radius) var(--shell-radius) 0 0;
   }
 }
 

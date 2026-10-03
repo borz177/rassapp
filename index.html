@@ -23,7 +23,6 @@
           if (window.finuchetShell && window.finuchetShell.floating) {
             document.documentElement.classList.add('shell-floating');
             if (window.finuchetShell.platform === 'win32') document.documentElement.classList.add('shell-win');
-            if (!window.finuchetShell.blur) document.documentElement.classList.add('shell-flat');
           }
         } catch (e) {}
       })();
