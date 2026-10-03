@@ -34,7 +34,7 @@ export const PLAN_CATALOG: PlanCatalogItem[] = [
     features: [
       'Базовый учет продаж',
       '1 инвестор',
-      'База клиентов (до 100)',
+      'До 100 активных договоров',
       'Учет расходов',
     ],
   },
@@ -47,7 +47,7 @@ export const PLAN_CATALOG: PlanCatalogItem[] = [
     features: [
       '5 инвесторов',
       'Печать договоров (PDF)',
-      'База клиентов (до 1000)',
+      'До 500 активных договоров',
     ],
     featured: true,
     badge: 'Популярный',
