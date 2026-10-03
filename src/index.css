@@ -1622,3 +1622,22 @@ input, textarea, [contenteditable] {
     border-radius: 26px;
   }
 }
+
+/* ── Матовые карточки на сайте и телефонах — тот же «жемчуг», что в программе
+   для Mac: не чисто белые, а мягкий переход с бликом по верхнему краю.
+   В программе (.shell-floating) у карточек свои правила — здесь их не трогаем. */
+html:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl):is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"]):not(button, input, select, textarea, a, .sticky) {
+  background: linear-gradient(165deg, #ffffff 0%, #f5f7fb 55%, #edf1f7 100%);
+  border-color: rgba(15, 23, 42, 0.06);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.9),
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 28px -16px rgba(15, 23, 42, 0.22);
+}
+html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[class*="dark:bg-slate-800"]:not(button, input, select, textarea, a, .sticky) {
+  background: linear-gradient(165deg, #243146 0%, #1c2638 55%, #182132 100%);
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 10px 28px -16px rgba(0, 0, 0, 0.6);
+}
