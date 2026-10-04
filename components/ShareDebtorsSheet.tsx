@@ -4,8 +4,8 @@ import { daysWord } from '../src/contractMetrics';
 import { formatCurrency } from '../src/utils';
 
 /**
- * «Поделиться» списком просроченных: ФИО, дата рождения (если есть в карточке)
- * и срок просрочки — текстом, чтобы вставить в мессенджер, заметки или письмо.
+ * «Поделиться» списком просроченных: ФИО и срок просрочки, по выбору — дата
+ * рождения (если есть в карточке), сумма, телефон, товар — текстом, чтобы вставить в мессенджер, заметки или письмо.
  *
  * Список — тот, что сейчас на экране: с выбранными фильтрами и в выбранном
  * порядке. Что ещё добавить (сумма, телефон, товар) — переключателями; выбор
@@ -26,8 +26,8 @@ export interface DebtorRow {
 }
 
 const PREFS_KEY = 'finuchet_share_debtors';
-type Prefs = { amount: boolean; phone: boolean; product: boolean };
-const DEFAULTS: Prefs = { amount: true, phone: false, product: false };
+type Prefs = { birth: boolean; amount: boolean; phone: boolean; product: boolean };
+const DEFAULTS: Prefs = { birth: true, amount: true, phone: false, product: false };
 
 const fmtBirth = (iso?: string) => {
   if (!iso) return '';
@@ -39,10 +39,8 @@ const fmtBirth = (iso?: string) => {
 const singleText = (r: DebtorRow, p: Prefs, showCents?: boolean): string => {
   const money = (n: number) => `${formatCurrency(n, showCents)} ₽`;
   return [
-    [r.name, fmtBirth(r.birthDate)].filter(Boolean).join(', '),
-    r.contractNo || r.startDate
-      ? `Договор${r.contractNo ? ` №${r.contractNo}` : ''}${r.startDate ? ` от ${new Date(r.startDate).toLocaleDateString('ru-RU')}` : ''}${p.product && r.product ? ` · ${r.product}` : ''}`
-      : (p.product && r.product ? r.product : ''),
+    [r.name, p.birth ? fmtBirth(r.birthDate) : ''].filter(Boolean).join(', '),
+    p.product && r.product ? `Товар: ${r.product}` : '',
     r.days > 0
       ? `Просрочка: ${r.days} ${daysWord(r.days)}${p.amount ? `, ${money(r.amount)}` : ''}${r.missed ? ` (${r.missed} ${r.missed === 1 ? 'платёж' : r.missed < 5 ? 'платежа' : 'платежей'})` : ''}`
       : 'Просрочки нет',
@@ -55,7 +53,7 @@ export const debtorsText = (rows: DebtorRow[], p: Prefs, showCents?: boolean): s
   if (rows.length === 1 && rows[0].contractNo !== undefined) return singleText(rows[0], p, showCents);
   const date = new Date().toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' });
   const lines = rows.map((r, i) => {
-    const who = [r.name, fmtBirth(r.birthDate)].filter(Boolean).join(', ');
+    const who = [r.name, p.birth ? fmtBirth(r.birthDate) : ''].filter(Boolean).join(', ');
     const extra = [
       `просрочка ${r.days} ${daysWord(r.days)}`,
       p.amount ? `${formatCurrency(r.amount, showCents)} ₽` : '',
@@ -110,14 +108,16 @@ const ShareDebtorsSheet: React.FC<{ rows: DebtorRow[]; showCents?: boolean; onCl
   return (
     <GlassSheet
       title={title || (single ? 'Поделиться договором' : 'Поделиться списком')}
-      subtitle={single ? rows[0].name : `${rows.length} ${rows.length === 1 ? 'клиент' : rows.length % 10 >= 2 && rows.length % 10 <= 4 && (rows.length % 100 < 10 || rows.length % 100 >= 20) ? 'клиента' : 'клиентов'}${withBirth < rows.length ? ` · без даты рождения: ${rows.length - withBirth}` : ''}`}
+      subtitle={single ? rows[0].name : `${rows.length} ${rows.length === 1 ? 'клиент' : rows.length % 10 >= 2 && rows.length % 10 <= 4 && (rows.length % 100 < 10 || rows.length % 100 >= 20) ? 'клиента' : 'клиентов'}`}
       onClose={onClose}
       cancelLabel="Закрыть"
       action={{ label: copied ? 'Скопировано ✓' : 'Скопировать', onClick: () => { copy(); } }}
     >
       <div className="space-y-6">
         <SheetSection title={single ? 'Что отправить' : 'Что в списке'}
-                      hint={single ? 'ФИО, дата рождения, договор и просрочка — всегда.' : 'ФИО, дата рождения и срок просрочки — всегда. Порядок и отбор — как на экране.'}>
+                      hint={single ? 'ФИО и просрочка — всегда.' : 'ФИО и срок просрочки — всегда. Порядок и отбор — как на экране.'}>
+          <SheetToggle label="Дата рождения" description={withBirth < rows.length ? `Есть в карточке у ${withBirth} из ${rows.length}` : undefined}
+                       checked={prefs.birth} onChange={v => set('birth', v)} tone="indigo" />
           <SheetToggle label={single ? 'Суммы' : 'Сумма просрочки'} checked={prefs.amount} onChange={v => set('amount', v)} tone="indigo" />
           <SheetToggle label="Телефон" checked={prefs.phone} onChange={v => set('phone', v)} tone="indigo" />
           <SheetToggle label="Товар" checked={prefs.product} onChange={v => set('product', v)} tone="indigo" />
