@@ -1,7 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
-import { AppSettings, TermRate, CalculatorCategory } from '../types';
-import { calcInstallment, rateFor } from '../src/calcMath';
+import { AppSettings, TermRate, CalculatorCategory, DownDiscount } from '../types';
+import { calcInstallment, rateFor, applyDownDiscount } from '../src/calcMath';
 import CalculatorRates from './CalculatorRates';
 import { api } from '../services/api';
 import { publicOrigin } from '../src/platform';
@@ -98,6 +98,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   // Категории товара: свои ставки по срокам и примечание для клиента
   const [categories, setCategories] = useState<CalculatorCategory[]>(appSettings?.calculator?.categories || []);
   const [categoryId, setCategoryId] = useState<string>('');
+  // Взнос снижает наценку: «от 20% взноса — наценка меньше на 5%»
+  const [downDiscounts, setDownDiscounts] = useState<DownDiscount[]>(appSettings?.calculator?.downDiscounts || []);
   const category = categories.find(c => c.id === categoryId);
   const [downPayment, setDownPayment] = useState<string>('');
   const [customRate, setCustomRate] = useState<string>('');
@@ -143,7 +145,9 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   }, [months, termRates, defaultRate, isPublic, publicRules, category]);
 
   // Если пользователь ввёл свою наценку — используем её, иначе из настроек ставок
-  const effectiveRate = customRate !== '' ? (parseFloat(customRate) || 0) : activeRate;
+  // Скидка за взнос — к ставке из таблицы; вписанная вручную наценка — как есть
+  const downDisc = applyDownDiscount(activeRate, parseFloat(price) || 0, parseFloat(downPayment) || 0, downDiscounts);
+  const effectiveRate = customRate !== '' ? (parseFloat(customRate) || 0) : downDisc.rate;
 
   // Тот же расчёт, что у публичной страницы клиента (src/calcMath.ts)
   const result = useMemo(() => calcInstallment({
@@ -344,6 +348,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
         roundDir,
         markupOnRemainder,
         categories: cleanCategories(),
+        downDiscounts: cleanDiscounts(),
       });
       persistSettings();
       const cleanUrl = `${publicOrigin()}/calc/${companyName}?cfg=${cfgId}`;
@@ -377,11 +382,15 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
     .map(c => ({ ...c, name: c.name.trim(), note: c.note?.trim() || undefined }));
 
   // Есть ли несохранённые правки ставок — кнопка «Сохранить» появляется только тогда
-  const ratesSnapshot = () => JSON.stringify({ d: parseFloat(defaultRate) || 0, t: termRates, c: cleanCategories() });
+  const cleanDiscounts = (): DownDiscount[] => downDiscounts
+    .filter(r => r.fromPercent > 0 && r.minus > 0)
+    .sort((a, b) => a.fromPercent - b.fromPercent);
+  const ratesSnapshot = () => JSON.stringify({ d: parseFloat(defaultRate) || 0, t: termRates, c: cleanCategories(), dd: cleanDiscounts() });
   const [savedSnapshot, setSavedSnapshot] = useState<string>(() => JSON.stringify({
     d: appSettings?.calculator?.defaultInterestRate ?? (parseFloat(defaultRate) || 0),
     t: appSettings?.calculator?.termRates || [],
     c: (appSettings?.calculator?.categories || []).filter(c => c.name.trim()),
+    dd: appSettings?.calculator?.downDiscounts || [],
   }));
   const ratesDirty = ratesSnapshot() !== savedSnapshot;
 
@@ -394,6 +403,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       maxMonths: appSettings?.calculator?.maxMonths || 12,
       termRates,
       categories: cleanCategories(),
+      downDiscounts: cleanDiscounts(),
       roundStep, roundDir, markupOnRemainder,
     }});
   };
@@ -491,13 +501,13 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               <div>
                 <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">
                   Наценка
-                  {customRate === '' && <span className="ml-1 font-normal text-indigo-400 normal-case">({activeRate}%)</span>}
+                  {customRate === '' && <span className="ml-1 font-normal text-indigo-400 normal-case">({effectiveRate}%)</span>}
                 </label>
                 <div className="relative">
                   <input
                     type="number"
                     className="w-full p-4 pr-8 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl outline-none focus:border-indigo-500 transition-colors font-semibold"
-                    placeholder={String(activeRate)}
+                    placeholder={String(effectiveRate)}
                     value={customRate}
                     onChange={e => setCustomRate(e.target.value)}
                   />
@@ -691,6 +701,9 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                 <div className="flex justify-between">
                   <span className="text-slate-400">
                     Наценка ({effectiveRate}%)
+                    {customRate === '' && downDisc.minus > 0 && (
+                      <span className="block text-[11px] text-emerald-400">вместо {activeRate}% — за взнос от {downDisc.rule?.fromPercent}%</span>
+                    )}
                     {markupOnRemainder && parseFloat(downPayment || '0') > 0 && (
                       <span className="block text-[11px] text-slate-500">на остаток после взноса</span>
                     )}
@@ -822,6 +835,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               defaultRate={defaultRate} setDefaultRate={setDefaultRate}
               termRates={termRates} setTermRates={setTermRates}
               categories={categories} setCategories={setCategories}
+              downDiscounts={downDiscounts} setDownDiscounts={setDownDiscounts}
               dirty={ratesDirty}
               onSave={handleSaveConfig}
               onCopyLink={handleCopyLink}

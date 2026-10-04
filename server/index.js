@@ -6562,7 +6562,7 @@ setInterval(() => { cleanupApiTables(pool); cleanupOAuth(pool); }, 6 * 60 * 60 *
 // Сохранить конфиг калькулятора → вернуть короткий ID
 app.post('/api/calculator-configs', auth, async (req, res) => {
   try {
-    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder, categories } = req.body;
+    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder, categories, downDiscounts } = req.body;
 
     // 🔹 Валидация
     if (defaultRate === undefined || !Array.isArray(termRates)) {
@@ -6588,8 +6588,15 @@ app.post('/api/calculator-configs', auth, async (req, res) => {
       return res.status(400).json({ msg: 'Некорректные категории' });
     }
 
+    // Взнос снижает наценку: «от N% взноса — ставка меньше на M%»
+    const dd = Array.isArray(downDiscounts) ? downDiscounts : [];
+    if (dd.length > 10 || dd.some(r => !r || !(r.fromPercent > 0 && r.fromPercent <= 95) || !(r.minus > 0 && r.minus <= 200))) {
+      return res.status(400).json({ msg: 'Некорректные правила скидки за взнос' });
+    }
+
     const payload = {
       defaultRate: parseFloat(defaultRate),
+      downDiscounts: dd.map(r => ({ fromPercent: Number(r.fromPercent), minus: Number(r.minus) })).sort((a, b) => a.fromPercent - b.fromPercent),
       termRates: termRates.map(r => ({ months: Number(r.months), rate: Number(r.rate) })),
       categories: cats.map(c => ({
         id: String(c.id || '').slice(0, 40) || Math.random().toString(36).slice(2, 10),
@@ -6701,6 +6708,7 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
       roundDir: config.roundDir === 'down' ? 'down' : 'up',
       markupOnRemainder: !!config.markupOnRemainder,
       categories: Array.isArray(config.categories) ? config.categories : [],
+      downDiscounts: Array.isArray(config.downDiscounts) ? config.downDiscounts : [],
       sellerPhone: sellerPhone  // ← Новое поле
     });
 

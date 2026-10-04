@@ -1,4 +1,4 @@
-import type { TermRate } from '../types';
+import type { DownDiscount, TermRate } from '../types';
 
 /**
  * Расчёт рассрочки — один для калькулятора менеджера и публичной страницы
@@ -75,4 +75,28 @@ export const scheduleDates = (start: Date, months: number): Date[] => {
     d.setDate(Math.min(baseDay, last));
     return d;
   });
+};
+
+/**
+ * Взнос снижает наценку: из правил «от N% взноса — ставка меньше на M%»
+ * действует то, где взнос уже набран и порог самый высокий. Ставка не уходит
+ * ниже нуля. next — ближайшее следующее правило: подсказать клиенту, сколько
+ * добавить к взносу, чтобы наценка стала ещё ниже.
+ */
+export const applyDownDiscount = (
+  rate: number, price: number, down: number, rules: DownDiscount[] | undefined,
+): { rate: number; minus: number; rule?: DownDiscount; next?: DownDiscount & { needMore: number } } => {
+  const sorted = (rules || []).filter(r => r.fromPercent > 0 && r.minus > 0).sort((a, b) => a.fromPercent - b.fromPercent);
+  if (!sorted.length || price <= 0) return { rate, minus: 0 };
+  const pct = (Math.min(down, price) / price) * 100;
+  // Порог считаем по процентам с допуском на копейки: 20 000 из 100 000 — ровно 20%
+  const hit = [...sorted].reverse().find(r => pct + 1e-9 >= r.fromPercent);
+  const nextRule = sorted.find(r => pct + 1e-9 < r.fromPercent);
+  const minus = hit ? Math.min(hit.minus, rate) : 0;
+  return {
+    rate: Math.max(0, rate - minus),
+    minus,
+    rule: hit,
+    next: nextRule ? { ...nextRule, needMore: Math.ceil(price * nextRule.fromPercent / 100 - down) } : undefined,
+  };
 };

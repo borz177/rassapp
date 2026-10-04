@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import type { CalculatorCategory, TermRate } from '../types';
+import type { CalculatorCategory, DownDiscount, TermRate } from '../types';
 
 /**
  * Ставки калькулятора — таблицей: строки — сроки, столбцы — «Общие» и категории
@@ -19,6 +19,8 @@ interface Props {
   setTermRates: (v: TermRate[]) => void;
   categories: CalculatorCategory[];
   setCategories: (v: CalculatorCategory[]) => void;
+  downDiscounts: DownDiscount[];
+  setDownDiscounts: (v: DownDiscount[]) => void;
   dirty: boolean;
   onSave: () => void;
   onCopyLink: () => void;
@@ -36,7 +38,7 @@ const upsert = (list: TermRate[], months: number, raw: string): TermRate[] => {
 
 const CalculatorRates: React.FC<Props> = ({
   defaultRate, setDefaultRate, termRates, setTermRates, categories, setCategories,
-  dirty, onSave, onCopyLink, linkBusy,
+  downDiscounts, setDownDiscounts, dirty, onSave, onCopyLink, linkBusy,
 }) => {
   // Добавленные, но ещё не заполненные сроки — иначе пустая строка тут же исчезла бы
   const [extraTerms, setExtraTerms] = useState<number[]>([]);
@@ -192,6 +194,56 @@ const CalculatorRates: React.FC<Props> = ({
           </div>
         );
       })()}
+
+      {/* Взнос снижает наценку */}
+      <div className="mx-5 mb-4 p-4 rounded-2xl bg-emerald-50/70 dark:bg-emerald-950/20 border border-emerald-100 dark:border-emerald-900/40">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0">
+            <p className="text-sm font-bold text-slate-800 dark:text-white">Взнос снижает наценку</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">Для всех сроков и категорий. Действует самое выгодное подходящее правило</p>
+          </div>
+          <button type="button" onClick={() => {
+                    const last = [...downDiscounts].sort((a, b) => b.fromPercent - a.fromPercent)[0];
+                    setDownDiscounts([...downDiscounts, { fromPercent: Math.min(90, (last?.fromPercent || 0) + 10), minus: (last?.minus || 0) + 2 }]);
+                  }}
+                  className="shrink-0 px-3 py-1.5 rounded-full text-xs font-bold bg-emerald-600 text-white active:scale-95 transition">+ Правило</button>
+        </div>
+        {downDiscounts.length > 0 ? (
+          <div className="mt-3 space-y-2">
+            <div className="grid grid-cols-[1fr_auto_1fr_28px] gap-2 text-[10px] font-bold uppercase tracking-wider text-slate-400 px-1">
+              <span>Взнос от</span><span /><span>Наценка меньше на</span><span />
+            </div>
+            {downDiscounts.map((r, i) => {
+              const set = (patch: Partial<DownDiscount>) => setDownDiscounts(downDiscounts.map((x, j) => (j === i ? { ...x, ...patch } : x)));
+              const num = (v: string) => Number(v.replace(/[^\d.,]/g, '').replace(',', '.')) || 0;
+              const box = 'w-full h-10 pl-3 pr-7 rounded-xl font-bold tabular-nums bg-white dark:bg-slate-900 border border-emerald-200 dark:border-emerald-800 outline-none focus:border-emerald-500 text-slate-800 dark:text-white';
+              return (
+                <div key={i} className="grid grid-cols-[1fr_auto_1fr_28px] gap-2 items-center">
+                  <span className="relative">
+                    <input inputMode="decimal" aria-label="Взнос от, %" value={r.fromPercent || ''} onChange={e => set({ fromPercent: num(e.target.value) })} className={box} />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">%</span>
+                  </span>
+                  <span className="text-emerald-600 font-bold">→</span>
+                  <span className="relative">
+                    <input inputMode="decimal" aria-label="Наценка меньше на, %" value={r.minus || ''} onChange={e => set({ minus: num(e.target.value) })} className={box} />
+                    <span className="absolute right-2.5 top-1/2 -translate-y-1/2 text-xs text-slate-400">−%</span>
+                  </span>
+                  <button type="button" onClick={() => setDownDiscounts(downDiscounts.filter((_, j) => j !== i))}
+                          className="w-7 h-7 rounded-md text-slate-400 hover:text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30" aria-label="Удалить правило">×</button>
+                </div>
+              );
+            })}
+            <p className="text-[11px] text-emerald-700 dark:text-emerald-400 pt-1">
+              Пример: ставка 25%, товар 100 000 ₽, взнос 20 000 ₽ (20%) — {(() => {
+                const hit = [...downDiscounts].filter(r => r.fromPercent <= 20 && r.minus > 0).sort((a, b) => b.fromPercent - a.fromPercent)[0];
+                return hit ? `наценка ${Math.max(0, 25 - hit.minus)}% вместо 25%` : 'правило не срабатывает';
+              })()}
+            </p>
+          </div>
+        ) : (
+          <p className="mt-2 text-[11px] text-slate-500 dark:text-slate-400">Сейчас наценка от взноса не зависит. Пример правила: «взнос от 20% — наценка меньше на 5%».</p>
+        )}
+      </div>
 
       {/* Для сроков вне таблицы — калькулятор продавца, любой срок */}
       <div className="mx-5 mb-5 flex items-center justify-between gap-3 p-3.5 rounded-2xl bg-slate-50 dark:bg-slate-900/50">

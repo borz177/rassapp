@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import type { CalculatorCategory, TermRate } from '../types';
-import { calcInstallment, rateFor, scheduleDates } from '../src/calcMath';
+import type { CalculatorCategory, DownDiscount, TermRate } from '../types';
+import { applyDownDiscount, calcInstallment, rateFor, scheduleDates } from '../src/calcMath';
 
 /**
  * Публичный калькулятор рассрочки — страница, которую продавец отправляет
@@ -22,6 +22,7 @@ interface Config {
   roundStep: number;
   roundDir: 'up' | 'down';
   markupOnRemainder: boolean;
+  downDiscounts: DownDiscount[];
   sellerPhone?: string;
 }
 
@@ -56,7 +57,7 @@ const legacyConfig = (q: URLSearchParams): Config => {
   } catch { /* битый адрес — базовая ставка */ }
   return {
     defaultRate: parseFloat(q.get('r') || q.get('rate') || '30') || 30,
-    termRates: rules, categories: [], roundStep: 100, roundDir: 'up', markupOnRemainder: false,
+    termRates: rules, categories: [], roundStep: 100, roundDir: 'up', markupOnRemainder: false, downDiscounts: [],
   };
 };
 
@@ -103,6 +104,7 @@ const PublicCalculator: React.FC = () => {
         roundStep: Number(c.roundStep) || 0,
         roundDir: c.roundDir === 'down' ? 'down' : 'up',
         markupOnRemainder: !!c.markupOnRemainder,
+        downDiscounts: c.downDiscounts || [],
         sellerPhone: c.sellerPhone || undefined,
       }))
       .catch(() => { setFailed(true); setConfig(legacyConfig(q)); });
@@ -124,7 +126,10 @@ const PublicCalculator: React.FC = () => {
 
   const price = digits(priceStr);
   const down = Math.min(digits(downStr), price);
-  const rate = rateFor(months, rates, fallbackRate);
+  const baseRate = rateFor(months, rates, fallbackRate);
+  // Взнос снижает наценку — по правилам продавца
+  const disc = applyDownDiscount(baseRate, price, down, config?.downDiscounts);
+  const rate = disc.rate;
   const result = useMemo(() => calcInstallment({
     price, down, months, rate,
     roundStep: config?.roundStep, roundDir: config?.roundDir, markupOnRemainder: config?.markupOnRemainder,
@@ -220,7 +225,16 @@ const PublicCalculator: React.FC = () => {
                   <span className="absolute right-4 top-1/2 -translate-y-1/2 text-xl font-bold text-slate-400">₽</span>
                 </div>
                 <Slider label="Первый взнос" value={down} min={0} max={Math.max(0, Math.round(price * 0.9))} step={500} onChange={v => setDownStr(String(v))} />
-                {config.markupOnRemainder && price > 0 && (
+                {price > 0 && disc.minus > 0 && (
+                  <p className="mt-2 text-xs text-emerald-600 font-semibold">✓ За взнос от {disc.rule?.fromPercent}% наценка ниже</p>
+                )}
+                {price > 0 && disc.next && (
+                  <button type="button" onClick={() => setDownStr(String(down + disc.next!.needMore))}
+                          className="mt-2 block text-left text-xs text-indigo-600 font-medium hover:underline">
+                    Добавьте к взносу {money(disc.next.needMore)} ₽ (до {disc.next.fromPercent}%) — наценка станет ниже
+                  </button>
+                )}
+                {!disc.next && disc.minus === 0 && config.markupOnRemainder && price > 0 && (
                   <p className="mt-2 text-xs text-emerald-600 font-medium">Чем больше взнос, тем меньше наценка</p>
                 )}
               </div>
