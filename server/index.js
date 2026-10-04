@@ -6562,7 +6562,7 @@ setInterval(() => { cleanupApiTables(pool); cleanupOAuth(pool); }, 6 * 60 * 60 *
 // Сохранить конфиг калькулятора → вернуть короткий ID
 app.post('/api/calculator-configs', auth, async (req, res) => {
   try {
-    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder } = req.body;
+    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder, categories } = req.body;
 
     // 🔹 Валидация
     if (defaultRate === undefined || !Array.isArray(termRates)) {
@@ -6575,34 +6575,67 @@ app.post('/api/calculator-configs', auth, async (req, res) => {
     if (roundDir !== undefined && !['up', 'down'].includes(roundDir)) {
       return res.status(400).json({ msg: 'Некорректное направление округления' });
     }
-    if (termRates.length > 20) {
-      return res.status(400).json({ msg: 'Максимум 20 правил' });
-    }
-    if (termRates.some(r => r.months < 1 || r.months > 60 || r.rate < 0 || r.rate > 200)) {
+    const badRates = (list) => !Array.isArray(list) || list.length > 20
+      || list.some(r => !(r.months >= 1 && r.months <= 60) || !(r.rate >= 0 && r.rate <= 200));
+    if (badRates(termRates)) {
       return res.status(400).json({ msg: 'Некорректные значения правил' });
     }
+    // Категории товара: у каждой свои ставки по срокам и примечание для клиента
+    const cats = Array.isArray(categories) ? categories : [];
+    if (cats.length > 20 || cats.some(c => !c || typeof c.name !== 'string' || !c.name.trim() || c.name.length > 40
+        || (c.note && String(c.note).length > 300) || badRates(c.rates || [])
+        || (c.defaultRate !== undefined && c.defaultRate !== null && !(c.defaultRate >= 0 && c.defaultRate <= 200)))) {
+      return res.status(400).json({ msg: 'Некорректные категории' });
+    }
 
-    // 🔹 Генерируем короткий уникальный ID (6 символов: a1b2c3)
-    const configId = Math.random().toString(36).substring(2, 8);
-
-    const configData = {
-      id: `cfg_${configId}`,
+    const payload = {
       defaultRate: parseFloat(defaultRate),
-      termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+      termRates: termRates.map(r => ({ months: Number(r.months), rate: Number(r.rate) })),
+      categories: cats.map(c => ({
+        id: String(c.id || '').slice(0, 40) || Math.random().toString(36).slice(2, 10),
+        name: c.name.trim(),
+        note: c.note ? String(c.note).trim() : undefined,
+        defaultRate: c.defaultRate === undefined || c.defaultRate === null || c.defaultRate === '' ? undefined : Number(c.defaultRate),
+        rates: (c.rates || []).map(r => ({ months: Number(r.months), rate: Number(r.rate) })).sort((x, y) => x.months - y.months),
+      })),
       roundStep: Number(roundStep) || 0,
       roundDir: roundDir === 'down' ? 'down' : 'up',
       markupOnRemainder: !!markupOnRemainder,
+      updatedAt: new Date().toISOString(),
+    };
+
+    // Одна постоянная ссылка на продавца: поменяли ставки — по той же ссылке у
+    // клиентов уже новые. Раньше каждое «Копировать ссылку» заводило новую, а
+    // через 30 дней она удалялась — ссылка в профиле или в рассылке переставала
+    // открываться.
+    const existing = await pool.query(
+      `SELECT id, data FROM data_items WHERE user_id = $1 AND type = 'calculator_configs' AND data->>'stable' = 'true' LIMIT 1`,
+      [req.user.id]
+    );
+    if (existing.rows.length) {
+      const row = existing.rows[0];
+      await pool.query(
+        `UPDATE data_items SET data = $2, updated_at = NOW() WHERE id = $1 AND user_id = $3`,
+        [row.id, JSON.stringify({ ...row.data, ...payload, id: row.id, stable: true }), req.user.id]
+      );
+      return res.json({ configId: row.id.replace(/^cfg_/, '') });
+    }
+
+    // 🔹 Короткий уникальный ID (8 символов)
+    const configId = Math.random().toString(36).substring(2, 10);
+    const configData = {
+      id: `cfg_${configId}`,
+      ...payload,
+      stable: true,
       createdAt: new Date().toISOString(),
       createdBy: req.user.id
     };
-
-    // 🔹 Сохраняем в data_items с типом 'calculator_configs'
     await pool.query(`
       INSERT INTO data_items (id, user_id, type, data, updated_at)
       VALUES ($1, $2, 'calculator_configs', $3, NOW())
     `, [configData.id, req.user.id, JSON.stringify(configData)]);
 
-    res.json({ configId }); // Возвращаем только короткий ID: "a1b2c3"
+    res.json({ configId });
 
   } catch (err) {
     console.error('Save calculator config error:', err);
@@ -6635,14 +6668,26 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
       [ownerId]
     );
 
-    const sellerPhone = userResult.rows[0]?.phone || null;
+    // Телефон из профиля, а если его нет — «Телефон продавца» из настроек
+    // (тот же порядок, что в договоре: getSellerPhone в src/utils.ts — профиль
+    // может быть пустым, а в настройках номер магазина указан)
+    let sellerPhone = userResult.rows[0]?.phone || null;
+    if (!sellerPhone) {
+      const st = await pool.query(
+        `SELECT data->>'sellerPhone' AS phone FROM data_items WHERE user_id = $1 AND type = 'settings' ORDER BY updated_at DESC LIMIT 1`,
+        [ownerId]
+      );
+      sellerPhone = st.rows[0]?.phone || null;
+    }
 
-    // 3. Проверяем актуальность конфига (30 дней)
-    const configDate = new Date(config.createdAt);
-    const daysOld = (Date.now() - configDate.getTime()) / (1000 * 60 * 60 * 24);
-    if (daysOld > 30) {
-      await pool.query('DELETE FROM data_items WHERE id = $1', [fullId]);
-      return res.status(410).json({ msg: 'Конфиг устарел' });
+    // 3. Разовые ссылки старого вида живут 30 дней; постоянная ссылка продавца —
+    // пока он её не заменит (см. POST выше)
+    if (!config.stable) {
+      const daysOld = (Date.now() - new Date(config.createdAt).getTime()) / (1000 * 60 * 60 * 24);
+      if (daysOld > 30) {
+        await pool.query('DELETE FROM data_items WHERE id = $1', [fullId]);
+        return res.status(410).json({ msg: 'Конфиг устарел' });
+      }
     }
 
     // 4. 🔥 Возвращаем конфиг + телефон владельца
@@ -6655,6 +6700,7 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
       roundStep: config.roundStep === undefined ? 100 : config.roundStep,
       roundDir: config.roundDir === 'down' ? 'down' : 'up',
       markupOnRemainder: !!config.markupOnRemainder,
+      categories: Array.isArray(config.categories) ? config.categories : [],
       sellerPhone: sellerPhone  // ← Новое поле
     });
 

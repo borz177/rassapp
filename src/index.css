@@ -1658,3 +1658,8 @@ html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[clas
 .theme-switch-icon { animation: theme-switch-in .35s cubic-bezier(.2,.8,.2,1); }
 @keyframes theme-switch-in { from { transform: rotate(-90deg) scale(.6); opacity: 0; } to { transform: none; opacity: 1; } }
 @media (prefers-reduced-motion: reduce) { .theme-switch-icon { animation: none; } }
+
+/* Публичный калькулятор: ползунки цены и взноса */
+.pc-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 9999px; outline: none; cursor: pointer; }
+.pc-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 9999px; background: #fff; border: 2px solid #4f46e5; box-shadow: 0 2px 8px rgba(79,70,229,.35); }
+.pc-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 9999px; background: #fff; border: 2px solid #4f46e5; box-shadow: 0 2px 8px rgba(79,70,229,.35); }

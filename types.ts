@@ -663,10 +663,29 @@ export interface TermRate {
     rate: number;
 }
 
+/**
+ * Категория товара в калькуляторе (телефоны, мебель, техника…): свои ставки по
+ * срокам и примечание, которое видит клиент на публичной странице.
+ */
+export interface CalculatorCategory {
+    id: string;
+    name: string;
+    /** Видно клиенту под выбором категории: «Без поручителя до 50 000 ₽» */
+    note?: string;
+    /** Ставка, если для срока нет своей; пусто — базовая ставка калькулятора */
+    defaultRate?: number;
+    rates: TermRate[];
+}
+
 export interface CalculatorSettings {
     defaultInterestRate: number;
     maxMonths: number;
     termRates?: TermRate[]; // Array of specific rates for specific terms
+    categories?: CalculatorCategory[];
+    /** Правила расчёта — уходят и в ссылку для клиента, но ему не показываются */
+    roundStep?: number;
+    roundDir?: 'up' | 'down';
+    markupOnRemainder?: boolean;
 }
 
 export interface NotificationEventToggles {

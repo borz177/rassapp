@@ -1,6 +1,7 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
-import { AppSettings, TermRate } from '../types';
+import { AppSettings, TermRate, CalculatorCategory } from '../types';
+import { calcInstallment, rateFor } from '../src/calcMath';
 import { api } from '../services/api';
 import { publicOrigin } from '../src/platform';
 
@@ -48,6 +49,55 @@ function drawRRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+/** Одна категория в настройках ставок: название, примечание для клиента, ставки по срокам */
+const CategoryEditor: React.FC<{
+  cat: CalculatorCategory;
+  baseRate: string;
+  onChange: (patch: Partial<CalculatorCategory>) => void;
+  onRemove: () => void;
+}> = ({ cat, baseRate, onChange, onRemove }) => {
+  const [month, setMonth] = useState(3);
+  const [rate, setRate] = useState('');
+  const add = () => {
+    const r = parseFloat(rate);
+    if (isNaN(r)) return;
+    onChange({ rates: [...cat.rates.filter(x => x.months !== month), { months: month, rate: r }].sort((a, b) => a.months - b.months) });
+    setRate('');
+  };
+  const input = 'w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl text-sm outline-none focus:border-indigo-400';
+  return (
+    <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 space-y-2.5">
+      <div className="flex items-center gap-2">
+        <input className={`${input} font-semibold`} value={cat.name} maxLength={40}
+               placeholder="Название, например «Телефоны»" onChange={e => onChange({ name: e.target.value })} />
+        <button type="button" onClick={onRemove} title="Удалить категорию"
+                className="shrink-0 w-9 h-9 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 flex items-center justify-center">{ICONS.Close}</button>
+      </div>
+      <textarea className={`${input} resize-none`} rows={2} maxLength={300} value={cat.note || ''}
+                placeholder="Примечание для клиента: «Без поручителя до 50 000 ₽»"
+                onChange={e => onChange({ note: e.target.value })} />
+      <div className="flex flex-wrap gap-1.5">
+        {cat.rates.map(r => (
+          <span key={r.months} className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-xs font-bold text-indigo-700 dark:text-indigo-300">
+            {r.months} мес · {r.rate}%
+            <button type="button" onClick={() => onChange({ rates: cat.rates.filter(x => x.months !== r.months) })}
+                    className="w-5 h-5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center justify-center" aria-label="Убрать срок">×</button>
+          </span>
+        ))}
+        {cat.rates.length === 0 && <span className="text-xs text-slate-400">Сроков нет — действуют общие ставки ({baseRate || 0}% и правила выше)</span>}
+      </div>
+      <div className="flex gap-2 items-center">
+        <select className={`${input} w-28`} value={month} onChange={e => setMonth(parseInt(e.target.value))}>
+          {Array.from({ length: 24 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m} мес</option>)}
+        </select>
+        <input className={`${input} w-24`} type="number" placeholder="%" value={rate} onChange={e => setRate(e.target.value)}
+               onKeyDown={e => { if (e.key === 'Enter') add(); }} />
+        <button type="button" onClick={add} className="shrink-0 h-[42px] px-3 rounded-xl bg-indigo-600 text-white text-sm font-bold">+ срок</button>
+      </div>
+    </div>
+  );
+};
+
 interface CalculatorProps {
   isPublic?: boolean;
   appSettings?: AppSettings;
@@ -88,11 +138,15 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [price, setPrice]           = useState<string>('');
   const [months, setMonths]         = useState<number>(3);
   // 0 — платёж как есть; 100/500/1000 — округление до этого шага
-  const [roundStep, setRoundStep]   = useState<number>(0);
+  const [roundStep, setRoundStep]   = useState<number>(appSettings?.calculator?.roundStep ?? 0);
   // Куда округлять: вверх (продавец добирает) или вниз (уступка клиенту)
-  const [roundDir, setRoundDir]     = useState<'up' | 'down'>('up');
+  const [roundDir, setRoundDir]     = useState<'up' | 'down'>(appSettings?.calculator?.roundDir ?? 'up');
   // Наценка начисляется только на остаток после первого взноса
-  const [markupOnRemainder, setMarkupOnRemainder] = useState<boolean>(false);
+  const [markupOnRemainder, setMarkupOnRemainder] = useState<boolean>(appSettings?.calculator?.markupOnRemainder ?? false);
+  // Категории товара: свои ставки по срокам и примечание для клиента
+  const [categories, setCategories] = useState<CalculatorCategory[]>(appSettings?.calculator?.categories || []);
+  const [categoryId, setCategoryId] = useState<string>('');
+  const category = categories.find(c => c.id === categoryId);
   const [downPayment, setDownPayment] = useState<string>('');
   const [customRate, setCustomRate] = useState<string>('');
   const [startDate, setStartDate]   = useState<string>(todayISO);
@@ -133,45 +187,23 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   const activeRate = useMemo(() => {
     const ratesToUse = isPublic ? (termRates.length > 0 ? termRates : publicRules) : termRates;
-    const baseRate   = parseFloat(defaultRate);
-    const specific   = ratesToUse?.find(r => r.months === months);
-    return specific ? specific.rate : baseRate;
-  }, [months, termRates, defaultRate, isPublic, publicRules]);
+    const baseRate   = parseFloat(defaultRate) || 0;
+    // Выбрана категория — её ставки; для сроков, которых у неё нет, — её базовая или общая
+    if (category) return rateFor(months, category.rates.length ? category.rates : ratesToUse, category.defaultRate ?? baseRate);
+    return rateFor(months, ratesToUse, baseRate);
+  }, [months, termRates, defaultRate, isPublic, publicRules, category]);
 
   // Если пользователь ввёл свою наценку — используем её, иначе из настроек ставок
   const effectiveRate = customRate !== '' ? (parseFloat(customRate) || 0) : activeRate;
 
-  const result = useMemo(() => {
-    const p  = parseFloat(price) || 0;
-    const dp = Math.min(parseFloat(downPayment) || 0, p); // взнос не может быть больше цены
-    const rate = effectiveRate / 100;
-
-    // Два способа начислить наценку:
-    //  • markupOnRemainder — только на то, что реально уходит в рассрочку (цена минус взнос).
-    //    Клиент не переплачивает за часть, которую уже оплатил наличными.
-    //  • обычный — на всю цену товара, взнос лишь уменьшает остаток к выплате.
-    const markupBase = markupOnRemainder ? p - dp : p;
-    const markup     = markupBase * rate;
-    const remaining  = markupOnRemainder ? (p - dp) + markup : (p + markup) - dp;
-
-    const monthly = months > 0 ? remaining / months : 0;
-    // step === 0 — платёж как есть, без подгонки. Округление вниз не должно уводить
-    // платёж в ноль на маленьких суммах, поэтому держим минимум в один шаг.
-    const roundedMonthly = roundStep > 0
-      ? (roundDir === 'down'
-          ? Math.max(Math.floor(monthly / roundStep) * roundStep, monthly > 0 ? roundStep : 0)
-          : Math.ceil(monthly / roundStep) * roundStep)
-      : monthly;
-
-    return {
-      markup,
-      total:        p + markup,          // полная стоимость товара с наценкой
-      monthly:      roundedMonthly,
-      totalPayable: roundedMonthly * months + dp,
-      // Сколько клиент заплатил бы без округления — разница с totalPayable и есть надбавка
-      exactTotal:   monthly * months + dp,
-    };
-  }, [price, months, downPayment, effectiveRate, roundStep, roundDir, markupOnRemainder]);
+  // Тот же расчёт, что у публичной страницы клиента (src/calcMath.ts)
+  const result = useMemo(() => calcInstallment({
+    price: parseFloat(price) || 0,
+    down: parseFloat(downPayment) || 0,
+    months,
+    rate: effectiveRate,
+    roundStep, roundDir, markupOnRemainder,
+  }), [price, months, downPayment, effectiveRate, roundStep, roundDir, markupOnRemainder]);
 
   // График платежей
   const paymentSchedule = useMemo(() => {
@@ -362,17 +394,9 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
         roundStep,
         roundDir,
         markupOnRemainder,
+        categories: cleanCategories(),
       });
-      if (onSaveSettings && appSettings) {
-        onSaveSettings({
-          ...appSettings,
-          whatsapp: { ...appSettings.whatsapp, calculator: {
-            defaultInterestRate: parseFloat(defaultRate),
-            termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
-            minDownPayment: 0,
-          }},
-        });
-      }
+      persistSettings();
       const cleanUrl = `${publicOrigin()}/calc/${companyName}?cfg=${cfgId}`;
       const copied = await copyToClipboard(cleanUrl);
       if (copied) alert('✨ Ссылка скопирована!');
@@ -398,16 +422,38 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
     } catch { return false; }
   };
 
+  // Пустые категории (без названия) не сохраняем
+  const cleanCategories = (): CalculatorCategory[] => categories
+    .filter(c => c.name.trim())
+    .map(c => ({ ...c, name: c.name.trim(), note: c.note?.trim() || undefined }));
+
+  const persistSettings = () => {
+    if (!onSaveSettings) return;
+    onSaveSettings({ ...appSettings, calculator: {
+      ...(appSettings?.calculator || {}),
+      defaultInterestRate: parseFloat(defaultRate) || 0,
+      maxMonths: appSettings?.calculator?.maxMonths || 12,
+      termRates,
+      categories: cleanCategories(),
+      roundStep, roundDir, markupOnRemainder,
+    }});
+  };
+
   const handleSaveConfig = () => {
     if (onSaveSettings) {
-      onSaveSettings({ ...appSettings, calculator: {
-        defaultInterestRate: parseFloat(defaultRate),
-        maxMonths: 12,
-        termRates,
-      }});
+      persistSettings();
       setShowSettings(false);
       alert('Настройки калькулятора сохранены');
     }
+  };
+
+  // ── Категории ──
+  const addCategory = () => setCategories(prev => [...prev, { id: Math.random().toString(36).slice(2, 10), name: '', rates: [] }]);
+  const patchCategory = (id: string, patch: Partial<CalculatorCategory>) =>
+    setCategories(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  const removeCategory = (id: string) => {
+    setCategories(prev => prev.filter(c => c.id !== id));
+    if (categoryId === id) setCategoryId('');
   };
 
   const addRule = () => {
@@ -466,6 +512,24 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
           {/* ── Поля ввода ── */}
           <div className="bg-white dark:bg-slate-800 p-5 rounded-3xl shadow-sm border border-slate-100 dark:border-slate-700 space-y-4 overflow-hidden">
+
+            {/* Категория товара — свои ставки по срокам */}
+            {!isPublic && categories.some(c => c.name.trim()) && (
+              <div>
+                <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide mb-1.5">Категория</label>
+                <div className="flex flex-wrap gap-2">
+                  {[{ id: '', name: 'Общие ставки' }, ...categories.filter(c => c.name.trim())].map(c => (
+                    <button key={c.id} type="button" onClick={() => setCategoryId(c.id)}
+                            className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-colors ${categoryId === c.id
+                              ? 'bg-indigo-600 text-white'
+                              : 'bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600'}`}>
+                      {c.name}
+                    </button>
+                  ))}
+                </div>
+                {category?.note && <p className="text-xs text-slate-500 dark:text-slate-400 mt-1.5 whitespace-pre-line">{category.note}</p>}
+              </div>
+            )}
 
             {/* Стоимость + Наценка */}
             <div className="grid grid-cols-2 gap-3">
@@ -579,7 +643,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               </div>
             )}
 
-            {/* Округление платежа */}
+            {/* Округление платежа — настройка продавца, клиенту не показываем */}
+            {!isPublic && (<>
             <div>
               <div className="flex items-center justify-between mb-1.5 gap-2">
                 <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wide">
@@ -650,6 +715,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                 </span>
               </span>
             </label>
+            </>)}
           </div>
 
           {/* ── Результат ── */}
@@ -689,7 +755,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                   </span>
                   <span className="text-amber-400 font-medium">+{fmtMoney(result.markup)} ₽</span>
                 </div>
-                {roundStep > 0 && Math.abs(result.totalPayable - result.exactTotal) >= 1 && (
+                {!isPublic && roundStep > 0 && Math.abs(result.totalPayable - result.exactTotal) >= 1 && (
                   <div className="flex justify-between">
                     <span className="text-slate-400">
                       {result.totalPayable > result.exactTotal ? 'Надбавка за округление' : 'Скидка за округление'}
@@ -873,6 +939,26 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                     </div>
                   </div>
 
+                  {/* Категории товара — как на сайтах рассрочки: клиент выбирает
+                      «Телефоны» или «Мебель», и ставки по срокам у них свои */}
+                  <div>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="block text-xs font-bold text-indigo-400 uppercase">Категории товара</label>
+                      <button type="button" onClick={addCategory} className="text-xs font-bold text-indigo-600 dark:text-indigo-400">+ Категория</button>
+                    </div>
+                    <div className="space-y-2.5">
+                      {categories.map(c => (
+                        <CategoryEditor key={c.id} cat={c} baseRate={defaultRate}
+                                        onChange={patch => patchCategory(c.id, patch)} onRemove={() => removeCategory(c.id)} />
+                      ))}
+                      {categories.length === 0 && (
+                        <p className="text-xs text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-800/60 rounded-xl p-3">
+                          Без категорий у всех товаров одни ставки. Добавьте «Телефоны», «Мебель», «Технику» — у каждой свои сроки, ставки и примечание, а клиент на своей странице выберет нужную.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
                   <button onClick={handleSaveConfig} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
                     Сохранить настройки
                   </button>
@@ -890,7 +976,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
                       <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Копировать ссылку</>
                     )}
                   </button>
-                  <p className="text-center text-xs text-indigo-400">Ссылка будет вида: rassrochka.pro/calc/ВашаКомпания</p>
+                  <p className="text-center text-xs text-indigo-400">Ссылка постоянная: поменяете ставки — у клиентов по ней сразу новые</p>
                 </div>
               )}
             </div>

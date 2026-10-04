@@ -1,0 +1,74 @@
+
+import React from 'react';
+import ReactDOM from 'react-dom/client';
+import { installStaleBundleGuard } from './src/staleBundle';
+import App from './App';
+import ErrorBoundary from './components/ErrorBoundary';
+import { ThemeProvider } from './src/theme/ThemeContext';
+import AppDialogs from './components/AppDialogs';
+import { installAlertOverride } from './src/dialogs';
+import { registerSW } from 'virtual:pwa-register';
+import { isDesktopShell } from './src/platform';
+
+/**
+ * Приложение целиком. Загружается из index.tsx — для всех адресов, кроме
+ * публичного калькулятора (у него свой лёгкий вход, publicCalcEntry.tsx).
+ */
+
+// Register Service Worker for PWA offline support.
+// В настольном приложении интерфейс и так внутри (electron.cjs) — без него.
+if (isDesktopShell()) {
+  navigator.serviceWorker?.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
+} else {
+  registerSW({
+    onNeedRefresh() {
+      console.log('New content available, reload to update.');
+    },
+    onOfflineReady() {
+      console.log('App is ready to work offline.');
+    },
+  });
+}
+
+// 🔒 Отложенные куски кода запрашиваются вне дерева React — например, когда пользователь
+// открывает экран, а сборка на сервере уже сменилась. Такая ошибка до границы ошибок не
+// доходит и оставляет белый экран, поэтому ловим её здесь и перезагружаем страницу:
+// свежий index.html подтянет новые имена файлов. Защита от петли — как в ErrorBoundary.
+window.addEventListener('unhandledrejection', (event) => {
+  const msg = String(event.reason?.message || event.reason || '');
+  if (!/Loading chunk|dynamically imported module|Importing a module script failed|Unable to preload/i.test(msg)) return;
+
+  let lastReload = 0;
+  try { lastReload = Number(sessionStorage.getItem('finuchet_chunk_reload_at') || 0); } catch { /* нет доступа */ }
+  if (Date.now() - lastReload < 30000) return;
+
+  try { sessionStorage.setItem('finuchet_chunk_reload_at', String(Date.now())); } catch { /* нет доступа */ }
+  console.warn('🔄 Не загрузился модуль новой версии — перезагружаем страницу');
+  window.location.reload();
+});
+
+const rootElement = document.getElementById('root');
+if (!rootElement) {
+  throw new Error("Could not find root element to mount to");
+}
+
+// Ставим до отрисовки: старая сборка может сломаться на первом же ленивом
+// экране, и перехват должен быть уже на месте.
+installStaleBundleGuard();
+// Сообщения (alert) — окном приложения, а не системной плашкой браузера.
+// Подтверждения (confirm) переписаны на appConfirm в местах вызова.
+installAlertOverride();
+
+const root = ReactDOM.createRoot(rootElement);
+root.render(
+  <React.StrictMode>
+    {/* Граница ошибок — снаружи всего: сбой в самой теме или в App не должен
+        оставлять пользователя перед пустой белой страницей */}
+    <ErrorBoundary>
+      <ThemeProvider>
+        <App />
+        <AppDialogs />
+      </ThemeProvider>
+    </ErrorBoundary>
+  </React.StrictMode>
+);

@@ -1,4 +1,4 @@
-import { User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope, OAuthConnection, OAuthClientInfo, OAuthClientCreated} from "../types";
+import { CalculatorCategory, User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope, OAuthConnection, OAuthClientInfo, OAuthClientCreated} from "../types";
 import { offlineStorage, sessionOwnerId } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
@@ -1602,6 +1602,7 @@ export const api = {
         roundStep?: number;
         roundDir?: 'up' | 'down';
         markupOnRemainder?: boolean;
+        categories?: CalculatorCategory[];
     }): Promise<string> => {
         const res = await fetchWithAuth(`${API_URL}/calculator-configs`, {
             method: 'POST',
@@ -1613,7 +1614,7 @@ export const api = {
     },
 
     // 🔥 ПУБЛИЧНЫЙ — обычный fetch (без токена)
-    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[]; sellerPhone?: string; roundStep?: number; roundDir?: 'up' | 'down'; markupOnRemainder?: boolean; }> => {
+    getCalculatorConfig: async (configId: string): Promise<{ defaultRate: number; termRates: { months: number; rate: number }[]; sellerPhone?: string; roundStep?: number; roundDir?: 'up' | 'down'; markupOnRemainder?: boolean; categories?: CalculatorCategory[]; }> => {
         const res = await fetch(`${API_URL}/calculator-configs/${configId}`, {
             headers: { 'Content-Type': 'application/json' }
         });
