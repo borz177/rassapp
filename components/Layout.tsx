@@ -569,12 +569,10 @@ const counts = useMemo(() => {
       label: 'Договоры',
       icon: ICONS.File,
       visible: !isInvestor || (isInvestor && !!investorPermissions?.canViewContracts),
-      subItems: [
-        { label: 'Активные', tab: 'ACTIVE', icon: ICONS.Check, count: counts.active, visible: true },
-        { label: 'Просроченные', tab: 'OVERDUE', icon: ICONS.Alert, count: counts.overdue, visible: true },
-        { label: 'Архив', tab: 'ARCHIVE', icon: ICONS.Clock, count: counts.archive, visible: true },
-        { label: 'Все', tab: 'ALL', icon: ICONS.List, count: counts.all, visible: true },
-      ]
+      // Одним пунктом: внутри страницы выбор «все / активные / просроченные / архив».
+      // Красное число — просроченные, чтобы сигнал не потерялся вместе с подпунктом.
+      badge: counts.overdue,
+      contractTab: 'ALL' as const,
     },
     // С магазином — один журнал: деньги и товар одной лентой (History.tsx).
     // Сразу после договоров: туда заглядывают так же часто, как в них.
@@ -647,6 +645,7 @@ const counts = useMemo(() => {
       } else if ('subItems' in item) {
           toggleMenu(item.id);
       } else {
+          if (item.contractTab) onContractTabChange?.(item.contractTab);
           setView(item.id);
       }
   }
@@ -674,6 +673,11 @@ const counts = useMemo(() => {
                     <span>{item.icon}</span>
                     <span className="font-medium">{item.label}</span>
                 </div>
+                {!hasSubItems && item.badge > 0 && (
+                    <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center" title="Просрочено">
+                        {item.badge}
+                    </span>
+                )}
                 {hasSubItems && (
                     <span className={`transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>
                         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
@@ -1086,7 +1090,7 @@ const counts = useMemo(() => {
             onClick={() => {
               setShowInvestorMobileMenu(false);
               setView('CONTRACTS');
-              onContractTabChange?.('ACTIVE');
+              onContractTabChange?.('ALL');
             }}
             className="w-full flex items-center gap-3 p-4 bg-slate-50 dark:bg-slate-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-xl text-left transition-colors"
           >

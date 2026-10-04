@@ -162,7 +162,8 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
     new URLSearchParams(window.location.search).get('open') === 'tariffs' && !isIOSApp()
       ? 'TARIFFS' : 'DASHBOARD');
 
-  const [activeContractTab, setActiveContractTab] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ACTIVE');
+  // По умолчанию — все договоры по дате оформления; статус выбирают в заголовке страницы
+  const [activeContractTab, setActiveContractTab] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ALL');
 
   const [customers, setCustomers] = useState<Customer[]>([]);
   const [products, setProducts] = useState<Product[]>([]);
@@ -5433,25 +5434,14 @@ if (!user && !showSplash) {
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
                   <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
                 </button>
-                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ACTIVE'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Check}</span> Активные</div>
-                  {contractCounts.active > 0 && <span className="text-xs bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.active}</span>}
-                </button>
-                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('OVERDUE'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Alert}</span> Просроченные</div>
-                  {contractCounts.overdue > 0 && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue}</span>}
-                </button>
-                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ARCHIVE'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.Clock}</span> Архив</div>
-                  {contractCounts.archive > 0 && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full">{contractCounts.archive}</span>}
-                </button>
+                {/* Все договоры одной кнопкой: статус выбирают в заголовке страницы */}
                 <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ALL'); }}
                         className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> Все</div>
-                  {contractCounts.all > 0 && <span className="text-xs bg-blue-100 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.all}</span>}
+                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> Все договоры</div>
+                  <span className="flex items-center gap-1.5">
+                    {contractCounts.overdue > 0 && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue} просроч.</span>}
+                    {contractCounts.all > 0 && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full">{contractCounts.all}</span>}
+                  </span>
                 </button>
               </div>
             )}

@@ -479,6 +479,7 @@ const Contracts: React.FC<ContractsProps> = ({
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [sortOpen, setSortOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  const [statusOpen, setStatusOpen] = useState(false);
   // Сортировка запоминается для каждой вкладки
   const [sortByTab, setSortByTab] = useState<Partial<Record<ContractTab, SortKey>>>(() => {
     try { return JSON.parse(localStorage.getItem(SORT_KEY) || '{}'); } catch { return {}; }
@@ -621,6 +622,19 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
   }, [filteredList, activeTab]);
 
+  // Сколько договоров в каждом статусе — для выбора в заголовке и красной метки
+  const statusCounts = useMemo(() => {
+    const ids = new Set(customers.map(c => c.id));
+    let active = 0, overdue = 0, archive = 0;
+    for (const s of sales) {
+      if (!ids.has(s.customerId)) continue;
+      if (s.status === 'COMPLETED' || s.remainingAmount === 0) archive++;
+      else if ((metrics.get(s.id)?.overdue || 0) > 0) overdue++;
+      else active++;
+    }
+    return { ALL: active + overdue + archive, ACTIVE: active, OVERDUE: overdue, ARCHIVE: archive } as Record<ContractTab, number>;
+  }, [sales, customers, metrics]);
+
   // Сводки над списком — по тому, что сейчас отобрано
   const overdueSummary = useMemo(() => {
     if (activeTab !== 'OVERDUE') return null;
@@ -673,7 +687,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   const getTabTitle = () => {
     switch(activeTab) {
       case 'ALL': return 'Все договоры';
-      case 'ACTIVE': return 'Активные договоры';
+      case 'ACTIVE': return 'Активные';
       case 'OVERDUE': return 'Просроченные';
       case 'ARCHIVE': return 'Архив';
     }
@@ -962,14 +976,44 @@ useEffect(() => {
   return (
     <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => closeActionMenu()}>
 
-      {/* Заголовок вкладки */}
+      {/* Заголовок — он же выбор: все, активные, просроченные, архив. Вкладок нет —
+          по умолчанию все договоры, остальное в одно нажатие на заголовок, а к
+          просроченным ведёт ещё и красная метка рядом. */}
+      <div className="flex items-center justify-between gap-3 pt-2">
+        <div className="min-w-0">
+          <button type="button" onClick={(e) => { e.stopPropagation(); setStatusOpen(true); }} aria-label="Какие договоры показать"
+                  className="group flex items-center gap-1.5 text-left rounded-xl -ml-1 px-1 active:opacity-70">
+            <h2 className="text-2xl font-bold truncate text-slate-800 dark:text-white">{getTabTitle()}</h2>
+            <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"
+                 className="shrink-0 text-slate-400 group-hover:text-indigo-500 transition-colors" aria-hidden><path d="m6 9 6 6 6-6" /></svg>
+          </button>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">
+            {filteredList.length} {pluralRu(filteredList.length, 'договор', 'договора', 'договоров')}
+          </p>
+        </div>
+        {activeTab !== 'OVERDUE' && statusCounts.OVERDUE > 0 && (
+          <button type="button" onClick={() => onTabChange('OVERDUE')}
+                  className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-900/50 active:scale-95 transition">
+            <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
+            {statusCounts.OVERDUE} {pluralRu(statusCounts.OVERDUE, 'просрочен', 'просрочено', 'просрочено')}
+          </button>
+        )}
+        {activeTab !== 'ALL' && (activeTab === 'OVERDUE' || statusCounts.OVERDUE === 0) && (
+          <button type="button" onClick={() => onTabChange('ALL')}
+                  className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:scale-95 transition">
+            ✕ Все договоры
+          </button>
+        )}
+      </div>
+
       {activeTab === 'OVERDUE' && overdueSummary ? (
         <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border border-red-200 dark:border-red-900/50 p-4 rounded-2xl">
           <div className="flex justify-between items-start gap-3">
             <div className="min-w-0">
-              <h2 className="text-lg font-bold text-slate-800 dark:text-white">Просроченные договоры</h2>
-              <p className="text-slate-500 dark:text-slate-400 text-xs">
-                {filteredList.length} {pluralRu(filteredList.length, 'договор', 'договора', 'договоров')} · {overdueSummary.clients} {pluralRu(overdueSummary.clients, 'клиент', 'клиента', 'клиентов')}
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
+              <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
+                у {overdueSummary.clients} {pluralRu(overdueSummary.clients, 'клиента', 'клиентов', 'клиентов')} · в среднем {overdueSummary.avgDays} {daysWord(overdueSummary.avgDays)}
               </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
@@ -1005,16 +1049,6 @@ useEffect(() => {
             </div>
           </div>
 
-          <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50 grid grid-cols-2 gap-3">
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
-              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
-            </div>
-            <div>
-              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Средний срок</p>
-              <p className="text-2xl font-bold text-slate-800 dark:text-white">{overdueSummary.avgDays} <span className="text-sm font-semibold text-slate-500">{daysWord(overdueSummary.avgDays)}</span></p>
-            </div>
-          </div>
 
           {/* Больше всех должны — пять строк, сразу видно, кому звонить */}
           {overdueSummary.top.length > 1 && (
@@ -1035,10 +1069,8 @@ useEffect(() => {
           )}
         </div>
       ) : activeTab === 'ACTIVE' && activeSummary ? (
-        <div className="py-2">
-          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{getTabTitle()}</h2>
-          <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">Найдено: {filteredList.length}</p>
-          <div className="mt-3 grid grid-cols-2 gap-3">
+        <div>
+          <div className="grid grid-cols-2 gap-3">
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3">
               <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Осталось получить</p>
               <p className="text-lg font-bold text-slate-800 dark:text-white tabular-nums">{formatCurrency(activeSummary.remaining, appSettings?.showCents)} ₽</p>
@@ -1049,14 +1081,7 @@ useEffect(() => {
             </div>
           </div>
         </div>
-      ) : (
-        <div className="flex justify-between items-center py-2">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{getTabTitle()}</h2>
-            <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">Найдено: {filteredList.length}</p>
-          </div>
-        </div>
-      )}
+      ) : null}
 
       {/* Сроки просрочки кнопками: число договоров и сумма в каждом */}
       {overdueSummary && (
@@ -1237,6 +1262,24 @@ useEffect(() => {
 
       {/* Меню действий */}
       {activeMenuId && <ActionMenu />}
+
+      {/* Какие договоры показать */}
+      {statusOpen && (
+        <GlassSheet title="Договоры" fit="content" cancelLabel="Закрыть" onClose={() => setStatusOpen(false)}>
+          {(close: () => void) => (
+            <SheetSection>
+              {([['ALL', 'Все договоры'], ['ACTIVE', 'Активные'], ['OVERDUE', 'Просроченные'], ['ARCHIVE', 'Архив']] as const).map(([id, label]) => (
+                <SheetChoice key={id} selected={activeTab === id}
+                             label={<span className="flex items-center justify-between gap-3 w-full">
+                               <span className={id === 'OVERDUE' && statusCounts.OVERDUE > 0 ? 'text-red-600 dark:text-red-400' : ''}>{label}</span>
+                               <span className={`text-sm tabular-nums ${id === 'OVERDUE' && statusCounts.OVERDUE > 0 ? 'text-red-500 font-semibold' : 'text-slate-400'}`}>{statusCounts[id]}</span>
+                             </span>}
+                             onSelect={() => { onTabChange(id); close(); }} />
+              ))}
+            </SheetSection>
+          )}
+        </GlassSheet>
+      )}
 
       {/* Сортировка */}
       {sortOpen && (
