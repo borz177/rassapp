@@ -480,6 +480,8 @@ const Contracts: React.FC<ContractsProps> = ({
   const [sortOpen, setSortOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [statusOpen, setStatusOpen] = useState(false);
+  // Поделиться одним договором — из меню действий
+  const [shareSale, setShareSale] = useState<Sale | null>(null);
   // Сортировка запоминается для каждой вкладки
   const [sortByTab, setSortByTab] = useState<Partial<Record<ContractTab, SortKey>>>(() => {
     try { return JSON.parse(localStorage.getItem(SORT_KEY) || '{}'); } catch { return {}; }
@@ -641,7 +643,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
     const rows = filteredList.map(s => ({ sale: s, m: metrics.get(s.id)! }));
     const clients = new Set(filteredList.map(s => s.customerId)).size;
     const avgDays = rows.length ? Math.round(rows.reduce((sum, r) => sum + r.m.overdueDays, 0) / rows.length) : 0;
-    const top = [...rows].sort((a, b) => b.m.overdue - a.m.overdue).slice(0, 5);
+    const top = [...rows].sort((a, b) => b.m.overdue - a.m.overdue).slice(0, 3);
     // Сроки — по списку БЕЗ фильтра срока: кнопки показывают, что будет, если нажать
     const all = beforeAging.map(s => metrics.get(s.id)!);
     const aging = AGING.map(b => {
@@ -836,6 +838,14 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
         color: 'text-slate-500 dark:text-slate-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
         run: () => printContract(sale),
       },
+      // Один договор текстом: ФИО, дата рождения, договор, просрочка — в WhatsApp или куда угодно
+      {
+        key: 'share', label: 'Поделиться', icon: (
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="m16 6-4-4-4 4" /><path d="M12 2v13" /></svg>
+        ),
+        color: 'text-emerald-500 dark:text-emerald-400', hover: 'hover:bg-emerald-50 dark:hover:bg-emerald-900/30',
+        run: () => setShareSale(sale),
+      },
       // Задача по договору: для просроченных подсказываем текст сразу
       ...(onCreateTask ? [{
         key: 'task', label: 'Создать задачу', icon: ICONS.Tasks,
@@ -991,14 +1001,14 @@ useEffect(() => {
             {filteredList.length} {pluralRu(filteredList.length, 'договор', 'договора', 'договоров')}
           </p>
         </div>
-        {activeTab !== 'OVERDUE' && statusCounts.OVERDUE > 0 && (
+        {activeTab !== 'OVERDUE' && activeTab !== 'ARCHIVE' && statusCounts.OVERDUE > 0 && (
           <button type="button" onClick={() => onTabChange('OVERDUE')}
                   className="shrink-0 flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 text-xs font-bold border border-red-200 dark:border-red-900/50 active:scale-95 transition">
             <span className="w-1.5 h-1.5 rounded-full bg-red-500 animate-pulse" />
             {statusCounts.OVERDUE} {pluralRu(statusCounts.OVERDUE, 'просрочен', 'просрочено', 'просрочено')}
           </button>
         )}
-        {activeTab !== 'ALL' && (activeTab === 'OVERDUE' || statusCounts.OVERDUE === 0) && (
+        {activeTab !== 'ALL' && (activeTab === 'OVERDUE' || activeTab === 'ARCHIVE' || statusCounts.OVERDUE === 0) && (
           <button type="button" onClick={() => onTabChange('ALL')}
                   className="shrink-0 px-3 py-1.5 rounded-full text-xs font-semibold text-slate-500 dark:text-slate-400 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 active:scale-95 transition">
             ✕ Все договоры
@@ -1012,9 +1022,6 @@ useEffect(() => {
             <div className="min-w-0">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
               <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
-              <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">
-                у {overdueSummary.clients} {pluralRu(overdueSummary.clients, 'клиента', 'клиентов', 'клиентов')} · в среднем {overdueSummary.avgDays} {daysWord(overdueSummary.avgDays)}
-              </p>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               {/* Список должников текстом: ФИО, дата рождения, срок */}
@@ -1050,7 +1057,7 @@ useEffect(() => {
           </div>
 
 
-          {/* Больше всех должны — пять строк, сразу видно, кому звонить */}
+          {/* Больше всех должны — три строки, сразу видно, кому звонить */}
           {overdueSummary.top.length > 1 && (
             <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-1.5">Больше всех должны</p>
@@ -1415,6 +1422,16 @@ useEffect(() => {
       {shareOpen && (
         <ShareDebtorsSheet rows={debtorRows} showCents={appSettings?.showCents} onClose={() => setShareOpen(false)} />
       )}
+      {shareSale && (() => {
+        const c = customers.find(x => x.id === shareSale.customerId);
+        const mm = metrics.get(shareSale.id) || contractMetrics(shareSale);
+        const row: DebtorRow = {
+          name: c?.name || 'Без имени', birthDate: c?.birthDate, phone: c?.phone, product: shareSale.productName,
+          days: mm.overdueDays, amount: mm.overdue, missed: mm.missed,
+          contractNo: contractNo[shareSale.id] || '', startDate: shareSale.startDate, remaining: mm.remaining,
+        };
+        return <ShareDebtorsSheet rows={[row]} showCents={appSettings?.showCents} onClose={() => setShareSale(null)} />;
+      })()}
 
       {/* Модалка удаления */}
       {deletingSale && !readOnly && (

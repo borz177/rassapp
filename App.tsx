@@ -5414,38 +5414,23 @@ if (!user && !showSplash) {
             )}
           </div>
 
-          {/* Договоры (аккордеон) */}
-          <div className="bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 overflow-hidden">
-            <button onClick={() => toggleMoreSection('CONTRACTS')}
-                    className="w-full flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
-              <div className="flex items-center gap-3">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.File}</div>
-                <span className="font-semibold text-slate-800 dark:text-white">Договоры</span>
-              </div>
-              <span className={`text-slate-400 dark:text-slate-500 transition-transform ${moreExpandedSection === 'CONTRACTS' ? 'rotate-90' : ''}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                  <polyline points="9 18 15 12 9 6"/>
-                </svg>
+          {/* Договоры — одной кнопкой: статус выбирают в заголовке страницы,
+              а оформить можно кнопкой «+» внизу */}
+          <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ALL'); }}
+                  className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 flex items-center justify-between p-4 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+            <div className="flex items-center gap-3">
+              <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.File}</div>
+              <span className="font-semibold text-slate-800 dark:text-white">Договоры</span>
+            </div>
+            <span className="flex items-center gap-2">
+              {contractCounts.overdue > 0 && (
+                <span className="min-w-[22px] h-[22px] px-1.5 rounded-full bg-red-500 text-white text-[11px] font-bold flex items-center justify-center">{contractCounts.overdue}</span>
+              )}
+              <span className="text-slate-400 dark:text-slate-500">
+                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6"/></svg>
               </span>
-            </button>
-            {moreExpandedSection === 'CONTRACTS' && (
-              <div className="bg-slate-50 dark:bg-slate-700/50 border-t border-slate-100 dark:border-slate-700 p-2 space-y-1">
-                <button onClick={() => handleAction('CREATE_SALE')}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center gap-2">
-                  <span className="opacity-70">{ICONS.AddSmall}</span> Оформить
-                </button>
-                {/* Все договоры одной кнопкой: статус выбирают в заголовке страницы */}
-                <button onClick={() => { setPreviousView('MORE'); setCurrentView('CONTRACTS'); setActiveContractTab('ALL'); }}
-                        className="w-full text-left px-4 py-3 rounded-lg hover:bg-white dark:hover:bg-slate-700 text-sm text-slate-600 dark:text-slate-300 flex items-center justify-between gap-2">
-                  <div className="flex items-center gap-2"><span className="opacity-70">{ICONS.List}</span> Все договоры</div>
-                  <span className="flex items-center gap-1.5">
-                    {contractCounts.overdue > 0 && <span className="text-xs bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 font-semibold px-2 py-0.5 rounded-full">{contractCounts.overdue} просроч.</span>}
-                    {contractCounts.all > 0 && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-semibold px-2 py-0.5 rounded-full">{contractCounts.all}</span>}
-                  </span>
-                </button>
-              </div>
-            )}
-          </div>
+            </span>
+          </button>
 
           {/* Отчеты */}
           <button onClick={() => { setPreviousView('MORE'); setCurrentView('REPORTS'); }}
