@@ -8,6 +8,11 @@ import { printContract as printContractDocument } from './contractPrint';
 import UnsyncedMark from './UnsyncedMark';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
+import GlassSheet, { SheetSection, SheetChoice, sheetInputClass } from './GlassSheet';
+import { FilterChip, ChipGroup } from './FilterChips';
+import ShareDebtorsSheet, { type DebtorRow } from './ShareDebtorsSheet';
+import { contractMetrics, AGING, daysWord, type AgingBucket, type ContractMetrics } from '../src/contractMetrics';
+import { expectedPaymentsInPeriod } from '../src/utils';
 
 interface ContractsProps {
   sales: Sale[];
@@ -396,6 +401,70 @@ const formatPhone = (raw: string | undefined): string => {
 };
 
 // ─────────────────────────────────────────────────────────────
+// Сортировки и фильтры списка договоров
+// ─────────────────────────────────────────────────────────────
+type ContractTab = 'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE';
+type SortKey = 'overdue' | 'days' | 'last' | 'remaining' | 'next' | 'percent' | 'end' | 'date' | 'name';
+
+// У каждой вкладки свой главный вопрос: в просроченных — кто должен больше и
+// дольше всех, в активных — кто и когда платит следующим.
+const SORTS: Record<ContractTab, { id: SortKey; label: string }[]> = {
+  OVERDUE: [
+    { id: 'overdue', label: 'По сумме просрочки' },
+    { id: 'days', label: 'По сроку просрочки' },
+    { id: 'last', label: 'Давно не платил' },
+    { id: 'remaining', label: 'По остатку долга' },
+    { id: 'date', label: 'По дате оформления' },
+    { id: 'name', label: 'По имени' },
+  ],
+  ACTIVE: [
+    { id: 'next', label: 'По ближайшему платежу' },
+    { id: 'remaining', label: 'По остатку долга' },
+    { id: 'percent', label: 'По проценту выплаты' },
+    { id: 'end', label: 'Скоро закроются' },
+    { id: 'date', label: 'По дате оформления' },
+    { id: 'name', label: 'По имени' },
+  ],
+  ALL: [
+    { id: 'date', label: 'По дате оформления' },
+    { id: 'remaining', label: 'По остатку долга' },
+    { id: 'name', label: 'По имени' },
+  ],
+  ARCHIVE: [
+    { id: 'date', label: 'По дате оформления' },
+    { id: 'name', label: 'По имени' },
+  ],
+};
+const SORT_KEY = 'finuchet_contracts_sort';
+
+interface ContractFilters {
+  accountId: string;
+  employeeId: string;
+  amountFrom: string;
+  amountTo: string;
+  period: 'ALL' | 'THIS_MONTH' | 'LAST_MONTH' | 'CUSTOM';
+  dateFrom: string;
+  dateTo: string;
+  // Просроченные
+  aging: AgingBucket | '';
+  overdueFrom: number;
+  missed: number;        // 0 — любые, 3 — «3 и больше»
+  silentDays: number;    // не платил больше N дней
+  // Активные
+  due: '' | 'TODAY' | 'WEEK' | 'MONTH';
+  paid: '' | 'LOW' | 'MID' | 'HIGH';
+  hadLate: boolean;
+  noPayments: boolean;
+}
+const EMPTY_FILTERS: ContractFilters = {
+  accountId: '', employeeId: '', amountFrom: '', amountTo: '', period: 'ALL', dateFrom: '', dateTo: '',
+  aging: '', overdueFrom: 0, missed: 0, silentDays: 0,
+  due: '', paid: '', hadLate: false, noPayments: false,
+};
+const DAY_MS = 86400000;
+const time = (d?: string | null) => (d ? new Date(d).getTime() : 0);
+
+// ─────────────────────────────────────────────────────────────
 // 📋 Основной компонент Contracts
 // ─────────────────────────────────────────────────────────────
 const Contracts: React.FC<ContractsProps> = ({
@@ -405,8 +474,24 @@ const Contracts: React.FC<ContractsProps> = ({
 }) => {
   const isEmployee = user?.role === 'employee';
   const [searchTerm, setSearchTerm] = useState('');
-  const [filterAccountId, setFilterAccountId] = useState('');
-  const [filterEmployeeId, setFilterEmployeeId] = useState('');
+  const [filters, setFilters] = useState<ContractFilters>(EMPTY_FILTERS);
+  const setF = <K extends keyof ContractFilters>(k: K, v: ContractFilters[K]) => setFilters(f => ({ ...f, [k]: v }));
+  const [filtersOpen, setFiltersOpen] = useState(false);
+  const [sortOpen, setSortOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  // Сортировка запоминается для каждой вкладки
+  const [sortByTab, setSortByTab] = useState<Partial<Record<ContractTab, SortKey>>>(() => {
+    try { return JSON.parse(localStorage.getItem(SORT_KEY) || '{}'); } catch { return {}; }
+  });
+  const sortKey: SortKey = (SORTS[activeTab].some(o => o.id === sortByTab[activeTab]) && sortByTab[activeTab]) || SORTS[activeTab][0].id;
+  const setSortKey = (k: SortKey) => setSortByTab(prev => {
+    const next = { ...prev, [activeTab]: k };
+    try { localStorage.setItem(SORT_KEY, JSON.stringify(next)); } catch { /* не критично */ }
+    return next;
+  });
+  const filterAccountId = filters.accountId;
+  const filterEmployeeId = filters.employeeId;
+  const canFilterEmployee = employees.length > 0 && !isEmployee && !readOnly;
   const getCreatorName = (sale: Sale) => employees.find(e => e.id === sale.createdByUserId)?.name;
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
@@ -428,7 +513,15 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   // договора номер 0050 и в архиве, и в поиске по одному клиенту.
   const contractNo = useMemo(() => contractNumbers(sales), [sales]);
 
-  const { filteredList } = useMemo(() => {
+  // Показатели каждого договора — один раз на набор данных (src/contractMetrics.ts)
+  const metrics = useMemo(() => {
+    const map = new Map<string, ContractMetrics>();
+    const now = new Date();
+    sales.forEach(sale => map.set(sale.id, contractMetrics(sale, now)));
+    return map;
+  }, [sales]);
+
+  const { filteredList, beforeAging } = useMemo(() => {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const active: Sale[] = [], overdue: Sale[] = [], archive: Sale[] = [];
@@ -456,16 +549,126 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
         return (customer?.name.toLowerCase().includes(lowerTerm)) || sale.productName.toLowerCase().includes(lowerTerm);
       });
     }
-    if (filterAccountId) list = list.filter(sale => sale.accountId === filterAccountId);
-    if (filterEmployeeId) list = list.filter(sale => sale.createdByUserId === filterEmployeeId);
+    const f = filters;
+    if (f.accountId) list = list.filter(sale => sale.accountId === f.accountId);
+    if (f.employeeId) list = list.filter(sale => sale.createdByUserId === f.employeeId);
+    const from = Number(f.amountFrom) || 0, to = Number(f.amountTo) || 0;
+    if (from) list = list.filter(sale => sale.totalAmount >= from);
+    if (to) list = list.filter(sale => sale.totalAmount <= to);
 
-    return { filteredList: list.sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime()) };
-  }, [sales, customers, activeTab, searchTerm, filterAccountId, filterEmployeeId]);
+    // Период оформления
+    if (f.period !== 'ALL') {
+      const now = new Date();
+      let a = 0, b = Infinity;
+      if (f.period === 'THIS_MONTH') { a = new Date(now.getFullYear(), now.getMonth(), 1).getTime(); }
+      else if (f.period === 'LAST_MONTH') {
+        a = new Date(now.getFullYear(), now.getMonth() - 1, 1).getTime();
+        b = new Date(now.getFullYear(), now.getMonth(), 1).getTime() - 1;
+      } else {
+        if (f.dateFrom) a = new Date(`${f.dateFrom}T00:00:00`).getTime();
+        if (f.dateTo) b = new Date(`${f.dateTo}T23:59:59`).getTime();
+      }
+      list = list.filter(sale => { const t = time(sale.startDate); return t >= a && t <= b; });
+    }
+
+    const m = (sale: Sale) => metrics.get(sale.id)!;
+    const todayMs = today.getTime();
+    let beforeAging = list;
+    if (activeTab === 'OVERDUE') {
+      if (f.overdueFrom) list = list.filter(sale => m(sale).overdue >= f.overdueFrom);
+      if (f.missed) list = list.filter(sale => f.missed >= 3 ? m(sale).missed >= 3 : m(sale).missed === f.missed);
+      if (f.silentDays) list = list.filter(sale => {
+        const last = m(sale).lastPayment;
+        return !last || (todayMs - time(last)) / DAY_MS > f.silentDays;
+      });
+      beforeAging = list;
+      if (f.aging) { const bucket = AGING.find(x => x.id === f.aging)!; list = list.filter(sale => bucket.test(m(sale).overdueDays)); }
+    }
+    if (activeTab === 'ACTIVE') {
+      if (f.due) {
+        const end = f.due === 'TODAY' ? todayMs + DAY_MS
+          : f.due === 'WEEK' ? todayMs + 7 * DAY_MS
+          : new Date(today.getFullYear(), today.getMonth() + 1, 1).getTime();
+        list = list.filter(sale => { const n = m(sale).nextDue; return !!n && time(n.date) < end; });
+      }
+      if (f.paid) list = list.filter(sale => {
+        const pct = m(sale).paidPercent;
+        return f.paid === 'LOW' ? pct < 25 : f.paid === 'MID' ? pct >= 25 && pct <= 75 : pct > 75;
+      });
+      if (f.hadLate) list = list.filter(sale => m(sale).hadLate);
+      if (f.noPayments) list = list.filter(sale => m(sale).noPayments);
+    }
+
+    const name = (sale: Sale) => customers.find(c => c.id === sale.customerId)?.name || '';
+    const byDate = (a: Sale, b: Sale) => time(b.startDate) - time(a.startDate);
+    const cmp: Record<SortKey, (a: Sale, b: Sale) => number> = {
+      overdue: (a, b) => m(b).overdue - m(a).overdue,
+      days: (a, b) => m(b).overdueDays - m(a).overdueDays,
+      // Давно не платил: без платежей вообще — первыми, дальше по дате последнего
+      last: (a, b) => (time(m(a).lastPayment) || 0) - (time(m(b).lastPayment) || 0),
+      remaining: (a, b) => m(b).remaining - m(a).remaining,
+      next: (a, b) => (time(m(a).nextDue?.date) || Infinity) - (time(m(b).nextDue?.date) || Infinity),
+      percent: (a, b) => m(b).paidPercent - m(a).paidPercent,
+      end: (a, b) => (time(m(a).endDate) || Infinity) - (time(m(b).endDate) || Infinity),
+      date: byDate,
+      name: (a, b) => name(a).localeCompare(name(b), 'ru'),
+    };
+    return { filteredList: [...list].sort((a, b) => cmp[sortKey](a, b) || byDate(a, b)), beforeAging };
+  }, [sales, customers, activeTab, searchTerm, filters, sortKey, metrics]);
 
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
     return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
   }, [filteredList, activeTab]);
+
+  // Сводки над списком — по тому, что сейчас отобрано
+  const overdueSummary = useMemo(() => {
+    if (activeTab !== 'OVERDUE') return null;
+    const rows = filteredList.map(s => ({ sale: s, m: metrics.get(s.id)! }));
+    const clients = new Set(filteredList.map(s => s.customerId)).size;
+    const avgDays = rows.length ? Math.round(rows.reduce((sum, r) => sum + r.m.overdueDays, 0) / rows.length) : 0;
+    const top = [...rows].sort((a, b) => b.m.overdue - a.m.overdue).slice(0, 5);
+    // Сроки — по списку БЕЗ фильтра срока: кнопки показывают, что будет, если нажать
+    const all = beforeAging.map(s => metrics.get(s.id)!);
+    const aging = AGING.map(b => {
+      const inBucket = all.filter(m => b.test(m.overdueDays)).map(m => ({ m }));
+      return { ...b, count: inBucket.length, sum: inBucket.reduce((sum, r) => sum + r.m.overdue, 0) };
+    });
+    return { clients, avgDays, top, aging };
+  }, [filteredList, beforeAging, metrics, activeTab]);
+
+  const activeSummary = useMemo(() => {
+    if (activeTab !== 'ACTIVE') return null;
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59);
+    let remaining = 0, thisMonth = 0;
+    for (const s of filteredList) {
+      remaining += metrics.get(s.id)?.remaining || 0;
+      thisMonth += expectedPaymentsInPeriod(s, monthStart, monthEnd).reduce((sum, p) => sum + p.amount, 0);
+    }
+    return { remaining, thisMonth };
+  }, [filteredList, metrics, activeTab]);
+
+  // Сколько фильтров включено — число на кнопке
+  const filtersOn = (() => {
+    const f = filters;
+    let n = 0;
+    if (f.accountId) n++;
+    if (f.employeeId) n++;
+    if (f.amountFrom || f.amountTo) n++;
+    if (f.period !== 'ALL') n++;
+    if (activeTab === 'OVERDUE') { if (f.aging) n++; if (f.overdueFrom) n++; if (f.missed) n++; if (f.silentDays) n++; }
+    if (activeTab === 'ACTIVE') { if (f.due) n++; if (f.paid) n++; if (f.hadLate) n++; if (f.noPayments) n++; }
+    return n;
+  })();
+  const resetFilters = () => setFilters(EMPTY_FILTERS);
+
+  const debtorRows: DebtorRow[] = activeTab === 'OVERDUE' ? filteredList.map(s => {
+    const c = customers.find(x => x.id === s.customerId);
+    const mm = metrics.get(s.id)!;
+    return { name: c?.name || 'Без имени', birthDate: c?.birthDate, phone: c?.phone, product: s.productName, days: mm.overdueDays, amount: mm.overdue };
+  }) : [];
 
   const getTabTitle = () => {
     switch(activeTab) {
@@ -760,23 +963,27 @@ useEffect(() => {
     <div className="space-y-4 pb-20 w-full max-w-5xl mx-auto px-3 sm:px-4" onClick={() => closeActionMenu()}>
 
       {/* Заголовок вкладки */}
-      {activeTab !== 'OVERDUE' ? (
-        <div className="flex justify-between items-center py-2">
-          <div>
-            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{getTabTitle()}</h2>
-            <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">Найдено: {filteredList.length}</p>
-          </div>
-        </div>
-      ) : (
-        <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border border-red-200 dark:border-red-900/50 p-4 rounded-2xl mb-3">
-          <div className="flex justify-between items-start">
-            <div>
+      {activeTab === 'OVERDUE' && overdueSummary ? (
+        <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border border-red-200 dark:border-red-900/50 p-4 rounded-2xl">
+          <div className="flex justify-between items-start gap-3">
+            <div className="min-w-0">
               <h2 className="text-lg font-bold text-slate-800 dark:text-white">Просроченные договоры</h2>
-              <p className="text-slate-500 dark:text-slate-400 text-xs">Всего: {filteredList.length}</p>
+              <p className="text-slate-500 dark:text-slate-400 text-xs">
+                {filteredList.length} {pluralRu(filteredList.length, 'договор', 'договора', 'договоров')} · {overdueSummary.clients} {pluralRu(overdueSummary.clients, 'клиент', 'клиента', 'клиентов')}
+              </p>
             </div>
-            {!readOnly && (
-              <div className="flex items-center gap-2">
-                {/* 🔔 КНОПКА "НАПОМНИТЬ ВСЕМ" */}
+            <div className="flex items-center gap-2 shrink-0">
+              {/* Список должников текстом: ФИО, дата рождения, срок */}
+              <button
+                onClick={() => setShareOpen(true)}
+                disabled={filteredList.length === 0}
+                title="Поделиться списком"
+                className="px-3 py-2 bg-white/80 dark:bg-white/10 text-slate-700 dark:text-slate-200 disabled:opacity-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="m16 6-4-4-4 4" /><path d="M12 2v13" /></svg>
+                Поделиться
+              </button>
+              {!readOnly && (
                 <button
                     onClick={() => { setRiskAcknowledged(false); setShowConfirmRemindAll(true); }}
                     disabled={filteredList.length === 0 || isSendingAll}
@@ -784,8 +991,7 @@ useEffect(() => {
                 >
                   {isSendingAll ? (
                       <>
-                        <span
-                            className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
+                        <span className="w-3.5 h-3.5 border-2 border-white/30 border-t-white rounded-full animate-spin"></span>
                         {sentStats ? `${sentStats.sent}/${sentStats.total}` : 'Отправка...'}
                       </>
                   ) : (
@@ -795,61 +1001,116 @@ useEffect(() => {
                       </>
                   )}
                 </button>
-
-              </div>
-            )}
-
+              )}
+            </div>
           </div>
-          <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50">
-            <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
-            <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
+
+          <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50 grid grid-cols-2 gap-3">
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
+            </div>
+            <div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Средний срок</p>
+              <p className="text-2xl font-bold text-slate-800 dark:text-white">{overdueSummary.avgDays} <span className="text-sm font-semibold text-slate-500">{daysWord(overdueSummary.avgDays)}</span></p>
+            </div>
+          </div>
+
+          {/* Больше всех должны — пять строк, сразу видно, кому звонить */}
+          {overdueSummary.top.length > 1 && (
+            <div className="mt-3 pt-3 border-t border-red-200 dark:border-red-900/50">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-medium mb-1.5">Больше всех должны</p>
+              <div className="space-y-1">
+                {overdueSummary.top.map((r, i) => (
+                  <button key={r.sale.id} type="button" onClick={() => setSelectedSaleForInfo(r.sale)}
+                          className="w-full flex items-center gap-2 text-left text-sm rounded-lg px-1 py-0.5 hover:bg-white/50 dark:hover:bg-white/5">
+                    <span className="w-4 text-xs font-bold text-slate-400">{i + 1}</span>
+                    <span className="flex-1 min-w-0 truncate font-semibold text-slate-700 dark:text-slate-200">{getCustomerName(r.sale.customerId)}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400 shrink-0">{r.m.overdueDays} дн.</span>
+                    <span className="w-24 text-right font-bold text-red-600 dark:text-red-400 shrink-0 tabular-nums">{formatCurrency(r.m.overdue, appSettings?.showCents)} ₽</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      ) : activeTab === 'ACTIVE' && activeSummary ? (
+        <div className="py-2">
+          <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{getTabTitle()}</h2>
+          <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">Найдено: {filteredList.length}</p>
+          <div className="mt-3 grid grid-cols-2 gap-3">
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Осталось получить</p>
+              <p className="text-lg font-bold text-slate-800 dark:text-white tabular-nums">{formatCurrency(activeSummary.remaining, appSettings?.showCents)} ₽</p>
+            </div>
+            <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3">
+              <p className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">Ожидается в этом месяце</p>
+              <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400 tabular-nums">{formatCurrency(activeSummary.thisMonth, appSettings?.showCents)} ₽</p>
+            </div>
+          </div>
+        </div>
+      ) : (
+        <div className="flex justify-between items-center py-2">
+          <div>
+            <h2 className="text-2xl font-bold text-slate-800 dark:text-white">{getTabTitle()}</h2>
+            <p className="text-slate-400 dark:text-slate-500 text-xs mt-0.5">Найдено: {filteredList.length}</p>
           </div>
         </div>
       )}
 
-      {/* Фильтры */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-3 space-y-3">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
-          <div className="relative">
-            <Search className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16}/>
-            <input
-                type="text"
-                placeholder="Поиск по имени или товару..."
-                className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
-                value={searchTerm}
-                onChange={e => setSearchTerm(e.target.value)}
-            />
-          </div>
-
-          <div className="relative">
-            <Wallet className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16} />
-            <select
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white dark:bg-slate-900 dark:text-white"
-              value={filterAccountId}
-              onChange={e => setFilterAccountId(e.target.value)}
-            >
-              <option value="">Все счета / Инвесторы</option>
-              {accounts.filter(acc => !acc.isArchived || acc.id === filterAccountId)
-                       .map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
-            </select>
-          </div>
+      {/* Сроки просрочки кнопками: число договоров и сумма в каждом */}
+      {overdueSummary && (
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          {overdueSummary.aging.map(b => {
+            const on = filters.aging === b.id;
+            return (
+              <button key={b.id} type="button" onClick={() => setF('aging', on ? '' : b.id)}
+                      className={`text-left rounded-2xl px-3 py-2.5 border transition-all active:scale-[0.98] ${on
+                        ? 'bg-red-600 border-red-600 text-white shadow-sm'
+                        : 'bg-white dark:bg-slate-800 border-slate-100 dark:border-slate-700 text-slate-700 dark:text-slate-200'}`}>
+                <p className={`text-[11px] font-semibold ${on ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'}`}>{b.label}</p>
+                <p className="text-sm font-bold tabular-nums">{b.count} · {formatCurrency(b.sum, false)} ₽</p>
+              </button>
+            );
+          })}
         </div>
+      )}
 
-        {/* Фильтр по сотруднику — инструмент менеджера: сам сотрудник и инвестор его не видят */}
-        {employees.length > 0 && !isEmployee && !readOnly && (
-          <div className="relative">
-            <UserIcon className="absolute left-3 top-2.5 text-slate-400 dark:text-slate-500" size={16} />
-            <select
-              className="w-full pl-9 pr-3 py-2 border border-slate-200 dark:border-slate-600 rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all appearance-none bg-white dark:bg-slate-900 dark:text-white"
-              value={filterEmployeeId}
-              onChange={e => setFilterEmployeeId(e.target.value)}
-            >
-              <option value="">Все сотрудники</option>
-              {employees.map(emp => <option key={emp.id} value={emp.id}>{emp.name}</option>)}
-            </select>
-          </div>
+      {/* Поиск, сортировка, фильтр — одной строкой */}
+      <div className="flex items-center gap-2">
+        <div className="relative flex-1 min-w-0">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400 dark:text-slate-500" size={16}/>
+          <input
+              type="text"
+              placeholder="Поиск по имени или товару..."
+              className="w-full pl-9 pr-3 py-2.5 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 dark:text-white rounded-xl text-sm focus:border-blue-500 focus:ring-1 focus:ring-blue-200 outline-none transition-all"
+              value={searchTerm}
+              onChange={e => setSearchTerm(e.target.value)}
+          />
+        </div>
+        {SORTS[activeTab].length > 1 && (
+          <button type="button" onClick={() => setSortOpen(true)} title="Сортировка"
+                  className="shrink-0 h-[42px] px-3 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 flex items-center gap-1.5 text-sm font-semibold">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="m3 16 4 4 4-4" /><path d="M7 20V4" /><path d="m21 8-4-4-4 4" /><path d="M17 4v16" /></svg>
+            <span className="hidden sm:inline max-w-[160px] truncate">{SORTS[activeTab].find(o => o.id === sortKey)?.label}</span>
+          </button>
         )}
+        <button type="button" onClick={() => setFiltersOpen(true)} title="Фильтры" aria-label="Фильтры"
+                className={`relative shrink-0 w-[42px] h-[42px] rounded-xl flex items-center justify-center transition-colors ${filtersOn
+                  ? 'bg-indigo-600 text-white'
+                  : 'bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-300'}`}>
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>
+          {filtersOn > 0 && (
+            <span className="absolute -top-1.5 -right-1.5 min-w-[18px] h-[18px] px-1 rounded-full bg-rose-500 text-white text-[10px] font-bold flex items-center justify-center">{filtersOn}</span>
+          )}
+        </button>
       </div>
+      {filtersOn > 0 && (
+        <div className="-mt-2 flex items-center gap-2 text-xs">
+          <span className="text-slate-500 dark:text-slate-400">Фильтров: {filtersOn}</span>
+          <button type="button" onClick={resetFilters} className="font-semibold text-slate-500 dark:text-slate-400 hover:text-rose-600">✕ Сбросить</button>
+        </div>
+      )}
 
       {/* Список договоров */}
       <div className="space-y-2.5">
@@ -908,6 +1169,20 @@ useEffect(() => {
                         один номер, где бы на неё ни смотрели. */}
                     №{contractNo[sale.id] || '—'} • {formatDate(sale.startDate)} • {sale.installments} мес.
                   </p>
+                  {/* Просрочка: сколько дней, сколько платежей, когда платил последний раз */}
+                  {activeTab === 'OVERDUE' && (() => {
+                    const mm = metrics.get(sale.id);
+                    if (!mm) return null;
+                    return (
+                      <p className="text-[11px] text-red-600 dark:text-red-400 mt-1 font-medium">
+                        <b>{mm.overdueDays} {daysWord(mm.overdueDays)}</b>
+                        {' · '}{mm.missed} {pluralRu(mm.missed, 'платёж', 'платежа', 'платежей')}
+                        <span className="text-slate-500 dark:text-slate-400 font-normal">
+                          {' · '}{mm.lastPayment ? `платил ${formatDate(mm.lastPayment)}` : 'платежей не было'}
+                        </span>
+                      </p>
+                    );
+                  })()}
                   {employees.length > 0 && getCreatorName(sale) && (
                     <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5 flex items-center gap-1">
                       <UserIcon size={10} /> {getCreatorName(sale)}
@@ -921,6 +1196,29 @@ useEffect(() => {
                   </p>
                 </div>
               </div>
+
+              {/* Активный: ближайший платёж и полоса выплаты */}
+              {activeTab === 'ACTIVE' && (() => {
+                const mm = metrics.get(sale.id);
+                if (!mm) return null;
+                const soon = mm.nextDue && (time(mm.nextDue.date) - Date.now()) / DAY_MS < 3;
+                return (
+                  <div className="mb-2">
+                    {mm.nextDue && (
+                      <p className={`text-[11px] mb-1.5 ${soon ? 'text-amber-600 dark:text-amber-400 font-semibold' : 'text-slate-500 dark:text-slate-400'}`}>
+                        Следующий платёж {new Date(mm.nextDue.date).toLocaleDateString('ru-RU', { day: 'numeric', month: 'short' })} · {formatCurrency(mm.nextDue.amount, appSettings?.showCents)} ₽
+                        {mm.hadLate && <span className="ml-1.5 text-rose-500 font-semibold">· были опоздания</span>}
+                      </p>
+                    )}
+                    <div className="flex items-center gap-2">
+                      <div className="flex-1 h-1.5 rounded-full bg-slate-100 dark:bg-slate-700 overflow-hidden">
+                        <div className="h-full rounded-full bg-emerald-500" style={{ width: `${mm.paidPercent}%` }} />
+                      </div>
+                      <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 tabular-nums">{mm.paidPercent}%</span>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {activeTab !== 'OVERDUE' && !isCompleted && (
                 <div className="flex items-center justify-between pt-2 border-t border-slate-50 dark:border-slate-700">
@@ -939,6 +1237,141 @@ useEffect(() => {
 
       {/* Меню действий */}
       {activeMenuId && <ActionMenu />}
+
+      {/* Сортировка */}
+      {sortOpen && (
+        <GlassSheet title="Сортировка" fit="content" cancelLabel="Закрыть" onClose={() => setSortOpen(false)}>
+          {(close: () => void) => (
+            <SheetSection>
+              {SORTS[activeTab].map(o => (
+                <SheetChoice key={o.id} selected={sortKey === o.id} label={o.label}
+                             onSelect={() => { setSortKey(o.id); close(); }} />
+              ))}
+            </SheetSection>
+          )}
+        </GlassSheet>
+      )}
+
+      {/* Фильтры: общие и свои для вкладки */}
+      {filtersOpen && (
+        <GlassSheet
+          title="Фильтры"
+          subtitle={`Найдётся ${filteredList.length}`}
+          onClose={() => setFiltersOpen(false)}
+          cancelLabel="Закрыть"
+          action={{ label: 'Показать', onClick: close => close() }}
+        >
+          <div className="space-y-6">
+            {activeTab === 'OVERDUE' && (
+              <SheetSection title="Просрочка">
+                <div className="px-4 py-3.5 space-y-3">
+                  <ChipGroup label="Срок">
+                    <FilterChip on={!filters.aging} onClick={() => setF('aging', '')}>Любой</FilterChip>
+                    {AGING.map(b => <FilterChip key={b.id} on={filters.aging === b.id} onClick={() => setF('aging', filters.aging === b.id ? '' : b.id)}>{b.label}</FilterChip>)}
+                  </ChipGroup>
+                  <ChipGroup label="Сумма просрочки от">
+                    {[0, 5000, 10000, 30000, 50000].map(v => (
+                      <FilterChip key={v} on={filters.overdueFrom === v} onClick={() => setF('overdueFrom', v)}>{v ? `${(v / 1000).toLocaleString('ru-RU')} тыс ₽` : 'Любая'}</FilterChip>
+                    ))}
+                  </ChipGroup>
+                  <ChipGroup label="Пропущено платежей">
+                    {[0, 1, 2, 3].map(v => (
+                      <FilterChip key={v} on={filters.missed === v} onClick={() => setF('missed', v)}>{v === 0 ? 'Сколько угодно' : v === 3 ? '3 и больше' : String(v)}</FilterChip>
+                    ))}
+                  </ChipGroup>
+                  <ChipGroup label="Не платил больше">
+                    {[0, 30, 60, 90].map(v => (
+                      <FilterChip key={v} on={filters.silentDays === v} onClick={() => setF('silentDays', v)}>{v ? `${v} дней` : 'Неважно'}</FilterChip>
+                    ))}
+                  </ChipGroup>
+                </div>
+              </SheetSection>
+            )}
+
+            {activeTab === 'ACTIVE' && (
+              <SheetSection title="Платежи">
+                <div className="px-4 py-3.5 space-y-3">
+                  <ChipGroup label="Следующий платёж">
+                    {([['', 'Когда угодно'], ['TODAY', 'Сегодня'], ['WEEK', 'На этой неделе'], ['MONTH', 'В этом месяце']] as const).map(([v, l]) => (
+                      <FilterChip key={v} on={filters.due === v} onClick={() => setF('due', v)}>{l}</FilterChip>
+                    ))}
+                  </ChipGroup>
+                  <ChipGroup label="Выплачено">
+                    {([['', 'Сколько угодно'], ['LOW', 'меньше 25%'], ['MID', '25–75%'], ['HIGH', 'больше 75%']] as const).map(([v, l]) => (
+                      <FilterChip key={v} on={filters.paid === v} onClick={() => setF('paid', v)}>{l}</FilterChip>
+                    ))}
+                  </ChipGroup>
+                  <ChipGroup label="Особые">
+                    <FilterChip on={filters.hadLate} onClick={() => setF('hadLate', !filters.hadLate)}>Платил с опозданием</FilterChip>
+                    <FilterChip on={filters.noPayments} onClick={() => setF('noPayments', !filters.noPayments)}>Ни одного платежа</FilterChip>
+                  </ChipGroup>
+                </div>
+              </SheetSection>
+            )}
+
+            <SheetSection title="Оформлен">
+              <div className="px-4 py-3.5 space-y-3">
+                <div className="flex flex-wrap gap-2">
+                  {([['ALL', 'За всё время'], ['THIS_MONTH', 'В этом месяце'], ['LAST_MONTH', 'В прошлом'], ['CUSTOM', 'Свой период']] as const).map(([v, l]) => (
+                    <FilterChip key={v} on={filters.period === v} onClick={() => setF('period', v)}>{l}</FilterChip>
+                  ))}
+                </div>
+                {filters.period === 'CUSTOM' && (
+                  <div className="grid grid-cols-2 gap-2">
+                    <label className="block"><span className="text-[12px] text-slate-400">с</span>
+                      <input type="date" value={filters.dateFrom} onChange={e => setF('dateFrom', e.target.value)} className={`${sheetInputClass} rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2`} /></label>
+                    <label className="block"><span className="text-[12px] text-slate-400">по</span>
+                      <input type="date" value={filters.dateTo} onChange={e => setF('dateTo', e.target.value)} className={`${sheetInputClass} rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2`} /></label>
+                  </div>
+                )}
+              </div>
+            </SheetSection>
+
+            <SheetSection title="Сумма договора, ₽">
+              <div className="px-4 py-3.5 grid grid-cols-2 gap-2">
+                <input inputMode="numeric" placeholder="от" value={filters.amountFrom} onChange={e => setF('amountFrom', e.target.value.replace(/\D/g, ''))}
+                       className={`${sheetInputClass} rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2`} />
+                <input inputMode="numeric" placeholder="до" value={filters.amountTo} onChange={e => setF('amountTo', e.target.value.replace(/\D/g, ''))}
+                       className={`${sheetInputClass} rounded-xl bg-slate-100 dark:bg-white/10 px-3 py-2`} />
+              </div>
+            </SheetSection>
+
+            {accounts.length > 1 && (
+              <SheetSection title="Счёт">
+                <div className="px-4 py-3.5 flex flex-wrap gap-2">
+                  <FilterChip on={!filters.accountId} onClick={() => setF('accountId', '')}>Все счета</FilterChip>
+                  {accounts.filter(acc => !acc.isArchived || acc.id === filters.accountId).map(acc => (
+                    <FilterChip key={acc.id} on={filters.accountId === acc.id} onClick={() => setF('accountId', filters.accountId === acc.id ? '' : acc.id)}>{acc.name}</FilterChip>
+                  ))}
+                </div>
+              </SheetSection>
+            )}
+
+            {/* Сотрудник — инструмент менеджера: сам сотрудник и инвестор его не видят */}
+            {canFilterEmployee && (
+              <SheetSection title="Кто оформил">
+                <div className="px-4 py-3.5 flex flex-wrap gap-2">
+                  <FilterChip on={!filters.employeeId} onClick={() => setF('employeeId', '')}>Все</FilterChip>
+                  {employees.map(emp => (
+                    <FilterChip key={emp.id} on={filters.employeeId === emp.id} onClick={() => setF('employeeId', filters.employeeId === emp.id ? '' : emp.id)}>{emp.name}</FilterChip>
+                  ))}
+                </div>
+              </SheetSection>
+            )}
+
+            {filtersOn > 0 && (
+              <button type="button" onClick={resetFilters}
+                      className="w-full py-3 rounded-2xl text-[15px] font-semibold text-rose-600 dark:text-rose-400 bg-white/70 dark:bg-white/5 active:opacity-70">
+                Сбросить все фильтры
+              </button>
+            )}
+          </div>
+        </GlassSheet>
+      )}
+
+      {shareOpen && (
+        <ShareDebtorsSheet rows={debtorRows} showCents={appSettings?.showCents} onClose={() => setShareOpen(false)} />
+      )}
 
       {/* Модалка удаления */}
       {deletingSale && !readOnly && (
