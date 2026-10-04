@@ -2,6 +2,7 @@ import React, { useState, useMemo, useEffect } from 'react';
 import { ICONS } from '../constants';
 import { AppSettings, TermRate, CalculatorCategory } from '../types';
 import { calcInstallment, rateFor } from '../src/calcMath';
+import CalculatorRates from './CalculatorRates';
 import { api } from '../services/api';
 import { publicOrigin } from '../src/platform';
 
@@ -48,55 +49,6 @@ function drawRRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.quadraticCurveTo(x, y, x + r, y);
   ctx.closePath();
 }
-
-/** Одна категория в настройках ставок: название, примечание для клиента, ставки по срокам */
-const CategoryEditor: React.FC<{
-  cat: CalculatorCategory;
-  baseRate: string;
-  onChange: (patch: Partial<CalculatorCategory>) => void;
-  onRemove: () => void;
-}> = ({ cat, baseRate, onChange, onRemove }) => {
-  const [month, setMonth] = useState(3);
-  const [rate, setRate] = useState('');
-  const add = () => {
-    const r = parseFloat(rate);
-    if (isNaN(r)) return;
-    onChange({ rates: [...cat.rates.filter(x => x.months !== month), { months: month, rate: r }].sort((a, b) => a.months - b.months) });
-    setRate('');
-  };
-  const input = 'w-full p-2.5 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-xl text-sm outline-none focus:border-indigo-400';
-  return (
-    <div className="bg-white dark:bg-slate-800 p-3.5 rounded-2xl border border-indigo-100 dark:border-indigo-900/50 space-y-2.5">
-      <div className="flex items-center gap-2">
-        <input className={`${input} font-semibold`} value={cat.name} maxLength={40}
-               placeholder="Название, например «Телефоны»" onChange={e => onChange({ name: e.target.value })} />
-        <button type="button" onClick={onRemove} title="Удалить категорию"
-                className="shrink-0 w-9 h-9 rounded-xl text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-900/30 flex items-center justify-center">{ICONS.Close}</button>
-      </div>
-      <textarea className={`${input} resize-none`} rows={2} maxLength={300} value={cat.note || ''}
-                placeholder="Примечание для клиента: «Без поручителя до 50 000 ₽»"
-                onChange={e => onChange({ note: e.target.value })} />
-      <div className="flex flex-wrap gap-1.5">
-        {cat.rates.map(r => (
-          <span key={r.months} className="inline-flex items-center gap-1.5 pl-2.5 pr-1 py-1 rounded-lg bg-indigo-50 dark:bg-indigo-950/40 text-xs font-bold text-indigo-700 dark:text-indigo-300">
-            {r.months} мес · {r.rate}%
-            <button type="button" onClick={() => onChange({ rates: cat.rates.filter(x => x.months !== r.months) })}
-                    className="w-5 h-5 rounded-md hover:bg-indigo-100 dark:hover:bg-indigo-900/50 flex items-center justify-center" aria-label="Убрать срок">×</button>
-          </span>
-        ))}
-        {cat.rates.length === 0 && <span className="text-xs text-slate-400">Сроков нет — действуют общие ставки ({baseRate || 0}% и правила выше)</span>}
-      </div>
-      <div className="flex gap-2 items-center">
-        <select className={`${input} w-28`} value={month} onChange={e => setMonth(parseInt(e.target.value))}>
-          {Array.from({ length: 24 }, (_, i) => i + 1).map(m => <option key={m} value={m}>{m} мес</option>)}
-        </select>
-        <input className={`${input} w-24`} type="number" placeholder="%" value={rate} onChange={e => setRate(e.target.value)}
-               onKeyDown={e => { if (e.key === 'Enter') add(); }} />
-        <button type="button" onClick={add} className="shrink-0 h-[42px] px-3 rounded-xl bg-indigo-600 text-white text-sm font-bold">+ срок</button>
-      </div>
-    </div>
-  );
-};
 
 interface CalculatorProps {
   isPublic?: boolean;
@@ -155,10 +107,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
 
   const [defaultRate, setDefaultRate] = useState<string>(appSettings?.calculator?.defaultInterestRate?.toString() || '30');
   const [termRates, setTermRates]     = useState<TermRate[]>(appSettings?.calculator?.termRates || []);
-  const [showSettings, setShowSettings] = useState(false);
   const [isLoadingConfig, setIsLoadingConfig] = useState(false);
-  const [newRuleMonth, setNewRuleMonth] = useState<number>(3);
-  const [newRuleRate, setNewRuleRate]   = useState<string>('');
   const [sellerPhone, setSellerPhone]   = useState<string>('');
 
   useEffect(() => {
@@ -427,7 +376,17 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
     .filter(c => c.name.trim())
     .map(c => ({ ...c, name: c.name.trim(), note: c.note?.trim() || undefined }));
 
+  // Есть ли несохранённые правки ставок — кнопка «Сохранить» появляется только тогда
+  const ratesSnapshot = () => JSON.stringify({ d: parseFloat(defaultRate) || 0, t: termRates, c: cleanCategories() });
+  const [savedSnapshot, setSavedSnapshot] = useState<string>(() => JSON.stringify({
+    d: appSettings?.calculator?.defaultInterestRate ?? (parseFloat(defaultRate) || 0),
+    t: appSettings?.calculator?.termRates || [],
+    c: (appSettings?.calculator?.categories || []).filter(c => c.name.trim()),
+  }));
+  const ratesDirty = ratesSnapshot() !== savedSnapshot;
+
   const persistSettings = () => {
+    setSavedSnapshot(ratesSnapshot());
     if (!onSaveSettings) return;
     onSaveSettings({ ...appSettings, calculator: {
       ...(appSettings?.calculator || {}),
@@ -442,29 +401,12 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const handleSaveConfig = () => {
     if (onSaveSettings) {
       persistSettings();
-      setShowSettings(false);
-      alert('Настройки калькулятора сохранены');
+      alert('Ставки сохранены');
     }
   };
 
-  // ── Категории ──
-  const addCategory = () => setCategories(prev => [...prev, { id: Math.random().toString(36).slice(2, 10), name: '', rates: [] }]);
-  const patchCategory = (id: string, patch: Partial<CalculatorCategory>) =>
-    setCategories(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
-  const removeCategory = (id: string) => {
-    setCategories(prev => prev.filter(c => c.id !== id));
-    if (categoryId === id) setCategoryId('');
-  };
 
-  const addRule = () => {
-    if (!newRuleRate) return;
-    const rate = parseFloat(newRuleRate);
-    if (isNaN(rate)) return;
-    setTermRates(prev => [...prev.filter(r => r.months !== newRuleMonth), { months: newRuleMonth, rate }].sort((a,b) => a.months - b.months));
-    setNewRuleRate('');
-  };
 
-  const removeRule = (month: number) => setTermRates(prev => prev.filter(r => r.months !== month));
 
   const availableTerms = useMemo(() => {
     if (!isPublic) return [1,2,3,4,5,6,7,8,9,10,11,12];
@@ -874,112 +816,17 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
             </button>
           )}
 
-          {/* ── Настройки (только для админа) ── */}
+          {/* ── Ставки (только у продавца) ── */}
           {!isPublic && (
-            <div className="bg-indigo-50 dark:bg-indigo-950/40 p-5 rounded-3xl border border-indigo-100 dark:border-indigo-900/50 animate-fade-in overflow-hidden">
-              <div className="flex justify-between items-center mb-3">
-                <h3 className="font-bold text-indigo-900 dark:text-indigo-300">Настройки ставок</h3>
-                <button onClick={() => setShowSettings(!showSettings)} className="text-xs text-indigo-600 dark:text-indigo-400 underline font-bold">
-                  {showSettings ? 'Свернуть' : 'Развернуть'}
-                </button>
-              </div>
-
-              {showSettings ? (
-                <div className="space-y-4">
-                  <div>
-                    <label className="block text-xs font-bold text-indigo-400 uppercase mb-1">Базовая ставка (%)</label>
-                    <input
-                      type="number"
-                      className="w-full p-3 border border-indigo-200 dark:border-indigo-900/50 dark:bg-slate-900 dark:text-white rounded-xl outline-none"
-                      value={defaultRate}
-                      onChange={e => setDefaultRate(e.target.value)}
-                      placeholder="30"
-                    />
-                    <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">Применяется, если для срока нет отдельного правила.</p>
-                  </div>
-
-                  <div className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-indigo-100 dark:border-indigo-900/50">
-                    <label className="block text-xs font-bold text-indigo-400 uppercase mb-2">Специальные ставки по срокам</label>
-                    <div className="space-y-2 mb-3">
-                      {termRates.map(rule => (
-                        <div key={rule.months} className="flex justify-between items-center bg-indigo-50 dark:bg-indigo-950/40 p-2 rounded-lg text-sm">
-                          <span className="font-bold text-indigo-900 dark:text-indigo-300">{rule.months} мес.</span>
-                          <div className="flex items-center gap-3">
-                            <span className="font-bold text-indigo-600 dark:text-indigo-400">{rule.rate}%</span>
-                            <button onClick={() => removeRule(rule.months)} className="text-red-400 hover:text-red-600">{ICONS.Close}</button>
-                          </div>
-                        </div>
-                      ))}
-                      {termRates.length === 0 && <p className="text-center text-xs text-slate-400 dark:text-slate-500 py-2">Нет специальных правил</p>}
-                    </div>
-                    <div className="flex gap-2 items-end">
-                      <div className="flex-1">
-                        <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Срок</label>
-                        <select
-                          className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white outline-none"
-                          value={newRuleMonth}
-                          onChange={e => setNewRuleMonth(parseInt(e.target.value))}
-                        >
-                          {[1,2,3,4,5,6,7,8,9,10,11,12].map(m => <option key={m} value={m}>{m} мес</option>)}
-                        </select>
-                      </div>
-                      <div className="w-20">
-                        <label className="text-[10px] text-slate-400 dark:text-slate-500 block mb-1">Ставка %</label>
-                        <input
-                          type="number"
-                          className="w-full p-2 border border-slate-200 dark:border-slate-600 dark:bg-slate-900 dark:text-white rounded-lg text-sm outline-none"
-                          value={newRuleRate}
-                          onChange={e => setNewRuleRate(e.target.value)}
-                          placeholder="%"
-                        />
-                      </div>
-                      <button onClick={addRule} className="p-2 bg-indigo-600 text-white rounded-lg h-[38px] w-[38px] flex items-center justify-center">
-                        {ICONS.AddSmall}
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Категории товара — как на сайтах рассрочки: клиент выбирает
-                      «Телефоны» или «Мебель», и ставки по срокам у них свои */}
-                  <div>
-                    <div className="flex items-center justify-between mb-2">
-                      <label className="block text-xs font-bold text-indigo-400 uppercase">Категории товара</label>
-                      <button type="button" onClick={addCategory} className="text-xs font-bold text-indigo-600 dark:text-indigo-400">+ Категория</button>
-                    </div>
-                    <div className="space-y-2.5">
-                      {categories.map(c => (
-                        <CategoryEditor key={c.id} cat={c} baseRate={defaultRate}
-                                        onChange={patch => patchCategory(c.id, patch)} onRemove={() => removeCategory(c.id)} />
-                      ))}
-                      {categories.length === 0 && (
-                        <p className="text-xs text-slate-500 dark:text-slate-400 bg-white/60 dark:bg-slate-800/60 rounded-xl p-3">
-                          Без категорий у всех товаров одни ставки. Добавьте «Телефоны», «Мебель», «Технику» — у каждой свои сроки, ставки и примечание, а клиент на своей странице выберет нужную.
-                        </p>
-                      )}
-                    </div>
-                  </div>
-
-                  <button onClick={handleSaveConfig} className="w-full py-3 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 shadow-lg shadow-indigo-200 dark:shadow-indigo-900/30">
-                    Сохранить настройки
-                  </button>
-                </div>
-              ) : (
-                <div className="space-y-3">
-                  <button
-                    onClick={handleCopyLink}
-                    disabled={isLoadingConfig}
-                    className={`w-full py-3 bg-white dark:bg-slate-800 border-2 border-indigo-200 dark:border-indigo-900/50 text-indigo-700 dark:text-indigo-400 font-bold rounded-xl hover:bg-indigo-50 dark:hover:bg-indigo-900/40 flex items-center justify-center gap-2 transition-colors ${isLoadingConfig ? 'opacity-50 cursor-not-allowed' : ''}`}
-                  >
-                    {isLoadingConfig ? (
-                      <><svg className="animate-spin h-5 w-5" viewBox="0 0 24 24"><circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" fill="none"/><path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"/></svg> Сохранение...</>
-                    ) : (
-                      <><svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg> Копировать ссылку</>
-                    )}
-                  </button>
-                  <p className="text-center text-xs text-indigo-400">Ссылка постоянная: поменяете ставки — у клиентов по ней сразу новые</p>
-                </div>
-              )}
-            </div>
+            <CalculatorRates
+              defaultRate={defaultRate} setDefaultRate={setDefaultRate}
+              termRates={termRates} setTermRates={setTermRates}
+              categories={categories} setCategories={setCategories}
+              dirty={ratesDirty}
+              onSave={handleSaveConfig}
+              onCopyLink={handleCopyLink}
+              linkBusy={isLoadingConfig}
+            />
           )}
 
           {/* ── Контакты (публичный режим) ── */}
