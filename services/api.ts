@@ -3,6 +3,7 @@ import { offlineStorage, sessionOwnerId } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
 import { mergeInvestor } from '../src/syncMerge';
+import { contractsTowardLimit, contractLimitOf, COUNTS_ALL_CONTRACTS } from '../src/contractLimit';
 import { isBundledApp, SERVER_ORIGIN } from '../src/platform';
 
 // ── Отложенные сохранения инвесторов: от какой версии сделано изменение ─────────
@@ -977,9 +978,7 @@ export const api = {
           // Лимит касается только НОВЫХ договоров — ровно как на сервере:
           // правка и платёж по уже существующему лимитом не ограничены.
           const isNewContract = !salesData.some((s: any) => s.id === item.id);
-          const currentCount = salesData.filter((s: any) =>
-            s.status === 'ACTIVE' || s.status === 'DRAFT'
-          ).length;
+          const currentCount = contractsTowardLimit(user.subscription?.plan, salesData);
           if (isNewContract && currentCount >= limit) {
             console.warn(
               `⚠️ Офлайн-сохранение договора сверх лимита тарифа ` +
@@ -1932,7 +1931,7 @@ export const api = {
       if (!res.ok) throw new Error('Failed to reset password');
     },
 
-    checkLocalContractLimit: async (sales: Sale[]): Promise<{
+    checkLocalContractLimit: async (sales: Sale[], saleId?: string): Promise<{
       allowed: boolean;
       reason?: string;
       current: number;
@@ -1946,28 +1945,26 @@ export const api = {
         if (!user?.subscription) return { allowed: false, reason: 'Нет активной подписки', current: 0, limit: 0 };
 
         const { plan } = user.subscription;
-        const LIMITS: Record<string, { contracts: number }> = {
-          TRIAL: { contracts: 10 },
-          START: { contracts: 100 },
-          STANDARD: { contracts: 500 },
-          BUSINESS: { contracts: -1 },
-          BUSINESS_PRO: { contracts: -1 }
-        };
+        // Лимиты — общие с сервером (PLAN_CONTRACT_LIMITS, src/contractLimit.ts). Здесь
+        // была своя копия, и у пробного периода стояло 10 договоров против 1000 на
+        // сервере: пробный пользователь упирался в лимит, которого на деле нет.
+        const limit = contractLimitOf(plan);
 
-        const limit = LIMITS[plan]?.contracts ?? 0;
-
-        if (user.role === 'admin' || limit === -1) {
+        // Как на сервере: админ и сотрудник без ограничений, правка существующего
+        // договора — всегда (лимит только на новые).
+        if (user.role === 'admin' || user.role === 'employee' || limit === -1
+            || (saleId && sales.some(s => s.id === saleId))) {
           return { allowed: true, current: 0, limit: -1 };
         }
 
-        const currentCount = sales.filter(s =>
-          s.status === 'ACTIVE' || s.status === 'DRAFT'
-        ).length;
+        const currentCount = contractsTowardLimit(plan, sales);
 
         if (currentCount >= limit) {
           return {
             allowed: false,
-            reason: `Превышен лимит договоров для тарифа "${plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`,
+            reason: COUNTS_ALL_CONTRACTS[plan]
+              ? `На тарифе «Старт» доступно ${limit} договоров. У вас уже ${currentCount}.`
+              : `Превышен лимит активных договоров для тарифа "${plan}". Максимум: ${limit}. У вас сейчас: ${currentCount}.`,
             current: currentCount,
             limit: limit
           };

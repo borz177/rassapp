@@ -97,7 +97,9 @@ const getTargetUserId = (user) => {
 // ai: true нужным тарифам и вернуть проверку тарифа в checkAccess('AI').
 const PLAN_LIMITS = {
   TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true , api: true  },
-  START:        { contracts: 100, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false, api: false },
+  // contractsCountAll — на «Старте» лимит на все договоры за всё время, а не только на
+  // договоры в работе (как на «Стандарте»). Зеркало — src/contractLimit.ts.
+  START:        { contracts: 100, contractsCountAll: true, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false, api: false },
   STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
   BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true , api: true  },
   BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true , api: true  },
@@ -795,10 +797,17 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
 
     // 🔥 СОЗДАНИЕ нового: строгая проверка
     if (action === 'create') {
+      // Служебные приходы (пополнение, прочий приход) — тоже записи sales, но не договоры
       const countResult = await pool.query(
-        `SELECT COUNT(*) as count FROM data_items 
-         WHERE user_id = $1 AND type = 'sales' 
-         AND (data->>'status' = 'ACTIVE' OR data->>'status' = 'DRAFT')`,
+        limits.contractsCountAll
+          ? `SELECT COUNT(*) as count FROM data_items
+             WHERE user_id = $1 AND type = 'sales'
+             AND COALESCE(data->>'status', '') <> 'DELETED'
+             AND COALESCE(data->>'customerId', '') NOT LIKE 'system_%'
+             AND id NOT LIKE 'inc_%'`
+          : `SELECT COUNT(*) as count FROM data_items
+             WHERE user_id = $1 AND type = 'sales'
+             AND (data->>'status' = 'ACTIVE' OR data->>'status' = 'DRAFT')`,
         [userId]
       );
 
@@ -814,11 +823,15 @@ const checkContractLimit = async (userId, action = 'create', itemData = null) =>
           allowed: false,
           msg: expired
             ? `Срок действия подписки истёк, действует лимит тарифа "${effectivePlan}". Максимум: ${limits.contracts}.`
-            : `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}.`,
+            : limits.contractsCountAll
+              ? `На тарифе «Старт» доступно ${limits.contracts} договоров. У вас уже ${currentCount}.`
+              : `Превышен лимит договоров для тарифа "${subscription.plan}". Максимум: ${limits.contracts}.`,
           details: { current: currentCount, limit: limits.contracts },
           hint: expired
             ? 'Продлите подписку, чтобы снова оформлять договоры без ограничений.'
-            : 'Удалите ненужные договоры или оформите подписку выше.'
+            : limits.contractsCountAll
+              ? 'Перейдите на «Стандарт» — там ограничены только договоры в работе, а закрытые не считаются.'
+              : 'Удалите ненужные договоры или оформите подписку выше.'
         };
       }
     }

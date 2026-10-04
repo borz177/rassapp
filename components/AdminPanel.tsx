@@ -18,7 +18,7 @@ const PLAN_LIMITS: Record<SubscriptionPlan, {
   ai: boolean;
   suppliers: boolean;
 }> = {
-  TRIAL: { contracts: 10, investors: 0, employees: 0, whatsapp: false, ai: true, suppliers: false },
+  TRIAL: { contracts: 1000, investors: 0, employees: 0, whatsapp: false, ai: true, suppliers: false },
   START: { contracts: 100, investors: 1, employees: 0, whatsapp: false, ai: false, suppliers: false },
   STANDARD: { contracts: 500, investors: 5, employees: 0, whatsapp: true, ai: false, suppliers: false },
   BUSINESS: { contracts: -1, investors: -1, employees: -1, whatsapp: true, ai: true, suppliers: false }, // -1 = безлимит

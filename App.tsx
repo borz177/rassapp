@@ -2054,7 +2054,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
 
   try {
     // 🔹 1. ПРОВЕРКА ЛИМИТА ПЕРЕД СОХРАНЕНИЕМ
-    const limitCheck = await api.checkLocalContractLimit(sales);
+    const limitCheck = await api.checkLocalContractLimit(sales, data.id);
     if (!limitCheck.allowed) {
       const limitError: any = new Error('LIMIT_EXCEEDED');
       limitError.isLimitError = true;
@@ -2289,7 +2289,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
       !navigator.onLine;
 
     if (isNetworkError) {
-      const offlineLimitCheck = await api.checkLocalContractLimit(sales);
+      const offlineLimitCheck = await api.checkLocalContractLimit(sales, data.id);
       if (!offlineLimitCheck.allowed) {
         showNotificationModal(
           '🚫 Лимит превышен',
