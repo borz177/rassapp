@@ -688,6 +688,8 @@ export interface CalculatorSettings {
     maxMonths: number;
     termRates?: TermRate[]; // Array of specific rates for specific terms
     categories?: CalculatorCategory[];
+    /** Адрес ссылки для клиента: rassrochka.pro/c/<linkSlug> */
+    linkSlug?: string;
     /** Взнос снижает наценку: от fromPercent % взноса — ставка меньше на minus % */
     downDiscounts?: DownDiscount[];
     /** Правила расчёта — уходят и в ссылку для клиента, но ему не показываются */

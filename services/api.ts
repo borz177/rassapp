@@ -1604,14 +1604,17 @@ export const api = {
         markupOnRemainder?: boolean;
         categories?: CalculatorCategory[];
         downDiscounts?: DownDiscount[];
-    }): Promise<string> => {
+        /** Адрес ссылки: rassrochka.pro/c/<slug>; пусто — из названия компании */
+        slug?: string;
+        companyName?: string;
+    }): Promise<{ configId: string; slug?: string }> => {
         const res = await fetchWithAuth(`${API_URL}/calculator-configs`, {
             method: 'POST',
             body: JSON.stringify(config)
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || data.error || 'Не удалось сохранить настройки калькулятора');
-        return data.configId;
+        return { configId: data.configId, slug: data.slug || undefined };
     },
 
     // 🔥 ПУБЛИЧНЫЙ — обычный fetch (без токена)

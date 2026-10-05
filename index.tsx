@@ -8,8 +8,10 @@ import './src/index.css';
  * Всё остальное — приложение (appEntry.tsx).
  */
 const q = new URLSearchParams(window.location.search);
+const path = decodeURIComponent(window.location.pathname);
+// /c/<id> — короткая ссылка продавца, /calc/Компания?cfg=… — прежняя длинная
 const isPublicCalc = q.get('view') === 'public_calc' || q.get('v') === 'calc'
-  || decodeURIComponent(window.location.pathname).startsWith('/calc');
+  || path.startsWith('/calc') || /^\/c\/[a-z0-9-]+\/?$/i.test(path);
 
 // Новая сборка на сервере, а страница старая — кусок не загрузится; одна перезагрузка
 const load = (p: Promise<unknown>) => p.catch((e) => {

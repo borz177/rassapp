@@ -25,6 +25,9 @@ interface Props {
   onSave: () => void;
   onCopyLink: () => void;
   linkBusy?: boolean;
+  /** Адрес ссылки: rassrochka.pro/c/<linkSlug> */
+  linkSlug: string;
+  setLinkSlug: (v: string) => void;
 }
 
 const QUICK_TERMS = [3, 4, 6, 9, 10, 12, 18, 24];
@@ -38,7 +41,7 @@ const upsert = (list: TermRate[], months: number, raw: string): TermRate[] => {
 
 const CalculatorRates: React.FC<Props> = ({
   defaultRate, setDefaultRate, termRates, setTermRates, categories, setCategories,
-  downDiscounts, setDownDiscounts, dirty, onSave, onCopyLink, linkBusy,
+  downDiscounts, setDownDiscounts, dirty, onSave, onCopyLink, linkBusy, linkSlug, setLinkSlug,
 }) => {
   // Добавленные, но ещё не заполненные сроки — иначе пустая строка тут же исчезла бы
   const [extraTerms, setExtraTerms] = useState<number[]>([]);
@@ -79,16 +82,29 @@ const CalculatorRates: React.FC<Props> = ({
   return (
     <section className="bg-white dark:bg-slate-800 rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm overflow-hidden">
       {/* Шапка */}
-      <div className="flex items-start justify-between gap-3 p-5 pb-4">
-        <div className="min-w-0">
-          <h3 className="text-lg font-bold text-slate-800 dark:text-white">Ставки</h3>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Наценка за весь срок, %</p>
+      <div className="p-5 pb-4">
+        <h3 className="text-lg font-bold text-slate-800 dark:text-white">Ставки</h3>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Наценка за весь срок, %</p>
+
+        {/* Ссылка для клиента — по названию компании: rassrochka.pro/c/rassrochka-plyus */}
+        <div className="mt-4 p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
+          <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-300 mb-2">Ссылка для клиента</p>
+          <div className="flex items-center gap-2">
+            <div className="flex-1 min-w-0 flex items-center h-11 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus-within:border-indigo-400 px-3 text-sm">
+              <span className="shrink-0 text-slate-400 text-[13px]">rassrochka.pro/c/</span>
+              <input value={linkSlug} placeholder="из названия компании" aria-label="Адрес ссылки"
+                     onChange={e => setLinkSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40))}
+                     className="flex-1 min-w-0 bg-transparent outline-none font-semibold text-slate-800 dark:text-white placeholder:font-normal placeholder:text-slate-300 dark:placeholder:text-slate-600" />
+            </div>
+            <button type="button" onClick={onCopyLink} disabled={linkBusy}
+                    title="Скопировать ссылку" aria-label="Скопировать ссылку"
+                    className="shrink-0 h-11 px-3 sm:px-3.5 rounded-xl bg-indigo-600 text-white text-sm font-bold flex items-center gap-1.5 active:scale-95 transition disabled:opacity-50">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="9" y="9" width="13" height="13" rx="2" /><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" /></svg>
+              <span className="hidden sm:inline">Копировать</span>
+            </button>
+          </div>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">Латиницей, цифры и дефис. Ссылка постоянная — новые ставки клиенты видят по ней сразу.</p>
         </div>
-        <button type="button" onClick={onCopyLink} disabled={linkBusy}
-                className="shrink-0 flex items-center gap-1.5 px-3 py-2 rounded-xl bg-indigo-50 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 text-xs font-bold active:scale-95 transition disabled:opacity-50">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" /><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71" /></svg>
-          Ссылка для клиента
-        </button>
       </div>
 
       {/* Таблица ставок */}

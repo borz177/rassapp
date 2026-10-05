@@ -2422,6 +2422,16 @@ app.post(
   if (shortRules) {
     calculatorUrl += `&l=${encodeURIComponent(shortRules)}`;
   }
+  // Есть постоянная ссылка продавца (rassrochka.pro/c/название) — она короче и
+  // знает всё: категории, скидку за взнос, округление
+  try {
+    const stable = await pool.query(
+      `SELECT id, data->>'slug' AS slug FROM data_items WHERE user_id = $1 AND type = 'calculator_configs' AND data->>'stable' = 'true' LIMIT 1`,
+      [managerId]
+    );
+    const row = stable.rows[0];
+    if (row) calculatorUrl = `${baseUrl}/c/${row.slug || row.id.replace(/^cfg_/, '')}`;
+  } catch (e) { /* остаётся прежняя ссылка */ }
 
 
 
@@ -6560,9 +6570,22 @@ setInterval(() => { cleanupApiTables(pool); cleanupOAuth(pool); }, 6 * 60 * 60 *
 // =====================================================
 
 // Сохранить конфиг калькулятора → вернуть короткий ID
+// Адрес ссылки калькулятора по названию компании: rassrochka.pro/c/rassrochka-plyus.
+// Латиницей: русские буквы в ссылке превращаются в %D0%A0… и делают её длинной.
+const CALC_SLUG_RE = /^[a-z0-9](?:[a-z0-9-]{1,38}[a-z0-9])$/;
+const TRANSLIT = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
+const calcSlugFrom = (name) => String(name || '').toLowerCase()
+  .split('').map(ch => (TRANSLIT[ch] !== undefined ? TRANSLIT[ch] : ch)).join('')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40).replace(/-+$/, '');
+// Занят ли адрес другим продавцом
+const calcSlugTaken = async (slug, userId) => (await pool.query(
+  `SELECT 1 FROM data_items WHERE type = 'calculator_configs' AND data->>'slug' = $1 AND user_id <> $2 LIMIT 1`,
+  [slug, userId]
+)).rows.length > 0;
+
 app.post('/api/calculator-configs', auth, async (req, res) => {
   try {
-    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder, categories, downDiscounts } = req.body;
+    const { defaultRate, termRates, roundStep, roundDir, markupOnRemainder, categories, downDiscounts, slug: wantedSlug, companyName: bodyCompany } = req.body;
 
     // 🔹 Валидация
     if (defaultRate === undefined || !Array.isArray(termRates)) {
@@ -6619,17 +6642,58 @@ app.post('/api/calculator-configs', auth, async (req, res) => {
       `SELECT id, data FROM data_items WHERE user_id = $1 AND type = 'calculator_configs' AND data->>'stable' = 'true' LIMIT 1`,
       [req.user.id]
     );
+
+    // Адрес ссылки: свой (если задан) или из названия компании. Свой занят —
+    // говорим об этом; из названия занят — добавляем цифру.
+    let slug = '';
+    if (wantedSlug !== undefined && wantedSlug !== null && String(wantedSlug).trim() !== '') {
+      const w = String(wantedSlug).trim().toLowerCase();
+      if (!CALC_SLUG_RE.test(w)) {
+        return res.status(400).json({ code: 'SLUG_INVALID', msg: 'Адрес ссылки: от 3 до 40 латинских букв, цифр и дефисов' });
+      }
+      if (await calcSlugTaken(w, req.user.id)) {
+        return res.status(409).json({ code: 'SLUG_TAKEN', msg: `Адрес «${w}» уже занят — выберите другой` });
+      }
+      slug = w;
+    } else {
+      slug = existing.rows[0]?.data?.slug || '';
+      if (!slug) {
+        let company = bodyCompany;
+        if (!company) {
+          const st = await pool.query(
+            `SELECT data->>'companyName' AS c FROM data_items WHERE user_id = $1 AND type = 'settings' ORDER BY updated_at DESC LIMIT 1`,
+            [req.user.id]
+          );
+          company = st.rows[0]?.c;
+        }
+        let base = calcSlugFrom(company);
+        if (base.length < 3) base = 'rassrochka';
+        for (let n = 1; n < 50; n++) {
+          const candidate = n === 1 ? base : `${base.slice(0, 36)}-${n}`;
+          if (!(await calcSlugTaken(candidate, req.user.id))) { slug = candidate; break; }
+        }
+      }
+    }
+    payload.slug = slug;
     if (existing.rows.length) {
       const row = existing.rows[0];
       await pool.query(
         `UPDATE data_items SET data = $2, updated_at = NOW() WHERE id = $1 AND user_id = $3`,
         [row.id, JSON.stringify({ ...row.data, ...payload, id: row.id, stable: true }), req.user.id]
       );
-      return res.json({ configId: row.id.replace(/^cfg_/, '') });
+      return res.json({ configId: row.id.replace(/^cfg_/, ''), slug });
     }
 
-    // 🔹 Короткий уникальный ID (8 символов)
-    const configId = Math.random().toString(36).substring(2, 10);
+    // 🔹 Короткий уникальный ID — 6 символов (rassrochka.pro/c/k3x9a2): ссылку
+    // отправляют клиентам в мессенджер и печатают, короче — лучше. Проверяем,
+    // что такой ещё не занят.
+    let configId = '';
+    for (let attempt = 0; attempt < 5 && !configId; attempt++) {
+      const candidate = Math.random().toString(36).substring(2, 8).padEnd(6, '0');
+      const taken = await pool.query(`SELECT 1 FROM data_items WHERE id = $1`, [`cfg_${candidate}`]);
+      if (!taken.rows.length) configId = candidate;
+    }
+    if (!configId) configId = Math.random().toString(36).substring(2, 10);
     const configData = {
       id: `cfg_${configId}`,
       ...payload,
@@ -6642,7 +6706,7 @@ app.post('/api/calculator-configs', auth, async (req, res) => {
       VALUES ($1, $2, 'calculator_configs', $3, NOW())
     `, [configData.id, req.user.id, JSON.stringify(configData)]);
 
-    res.json({ configId });
+    res.json({ configId, slug });
 
   } catch (err) {
     console.error('Save calculator config error:', err);
@@ -6657,10 +6721,17 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     const fullId = `cfg_${configId}`;
 
     // 1. Получаем конфиг
-    const configResult = await pool.query(`
+    let configResult = await pool.query(`
       SELECT data, user_id FROM data_items 
       WHERE id = $1 AND type = 'calculator_configs'
     `, [fullId]);
+    // Ссылка по названию: rassrochka.pro/c/rassrochka-plyus
+    if (configResult.rows.length === 0 && CALC_SLUG_RE.test(String(configId).toLowerCase())) {
+      configResult = await pool.query(
+        `SELECT data, user_id FROM data_items WHERE type = 'calculator_configs' AND data->>'slug' = $1 LIMIT 1`,
+        [String(configId).toLowerCase()]
+      );
+    }
 
     if (configResult.rows.length === 0) {
       return res.status(404).json({ msg: 'Конфиг не найден' });
@@ -6678,21 +6749,20 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
     // Телефон из профиля, а если его нет — «Телефон продавца» из настроек
     // (тот же порядок, что в договоре: getSellerPhone в src/utils.ts — профиль
     // может быть пустым, а в настройках номер магазина указан)
-    let sellerPhone = userResult.rows[0]?.phone || null;
-    if (!sellerPhone) {
-      const st = await pool.query(
-        `SELECT data->>'sellerPhone' AS phone FROM data_items WHERE user_id = $1 AND type = 'settings' ORDER BY updated_at DESC LIMIT 1`,
-        [ownerId]
-      );
-      sellerPhone = st.rows[0]?.phone || null;
-    }
+    // Название компании — для короткой ссылки /c/<id>, где его нет в адресе
+    const st = await pool.query(
+      `SELECT data->>'sellerPhone' AS phone, data->>'companyName' AS company FROM data_items WHERE user_id = $1 AND type = 'settings' ORDER BY updated_at DESC LIMIT 1`,
+      [ownerId]
+    );
+    let sellerPhone = userResult.rows[0]?.phone || st.rows[0]?.phone || null;
+    const companyName = st.rows[0]?.company || null;
 
     // 3. Разовые ссылки старого вида живут 30 дней; постоянная ссылка продавца —
     // пока он её не заменит (см. POST выше)
     if (!config.stable) {
       const daysOld = (Date.now() - new Date(config.createdAt).getTime()) / (1000 * 60 * 60 * 24);
       if (daysOld > 30) {
-        await pool.query('DELETE FROM data_items WHERE id = $1', [fullId]);
+        await pool.query('DELETE FROM data_items WHERE id = $1', [config.id || fullId]);
         return res.status(410).json({ msg: 'Конфиг устарел' });
       }
     }
@@ -6709,6 +6779,8 @@ app.get('/api/calculator-configs/:configId', async (req, res) => {
       markupOnRemainder: !!config.markupOnRemainder,
       categories: Array.isArray(config.categories) ? config.categories : [],
       downDiscounts: Array.isArray(config.downDiscounts) ? config.downDiscounts : [],
+      companyName,
+      slug: config.slug || null,
       sellerPhone: sellerPhone  // ← Новое поле
     });
 

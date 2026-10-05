@@ -100,6 +100,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   const [categoryId, setCategoryId] = useState<string>('');
   // Взнос снижает наценку: «от 20% взноса — наценка меньше на 5%»
   const [downDiscounts, setDownDiscounts] = useState<DownDiscount[]>(appSettings?.calculator?.downDiscounts || []);
+  // Адрес ссылки для клиента: rassrochka.pro/c/<linkSlug>
+  const [linkSlug, setLinkSlug] = useState<string>(appSettings?.calculator?.linkSlug || '');
   const category = categories.find(c => c.id === categoryId);
   const [downPayment, setDownPayment] = useState<string>('');
   const [customRate, setCustomRate] = useState<string>('');
@@ -339,9 +341,8 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   };
 
   const handleCopyLink = async () => {
-    const companyName = encodeURIComponent(appSettings?.companyName || 'Company');
     try {
-      const cfgId = await api.saveCalculatorConfig({
+      const saved = await api.saveCalculatorConfig({
         defaultRate: parseFloat(defaultRate),
         termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
         roundStep,
@@ -349,14 +350,19 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
         markupOnRemainder,
         categories: cleanCategories(),
         downDiscounts: cleanDiscounts(),
+        slug: linkSlug.trim() || undefined,
+        companyName: appSettings?.companyName,
       });
-      persistSettings();
-      const cleanUrl = `${publicOrigin()}/calc/${companyName}?cfg=${cfgId}`;
+      // Адрес мог подобрать сервер (из названия, с цифрой, если занято) — запоминаем его
+      if (saved.slug && saved.slug !== linkSlug) setLinkSlug(saved.slug);
+      persistSettings(saved.slug || linkSlug);
+      // Ссылка по названию компании: rassrochka.pro/c/rassrochka-plyus
+      const cleanUrl = `${publicOrigin()}/c/${saved.slug || saved.configId}`;
       const copied = await copyToClipboard(cleanUrl);
       if (copied) alert('✨ Ссылка скопирована!');
       else alert(`📋 Скопируйте ссылку вручную:\n\n${cleanUrl}`);
-    } catch {
-      alert('❌ Ошибка сохранения настроек.');
+    } catch (e: any) {
+      alert(e?.message ? `❌ ${e.message}` : '❌ Ошибка сохранения настроек.');
     }
   };
 
@@ -394,7 +400,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
   }));
   const ratesDirty = ratesSnapshot() !== savedSnapshot;
 
-  const persistSettings = () => {
+  const persistSettings = (slug: string = linkSlug) => {
     setSavedSnapshot(ratesSnapshot());
     if (!onSaveSettings) return;
     onSaveSettings({ ...appSettings, calculator: {
@@ -404,14 +410,31 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       termRates,
       categories: cleanCategories(),
       downDiscounts: cleanDiscounts(),
+      linkSlug: slug.trim() || undefined,
       roundStep, roundDir, markupOnRemainder,
     }});
   };
 
-  const handleSaveConfig = () => {
-    if (onSaveSettings) {
+  // Сохранить ставки — и в настройки, и в ссылку клиента: ссылка постоянная,
+  // и по ней клиенты сразу видят новые условия
+  const handleSaveConfig = async () => {
+    try {
+      const saved = await api.saveCalculatorConfig({
+        defaultRate: parseFloat(defaultRate) || 0,
+        termRates: termRates.map(r => ({ months: r.months, rate: r.rate })),
+        roundStep, roundDir, markupOnRemainder,
+        categories: cleanCategories(),
+        downDiscounts: cleanDiscounts(),
+        slug: linkSlug.trim() || undefined,
+        companyName: appSettings?.companyName,
+      });
+      if (saved.slug && saved.slug !== linkSlug) setLinkSlug(saved.slug);
+      persistSettings(saved.slug || linkSlug);
+      alert('Ставки сохранены — ссылка для клиентов обновлена');
+    } catch (e: any) {
+      // Без связи — хотя бы в настройки; ссылка обновится при следующем сохранении
       persistSettings();
-      alert('Ставки сохранены');
+      alert(e?.message ? `Ставки сохранены, но ссылку обновить не удалось: ${e.message}` : 'Ставки сохранены');
     }
   };
 
@@ -836,6 +859,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               termRates={termRates} setTermRates={setTermRates}
               categories={categories} setCategories={setCategories}
               downDiscounts={downDiscounts} setDownDiscounts={setDownDiscounts}
+              linkSlug={linkSlug} setLinkSlug={setLinkSlug}
               dirty={ratesDirty}
               onSave={handleSaveConfig}
               onCopyLink={handleCopyLink}

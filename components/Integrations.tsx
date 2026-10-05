@@ -211,13 +211,20 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
     if (appSettings?.calculator?.termRates?.length > 0) {
       try {
-        calculatorConfigId = await api.saveCalculatorConfig({
-          defaultRate: appSettings.calculator.defaultInterestRate,
-          termRates: appSettings.calculator.termRates.map(r => ({
-            months: r.months,
-            rate: r.rate
-          }))
-        });
+        // Ссылка калькулятора у продавца одна (постоянная) — отправляем все его
+        // настройки, иначе категории, скидки за взнос и округление затёрлись бы
+        const c = appSettings.calculator;
+        calculatorConfigId = (await api.saveCalculatorConfig({
+          defaultRate: c.defaultInterestRate,
+          termRates: c.termRates.map(r => ({ months: r.months, rate: r.rate })),
+          categories: c.categories,
+          downDiscounts: c.downDiscounts,
+          roundStep: c.roundStep,
+          roundDir: c.roundDir,
+          markupOnRemainder: c.markupOnRemainder,
+          slug: c.linkSlug,
+          companyName: appSettings.companyName,
+        })).configId;
       } catch (e) {
         console.error('❌ Не удалось сохранить конфиг калькулятора:', e);
       }

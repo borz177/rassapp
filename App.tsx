@@ -903,7 +903,8 @@ useEffect(() => {
     if (
         searchParams.get('view') === 'public_calc' ||
         searchParams.get('v') === 'calc' ||
-        decodeURIComponent(pathName).startsWith('/calc')
+        decodeURIComponent(pathName).startsWith('/calc') ||
+        /^\/c\/[a-z0-9-]+\/?$/i.test(pathName)
     ) {
         clearTimeout(initTimeout); // Снимаем страховку
         setIsPublicMode(true);

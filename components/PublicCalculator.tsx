@@ -24,6 +24,7 @@ interface Config {
   markupOnRemainder: boolean;
   downDiscounts: DownDiscount[];
   sellerPhone?: string;
+  companyName?: string;
 }
 
 const apiBase = () => {
@@ -74,7 +75,9 @@ const Slider: React.FC<{ value: number; min: number; max: number; step: number; 
 
 const PublicCalculator: React.FC = () => {
   const q = useMemo(() => new URLSearchParams(window.location.search), []);
-  const company = useMemo(() => {
+  // Короткая ссылка /c/<id>: и номер настроек, и название компании берутся не из адреса
+  const shortId = useMemo(() => window.location.pathname.match(/^\/c\/([a-z0-9-]+)\/?$/i)?.[1] || '', []);
+  const companyFromUrl = useMemo(() => {
     const path = window.location.pathname;
     if (path.startsWith('/calc/')) {
       const part = path.split('/')[2];
@@ -92,8 +95,7 @@ const PublicCalculator: React.FC = () => {
   const [showSchedule, setShowSchedule] = useState(false);
 
   useEffect(() => {
-    document.title = company ? `Рассрочка — ${company}` : 'Калькулятор рассрочки';
-    const cfg = q.get('cfg');
+    const cfg = shortId || q.get('cfg');
     if (!cfg) { setConfig(legacyConfig(q)); return; }
     fetch(`${apiBase()}/calculator-configs/${encodeURIComponent(cfg)}`)
       .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
@@ -106,9 +108,15 @@ const PublicCalculator: React.FC = () => {
         markupOnRemainder: !!c.markupOnRemainder,
         downDiscounts: c.downDiscounts || [],
         sellerPhone: c.sellerPhone || undefined,
+        companyName: c.companyName || undefined,
       }))
       .catch(() => { setFailed(true); setConfig(legacyConfig(q)); });
-  }, [q, company]);
+  }, [q, shortId]);
+
+  const company = companyFromUrl || config?.companyName || '';
+  useEffect(() => {
+    document.title = company ? `Рассрочка — ${company}` : 'Калькулятор рассрочки';
+  }, [company]);
 
   const category = config?.categories.find(c => c.id === catId) || config?.categories[0];
   const rates = category?.rates?.length ? category.rates : (config?.termRates || []);
