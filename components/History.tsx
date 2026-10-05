@@ -196,8 +196,6 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
           <p className="text-sm text-slate-500 dark:text-slate-400 truncate">
             {feed.count} {feed.count % 10 === 1 && feed.count % 100 !== 11 ? 'операция'
               : [2, 3, 4].includes(feed.count % 10) && ![12, 13, 14].includes(feed.count % 100) ? 'операции' : 'операций'}
-            {feed.income > 0 && <> · пришло <span className="font-semibold">{formatCurrency(feed.income, cents)} ₽</span></>}
-            {feed.expense > 0 && <> · ушло <span className="font-semibold">{formatCurrency(feed.expense, cents)} ₽</span></>}
           </p>
         </div>
         <button type="button" onClick={() => setFiltersOpen(true)}
@@ -212,6 +210,30 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
           </svg>
         </button>
       </header>
+
+      {/* Пришло и ушло по текущему отбору — меняются вместе с фильтром */}
+      {(feed.income > 0 || feed.expense > 0) && (
+        <div className="grid grid-cols-2 gap-3">
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3.5 sm:p-4 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center shrink-0">{ArrowIn}</span>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Пришло</p>
+            </div>
+            <p className="mt-2 text-lg sm:text-2xl font-extrabold text-emerald-600 dark:text-emerald-400 tabular-nums truncate">
+              +{formatCurrency(feed.income, cents)} ₽
+            </p>
+          </div>
+          <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-3.5 sm:p-4 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="w-7 h-7 rounded-full bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400 flex items-center justify-center shrink-0">{ArrowOut}</span>
+              <p className="text-[11px] font-bold uppercase tracking-wide text-slate-400 dark:text-slate-500">Ушло</p>
+            </div>
+            <p className="mt-2 text-lg sm:text-2xl font-extrabold text-rose-600 dark:text-rose-400 tabular-nums truncate">
+              −{formatCurrency(feed.expense, cents)} ₽
+            </p>
+          </div>
+        </div>
+      )}
 
       <input value={search} onChange={e => setSearch(e.target.value)}
              placeholder="Поиск по клиенту, товару или номеру"

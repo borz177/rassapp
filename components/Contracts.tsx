@@ -1018,18 +1018,20 @@ useEffect(() => {
 
       {activeTab === 'OVERDUE' && overdueSummary ? (
         <div className="bg-gradient-to-br from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border border-red-200 dark:border-red-900/50 p-4 rounded-2xl">
-          <div className="flex justify-between items-start gap-3">
+          {/* На телефоне сумма — во всю ширину, кнопки — под ней поровну;
+              на компьютере кнопки справа от суммы */}
+          <div className="flex flex-col sm:flex-row sm:justify-between sm:items-start gap-3">
             <div className="min-w-0">
               <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">Общая просрочка</p>
-              <p className="text-2xl font-bold text-red-600 dark:text-red-400">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
+              <p className="text-2xl font-bold text-red-600 dark:text-red-400 whitespace-nowrap tabular-nums">{formatCurrency(totalOverdueSum, appSettings?.showCents)} ₽</p>
             </div>
-            <div className="flex items-center gap-2 shrink-0">
+            <div className="grid grid-cols-2 sm:flex items-center gap-2 sm:shrink-0">
               {/* Список должников текстом: ФИО, дата рождения, срок */}
               <button
                 onClick={() => setShareOpen(true)}
                 disabled={filteredList.length === 0}
                 title="Поделиться списком"
-                className="px-3 py-2 bg-white/80 dark:bg-white/10 text-slate-700 dark:text-slate-200 disabled:opacity-50 rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                className="px-3 py-2.5 sm:py-2 bg-white/80 dark:bg-white/10 text-slate-700 dark:text-slate-200 disabled:opacity-50 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="m16 6-4-4-4 4" /><path d="M12 2v13" /></svg>
                 Поделиться
@@ -1038,7 +1040,7 @@ useEffect(() => {
                 <button
                     onClick={() => { setRiskAcknowledged(false); setShowConfirmRemindAll(true); }}
                     disabled={filteredList.length === 0 || isSendingAll}
-                    className="px-3 py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-sm"
+                    className="px-3 py-2.5 sm:py-2 bg-emerald-600 hover:bg-emerald-700 disabled:bg-slate-300 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-sm"
                 >
                   {isSendingAll ? (
                       <>
@@ -1048,7 +1050,8 @@ useEffect(() => {
                   ) : (
                       <>
                         <Phone size={14} className="rotate-90"/>
-                        Напомнить всем
+                        <span className="sm:hidden">Напомнить</span>
+                        <span className="hidden sm:inline">Напомнить всем</span>
                       </>
                   )}
                 </button>
