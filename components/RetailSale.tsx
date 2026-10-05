@@ -507,11 +507,10 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       )}
 
       <button disabled={saving || items.length === 0} onClick={submit}
-              className={`w-full h-14 rounded-2xl text-white font-bold disabled:opacity-40 active:scale-[0.99] transition flex items-center justify-between px-5 shadow-lg ${
+              className={`w-full h-14 rounded-2xl text-white font-bold disabled:opacity-40 active:scale-[0.99] transition flex items-center justify-center px-5 shadow-lg ${
                 customer && isCredit ? 'bg-amber-500 shadow-amber-500/25' : 'bg-emerald-600 shadow-emerald-600/25'
               }`}>
         <span>{saving ? 'Проводим…' : customer && isCredit ? 'Отдать в долг' : 'Провести продажу'}</span>
-        <span className="tabular-nums text-lg">{money(total, showCents)} ₽</span>
       </button>
       </div>
     </div>
