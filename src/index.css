@@ -1663,3 +1663,8 @@ html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[clas
 .pc-range { -webkit-appearance: none; appearance: none; height: 6px; border-radius: 9999px; outline: none; cursor: pointer; }
 .pc-range::-webkit-slider-thumb { -webkit-appearance: none; appearance: none; width: 24px; height: 24px; border-radius: 9999px; background: #fff; border: 2px solid #4f46e5; box-shadow: 0 2px 8px rgba(79,70,229,.35); }
 .pc-range::-moz-range-thumb { width: 22px; height: 22px; border-radius: 9999px; background: #fff; border: 2px solid #4f46e5; box-shadow: 0 2px 8px rgba(79,70,229,.35); }
+
+/* Касса: плашка корзины коротко «подпрыгивает», когда добавили товар */
+.cart-pop { animation: cart-pop .32s cubic-bezier(.34,1.56,.64,1); }
+@keyframes cart-pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: scale(1); } }
+@media (prefers-reduced-motion: reduce) { .cart-pop { animation: none; } }
