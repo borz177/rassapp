@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem, StockLocation } from '../types';
 import TopBarBack from './TopBarBack';
 import { maxPickableQty, stockOnWarehouse } from '../src/utils';
@@ -82,6 +82,18 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   // вместе с ним.
   const [isCredit, setIsCredit] = useState(false);
   const [pickCustomer, setPickCustomer] = useState(false);
+  // На телефоне «Выбрать клиента» нажимают внутри листа корзины, а страница
+  // выбора открывается уровнем ниже — под листом, и её не было видно. Лист на
+  // время выбора убираем и после возвращаем.
+  const reopenCartRef = useRef(false);
+  const openCustomerPicker = () => {
+    if (cartOpen) { reopenCartRef.current = true; setCartOpen(false); }
+    setPickCustomer(true);
+  };
+  const closeCustomerPicker = () => {
+    setPickCustomer(false);
+    if (reopenCartRef.current) { reopenCartRef.current = false; setCartOpen(true); }
+  };
 
   // Счёт склада важнее общего «основного»: магазин сдаёт выручку в свою кассу,
   // и если склад её назвал — спорить с ним незачем.
@@ -365,7 +377,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             {customer ? customer.name : 'Розничный покупатель'}
           </p>
         </div>
-        <button onClick={() => { if (customer) { setCustomerId(null); setIsCredit(false); } else setPickCustomer(true); }}
+        <button onClick={() => { if (customer) { setCustomerId(null); setIsCredit(false); } else openCustomerPicker(); }}
                 className="shrink-0 px-3 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-bold">
           {customer ? 'Убрать' : 'Выбрать'}
         </button>
@@ -553,7 +565,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       </div>
 
       {/* Кнопка корзины — только на телефоне */}
-      {items.length > 0 && !cartOpen && !editing && (
+      {items.length > 0 && !cartOpen && !editing && !pickCustomer && (
         <button onClick={() => setCartOpen(true)}
                 className="lg:hidden fixed left-4 right-4 z-40 rounded-2xl bg-indigo-600 text-white py-3.5 px-5 shadow-2xl flex items-center justify-between active:scale-[0.98] transition-transform"
                 style={{ bottom: 'calc(5.5rem + env(safe-area-inset-bottom, 0px))' }}>
@@ -652,7 +664,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
           Подстраницей, а не отдельным экраном: корзина остаётся смонтированной,
           и набранный чек не теряется на время выбора. */}
       {pickCustomer && (
-        <SubPage onClose={() => setPickCustomer(false)}>
+        <SubPage onClose={closeCustomerPicker}>
           {(close: () => void) => (
             <SelectionList
               title="Выберите клиента"

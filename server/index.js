@@ -6667,7 +6667,13 @@ app.post('/api/calculator-configs', auth, async (req, res) => {
           company = st.rows[0]?.c;
         }
         let base = calcSlugFrom(company);
-        if (base.length < 3) base = 'rassrochka';
+        // Названия компании нет — имя продавца из профиля, а нет и его — короткий
+        // случайный адрес: rassrochka-k3x9
+        if (base.length < 3) {
+          const u = await pool.query(`SELECT name FROM users WHERE id = $1`, [req.user.id]);
+          base = calcSlugFrom(u.rows[0]?.name);
+        }
+        if (base.length < 3) base = `rassrochka-${Math.random().toString(36).slice(2, 6)}`;
         for (let n = 1; n < 50; n++) {
           const candidate = n === 1 ? base : `${base.slice(0, 36)}-${n}`;
           if (!(await calcSlugTaken(candidate, req.user.id))) { slug = candidate; break; }

@@ -88,6 +88,8 @@ const PublicCalculator: React.FC = () => {
 
   const [config, setConfig] = useState<Config | null>(null);
   const [failed, setFailed] = useState(false);
+  // Ссылки нет (опечатка, удалена) — не показываем чужие условия по умолчанию
+  const [notFound, setNotFound] = useState(false);
   const [catId, setCatId] = useState<string>('');
   const [priceStr, setPriceStr] = useState('');
   const [downStr, setDownStr] = useState('');
@@ -98,7 +100,10 @@ const PublicCalculator: React.FC = () => {
     const cfg = shortId || q.get('cfg');
     if (!cfg) { setConfig(legacyConfig(q)); return; }
     fetch(`${apiBase()}/calculator-configs/${encodeURIComponent(cfg)}`)
-      .then(r => (r.ok ? r.json() : Promise.reject(r.status)))
+      .then(r => {
+        if (r.status === 404 || r.status === 410) { setNotFound(true); return Promise.reject(r.status); }
+        return r.ok ? r.json() : Promise.reject(r.status);
+      })
       .then((c: any) => setConfig({
         defaultRate: Number(c.defaultRate) || 0,
         termRates: c.termRates || [],
@@ -110,7 +115,10 @@ const PublicCalculator: React.FC = () => {
         sellerPhone: c.sellerPhone || undefined,
         companyName: c.companyName || undefined,
       }))
-      .catch(() => { setFailed(true); setConfig(legacyConfig(q)); });
+      .catch(status => {
+        if (status === 404 || status === 410) return;
+        setFailed(true); setConfig(legacyConfig(q));
+      });
   }, [q, shortId]);
 
   const company = companyFromUrl || config?.companyName || '';
@@ -179,7 +187,15 @@ const PublicCalculator: React.FC = () => {
           <p className="text-slate-500 mt-1">Без банков и скрытых платежей — все суммы сразу.</p>
         </header>
 
-        {!config ? (
+        {notFound ? (
+          <div className="mt-6 bg-white rounded-3xl border border-slate-100 shadow-sm p-6 text-center">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-amber-50 text-amber-500 flex items-center justify-center">
+              <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><circle cx="12" cy="12" r="10" /><path d="M12 8v4M12 16h.01" /></svg>
+            </div>
+            <p className="mt-4 text-lg font-bold">Калькулятор не найден</p>
+            <p className="mt-1 text-sm text-slate-500">Возможно, в ссылке опечатка или продавец её заменил. Попросите у продавца актуальную ссылку.</p>
+          </div>
+        ) : !config ? (
           <div className="space-y-3 animate-pulse">
             <div className="h-12 rounded-2xl bg-slate-200/70" />
             <div className="h-40 rounded-3xl bg-slate-200/70" />

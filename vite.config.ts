@@ -105,7 +105,10 @@ export default defineConfig(({ mode }) => {
     '**/electron.cjs'
   ],
           navigateFallback: '/index.html',
-          navigateFallbackDenylist: [/^\/downloads\//],
+          // Публичный калькулятор (/c/…, /calc/…) — всегда из сети, мимо сохранённой
+          // копии приложения: у продавца, открывшего ссылку в своём браузере, старая
+          // копия не знала новых адресов и показывала вход вместо калькулятора.
+          navigateFallbackDenylist: [/^\/downloads\//, /^\/c\//, /^\/calc/],
           // 🔒 Ответы /api НАМЕРЕННО не кэшируются Service Worker'ом.
           // Здесь стоял NetworkFirst с networkTimeoutSeconds: 2 и хранением до недели. На
           // медленной связи (LTE, VPN) запрос за 2 секунды не укладывался — у тяжёлых аккаунтов

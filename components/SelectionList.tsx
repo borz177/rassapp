@@ -51,7 +51,10 @@ const SelectionList: React.FC<SelectionListProps> = ({
   const isSecondary = (id: string) => !!secondaryIds?.has(id);
   const filteredItems = matching.filter(i => !isSecondary(i.id));
   const secondaryAll = items.filter(i => isSecondary(i.id));
-  const secondaryItems = search || showSecondary ? matching.filter(i => isSecondary(i.id)) : [];
+  // Своих (например, покупателей розницы) ещё нет — сразу показываем остальных,
+  // а не пустое «Ничего не найдено» с кнопкой
+  const noPrimary = items.every(i => isSecondary(i.id));
+  const secondaryItems = search || showSecondary || noPrimary ? matching.filter(i => isSecondary(i.id)) : [];
 
   const renderItem = (item: SelectionItem) => (
     <div
@@ -115,7 +118,7 @@ const SelectionList: React.FC<SelectionListProps> = ({
                       {secondaryItems.map(renderItem)}
                     </>
                 )}
-                {!search && !showSecondary && secondaryAll.length > 0 && (
+                {!search && !showSecondary && !noPrimary && secondaryAll.length > 0 && (
                     <button type="button" onClick={() => setShowSecondary(true)}
                             className="w-full py-3 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-indigo-600">
                       Показать: {secondaryLabel.toLowerCase()} ({secondaryAll.length})

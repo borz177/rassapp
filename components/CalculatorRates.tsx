@@ -25,9 +25,10 @@ interface Props {
   onSave: () => void;
   onCopyLink: () => void;
   linkBusy?: boolean;
-  /** Адрес ссылки: rassrochka.pro/c/<linkSlug> */
+  /** Адрес ссылки: rassrochka.pro/c/<linkSlug>; пусто — ещё не сохранялась */
   linkSlug: string;
-  setLinkSlug: (v: string) => void;
+  /** Как будет выглядеть адрес до первого сохранения — по названию компании */
+  previewSlug?: string;
 }
 
 const QUICK_TERMS = [3, 4, 6, 9, 10, 12, 18, 24];
@@ -41,7 +42,7 @@ const upsert = (list: TermRate[], months: number, raw: string): TermRate[] => {
 
 const CalculatorRates: React.FC<Props> = ({
   defaultRate, setDefaultRate, termRates, setTermRates, categories, setCategories,
-  downDiscounts, setDownDiscounts, dirty, onSave, onCopyLink, linkBusy, linkSlug, setLinkSlug,
+  downDiscounts, setDownDiscounts, dirty, onSave, onCopyLink, linkBusy, linkSlug, previewSlug,
 }) => {
   // Добавленные, но ещё не заполненные сроки — иначе пустая строка тут же исчезла бы
   const [extraTerms, setExtraTerms] = useState<number[]>([]);
@@ -86,15 +87,14 @@ const CalculatorRates: React.FC<Props> = ({
         <h3 className="text-lg font-bold text-slate-800 dark:text-white">Ставки</h3>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">Наценка за весь срок, %</p>
 
-        {/* Ссылка для клиента — по названию компании: rassrochka.pro/c/rassrochka-plyus */}
+        {/* Ссылка для клиента — сама по названию компании (rassrochka.pro/c/rassrochka-plyus),
+            вписывать ничего не нужно */}
         <div className="mt-4 p-3 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50">
           <p className="text-[11px] font-bold uppercase tracking-wider text-indigo-500 dark:text-indigo-300 mb-2">Ссылка для клиента</p>
           <div className="flex items-center gap-2">
-            <div className="flex-1 min-w-0 flex items-center h-11 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 focus-within:border-indigo-400 px-3 text-sm">
-              <span className="shrink-0 text-slate-400 text-[13px]">rassrochka.pro/c/</span>
-              <input value={linkSlug} placeholder="из названия компании" aria-label="Адрес ссылки"
-                     onChange={e => setLinkSlug(e.target.value.toLowerCase().replace(/[^a-z0-9-]/g, '').slice(0, 40))}
-                     className="flex-1 min-w-0 bg-transparent outline-none font-semibold text-slate-800 dark:text-white placeholder:font-normal placeholder:text-slate-300 dark:placeholder:text-slate-600" />
+            <div className="flex-1 min-w-0 h-11 flex items-center rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 px-3 text-sm truncate">
+              <span className="text-slate-400">rassrochka.pro/c/</span>
+              <span className={`font-semibold truncate ${linkSlug ? 'text-slate-800 dark:text-white' : 'text-slate-400'}`}>{linkSlug || previewSlug || 'название-компании'}</span>
             </div>
             <button type="button" onClick={onCopyLink} disabled={linkBusy}
                     title="Скопировать ссылку" aria-label="Скопировать ссылку"
@@ -103,7 +103,7 @@ const CalculatorRates: React.FC<Props> = ({
               <span className="hidden sm:inline">Копировать</span>
             </button>
           </div>
-          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">Латиницей, цифры и дефис. Ссылка постоянная — новые ставки клиенты видят по ней сразу.</p>
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1.5">Адрес — по названию компании. Ссылка постоянная: новые ставки клиенты видят по ней сразу.</p>
         </div>
       </div>
 

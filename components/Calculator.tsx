@@ -50,6 +50,11 @@ function drawRRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: numbe
   ctx.closePath();
 }
 
+// Как будет выглядеть адрес ссылки — тем же правилом, что на сервере (calcSlugFrom)
+const SLUG_TR: Record<string, string> = { а:'a',б:'b',в:'v',г:'g',д:'d',е:'e',ё:'e',ж:'zh',з:'z',и:'i',й:'y',к:'k',л:'l',м:'m',н:'n',о:'o',п:'p',р:'r',с:'s',т:'t',у:'u',ф:'f',х:'h',ц:'ts',ч:'ch',ш:'sh',щ:'sch',ъ:'',ы:'y',ь:'',э:'e',ю:'yu',я:'ya' };
+const slugPreview = (name?: string) => String(name || '').toLowerCase().split('').map(c => SLUG_TR[c] ?? c).join('')
+  .replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40);
+
 interface CalculatorProps {
   isPublic?: boolean;
   appSettings?: AppSettings;
@@ -350,7 +355,6 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
         markupOnRemainder,
         categories: cleanCategories(),
         downDiscounts: cleanDiscounts(),
-        slug: linkSlug.trim() || undefined,
         companyName: appSettings?.companyName,
       });
       // Адрес мог подобрать сервер (из названия, с цифрой, если занято) — запоминаем его
@@ -425,7 +429,6 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
         roundStep, roundDir, markupOnRemainder,
         categories: cleanCategories(),
         downDiscounts: cleanDiscounts(),
-        slug: linkSlug.trim() || undefined,
         companyName: appSettings?.companyName,
       });
       if (saved.slug && saved.slug !== linkSlug) setLinkSlug(saved.slug);
@@ -859,7 +862,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
               termRates={termRates} setTermRates={setTermRates}
               categories={categories} setCategories={setCategories}
               downDiscounts={downDiscounts} setDownDiscounts={setDownDiscounts}
-              linkSlug={linkSlug} setLinkSlug={setLinkSlug}
+              linkSlug={linkSlug} previewSlug={slugPreview(appSettings?.companyName)}
               dirty={ratesDirty}
               onSave={handleSaveConfig}
               onCopyLink={handleCopyLink}
