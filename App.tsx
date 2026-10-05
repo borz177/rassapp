@@ -1346,7 +1346,7 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v35';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v36';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
 
   let seen = false;
@@ -5907,7 +5907,7 @@ if (!user && !showSplash) {
       <div className="px-6 pt-7 pb-6">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Обновление</p>
         <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          Новый дизайн и удобный поиск
+          Обновили договоры и калькулятор
         </h3>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
@@ -5916,21 +5916,21 @@ if (!user && !showSplash) {
           {[
             {
               tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-              icon: <><path d="M10 3.5 11.6 8l4.4 1.6-4.4 1.6L10 15.6 8.4 11.2 4 9.6 8.4 8z" /><path d="M17.5 13.5l.8 2.2 2.2.8-2.2.8-.8 2.2-.8-2.2-2.2-.8 2.2-.8z" /></>,
-              title: 'Обновили дизайн',
-              
+              icon: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" /></>,
+              title: 'Договоры',
+              text: 'Один раздел: просроченные и архив — в заголовке. Сортировка, фильтры и «Поделиться» списком должников.',
             },
             {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <><circle cx="11" cy="11" r="7" /><path d="m20 20-3.5-3.5" /></>,
-              title: 'Поиск стал удобнее',
-              text: 'Недавние запросы и фильтры по разделам. Найденная операция или товар открываются сразу — не нужно искать их второй раз.',
+              icon: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 7h6" /><path d="M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></>,
+              title: 'Калькулятор',
+              text: 'Ставки таблицей, категории товара, скидка за взнос и новая страница для клиента.',
             },
             {
               tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
-              icon: <><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2" /><circle cx="12" cy="7" r="4" /></>,
-              title: 'Карточка клиента',
-        
+              icon: <><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>,
+              title: 'Журнал',
+              text: 'С магазином деньги и товар — в одной ленте с общим фильтром.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
