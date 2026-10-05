@@ -85,6 +85,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
     };
 
     return (
+        <ModalPortal onClose={onClose}>
         <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 mb-6">
@@ -124,6 +125,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
                 </form>
             </div>
         </div>
+        </ModalPortal>
     )
 }
 
@@ -138,6 +140,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
     };
 
     return (
+        <ModalPortal onClose={onClose}>
         <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
                 <div className="flex items-center gap-3 mb-6">
@@ -176,6 +179,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
                 </form>
             </div>
         </div>
+        </ModalPortal>
     )
 }
 
@@ -225,6 +229,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
     const totalProfitGenerated = Math.max(0, totalAccountEquity - totalNetCapital);
 
     return (
+        <ModalPortal onClose={onClose}>
         <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
                 <div className="p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
@@ -317,6 +322,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                 </div>
             </div>
         </div>
+        </ModalPortal>
     );
 };
 
@@ -376,6 +382,7 @@ const AccountActionModal = ({
     };
 
     return (
+        <ModalPortal onClose={onClose}>
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
             <div className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
                 <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(realAccountType(account))}`}></div>
@@ -518,6 +525,7 @@ const AccountActionModal = ({
                 </div>
             </div>
         </div>
+        </ModalPortal>
     );
 };
 
@@ -2001,6 +2009,7 @@ const investorProfitPayouts = useMemo(() => {
 {/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера — на мобильных выезжает снизу, как модалка
     "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
 {showProfitDetails && (
+    <ModalPortal onClose={() => setShowProfitDetails(false)}>
     <div
         className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
         onClick={() => setShowProfitDetails(false)}
@@ -2142,11 +2151,13 @@ const investorProfitPayouts = useMemo(() => {
             </div>
         </div>
     </div>
+    </ModalPortal>
 )}
 
 {/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора — на мобильных выезжает снизу, как модалка
     "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
 {showInvestorProfitDetails && investorProfitStats && (
+    <ModalPortal onClose={() => setShowInvestorProfitDetails(false)}>
     <div
         className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
         onClick={() => setShowInvestorProfitDetails(false)}
@@ -2275,6 +2286,7 @@ const investorProfitPayouts = useMemo(() => {
             </div>
         </div>
     </div>
+    </ModalPortal>
 )}
 
 
