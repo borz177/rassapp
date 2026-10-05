@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem, StockLocation } from '../types';
 import TopBarBack from './TopBarBack';
 import { maxPickableQty, stockOnWarehouse } from '../src/utils';
@@ -332,6 +332,15 @@ const RetailSale: React.FC<RetailSaleProps> = ({
     setItems(prev => prev.map(i => (i.productId === id ? { ...i, quantity: next } : i)));
   };
 
+  // Новая позиция добавляется в конец — докручиваем список к ней
+  const prevCount = useRef(items.length);
+  useEffect(() => {
+    if (items.length > prevCount.current) {
+      document.querySelectorAll<HTMLElement>('[data-cart-list]').forEach(el => { el.scrollTop = el.scrollHeight; });
+    }
+    prevCount.current = items.length;
+  }, [items.length, cartOpen]);
+
   const positionsWord = (n: number) => n % 10 === 1 && n % 100 !== 11 ? 'товар'
     : n % 10 >= 2 && n % 10 <= 4 && (n % 100 < 10 || n % 100 >= 20) ? 'товара' : 'товаров';
 
@@ -357,42 +366,45 @@ const RetailSale: React.FC<RetailSaleProps> = ({
           <p className="mt-3 text-sm text-slate-500 dark:text-slate-400">Корзина пуста — нажмите на товар</p>
         </div>
       ) : (
-        <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 divide-y divide-slate-200/70 dark:divide-slate-700/70">
+        // Список прокручивается внутри своего окна: при многих позициях
+        // покупатель, скидка и итог остаются на месте
+        <div data-cart-list className="rounded-2xl bg-slate-50 dark:bg-slate-900/60 divide-y divide-slate-200/70 dark:divide-slate-700/70 max-h-[34vh] lg:max-h-[max(8rem,calc(100vh-40rem))] overflow-y-auto overscroll-contain">
           {items.map(i => {
             const short = i.quantity > stockOf(i.productId);
             const product = products.find(p => p.id === i.productId);
+            const edit = () => { setCartOpen(false); if (product) openProduct(product); };
             return (
-              <div key={i.productId} className="flex items-center gap-3 p-2.5">
-                <button type="button" onClick={() => { setCartOpen(false); if (product) openProduct(product); }}
-                        className="w-11 h-11 rounded-xl bg-white dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center" aria-label="Изменить количество и цену">
+              <div key={i.productId} className="flex items-center gap-2.5 px-2.5 py-2">
+                <button type="button" onClick={edit} aria-label="Изменить количество и цену"
+                        className="w-10 h-10 rounded-xl bg-white dark:bg-slate-800 overflow-hidden shrink-0 flex items-center justify-center">
                   <ProductImage src={product?.images?.[0]} className="w-full h-full object-cover"
                                 fallback={<span className="text-slate-400 text-sm">📦</span>} />
                 </button>
                 <div className="min-w-0 flex-1">
-                  <button type="button" onClick={() => { setCartOpen(false); if (product) openProduct(product); }}
-                          className="block w-full text-left">
-                    <span className="block font-semibold text-slate-800 dark:text-white text-[13px] leading-tight truncate">{i.name}</span>
-                    <span className="block text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                      {money(i.price, showCents)} ₽ / {i.unit}
+                  {/* Строка 1: название и сумма; строка 2: цена за единицу и − кол-во + */}
+                  <div className="flex items-baseline gap-2">
+                    <button type="button" onClick={edit}
+                            className="min-w-0 flex-1 text-left font-semibold text-slate-800 dark:text-white text-[13px] leading-tight truncate">{i.name}</button>
+                    <span className="shrink-0 font-bold text-slate-900 dark:text-white text-[13px] tabular-nums">{money(i.price * i.quantity, showCents)} ₽</span>
+                  </div>
+                  <div className="mt-1 flex items-center justify-between gap-2">
+                    <span className="min-w-0 truncate text-[11px] text-slate-500 dark:text-slate-400">
+                      {money(i.price, showCents)} ₽/{i.unit}
                       {short && <span className="text-amber-600 dark:text-amber-400"> · на складе {money(stockOf(i.productId))}</span>}
                     </span>
-                  </button>
-                  <div className="mt-1.5 flex items-center justify-between gap-2">
-                    {/* − количество + */}
-                    <div className="flex items-center h-8 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
+                    <div className="shrink-0 flex items-center h-7 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700">
                       <button type="button" onClick={() => stepQty(i.productId, -1)} aria-label="Меньше"
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700">
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-300 active:bg-slate-100 dark:active:bg-slate-700">
                         {i.quantity <= 1
-                          ? <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-rose-500" aria-hidden><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
-                          : <span className="text-lg leading-none font-bold">−</span>}
+                          ? <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="text-rose-500" aria-hidden><path d="M3 6h18M8 6V4h8v2M6 6l1 14h10l1-14" /></svg>
+                          : <span className="text-base leading-none font-bold">−</span>}
                       </button>
-                      <span className="min-w-[28px] text-center text-sm font-bold tabular-nums text-slate-800 dark:text-white">{money(i.quantity)}</span>
+                      <span className="min-w-[24px] text-center text-[13px] font-bold tabular-nums text-slate-800 dark:text-white">{money(i.quantity)}</span>
                       <button type="button" onClick={() => stepQty(i.productId, 1)} aria-label="Больше"
-                              className="w-8 h-8 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-300 active:bg-slate-100 dark:active:bg-slate-700">
-                        <span className="text-lg leading-none font-bold">+</span>
+                              className="w-7 h-7 rounded-full flex items-center justify-center text-indigo-600 dark:text-indigo-300 active:bg-slate-100 dark:active:bg-slate-700">
+                        <span className="text-base leading-none font-bold">+</span>
                       </button>
                     </div>
-                    <p className="font-bold text-slate-900 dark:text-white text-sm tabular-nums">{money(i.price * i.quantity, showCents)} ₽</p>
                   </div>
                 </div>
               </div>
