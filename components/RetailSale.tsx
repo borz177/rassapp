@@ -13,6 +13,8 @@ import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
 import ProductImage from './ProductImage';
 import { buildJournalDocs, printJournalDoc } from '../src/journalDocs';
+import VariantPickSheet from './VariantPickSheet';
+import { groupCatalog, priceRange } from '../src/variants';
 
 interface RetailSaleProps {
   products: Product[];
@@ -126,6 +128,8 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   );
 
   const [editing, setEditing] = useState<{ product: Product; existing: boolean } | null>(null);
+  // Модель с вариантами, для которой открыт выбор размера/цвета
+  const [variantPick, setVariantPick] = useState<{ base: string; items: Product[] } | null>(null);
   const [qty, setQty] = useState('1');
   const [price, setPrice] = useState('0');
   const [field, setField] = useState<'qty' | 'price'>('qty');
@@ -235,7 +239,11 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const addScanned = (code: string): ScanOutcome => {
     const match = findProductByCode(products, code);
     if (!match) return { tone: 'error', title: 'Товар не найден', subtitle: code };
-    const p = match.product;
+    return addOne(match.product);
+  };
+
+  /** +1 штука товара в корзину — сканер и выбор варианта. Правила склада общие */
+  const addOne = (p: Product): ScanOutcome => {
     if (p.isArchived) return { tone: 'error', title: `«${p.name}» в архиве`, subtitle: 'Верните его из архива на складе' };
 
     const unit = p.unit || 'шт';
@@ -267,7 +275,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
     const result = addScanned(code);
     scanBeep(result.tone);
     setError(result.tone === 'error' ? `${result.title}${result.subtitle ? `. ${result.subtitle}` : ''}` : null);
-  }, !scanOpen && !editing && !done && !pickCustomer);
+  }, !scanOpen && !editing && !done && !pickCustomer && !variantPick);
 
   const submit = async () => {
     if (items.length === 0) { setError('Корзина пуста'); return; }
@@ -611,7 +619,46 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             // с телефонную там выглядит непропорционально, а витрина влезает
             // целиком без прокрутки.
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2.5">
-              {visible.map(p => {
+              {groupCatalog(visible).map(entry => {
+                if (entry.kind === 'group') {
+                  const g = entry;
+                  const inCartQty = items.filter(i => g.items.some(v => v.id === i.productId)).reduce((n, i) => n + i.quantity, 0);
+                  const stock = g.items.reduce((n, v) => n + Math.max(0, stockOnWarehouse(v, warehouseId, warehouses)), 0);
+                  const range = priceRange(g.items);
+                  const cover = g.items.find(v => v.images?.length)?.images?.[0];
+                  return (
+                    <button key={`g_${g.groupId}`} onClick={() => { setError(null); setVariantPick({ base: g.base, items: g.items }); }}
+                            className={`relative bg-white dark:bg-slate-800 rounded-2xl border p-2 text-left active:scale-95 transition-transform overflow-hidden ${
+                              inCartQty > 0 ? 'border-indigo-500 border-2' : 'border-slate-100 dark:border-slate-700'
+                            }`}>
+                      {inCartQty > 0 && (
+                        <span className="absolute top-1.5 right-1.5 z-10 bg-indigo-600 text-white text-[10px] font-bold min-w-[22px] h-5 px-1 rounded-full flex items-center justify-center">
+                          {money(inCartQty)}
+                        </span>
+                      )}
+                      <span className={`absolute top-0 left-0 z-10 px-1.5 py-0.5 rounded-br-lg text-[9px] font-bold ${
+                        stock > 0 ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+                                  : 'bg-rose-50 dark:bg-rose-900/30 text-rose-500'
+                      }`}>
+                        {money(stock)}
+                      </span>
+                      <div className="relative w-full aspect-[4/3] rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden mb-1.5 mt-3 flex items-center justify-center">
+                        <ProductImage src={cover} className="w-full h-full object-cover" loading="lazy"
+                                      fallback={<span className="text-2xl text-slate-300">📦</span>} />
+                        {/* Сколько вариантов внутри — чтобы плитку модели не путали с товаром */}
+                        <span className="absolute bottom-1 left-1 px-1.5 h-5 rounded-md bg-slate-900/75 text-white text-[10px] font-bold flex items-center gap-1 backdrop-blur-sm">
+                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg>
+                          {g.items.length}
+                        </span>
+                      </div>
+                      <p className="font-bold text-slate-800 dark:text-white text-xs leading-tight line-clamp-2">{g.base}</p>
+                      <p className="text-sm font-extrabold text-indigo-600 dark:text-indigo-400 mt-0.5">
+                        {range.min === range.max ? '' : 'от '}{money(range.min, showCents)} ₽
+                      </p>
+                    </button>
+                  );
+                }
+                const p = entry.product;
                 const inCart = items.find(i => i.productId === p.id);
                 const stock = stockOnWarehouse(p, warehouseId, warehouses);
                 return (
@@ -658,7 +705,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
 
       {/* Кнопка корзины — только на телефоне: тёмная плашка с миниатюрами,
           суммой и «Оформить». Подпрыгивает при каждом новом товаре. */}
-      {items.length > 0 && !cartOpen && !editing && !pickCustomer && (
+      {items.length > 0 && !cartOpen && !editing && !pickCustomer && !variantPick && (
         <div className="lg:hidden fixed left-3 right-3 z-40" style={{ bottom: 'calc(5.75rem + env(safe-area-inset-bottom, 0px))' }}>
           <button key={totalQty} onClick={() => setCartOpen(true)}
                   className="cart-pop w-full h-16 rounded-[22px] bg-slate-900 dark:bg-slate-800 text-white pl-2.5 pr-2 flex items-center gap-3 shadow-2xl shadow-slate-900/30 ring-1 ring-white/10 active:scale-[0.98] transition-transform">
@@ -797,6 +844,24 @@ const RetailSale: React.FC<RetailSaleProps> = ({
           footer={items.length > 0
             ? `Корзина: ${money(totalQty)} ед. · ${money(total, showCents)} ₽`
             : 'Наведите камеру на штрихкод товара'}
+        />
+      )}
+
+      {variantPick && (
+        <VariantPickSheet
+          base={variantPick.base}
+          items={variantPick.items}
+          stockOf={v => stockOnWarehouse(v, warehouseId, warehouses)}
+          allowNegativeStock={allowNegativeStock}
+          inCartQty={id => items.find(i => i.productId === id)?.quantity || 0}
+          showCents={showCents}
+          onClose={() => setVariantPick(null)}
+          onAdd={v => {
+            const r = addOne(v);
+            if (r.tone !== 'error') hapticSuccess?.();
+            return r.tone === 'error' ? `${r.title}${r.subtitle ? `. ${r.subtitle}` : ''}` : null;
+          }}
+          onDetails={v => { setVariantPick(null); openProduct(v); }}
         />
       )}
 

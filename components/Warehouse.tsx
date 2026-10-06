@@ -21,6 +21,8 @@ import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
 import ProductImage from './ProductImage';
 import { appConfirm } from '../src/dialogs';
+import VariantGroupSheet, { type VariantSaveRow } from './VariantGroupSheet';
+import { groupCatalog, priceRange, variantLabel, type CatalogEntry } from '../src/variants';
 
 interface WarehouseProps {
   products: Product[];
@@ -174,6 +176,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // с пустым образцом нельзя — «новый товар» ставит ровно ту же ссылку,
   // и окно не открывалось бы.
   const [showForm, setShowForm] = useState(false);
+  // Модель с вариантами: новая (seed — поля из формы товара) или правка группы
+  const [variantSheet, setVariantSheet] = useState<{ groupId?: string; seed?: Partial<Product> } | null>(null);
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [form, setForm] = useState(emptyForm);
   const [uploading, setUploading] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -629,6 +634,30 @@ const Warehouse: React.FC<WarehouseProps> = ({
     }
   };
 
+  /**
+   * Сохранение модели с вариантами. Каждый вариант — обычный товар; начальный
+   * остаток нового варианта — приходом, как у одиночного товара (см. save).
+   */
+  const saveVariants = async (rows: VariantSaveRow[], warehouseId: string) => {
+    for (const { product, startQty } of rows) {
+      const isNew = !products.some(p2 => p2.id === product.id);
+      await onSaveProduct(isNew ? applyStockDelta(product, warehouseId || defaultWarehouseId, startQty) : product);
+      if (isNew && startQty > 0) {
+        await onAddMovement({
+          id: crypto.randomUUID(),
+          userId: product.userId,
+          productId: product.id,
+          type: 'IN',
+          quantity: startQty,
+          unitPrice: product.buyPrice,
+          warehouseId: warehouseId || defaultWarehouseId,
+          note: 'Начальный остаток',
+          date: new Date().toISOString(),
+        });
+      }
+    }
+  };
+
   const submitMovement = async () => {
     if (!movementFor) return;
     const qty = num(movementQty);
@@ -686,6 +715,77 @@ const Warehouse: React.FC<WarehouseProps> = ({
   const movementIntoMinus = !!movementOutcome && movementOutcome.after < 0;
 
   const openProduct = products.find(p => p.id === openProductId) || null;
+
+  // Каталог с моделями: варианты одной модели — одной карточкой. В режиме
+  // выбора и перестановки — плоским списком: там действуют над отдельными товарами.
+  const catalogEntries: CatalogEntry[] = reorder || selection
+    ? listed.map(p2 => ({ kind: 'single' as const, product: p2 }))
+    : groupCatalog(listed);
+
+  const renderGroup = (g: Extract<CatalogEntry, { kind: 'group' }>) => {
+    const open = openGroups.has(g.groupId);
+    const total = g.items.reduce((n, p2) => n + stockOf(p2), 0);
+    const low = g.items.filter(isLow).length;
+    const range = priceRange(g.items);
+    const cover = g.items.find(p2 => p2.images?.length)?.images?.[0];
+    const toggle = () => setOpenGroups(prev => {
+      const next = new Set(prev);
+      if (next.has(g.groupId)) next.delete(g.groupId); else next.add(g.groupId);
+      return next;
+    });
+    return (
+      <div key={`g_${g.groupId}`} className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-hidden">
+        <div onClick={toggle} className="p-3 flex items-center gap-3 cursor-pointer active:bg-slate-50 dark:active:bg-slate-700/50">
+          <div className="relative w-16 h-16 shrink-0">
+            {/* Стопка карточек — сразу видно, что внутри несколько товаров */}
+            <span className="absolute inset-0 translate-x-1 -translate-y-1 rounded-xl bg-slate-200 dark:bg-slate-600" />
+            <div className="relative w-16 h-16 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden flex items-center justify-center ring-2 ring-white dark:ring-slate-800">
+              <ProductImage src={cover} className="w-full h-full object-cover" loading="lazy" draggable={false}
+                            fallback={<span className="text-slate-400 text-xl">📦</span>} />
+            </div>
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="font-bold text-slate-800 dark:text-white truncate">{g.base}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">
+              <span className="font-semibold text-indigo-600 dark:text-indigo-300">{g.items.length} вар.</span>
+              {' · '}{range.min === range.max ? `${money(range.min)} ₽` : `${money(range.min)}–${money(range.max)} ₽`}
+            </p>
+            <p className={`text-xs font-bold mt-0.5 ${low ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400'}`}>
+              {money(total)} {unitOf(g.items[0].unit)}{low ? ` · мало у ${low}` : ''}
+            </p>
+          </div>
+          <button onClick={e => { e.stopPropagation(); setVariantSheet({ groupId: g.groupId }); }}
+                  aria-label="Изменить варианты"
+                  className="shrink-0 w-9 h-9 rounded-lg text-slate-400 active:bg-slate-100 dark:active:bg-slate-700 flex items-center justify-center">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+          </button>
+          <span className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden>
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
+          </span>
+        </div>
+        {open && (
+          <div className="border-t border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 bg-slate-50/60 dark:bg-slate-900/30">
+            {g.items.map(p2 => (
+              <button key={p2.id} type="button" onClick={() => setOpenProductId(p2.id)}
+                      className="w-full pl-4 pr-3 py-2.5 flex items-center gap-3 text-left active:bg-slate-100 dark:active:bg-slate-700/50">
+                <span className="min-w-0 flex-1">
+                  <span className="block text-sm font-semibold text-slate-800 dark:text-white truncate">{variantLabel(p2)}</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">{p2.sku || 'без артикула'}{p2.barcodes?.[0] ? ` · ${p2.barcodes[0]}` : ''}</span>
+                </span>
+                <span className="shrink-0 text-right">
+                  <span className="block text-sm font-bold text-slate-800 dark:text-white tabular-nums">{money(p2.price)} ₽</span>
+                  <span className={`block text-[11px] font-bold tabular-nums ${isLow(p2) ? 'text-amber-600 dark:text-amber-400' : stockOf(p2) > 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-400'}`}>
+                    {money(stockOf(p2))} {unitOf(p2.unit)}
+                  </span>
+                </span>
+                <span className="shrink-0 text-slate-300 dark:text-slate-600">›</span>
+              </button>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   return (
     <>
@@ -1004,7 +1104,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
              onPointerMove={e => { if (dragId) dragOver(e.clientY); }}
              onPointerUp={() => setDragId(null)}
              onPointerCancel={() => setDragId(null)}>
-          {listed.map(p => {
+          {catalogEntries.map(entry => {
+            if (entry.kind === 'group') return renderGroup(entry);
+            const p = entry.product;
             const checked = selectedIds.includes(p.id);
             return (
             <div key={p.id} id={`prow_${p.id}`}
@@ -1243,12 +1345,60 @@ const Warehouse: React.FC<WarehouseProps> = ({
       </Sheet>
 
       {/* Модальное окно карточки */}
+      {variantSheet && (
+        <VariantGroupSheet
+          products={products}
+          groupId={variantSheet.groupId}
+          seed={variantSheet.seed}
+          warehouses={shownWarehouses}
+          defaultWarehouseId={warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter}
+          onClose={() => setVariantSheet(null)}
+          onSave={saveVariants}
+        />
+      )}
+
       <Sheet open={showForm} onClose={() => { setShowForm(false); setEditing(null); setForm(emptyForm); }} className="sm:max-w-lg max-h-[88vh] overflow-y-auto p-5 space-y-3">
         {showForm && (
           <>
             <h3 className="font-bold text-slate-800 dark:text-white">
               {editing ? 'Товар' : 'Новый товар'}
             </h3>
+
+            {/* Одежда, обувь, телефоны: одна модель — много размеров и цветов */}
+            {!editing && (
+              <button type="button"
+                      onClick={() => {
+                        const seed: Partial<Product> = {
+                          name: form.name.trim(), category: form.category.trim(),
+                          price: form.price === '' ? undefined : num(form.price),
+                          buyPrice: form.buyPrice === '' ? undefined : num(form.buyPrice),
+                          images: form.images, unit: form.unit || DEFAULT_UNIT,
+                          description: form.description.trim() || undefined,
+                        };
+                        setShowForm(false); setForm(emptyForm);
+                        setVariantSheet({ seed });
+                      }}
+                      className="w-full flex items-center gap-3 p-3 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 ring-1 ring-indigo-100 dark:ring-indigo-500/20 text-left active:scale-[0.99] transition">
+                <span className="w-9 h-9 shrink-0 rounded-xl bg-indigo-600 text-white flex items-center justify-center">
+                  <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><rect x="3" y="3" width="7" height="7" rx="1.5" /><rect x="14" y="3" width="7" height="7" rx="1.5" /><rect x="3" y="14" width="7" height="7" rx="1.5" /><rect x="14" y="14" width="7" height="7" rx="1.5" /></svg>
+                </span>
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-indigo-700 dark:text-indigo-200">Товар с вариантами</span>
+                  <span className="block text-[11px] text-indigo-600/80 dark:text-indigo-300/80">Размер, цвет, память — одна карточка, у каждого варианта свой остаток</span>
+                </span>
+              </button>
+            )}
+            {editing?.variantGroupId && (
+              <button type="button"
+                      onClick={() => { const gid = editing.variantGroupId!; setShowForm(false); setEditing(null); setForm(emptyForm); setVariantSheet({ groupId: gid }); }}
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 text-left">
+                <span className="min-w-0">
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">Вариант модели «{editing.variantBase}»</span>
+                  <span className="block text-sm font-bold text-slate-800 dark:text-white truncate">{variantLabel(editing)}</span>
+                </span>
+                <span className="shrink-0 text-xs font-bold text-indigo-600 dark:text-indigo-300">Все варианты ›</span>
+              </button>
+            )}
 
             <div className="flex gap-2 flex-wrap">
               {form.images.map((src, i) => (
