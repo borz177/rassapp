@@ -13,6 +13,8 @@
  * переход: там ждут закрытия (await appAlert).
  */
 
+import { classifyAlert, toast } from './toast';
+
 export interface DialogOptions {
   title?: string;
   message?: string;
@@ -101,6 +103,14 @@ export function installAlertOverride() {
   window.alert = (message?: unknown) => {
     const text = String(message ?? '').trim();
     if (!text) return;
+    // Короткое сообщение — плашкой сверху, работа не останавливается.
+    // Длинное объяснение — окном: его надо прочитать, а не поймать взглядом.
+    const asToast = classifyAlert(text);
+    if (asToast) {
+      const { tone, title, message: sub } = asToast;
+      toast[tone](title, { message: sub });
+      return;
+    }
     const last = queue[queue.length - 1];
     if (last?.kind === 'alert' && last.message === text) return;
     void appAlert(text);

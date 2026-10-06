@@ -1668,3 +1668,10 @@ html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[clas
 .cart-pop { animation: cart-pop .32s cubic-bezier(.34,1.56,.64,1); }
 @keyframes cart-pop { 0% { transform: scale(.96); } 60% { transform: scale(1.02); } 100% { transform: scale(1); } }
 @media (prefers-reduced-motion: reduce) { .cart-pop { animation: none; } }
+
+/* Плашки уведомлений (components/Toaster.tsx): выезжают сверху с лёгкой пружиной */
+@keyframes toast-in { 0% { opacity: 0; transform: translateY(-24px) scale(.96); } 70% { opacity: 1; transform: translateY(3px) scale(1.01); } 100% { opacity: 1; transform: none; } }
+@keyframes toast-out { to { opacity: 0; transform: translateY(-18px) scale(.97); } }
+.animate-toast-in { animation: toast-in .36s cubic-bezier(.22,1,.36,1) both; }
+.animate-toast-out { animation: toast-out .22s ease-in both; }
+@media (prefers-reduced-motion: reduce) { .animate-toast-in, .animate-toast-out { animation-duration: .01s; } }

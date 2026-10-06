@@ -1,18 +1,20 @@
 import React from 'react';
+import { haptics } from '../src/haptics';
 
 // Подтверждение завершённой операции в духе нативных приложений: пружинный «поп»,
 // галочка, которая рисуется штрихом, и расходящееся кольцо. Ключевые кадры лежат
 // в src/index.css (блок «ОФОРМЛЕНИЕ И ОТПРАВКА ДОГОВОРА»), там же учтён
 // системный режим «уменьшить движение».
 
-// Короткая вибро-отдача. Работает в Android-обёртке и Chrome; на iOS и десктопе
-// Vibration API отсутствует — просто ничего не произойдёт.
+// Короткая вибро-отдача: на iPhone и в APK — системный Taptic Engine
+// (src/haptics.ts), в браузере — веб-вибрация, где она есть.
 export const haptic = (pattern: number | number[] = 12) => {
-  try { navigator.vibrate?.(pattern); } catch { /* устройство без вибромотора */ }
+  const strength = Array.isArray(pattern) ? Math.max(...pattern) : pattern;
+  if (strength >= 14) haptics.medium(); else haptics.light();
 };
 
-// Двойной короткий отклик — «операция завершена»
-export const hapticSuccess = () => haptic([12, 60, 18]);
+// «Операция завершена»
+export const hapticSuccess = () => haptics.success();
 
 export type FeedbackTone = 'success' | 'danger';
 

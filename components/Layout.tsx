@@ -1,4 +1,6 @@
 
+import { haptics } from '../src/haptics';
+import { rootScroller, rootScrollTop } from '../src/rootScroll';
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
 import NavIcon from './NavIcons';
@@ -267,6 +269,20 @@ const Layout: React.FC<LayoutProps> = ({
   const TAB_ORDER = ['dashboard', 'cash', 'customers', 'more'];
   const visibleTabs = () => TAB_ORDER.filter(id => tabRefs.current[id]);
 
+  // Нажатие на уже открытую вкладку — как в iOS: страница плавно уезжает наверх.
+  // Уже наверху — событие finuchet:tab-reselect (страница может сбросить поиск).
+  const ROOT_VIEW: Record<string, ViewState> = { dashboard: 'DASHBOARD', cash: 'CASH_REGISTER', customers: 'CUSTOMERS', more: 'MORE' };
+  const tapTab = (id: string, go: () => void) => {
+    haptics.selection();
+    if (currentView !== ROOT_VIEW[id]) { go(); return; }
+    if (rootScrollTop() > 4) {
+      const el = rootScroller();
+      (el || window).scrollTo({ top: 0, behavior: 'smooth' });
+    } else {
+      window.dispatchEvent(new CustomEvent('finuchet:tab-reselect', { detail: id }));
+    }
+  };
+
   const goToTab = (id: string) => {
     if (id === 'dashboard') return setView('DASHBOARD');
     if (id === 'cash') return setView('CASH_REGISTER');
@@ -386,7 +402,7 @@ const Layout: React.FC<LayoutProps> = ({
       dragTabRef.current = near;
       setDragTab(near);
       // Короткий отклик на пересечении раздела — как у нативных переключателей
-      try { navigator.vibrate?.(8); } catch { /* устройство без вибромотора */ }
+      haptics.selection();
     }
   };
 
@@ -1011,12 +1027,12 @@ const counts = useMemo(() => {
         )}
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
-            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => setView('DASHBOARD')} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('dashboard')} ${tabActive('dashboard') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+            <button ref={el => { tabRefs.current['dashboard'] = el; }} onClick={() => tapTab('dashboard', () => setView('DASHBOARD'))} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('dashboard')} ${tabActive('dashboard') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                 <NavIcon name="home" active={tabActive('dashboard')} />
                 <span className="text-[10px] mt-1 font-medium">Главная</span>
             </button>
             {!isInvestor && (
-              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => setView('CASH_REGISTER')} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('cash')} ${tabActive('cash') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+              <button ref={el => { tabRefs.current['cash'] = el; }} onClick={() => tapTab('cash', () => setView('CASH_REGISTER'))} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('cash')} ${tabActive('cash') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                   <NavIcon name="cash" active={tabActive('cash')} />
                   <span className="text-[10px] mt-1 font-medium">Касса</span>
               </button>
@@ -1036,7 +1052,7 @@ const counts = useMemo(() => {
 
         <div className={`flex ${isInvestor ? 'w-full justify-around' : 'w-2/5 justify-around'}`}>
             {!isInvestor && (
-              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS'))} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('customers')} ${tabActive('customers') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
+              <button ref={el => { tabRefs.current['customers'] = el; }} onClick={() => tapTab('customers', () => (onGoToCustomers ? onGoToCustomers() : setView('CUSTOMERS')))} className={`relative z-10 flex flex-col items-center p-2 ${tabLens('customers')} ${tabActive('customers') ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-400'}`}>
                   <NavIcon name="customers" active={tabActive('customers')} />
                   <span className="text-[10px] mt-1 font-medium">Клиенты</span>
               </button>
@@ -1047,7 +1063,7 @@ const counts = useMemo(() => {
                         // Показываем меню с доступными разделами
                         setShowInvestorMobileMenu(true);
                     } else {
-                        setView('MORE');
+                        tapTab('more', () => setView('MORE'));
                     }
                 }}
                 ref={el => { tabRefs.current['more'] = el; }}

@@ -2,7 +2,8 @@ import React, { useState, useMemo } from 'react'; // Добавили useMemo
 import ViewModeToggle, { useViewMode } from './ViewModeToggle';
 import type { CustomerSegment } from '../src/customerSegments';
 import { isMacShell } from '../src/platform';
-import { calculateSaleOverdue, formatCurrency } from '../src/utils';
+import { calculateSaleOverdue, formatCurrency, normalizePhoneForWhatsApp } from '../src/utils';
+import SwipeRow from './SwipeRow';
 import { Customer, Sale } from '../types';
 import { ICONS } from '../constants';
 import { useScrollRestoration } from '../src/hooks/useScrollRestoration';
@@ -206,8 +207,27 @@ const Customers: React.FC<CustomersProps> = ({
             <div className="text-center py-8 text-slate-400 dark:text-slate-500">Клиенты не найдены</div>
         )}
         {sortedFilteredCustomers.map(c => (
-          <div
+          <SwipeRow
             key={c.id}
+            className="rounded-xl"
+            right={(() => {
+              const digits = (c.phone || '').replace(/\D/g, '');
+              const wa = normalizePhoneForWhatsApp(c.phone);
+              return [
+                ...(wa ? [{
+                  key: 'wa', label: 'WhatsApp', tone: 'emerald' as const,
+                  onAction: () => { window.open(`https://wa.me/${wa}`, '_blank', 'noopener'); },
+                  icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5Z" /></svg>,
+                }] : []),
+                ...(digits ? [{
+                  key: 'call', label: 'Позвонить', tone: 'sky' as const,
+                  onAction: () => { window.location.href = `tel:+${digits.startsWith('8') && digits.length === 11 ? '7' + digits.slice(1) : digits}`; },
+                  icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M22 16.9v3a2 2 0 0 1-2.2 2 19.8 19.8 0 0 1-8.6-3.1 19.5 19.5 0 0 1-6-6A19.8 19.8 0 0 1 2.1 4.2 2 2 0 0 1 4.1 2h3a2 2 0 0 1 2 1.7c.1.9.4 1.8.7 2.7a2 2 0 0 1-.5 2.1L8 9.8a16 16 0 0 0 6 6l1.3-1.3a2 2 0 0 1 2.1-.4c.9.3 1.8.6 2.7.7a2 2 0 0 1 1.7 2Z" /></svg>,
+                }] : []),
+              ];
+            })()}
+          >
+          <div
             onClick={() => onSelectCustomer(c.id)}
             className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-100 dark:border-slate-700 shadow-sm flex items-center gap-4 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
           >
@@ -228,6 +248,7 @@ const Customers: React.FC<CustomersProps> = ({
                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>
             </div>
           </div>
+          </SwipeRow>
         ))}
       </div>
       )}

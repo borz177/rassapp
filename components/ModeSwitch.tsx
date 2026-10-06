@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { haptics } from '../src/haptics';
 import { useGlassDrop } from './useGlassDrop';
 
 export interface ModeSwitchOption<T extends string> {
@@ -291,7 +292,7 @@ function ModeSwitch<T extends string>({
       hoverRef.current = near;
       setHover(near);
       // Короткий отклик на пересечении режима — как у нативных переключателей
-      try { navigator.vibrate?.(8); } catch { /* нет вибромотора */ }
+      haptics.selection();
     }
   };
 

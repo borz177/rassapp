@@ -1,3 +1,4 @@
+import { haptics } from './haptics';
 /**
  * Звук и вибрация на скан.
  *
@@ -31,10 +32,9 @@ const TONES: Record<ScanTone, { freq: number; duration: number; vibrate: number 
 };
 
 export const scanBeep = (tone: ScanTone = 'ok'): void => {
-  const { freq, duration, vibrate } = TONES[tone];
-  try {
-    if (navigator.vibrate) navigator.vibrate(vibrate);
-  } catch { /* вибрации нет */ }
+  const { freq, duration } = TONES[tone];
+  // Отклик сканера: на iPhone — Taptic Engine (src/haptics.ts)
+  if (tone === 'ok') haptics.light(); else if (tone === 'warn') haptics.warning(); else haptics.error();
   try {
     primeScanSound();
     if (!ctx) return;

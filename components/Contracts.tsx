@@ -6,6 +6,7 @@ import { contractNumbers, formatCurrency, formatDate, calculateSaleOverdue, norm
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { printContract as printContractDocument } from './contractPrint';
 import UnsyncedMark from './UnsyncedMark';
+import SwipeRow from './SwipeRow';
 import { createPortal } from 'react-dom';
 import { api } from '../services/api';
 import GlassSheet, { SheetSection, SheetChoice, sheetInputClass } from './GlassSheet';
@@ -758,6 +759,24 @@ React.useEffect(() => () => { if (closeTimerRef.current) clearTimeout(closeTimer
 
 // Меню действий: на телефоне лист снизу, на компьютере окно по центру —
 // координаты кнопки для этого не нужны.
+// Свайп по договору: позвонить, написать в WhatsApp, открыть меню действий
+const callCustomer = (phone?: string) => {
+  const digits = (phone || '').replace(/\D/g, '');
+  if (!digits) return;
+  window.location.href = `tel:+${digits.startsWith('8') && digits.length === 11 ? '7' + digits.slice(1) : digits}`;
+};
+const openWhatsApp = (customer: Customer | undefined, sale: Sale, overdue: number) => {
+  const phone = normalizePhoneForWhatsApp(customer?.phone);
+  if (!phone) { alert('У клиента не указан телефон для WhatsApp'); return; }
+  // При просрочке — вежливое напоминание с суммой, иначе просто открыть чат
+  const text = overdue > 0
+    ? `Здравствуйте, ${customer?.name?.split(' ')[1] || customer?.name || ''}! Напоминаем о платеже по рассрочке (${sale.productName}): просрочено ${formatCurrency(overdue)} ₽. Пожалуйста, внесите оплату.`
+    : '';
+  window.open(`https://wa.me/${phone}${text ? `?text=${encodeURIComponent(text)}` : ''}`, '_blank', 'noopener');
+};
+const openActionMenu = (sale: Sale) =>
+  handleActionClick({ stopPropagation() {} } as unknown as React.MouseEvent, sale);
+
 const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
   e.stopPropagation();
 
@@ -1162,8 +1181,29 @@ useEffect(() => {
           const displayNumber = filteredList.length - index;
 
           return (
-            <div
+            <SwipeRow
               key={sale.id}
+              className="rounded-2xl"
+              left={[{
+                key: 'schedule', label: 'График', tone: 'indigo', onAction: () => onViewSchedule(sale),
+                icon: <Calendar size={20} />,
+              }]}
+              right={[
+                ...(customer?.phone ? [{
+                  key: 'wa', label: overdueSum > 0 ? 'Напомнить' : 'WhatsApp', tone: 'emerald' as const,
+                  onAction: () => openWhatsApp(customer, sale, overdueSum),
+                  icon: <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor" aria-hidden><path d="M12.04 2C6.58 2 2.13 6.45 2.13 11.91c0 1.75.46 3.45 1.32 4.95L2.05 22l5.25-1.38a9.9 9.9 0 0 0 4.74 1.21h.01c5.46 0 9.91-4.45 9.91-9.91C21.96 6.45 17.5 2 12.04 2Zm5.8 14.06c-.24.68-1.42 1.3-1.95 1.35-.5.05-1.13.22-3.8-.79-3.2-1.26-5.26-4.53-5.42-4.74-.16-.21-1.29-1.72-1.29-3.28s.82-2.33 1.11-2.65c.29-.32.63-.4.84-.4l.6.01c.19.01.45-.07.71.54.26.63.88 2.18.96 2.34.08.16.13.34.03.55-.1.21-.16.34-.32.53-.16.18-.33.41-.48.55-.16.16-.32.33-.14.65.19.32.83 1.37 1.78 2.22 1.23 1.09 2.26 1.43 2.58 1.59.32.16.5.13.69-.08.18-.21.79-.92 1-1.24.21-.32.42-.26.71-.16.29.11 1.83.86 2.14 1.02.32.16.53.24.6.37.08.13.08.76-.16 1.44Z"/></svg>,
+                }, {
+                  key: 'call', label: 'Позвонить', tone: 'sky' as const, onAction: () => callCustomer(customer.phone),
+                  icon: <Phone size={20} />,
+                }] : []),
+                {
+                  key: 'more', label: 'Ещё', tone: 'slate', onAction: () => openActionMenu(sale),
+                  icon: <MoreVertical size={20} />,
+                },
+              ]}
+            >
+            <div
               className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm p-3.5 border border-slate-100 dark:border-slate-700 hover:border-blue-200 dark:hover:border-blue-800 hover:shadow transition-all cursor-pointer"
               onClick={() => setSelectedSaleForInfo(sale)}
             >
@@ -1266,6 +1306,7 @@ useEffect(() => {
                 </div>
               )}
             </div>
+            </SwipeRow>
           );
         })}
       </div>

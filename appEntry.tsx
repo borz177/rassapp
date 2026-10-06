@@ -6,6 +6,7 @@ import App from './App';
 import ErrorBoundary from './components/ErrorBoundary';
 import { ThemeProvider } from './src/theme/ThemeContext';
 import AppDialogs from './components/AppDialogs';
+import Toaster from './components/Toaster';
 import { installAlertOverride } from './src/dialogs';
 import { registerSW } from 'virtual:pwa-register';
 import { isDesktopShell } from './src/platform';
@@ -68,6 +69,7 @@ root.render(
       <ThemeProvider>
         <App />
         <AppDialogs />
+        <Toaster />
       </ThemeProvider>
     </ErrorBoundary>
   </React.StrictMode>

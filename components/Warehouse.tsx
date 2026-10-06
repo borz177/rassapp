@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { haptics } from '../src/haptics';
 import PriceListSheet from './PriceListSheet';
 import UnitPicker from './UnitPicker';
 import { DEFAULT_UNIT, isPackUnit, packLabel, parseLegacyUnit, unitOf } from '../src/units';
@@ -345,7 +346,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
       timer: window.setTimeout(() => {
         longPress.current = null;
         // Отклик телефона на удержание: без него непонятно, сработало ли.
-        if (navigator.vibrate) navigator.vibrate(12);
+        haptics.medium();
         setSelectedIds(prev => prev.includes(id) ? prev : [...prev, id]);
       }, 450),
     };
