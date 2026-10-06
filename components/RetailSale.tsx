@@ -12,6 +12,7 @@ import { findProductByCode, productMatchesQuery } from '../src/barcode';
 import { useBarcodeScanInput } from '../src/barcodeWedge';
 import { scanBeep } from '../src/scanFeedback';
 import ProductImage from './ProductImage';
+import { buildJournalDocs, printJournalDoc } from '../src/journalDocs';
 
 interface RetailSaleProps {
   products: Product[];
@@ -40,6 +41,8 @@ interface RetailSaleProps {
   }) => Promise<Customer | undefined>;
   onBack: () => void;
   showCents?: boolean;
+  /** Шапка товарного чека: название и телефон магазина, кассир */
+  receipt?: { company: string; phone?: string; cashier?: string };
 }
 
 const money = (v: number, cents = false) =>
@@ -69,7 +72,7 @@ const input = 'w-full p-2.5 rounded-xl border border-slate-200 dark:border-slate
 const RetailSale: React.FC<RetailSaleProps> = ({
   products, customers, accounts, defaultAccountId, warehouseId = DEFAULT_WAREHOUSE_ID, warehouses = [], onQuickAddCustomer, customerSecondaryIds,
   allowNegativeStock = false, canScanPassport = false,
-  existingSales = [], onSubmit, onBack, showCents = false,
+  existingSales = [], onSubmit, onBack, showCents = false, receipt,
 }) => {
   const [items, setItems] = useState<RetailSaleItem[]>([]);
   const [search, setSearch] = useState('');
@@ -118,7 +121,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
   const [docNumber, setDocNumber] = useState('');
   const [saleDate, setSaleDate] = useState(() => new Date().toISOString().slice(0, 10));
   const nextDocNumber = useMemo(
-    () => String(existingSales.filter(s => !s.isCancelled).length + 1).padStart(4, '0'),
+    () => String(existingSales.filter(s => !s.isCancelled && !s.returnOf).length + 1).padStart(4, '0'),
     [existingSales]
   );
 
@@ -313,6 +316,18 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       {error}
     </div>
   );
+
+  // Чек только что проведённой продажи — тем же оформлением, что из журнала
+  const printSaleReceipt = (sale: RetailSaleType) => {
+    const doc = buildJournalDocs({
+      retailSales: [sale], movements: [], products, customers, warehouses: [], suppliers: [],
+      company: receipt?.company || 'Магазин',
+    })[0];
+    if (doc) printJournalDoc(doc, {
+      phone: receipt?.phone, cashier: receipt?.cashier,
+      accountName: accounts.find(a => a.id === sale.accountId)?.name,
+    });
+  };
 
   // ± в строке корзины — без окна количества. Те же правила склада, что у
   // окна и сканера: в минус не уходим, если это выключено в настройках.
@@ -799,10 +814,17 @@ const RetailSale: React.FC<RetailSaleProps> = ({
                   № {done.docNumber} · {money(done.total, showCents)} ₽ · {done.items.length} поз.
                 </p>
               </div>
-              <button type="button" onClick={close}
-                      className="w-full py-3 rounded-2xl bg-indigo-600 text-white font-bold active:scale-95 transition-transform">
-                Новая продажа
-              </button>
+              <div className="flex gap-2">
+                <button type="button" onClick={() => printSaleReceipt(done)}
+                        className="flex-1 py-3 rounded-2xl bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-200 font-bold active:scale-95 transition-transform flex items-center justify-center gap-2">
+                  <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M6 9V2h12v7" /><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2" /><rect x="6" y="14" width="12" height="8" rx="1" /></svg>
+                  Чек
+                </button>
+                <button type="button" onClick={close}
+                        className="flex-[2] py-3 rounded-2xl bg-indigo-600 text-white font-bold active:scale-95 transition-transform">
+                  Новая продажа
+                </button>
+              </div>
             </>
           )}
         </Sheet>

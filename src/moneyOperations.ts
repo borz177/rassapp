@@ -46,8 +46,30 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
   // В описании — состав чека, иначе строка «Продажа 3 400 ₽» ничего не говорит.
   retailSales.forEach(rs => {
     if (rs.isCancelled) return;
-    const names = rs.items.map(i => `${i.name} ×${i.quantity}`).join(', ');
+    const names = rs.items.map(i => `${i.name} ×${Math.abs(i.quantity)}`).join(', ');
     const who = rs.customerId ? getCustomerName(rs.customerId) : 'Розничный покупатель';
+
+    // Возврат: деньги ушли покупателю. По чеку в долг часть суммы только
+    // списала долг — в ленту денег идёт лишь реально отданное (refund).
+    if (rs.returnOf) {
+      const refund = Math.max(0, Number(rs.refund ?? -rs.total) || 0);
+      if (refund > 0) {
+        const original = retailSales.find(x => x.id === rs.returnOf);
+        incomeOps.push({
+          id: rs.id,
+          date: rs.date,
+          amount: refund,
+          title: who,
+          description: `Возврат${original?.docNumber ? ` по чеку №${original.docNumber}` : ''}${names ? ` · ${names}` : ''}`,
+          accountId: rs.accountId,
+          type: 'EXPENSE',
+          category: 'Магазин',
+          raw: rs,
+          isRetail: true,
+        });
+      }
+      return;
+    }
 
     // Чек в долг денег не приносит — ему здесь не место: история операций
     // отражает движение денег, а не отгрузку товара. Вместо него в ленту

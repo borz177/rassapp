@@ -61,7 +61,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -3425,33 +3425,128 @@ const confirmDeleteCustomer = async () => {
     if (!user) return;
     if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return; }
 
-    // Движения ищем по чеку: у розничной продажи id движений случайные.
-    // contractId отсекает отгрузку по договору — у неё тоже type 'SALE'.
-    const related = stockMovements.filter(m => m.saleId === sale.id && m.type === 'SALE' && !m.contractId);
+    // Остатки ведём локально по ходу удаления: чек с возвратами удаляется
+    // несколькими документами подряд, и каждый следующий должен видеть остаток
+    // после предыдущего, а не снимок из состояния до начала.
+    const current = new Map<string, Product>(products.map(p => [p.id, p] as [string, Product]));
+    let originals = retailSales;
 
-    for (const m of related) {
-      try {
-        await api.deleteItem('stockMovements', m.id);
-        removeFromList(setStockMovements, m.id);
-        const prod = products.find(p => p.id === m.productId);
-        if (prod) {
-          const savedProd = await api.saveItem(
-            'products',
-            applyStockDelta(prod, m.warehouseId || DEFAULT_WAREHOUSE_ID, Math.abs(m.quantity))
-          );
-          updateList(setProducts, savedProd);
+    const removeDoc = async (doc: RetailSaleType) => {
+      // Движения ищем по документу: у розничной продажи id движений случайные.
+      // contractId отсекает отгрузку по договору — у неё тоже type 'SALE'.
+      const related = stockMovements.filter(m => m.saleId === doc.id
+        && (m.type === 'SALE' || m.type === 'RETURN') && !m.contractId);
+
+      for (const m of related) {
+        try {
+          await api.deleteItem('stockMovements', m.id);
+          removeFromList(setStockMovements, m.id);
+          const prod = current.get(m.productId);
+          if (prod) {
+            // Обратно ровно на величину движения: продажа (минус) вернёт товар,
+            // возврат (плюс) снова его заберёт
+            const savedProd = await api.saveItem(
+              'products',
+              applyStockDelta(prod, m.warehouseId || DEFAULT_WAREHOUSE_ID, -(Number(m.quantity) || 0))
+            );
+            current.set(savedProd.id, savedProd);
+            updateList(setProducts, savedProd);
+          }
+        } catch (e: any) {
+          console.warn('⚠️ Остаток по удалённому документу не восстановлен:', e?.message);
         }
-      } catch (e: any) {
-        console.warn('⚠️ Возврат товара по удалённому чеку не выполнен:', e?.message);
       }
-    }
 
-    // Сам чек — последним: пока он на месте, по нему видно, что возвращать.
-    removeFromList(setRetailSales, sale.id);
+      // Возврат по чеку в долг списал часть долга — удаляя возврат, долг возвращаем
+      if (doc.returnOf) {
+        const original = originals.find(r => r.id === doc.returnOf);
+        if (original && (original.returnedDebt || []).some(x => x.returnId === doc.id)) {
+          const next = { ...original, returnedDebt: (original.returnedDebt || []).filter(x => x.returnId !== doc.id) };
+          originals = originals.map(r => (r.id === next.id ? next : r));
+          updateList(setRetailSales, next);
+          try { await api.saveItem('retailSales', next); } catch (e: any) {
+            console.warn('⚠️ Долг по чеку не восстановлен:', e?.message);
+          }
+        }
+      }
+
+      // Сам документ — последним: пока он на месте, по нему видно, что возвращать.
+      removeFromList(setRetailSales, doc.id);
+      try {
+        await api.deleteItem('retailSales', doc.id);
+      } catch (e: any) {
+        console.warn('⚠️ Документ не удалён на сервере:', e?.message);
+      }
+    };
+
+    // У чека сперва удаляем его возвраты: иначе товар вернулся бы на склад
+    // дважды — по возврату и по удалению продажи.
+    if (!sale.returnOf) {
+      for (const ret of retailSales.filter(r => r.returnOf === sale.id)) await removeDoc(ret);
+    }
+    await removeDoc(sale);
+  };
+
+  /**
+   * Возврат по чеку: отдельный документ с отрицательными суммами, товар —
+   * обратно на склад, с которого продавали, деньги — со счёта покупателю (по
+   * чеку в долг сперва списывается долг). Исходный чек не переписывается.
+   */
+  const handleRetailReturn = async (
+    original: RetailSaleType,
+    lines: { productId: string; quantity: number }[],
+    meta: { accountId: string; date: string; note?: string },
+  ): Promise<boolean> => {
+    if (!user) return false;
+    if (!checkAccess('WRITE')) { showUpgradeAlert('Срок подписки истек.'); return false; }
+    const ownerId = isEmployee && user.managerId ? user.managerId : user.id;
+
+    const docNumber = String(retailSales.filter(r => r.returnOf && !r.isCancelled).length + 1).padStart(4, '0');
+    const { record, debt } = buildRetailReturn(original, lines, retailSales, {
+      id: crypto.randomUUID(), accountId: meta.accountId, date: meta.date, note: meta.note,
+      docNumber, userId: ownerId, createdByUserId: user.id,
+    });
+    if (record.items.length === 0) return false;
+
     try {
-      await api.deleteItem('retailSales', sale.id);
+      const saved = await api.saveItem('retailSales', record, {
+        intent: { kind: 'retailSale', label: `Возврат ${Math.abs(record.total).toLocaleString('ru-RU')} ₽ · №${docNumber}` },
+      });
+      updateList(setRetailSales, saved);
+
+      if (debt > 0) {
+        const next = { ...original, returnedDebt: [...(original.returnedDebt || []), { returnId: record.id, amount: debt }] };
+        updateList(setRetailSales, next);
+        const savedOriginal = await api.saveItem('retailSales', next);
+        updateList(setRetailSales, savedOriginal);
+      }
+
+      // Товар — на тот склад, с которого его продали
+      const soldFrom = stockMovements.find(m => m.saleId === original.id && m.type === 'SALE' && !m.contractId)?.warehouseId
+        || saleWarehouse?.id || DEFAULT_WAREHOUSE_ID;
+      const current = new Map<string, Product>(products.map(p => [p.id, p] as [string, Product]));
+      for (const item of record.items) {
+        const qty = Math.abs(item.quantity);
+        const movement: StockMovement = {
+          id: crypto.randomUUID(), userId: ownerId, productId: item.productId, type: 'RETURN',
+          quantity: qty, unitPrice: item.price, saleId: record.id, warehouseId: soldFrom,
+          date: record.date, note: `Возврат по чеку №${original.docNumber || original.id.slice(0, 6)}`,
+          docNumber, createdByUserId: user.id,
+        };
+        const savedMovement = await api.saveItem('stockMovements', movement);
+        updateList(setStockMovements, savedMovement);
+        const product = current.get(item.productId);
+        if (product) {
+          const savedProduct = await api.saveItem('products', applyStockDelta(product, soldFrom, qty));
+          current.set(savedProduct.id, savedProduct);
+          updateList(setProducts, savedProduct);
+        }
+      }
+      return true;
     } catch (e: any) {
-      console.warn('⚠️ Чек не удалён на сервере:', e?.message);
+      if (e?.message === 'TOKEN_EXPIRED') return false;
+      alert(`❌ Возврат не оформлен.\n${e?.message || ''}`);
+      return false;
     }
   };
 
@@ -4915,6 +5010,7 @@ if (!user && !showSplash) {
                           onSelectCustomer: handleSelectCustomer,
                           onAcceptPayment: handleInitiateRetailPayment,
                           onUpdateSale: handleUpdateRetailSale,
+                          onReturnSale: handleRetailReturn,
                           onUpdateStockDoc: handleUpdateStockDoc,
                           onAddDocLines: handleAddDocLines,
                           onDeleteSale: handleDeleteRetailSale,
@@ -5033,6 +5129,7 @@ if (!user && !showSplash) {
                       warehouses={scopedWarehouses}
                       existingSales={retailSales}
                       showCents={appSettings.showCents}
+                      receipt={{ company: appSettings.companyName || 'Магазин', phone: appSettings.sellerPhone, cashier: user?.name }}
                       onSubmit={handleRetailSale}
                       allowNegativeStock={!!appSettings.shopAllowNegativeStock}
                       canScanPassport={checkAccess('AI')}
@@ -5065,6 +5162,7 @@ if (!user && !showSplash) {
                       onSelectCustomer={handleSelectCustomer}
                       onAcceptPayment={handleInitiateRetailPayment}
                       onUpdateSale={handleUpdateRetailSale}
+                      onReturnSale={handleRetailReturn}
                       onUpdateStockDoc={handleUpdateStockDoc}
                       onAddDocLines={handleAddDocLines}
                       onDeleteSale={handleDeleteRetailSale}
@@ -5097,6 +5195,7 @@ if (!user && !showSplash) {
                       onSelectCustomer={handleSelectCustomer}
                       onAcceptPayment={handleInitiateRetailPayment}
                       onUpdateSale={handleUpdateRetailSale}
+                      onReturnSale={handleRetailReturn}
                       onUpdateStockDoc={handleUpdateStockDoc}
                       onAddDocLines={handleAddDocLines}
                       onPostBatch={handlePostStockBatch}

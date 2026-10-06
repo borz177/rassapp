@@ -152,6 +152,8 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     total: num(r.total),
     isCredit: !!r.isCredit,
     isCancelled: !!r.isCancelled,
+    // Возврат по чеку: отрицательные total и количества, returnOf — исходный чек
+    returnOf: r.returnOf || null,
     date: r.date || r.createdAt || null,
     items: (r.items || []).map(i => ({
       productId: i.productId, name: i.name, quantity: Number(i.quantity) || 0, price: num(i.price),

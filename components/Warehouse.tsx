@@ -39,6 +39,7 @@ interface WarehouseProps {
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  onReturnSale?: (sale: RetailSale, lines: { productId: string; quantity: number }[], meta: { accountId: string; date: string; note?: string }) => Promise<boolean>;
   onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
   /** Проведение складского документа: движения и обновлённые остатки разом */
   onPostBatch: (movements: StockMovement[], products: Product[]) => Promise<void> | void;
@@ -112,7 +113,7 @@ const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
 const Warehouse: React.FC<WarehouseProps> = ({
   products, movements, warehouses, suppliers, accounts,
   retailSales = [], customers = [], employees = [], contracts = [], appSettings, user,
-  onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc, onAddDocLines,
+  onSelectCustomer, onAcceptPayment, onUpdateSale, onUpdateStockDoc, onAddDocLines, onReturnSale,
   onSaveProduct, onDeleteProduct, onAddMovement, onPostBatch,
   onSaveWarehouse, onDeleteWarehouse, onBack, warehouseScope = null,
   focusProductId = null, onFocusHandled,
@@ -1570,6 +1571,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
             onSelectCustomer={onSelectCustomer}
             onAcceptPayment={onAcceptPayment}
             onUpdateSale={onUpdateSale}
+            onReturnSale={onReturnSale}
             onUpdateStockDoc={onUpdateStockDoc}
             onAddDocLines={onAddDocLines}
             onPrintLabels={p2 => setLabelIds([p2.id])}

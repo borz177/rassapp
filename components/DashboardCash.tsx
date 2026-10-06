@@ -82,7 +82,8 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
   const sum = (list: RetailSale[]) => ({
     revenue: list.reduce((s, x) => s + x.total, 0),
     profit: list.reduce((s, x) => s + x.profit, 0),
-    count: list.length,
+    // Возврат уменьшает выручку, но чеком не считается
+    count: list.filter(x => !x.returnOf).length,
   });
 
   const today = useMemo(() => {
@@ -379,7 +380,7 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
                 <div key={s.id} className="px-4 py-3 flex items-center justify-between gap-3">
                   <div className="min-w-0">
                     <p className="font-semibold text-slate-800 dark:text-white truncate">
-                      {s.items.map(i => i.name).join(', ') || 'Продажа'}
+                      {s.returnOf ? 'Возврат · ' : ''}{s.items.map(i => i.name).join(', ') || 'Продажа'}
                     </p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       {s.docNumber ? `№${s.docNumber} · ` : ''}
@@ -387,8 +388,8 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
                     </p>
                   </div>
                   <div className="shrink-0 text-right">
-                    <p className="font-bold text-slate-800 dark:text-white">
-                      {formatCurrency(s.total, showCents)} ₽
+                    <p className={`font-bold ${s.returnOf ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-white'}`}>
+                      {s.returnOf ? '−' : ''}{formatCurrency(Math.abs(s.total), showCents)} ₽
                     </p>
                     {/* Долг по продаже виден сразу: иначе «5 000 ₽» в ленте
                         выглядят полученными деньгами, которых в кассе нет. */}

@@ -476,11 +476,11 @@ const Operations: React.FC<OperationsProps> = ({
                                     <div className="min-w-0">
                                         <p className="text-sm font-semibold text-slate-800 dark:text-white truncate">{i.name}</p>
                                         <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                                            {i.quantity} {i.unit || 'шт'} × {i.price.toLocaleString('ru-RU')} ₽
+                                            {Math.abs(i.quantity)} {i.unit || 'шт'} × {i.price.toLocaleString('ru-RU')} ₽
                                         </p>
                                     </div>
                                     <p className="text-sm font-bold text-slate-800 dark:text-white shrink-0">
-                                        {(i.quantity * i.price).toLocaleString('ru-RU')} ₽
+                                        {Math.abs(i.quantity * i.price).toLocaleString('ru-RU')} ₽
                                     </p>
                                 </div>
                             ))}

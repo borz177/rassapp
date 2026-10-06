@@ -1,6 +1,6 @@
 import type { Customer, Expense, Product, RetailSale, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
-import { legacyMainWarehouse, listedWarehouses, retailRemaining, stockOnWarehouse } from './utils';
+import { legacyMainWarehouse, listedWarehouses, retailCashIn, retailRemaining, stockOnWarehouse } from './utils';
 import { supplierSupplyBalances } from './supplierLedger';
 
 /**
@@ -148,7 +148,7 @@ export const accountCashSummary = ({
   // Склад чека — по движению продажи. Отгрузка по договору (contractId) к чекам не относится.
   const warehouseBySale = new Map<string, string>();
   movements.forEach(m => {
-    if (m.saleId && m.type === 'SALE' && !m.contractId && !warehouseBySale.has(m.saleId)) {
+    if (m.saleId && (m.type === 'SALE' || m.type === 'RETURN') && !m.contractId && !warehouseBySale.has(m.saleId)) {
       warehouseBySale.set(m.saleId, resolveWarehouse(m.warehouseId));
     }
   });
@@ -165,18 +165,19 @@ export const accountCashSummary = ({
   const periodSales = shopSales.filter(s => inCashPeriod(s.date, period));
   const revenue = periodSales.reduce((sum, s) => sum + s.total, 0);
   const credit = periodSales.reduce((sum, s) => sum + retailRemaining(s), 0);
-  const checks = periodSales.length;
+  // Возврат — не чек: среднюю сумму покупки он бы занизил вдвойне
+  const checks = periodSales.filter(s => !s.returnOf).length;
   const byWarehouse = linked.length > 1
     ? linked.map(w => {
         const own = periodSales.filter(s => shopWarehouseOf(s) === w.id);
-        return { warehouseId: w.id, name: w.name, revenue: own.reduce((sum, s) => sum + s.total, 0), checks: own.length };
+        return { warehouseId: w.id, name: w.name, revenue: own.reduce((sum, s) => sum + s.total, 0), checks: own.filter(s => !s.returnOf).length };
       })
     : [];
 
   // ── Деньги по счёту за период: та же формула, что у баланса ──
   const salesIn = live
-    .filter(s => !s.isCredit && s.accountId === accountId && inCashPeriod(s.date, period))
-    .reduce((sum, s) => sum + s.total, 0);
+    .filter(s => s.accountId === accountId && inCashPeriod(s.date, period))
+    .reduce((sum, s) => sum + retailCashIn(s), 0);
   const debtIn = live.reduce((sum, s) => sum + (s.payments || [])
     .filter(pm => pm.accountId === accountId && inCashPeriod(pm.date, period))
     .reduce((acc, pm) => acc + pm.amount, 0), 0);

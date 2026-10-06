@@ -7,7 +7,7 @@ import TopBarBack from './TopBarBack';
 import CustomerFormSheet from './CustomerFormSheet';
 import CustomerDocumentsSheet from './CustomerDocumentsSheet';
 import SubPage from './transitions/SubPage';
-import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailPaidAmount, retailRemaining } from '../src/utils';
+import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailCashIn, retailPaidAmount, retailRemaining } from '../src/utils';
 import { offlineStorage } from '../services/offlineStorage';
 import { api, API_URL } from '../services/api';
 
@@ -95,7 +95,8 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 
     const retailTotals = useMemo(() => ({
         bought: customerRetail.reduce((sum, r) => sum + r.total, 0),
-        received: customerRetail.reduce((sum, r) => sum + (r.isCredit ? retailPaidAmount(r) : r.total), 0),
+        // Возврат — минус отданные покупателю деньги (retailCashIn)
+        received: customerRetail.reduce((sum, r) => sum + retailCashIn(r) + retailPaidAmount(r), 0),
         debt: customerRetail.reduce((sum, r) => sum + retailRemaining(r), 0),
     }), [customerRetail]);
 
@@ -104,10 +105,19 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     // между ними произошло».
     const retailTimeline = useMemo(() => {
         const events: {
-            key: string; kind: 'BUY' | 'PAY'; date: string; amount: number;
+            key: string; kind: 'BUY' | 'PAY' | 'RETURN'; date: string; amount: number;
             title: string; subtitle?: string; sale: RetailSale;
         }[] = [];
         customerRetail.forEach(r => {
+            if (r.returnOf) {
+                const original = customerRetail.find(x => x.id === r.returnOf);
+                events.push({
+                    key: `ret_${r.id}`, kind: 'RETURN', date: r.date, amount: Math.abs(r.total), sale: r,
+                    title: r.items.map(i => `${i.name}${Math.abs(i.quantity) > 1 ? ` × ${Math.abs(i.quantity)}` : ''}`).join(', ') || 'Возврат',
+                    subtitle: ['Возврат', original?.docNumber ? `по чеку №${original.docNumber}` : null, r.note].filter(Boolean).join(' · '),
+                });
+                return;
+            }
             events.push({
                 key: `buy_${r.id}`, kind: 'BUY', date: r.date, amount: r.total, sale: r,
                 title: r.items.map(i => `${i.name}${i.quantity > 1 ? ` × ${i.quantity}` : ''}`).join(', ') || 'Покупка',
@@ -871,9 +881,10 @@ ${customer.name}!
                                 <div className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center text-sm ${
                                     e.kind === 'BUY'
                                         ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'
+                                        : e.kind === 'RETURN' ? 'bg-rose-100 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
                                         : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
                                 }`}>
-                                    {e.kind === 'BUY' ? '🛒' : '₽'}
+                                    {e.kind === 'BUY' ? '🛒' : e.kind === 'RETURN' ? '↩' : '₽'}
                                 </div>
                                 <div className="min-w-0 flex-1">
                                     <p className="font-semibold text-slate-800 dark:text-white truncate">{e.title}</p>
@@ -881,8 +892,8 @@ ${customer.name}!
                                         {formatDate(e.date)}{e.subtitle ? ` · ${e.subtitle}` : ''}
                                     </p>
                                 </div>
-                                <p className={`font-bold shrink-0 ${e.kind === 'BUY' ? 'text-slate-800 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
-                                    {e.kind === 'BUY' ? '' : '+'}{formatCurrency(e.amount, appSettings.showCents)} ₽
+                                <p className={`font-bold shrink-0 ${e.kind === 'BUY' ? 'text-slate-800 dark:text-white' : e.kind === 'RETURN' ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                                    {e.kind === 'BUY' ? '' : e.kind === 'RETURN' ? '−' : '+'}{formatCurrency(e.amount, appSettings.showCents)} ₽
                                 </p>
                             </div>
                         ))}

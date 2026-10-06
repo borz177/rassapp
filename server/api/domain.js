@@ -67,7 +67,11 @@ const accountBalances = (accounts, sales, expenses, retailSales = []) => {
       .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
 
     (retailSales || []).filter(r => !r.isCancelled).forEach(r => {
-      if (!r.isCredit && r.accountId === acc.id) total += Number(r.total) || 0;
+      // Возврат (returnOf) уменьшает счёт на отданные покупателю деньги (refund)
+      if (r.accountId === acc.id) {
+        if (r.returnOf) total -= Math.max(0, Number(r.refund ?? -r.total) || 0);
+        else if (!r.isCredit) total += Number(r.total) || 0;
+      }
       (r.payments || []).forEach(pm => { if (pm.accountId === acc.id) total += Number(pm.amount) || 0; });
     });
 

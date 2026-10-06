@@ -29,6 +29,8 @@ interface JournalProps {
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  /** Возврат по чеку */
+  onReturnSale?: (sale: RetailSale, lines: { productId: string; quantity: number }[], meta: { accountId: string; date: string; note?: string }) => Promise<boolean>;
   onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
   onAddDocLines?: (docId: string, lines: { productId: string; quantity: number; price: number }[]) => Promise<void> | void;
   /** Удаление розничной продажи: товар вернётся на склад, платежи уйдут вместе с чеком */
@@ -72,6 +74,7 @@ const DELETE_LABEL: Partial<Record<DocKind, string>> = {
 const KIND_FILTERS: { id: 'ALL' | DocKind; label: string }[] = [
   { id: 'ALL', label: 'Все' },
   { id: 'SALE', label: 'Продажи' },
+  { id: 'RETURN', label: 'Возвраты' },
   { id: 'CONTRACT', label: 'Договоры' },
   { id: 'IN', label: 'Приход' },
   { id: 'TRANSFER', label: 'Перемещение' },
@@ -110,12 +113,18 @@ const timeOf = (d: string) =>
 const Journal: React.FC<JournalProps> = ({
   retailSales, movements, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onSelectCustomer, onAcceptPayment,
-  onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale, initialDocId = null,
+  onUpdateSale, onUpdateStockDoc, onAddDocLines, onDeleteSale, onReturnSale, initialDocId = null,
   onDeleteStockDoc, expenses = [], allowNegativeStock = false, embedded = false,
   modalsOnly = false, requestOpenId = null, requestMenuId = null, onRequestHandled,
 }) => {
   const [search, setSearch] = useState('');
   const [kind, setKind] = useState<'ALL' | DocKind>('ALL');
+  // Шапка и подвал чека: телефон магазина, кассир, счёт оплаты
+  const printExtra = (d: JournalDoc) => ({
+    phone: appSettings.sellerPhone,
+    cashier: d.authorId ? (d.authorId === user?.id ? user?.name : employees.find(e => e.id === d.authorId)?.name) : undefined,
+    accountName: d.sale ? accounts.find(a => a.id === d.sale!.accountId)?.name : undefined,
+  });
   const [pay, setPay] = useState<PayFilter>('ALL');
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [openId, setOpenId] = useState<string | null>(initialDocId);
@@ -345,9 +354,9 @@ const Journal: React.FC<JournalProps> = ({
             <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up-sheet"
                  onClick={e => e.stopPropagation()}>
               <div className="px-5 pt-5 pb-3">
-                <h3 className="text-lg font-bold text-slate-800 dark:text-white">Удалить продажу №{deleting.number}?</h3>
+                <h3 className="text-lg font-bold text-slate-800 dark:text-white">{deleting.kind === 'RETURN' ? 'Удалить возврат' : 'Удалить продажу'} №{deleting.number}?</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  {deleting.to} · {formatCurrency(deleting.total, cents)} ₽
+                  {deleting.kind === 'RETURN' ? deleting.from : deleting.to} · {formatCurrency(deleting.total, cents)} ₽
                 </p>
               </div>
 
@@ -355,14 +364,16 @@ const Journal: React.FC<JournalProps> = ({
                 <div className="flex items-start gap-2.5">
                   <span className="text-emerald-500 shrink-0">↩</span>
                   <span className="text-slate-600 dark:text-slate-300">
-                    Товар вернётся на склад: {deleting.lines.length}&nbsp;поз.
+                    {deleting.kind === 'RETURN' ? 'Товар снова спишется со склада' : 'Товар вернётся на склад'}: {deleting.lines.length}&nbsp;поз.
                     {' '}({deleting.lines.reduce((n, l) => n + l.quantity, 0)}&nbsp;шт)
                   </span>
                 </div>
                 <div className="flex items-start gap-2.5">
                   <span className="text-rose-500 shrink-0">−</span>
                   <span className="text-slate-600 dark:text-slate-300">
-                    Выручка и прибыль уменьшатся на {formatCurrency(deleting.total, cents)}&nbsp;₽
+                    {deleting.kind === 'RETURN'
+                      ? <>Возвращённые покупателю {formatCurrency(deleting.sale.refund ?? deleting.total, cents)}&nbsp;₽ снова будут числиться на счёте</>
+                      : <>Выручка и прибыль уменьшатся на {formatCurrency(deleting.total, cents)}&nbsp;₽</>}
                   </span>
                 </div>
                 {retailPaidAmount(deleting.sale) > 0 && (
@@ -382,6 +393,12 @@ const Journal: React.FC<JournalProps> = ({
                       Долг {formatCurrency(deleting.debt, cents)}&nbsp;₽ спишется — покупатель перестанет
                       числиться должником
                     </span>
+                  </div>
+                )}
+                {deleting.kind === 'SALE' && Object.keys(deleting.returned || {}).length > 0 && (
+                  <div className="flex items-start gap-2.5">
+                    <span className="text-rose-500 shrink-0">↺</span>
+                    <span className="text-slate-600 dark:text-slate-300">Возвраты по этому чеку удалятся вместе с ним</span>
                   </div>
                 )}
                 <p className="text-[11px] text-slate-400 dark:text-slate-500 pt-1">
@@ -535,7 +552,7 @@ const Journal: React.FC<JournalProps> = ({
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Открыть документ
               </button>
-              <button onClick={() => { const d = menuFor; setMenuFor(null); printJournalDoc(d); }}
+              <button onClick={() => { const d = menuFor; setMenuFor(null); printJournalDoc(d, printExtra(d)); }}
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
                 Товарный чек · печать
               </button>
@@ -560,10 +577,10 @@ const Journal: React.FC<JournalProps> = ({
                   {DELETE_LABEL[menuFor.kind]}
                 </button>
               )}
-              {menuFor.kind === 'SALE' && menuFor.sale && onDeleteSale && (
+              {(menuFor.kind === 'SALE' || menuFor.kind === 'RETURN') && menuFor.sale && onDeleteSale && (
                 <button onClick={() => { const d = menuFor; setMenuFor(null); setDeleting(d); }}
                         className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-rose-50 dark:active:bg-rose-950/40">
-                  Удалить продажу
+                  {menuFor.kind === 'RETURN' ? 'Удалить возврат' : 'Удалить продажу'}
                 </button>
               )}
               <button onClick={() => setMenuFor(null)}
@@ -601,6 +618,8 @@ const Journal: React.FC<JournalProps> = ({
             onUpdateStockDoc={onUpdateStockDoc}
             onAddDocLines={onAddDocLines}
             products={products}
+            onReturnSale={onReturnSale}
+            allSales={retailSales}
           />
         )}
       </SubPage>

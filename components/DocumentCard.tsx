@@ -7,6 +7,7 @@ import TabPill from './TabPill';
 import ModalPortal from './ModalPortal';
 import ProductPickerPage from './ProductPickerPage';
 import SubPage from './transitions/SubPage';
+import RetailReturnSheet from './RetailReturnSheet';
 
 interface DocumentCardProps {
   doc: JournalDoc;
@@ -23,6 +24,14 @@ interface DocumentCardProps {
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
   /** Правка складского документа: те же поля сразу у всех его движений */
   onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
+  /** Возврат по чеку. Без него кнопки «Возврат» нет */
+  onReturnSale?: (
+    sale: RetailSale,
+    lines: { productId: string; quantity: number }[],
+    meta: { accountId: string; date: string; note?: string },
+  ) => Promise<boolean>;
+  /** Все чеки — по ним видно, что по этому чеку уже вернули */
+  allSales?: RetailSale[];
 }
 
 /**
@@ -35,7 +44,16 @@ interface DocumentCardProps {
 const DocumentCard: React.FC<DocumentCardProps> = ({
   doc, accounts, appSettings, employees = [], user, onBack, onSelectCustomer, onAcceptPayment,
   customers = [], suppliers = [], onUpdateSale, onUpdateStockDoc, onAddDocLines, products = [],
+  onReturnSale, allSales = [],
 }) => {
+  const [returnOpen, setReturnOpen] = useState(false);
+  const isReturnDoc = doc.kind === 'RETURN';
+  const partlyReturned = doc.kind === 'SALE' && Object.keys(doc.returned || {}).length > 0;
+  const fullyReturned = partlyReturned && !!doc.sale
+    && doc.sale.items.every(i => (doc.returned?.[i.productId] || 0) >= i.quantity);
+  // Что ещё можно вернуть: хоть одна позиция, проданная больше, чем возвращена
+  const canReturn = doc.kind === 'SALE' && !!doc.sale && !!onReturnSale
+    && doc.sale.items.some(i => i.quantity - (doc.returned?.[i.productId] || 0) > 0);
   const [tab, setTab] = useState<'INFO' | 'PAY'>('INFO');
   const [editOpen, setEditOpen] = useState(false);
   const [saving, setSaving] = useState(false);
@@ -48,7 +66,8 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
   // оттуда, и правка бумаги в журнале разошлась бы с закупом договора. Менять
   // такое нужно в самом договоре, поэтому здесь документ только для чтения.
   const isContractDoc = doc.kind === 'CONTRACT';
-  const canEdit = isContractDoc ? false
+  // Возврат правке не подлежит: неверный удаляют и оформляют заново
+  const canEdit = isContractDoc || isReturnDoc ? false
     : doc.kind === 'SALE' ? !!onUpdateSale : !!onUpdateStockDoc;
   // Признак оплаты трогать нельзя, когда деньги по документу уже приняты:
   // переключение обнулило бы поступления, которые реально были.
@@ -117,7 +136,9 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
   const [addQty, setAddQty] = useState('1');
   const [addPrice, setAddPrice] = useState('0');
 
-  const canAdd = !!onAddDocLines && !isContractDoc;
+  // В чек с возвратами не дописываем: доли скидки и суммы возвратов разъехались бы
+  const canAdd = !!onAddDocLines && !isContractDoc && !isReturnDoc
+    && !(doc.kind === 'SALE' && Object.keys(doc.returned || {}).length > 0);
   const isInventory = doc.kind === 'INVENTORY';
 
   const startAdd = (p: Product) => {
@@ -180,11 +201,36 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
             ✎
           </button>
         )}
-        <button onClick={() => printJournalDoc(doc)}
+        <button onClick={() => printJournalDoc(doc, { phone: appSettings.sellerPhone, cashier: author || undefined, accountName: accountName || undefined })}
                 className="shrink-0 px-4 py-2 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold">
           Печать
         </button>
       </div>
+
+      {canReturn && (
+        <button onClick={() => setReturnOpen(true)}
+                className="w-full h-11 rounded-2xl bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300 ring-1 ring-rose-200/70 dark:ring-rose-500/20 font-bold text-sm flex items-center justify-center gap-2 active:scale-[0.99] transition">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M9 14 4 9l5-5" /><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11" /></svg>
+          Оформить возврат
+        </button>
+      )}
+      {isReturnDoc && doc.returnOfNumber && (
+        <p className="-mt-2 text-xs text-slate-500 dark:text-slate-400 px-1">
+          Возврат по чеку №{doc.returnOfNumber}
+          {doc.sale && (doc.sale.refund ?? 0) < doc.total ? ` · ${formatCurrency(doc.total - (doc.sale.refund ?? 0), cents)} ₽ списано с долга` : ''}
+        </p>
+      )}
+
+      {returnOpen && doc.sale && onReturnSale && (
+        <RetailReturnSheet
+          sale={doc.sale}
+          allSales={allSales}
+          accounts={accounts}
+          showCents={cents}
+          onClose={() => setReturnOpen(false)}
+          onSubmit={(lines, meta) => onReturnSale(doc.sale!, lines, meta)}
+        />
+      )}
 
       {/* Вкладка оплаты нужна только там, где деньги вообще есть: у списания
           или перемещения она была бы пустой страницей с прочерками. */}
@@ -205,11 +251,13 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
           <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
             <div className="flex items-center gap-3 px-4 py-3">
               <div className={`w-9 h-9 shrink-0 rounded-xl flex items-center justify-center text-white ${
-                doc.debt > 0 ? 'bg-amber-500' : 'bg-emerald-500'
-              }`}>✓</div>
+                fullyReturned || isReturnDoc ? 'bg-rose-500' : doc.debt > 0 ? 'bg-amber-500' : 'bg-emerald-500'
+              }`}>{fullyReturned || isReturnDoc ? '↩' : '✓'}</div>
               <div>
                 <p className="font-semibold text-slate-800 dark:text-white">
-                  {doc.debt > 0 ? 'Проведён, есть долг' : 'Проведён'}
+                  {isReturnDoc ? 'Возврат проведён' : fullyReturned ? 'Возвращён полностью'
+                    : partlyReturned ? 'Проведён, частичный возврат'
+                    : doc.debt > 0 ? 'Проведён, есть долг' : 'Проведён'}
                 </p>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400">Статус документа</p>
               </div>
@@ -221,13 +269,13 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
             <p className="text-xs font-bold text-indigo-600 dark:text-indigo-400 mb-2 px-1">Контрагенты</p>
             <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700">
               {row(doc.kind === 'IN' ? 'Поставщик' : 'Откуда', doc.from,
-                   doc.kind === 'IN' ? 'Поставщик' : doc.kind === 'SALE' ? 'Продавец' : 'Откуда')}
-              {doc.customerId && onSelectCustomer ? (
+                   doc.kind === 'IN' ? 'Поставщик' : doc.kind === 'SALE' ? 'Продавец' : isReturnDoc ? 'Покупатель' : 'Откуда')}
+              {doc.customerId && onSelectCustomer && !isReturnDoc ? (
                 <button onClick={() => onSelectCustomer(doc.customerId!)}
                         className="w-full text-left active:bg-slate-50 dark:active:bg-slate-700/50">
                   {row('Клиент', doc.to, 'Клиент · открыть карточку')}
                 </button>
-              ) : row('Куда', doc.to, doc.kind === 'SALE' || isContractDoc ? 'Покупатель' : 'Куда')}
+              ) : row('Куда', doc.to, doc.kind === 'SALE' || isContractDoc ? 'Покупатель' : isReturnDoc ? 'Продавец' : 'Куда')}
               {accountName && row('Счёт', accountName, 'Счёт')}
             </div>
           </div>
@@ -249,6 +297,8 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
                     <p className="font-semibold text-slate-800 dark:text-white truncate">{l.name}</p>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
                       {l.quantity} {l.unit || 'шт'}{l.price > 0 ? ` × ${formatCurrency(l.price, cents)} ₽` : ''}
+                      {l.productId && doc.returned?.[l.productId]
+                        ? <span className="text-rose-500 font-semibold"> · вернули {doc.returned[l.productId]}</span> : null}
                     </p>
                   </div>
                   {l.price > 0 && (

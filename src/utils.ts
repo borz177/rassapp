@@ -733,7 +733,104 @@ export const retailPaidAmount = (sale: RetailSale): number =>
  * при продаже, и «остаток» там — понятие без смысла.
  */
 export const retailRemaining = (sale: RetailSale): number =>
-  sale.isCredit ? Math.max(0, sale.total - retailPaidAmount(sale)) : 0;
+  sale.isCredit
+    ? Math.max(0, sale.total - retailPaidAmount(sale)
+        - (sale.returnedDebt || []).reduce((sum, r) => sum + (Number(r.amount) || 0), 0))
+    : 0;
+
+
+// ─── Возврат по чеку ───────────────────────────────────────────────────────
+
+/** Документ возврата, а не продажа */
+export const isRetailReturn = (r: RetailSale): boolean => !!r.returnOf;
+
+/**
+ * Сколько денег документ принёс на свой счёт в свою дату. Продажа — сумму чека
+ * (в долг — ничего, деньги приносят платежи), возврат — минус отданное
+ * покупателю. Одна формула для баланса, кассы и ленты операций.
+ */
+export const retailCashIn = (r: RetailSale): number => {
+  if (r.returnOf) return -Math.max(0, Number(r.refund ?? -r.total) || 0);
+  return r.isCredit ? 0 : Number(r.total) || 0;
+};
+
+/** Сколько штук каждого товара уже вернули по чеку */
+export const retailReturnedQty = (saleId: string, all: RetailSale[]): Record<string, number> => {
+  const out: Record<string, number> = {};
+  all.forEach(r => {
+    if (r.returnOf !== saleId || r.isCancelled) return;
+    r.items.forEach(i => { out[i.productId] = (out[i.productId] || 0) + Math.abs(i.quantity); });
+  });
+  return out;
+};
+
+const round2 = (n: number) => Math.round(n * 100) / 100;
+
+/**
+ * Собирает документ возврата по чеку.
+ *
+ * Деньги за строку — по цене чека с той же долей скидки, что у всего чека. Если
+ * этим возвратом чек возвращён целиком, сумма добирается до остатка ровно,
+ * чтобы копейки округлений не оставили «хвост» выручки по пустому чеку.
+ *
+ * По чеку в долг сначала списывается долг, и покупателю отдаётся только то,
+ * что он успел заплатить сверх стоимости оставшегося у него товара.
+ */
+export const buildRetailReturn = (
+  original: RetailSale,
+  lines: { productId: string; quantity: number }[],
+  all: RetailSale[],
+  meta: { id: string; accountId: string; date: string; docNumber?: string; note?: string; userId: string; createdByUserId?: string },
+): { record: RetailSale; debt: number } => {
+  const already = retailReturnedQty(original.id, all);
+  const items = lines
+    .map(l => {
+      const src = original.items.find(i => i.productId === l.productId);
+      if (!src) return null;
+      const left = src.quantity - (already[l.productId] || 0);
+      const q = Math.min(Math.max(0, l.quantity), left);
+      return q > 0 ? { ...src, quantity: q } : null;
+    })
+    .filter((x): x is NonNullable<typeof x> => !!x);
+
+  const gross = items.reduce((n, i) => n + i.price * i.quantity, 0);
+  const cost = items.reduce((n, i) => n + (i.buyPrice || 0) * i.quantity, 0);
+  const ratio = original.subtotal > 0 ? original.total / original.subtotal : 1;
+  let amount = round2(gross * ratio);
+
+  const fullyReturned = original.items.every(i =>
+    (already[i.productId] || 0) + (items.find(x => x.productId === i.productId)?.quantity || 0) >= i.quantity);
+  if (fullyReturned) {
+    const before = all
+      .filter(r => r.returnOf === original.id && !r.isCancelled)
+      .reduce((n, r) => n + Math.abs(r.total), 0);
+    amount = round2(Math.max(0, original.total - before));
+  }
+
+  const debt = original.isCredit ? Math.min(amount, retailRemaining(original)) : 0;
+
+  return {
+    debt,
+    record: {
+      id: meta.id,
+      userId: meta.userId,
+      accountId: meta.accountId,
+      customerId: original.customerId,
+      items: items.map(i => ({ ...i, quantity: -i.quantity })),
+      subtotal: -round2(gross),
+      discount: -round2(gross - amount),
+      total: -amount,
+      cost: -round2(cost),
+      profit: round2(-amount + cost),
+      date: meta.date,
+      docNumber: meta.docNumber,
+      note: meta.note,
+      createdByUserId: meta.createdByUserId,
+      returnOf: original.id,
+      refund: round2(amount - debt),
+    },
+  };
+};
 
 
 // ─── Баланс счёта ──────────────────────────────────────────────────────────
@@ -773,7 +870,7 @@ export const computeAccountBalances = (
     retailSales.filter(r => !r.isCancelled).forEach(r => {
       // Долговой чек денег в кассу не приносит — их приносят платежи по нему,
       // и приходят они на тот счёт, куда их реально положили.
-      if (!r.isCredit && r.accountId === acc.id) total += r.total;
+      if (r.accountId === acc.id) total += retailCashIn(r);
       (r.payments || []).forEach(pm => { if (pm.accountId === acc.id) total += pm.amount; });
     });
 

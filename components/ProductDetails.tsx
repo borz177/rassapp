@@ -38,6 +38,7 @@ interface ProductDetailsProps {
   onSelectCustomer?: (id: string) => void;
   onAcceptPayment?: (sale: RetailSale) => void;
   onUpdateSale?: (sale: RetailSale) => Promise<void> | void;
+  onReturnSale?: (sale: RetailSale, lines: { productId: string; quantity: number }[], meta: { accountId: string; date: string; note?: string }) => Promise<boolean>;
   onUpdateStockDoc?: (movements: StockMovement[]) => Promise<void> | void;
   onAddDocLines?: (docId: string, lines: { productId: string; quantity: number; price: number }[]) => Promise<void> | void;
 }
@@ -69,7 +70,7 @@ const dayTitle = (iso: string) => {
 const ProductDetails: React.FC<ProductDetailsProps> = ({
   product, movements, retailSales, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onEdit, onPrintLabels, warehouseScope = null, onSelectCustomer, onAcceptPayment,
-  onUpdateSale, onUpdateStockDoc, onAddDocLines,
+  onUpdateSale, onUpdateStockDoc, onAddDocLines, onReturnSale,
 }) => {
   const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
   const [openDocId, setOpenDocId] = useState<string | null>(null);
@@ -302,7 +303,7 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
                   <div className={card}>
                     {rows.map(({ movement: m, stockAfter }) => {
                       const doc = docFor(m);
-                      const label = m.type === 'SALE' ? 'Продажа' : KIND_LABEL[
+                      const label = m.type === 'SALE' ? 'Продажа' : m.type === 'RETURN' && m.saleId ? 'Возврат' : KIND_LABEL[
                         m.type === 'IN' ? 'IN'
                         : m.type === 'TRANSFER' ? 'TRANSFER'
                         : m.type === 'WRITE_OFF' ? 'WRITE_OFF'
@@ -385,6 +386,8 @@ const ProductDetails: React.FC<ProductDetailsProps> = ({
               onUpdateStockDoc={onUpdateStockDoc}
               onAddDocLines={onAddDocLines}
               products={products}
+              onReturnSale={onReturnSale}
+              allSales={retailSales}
             />
           )}
         </SubPage>

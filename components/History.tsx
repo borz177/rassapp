@@ -47,6 +47,7 @@ const TYPE_FILTERS: { id: TypeFilter; label: string; group?: 'money' | 'goods' }
   { id: 'MONEY_IN', label: 'Поступления', group: 'money' },
   { id: 'MONEY_OUT', label: 'Расходы', group: 'money' },
   { id: 'SALE', label: 'Продажи', group: 'goods' },
+  { id: 'RETURN', label: 'Возвраты', group: 'goods' },
   { id: 'CONTRACT', label: 'Договоры', group: 'goods' },
   { id: 'IN', label: 'Приход товара', group: 'goods' },
   { id: 'TRANSFER', label: 'Перемещение', group: 'goods' },
@@ -129,7 +130,7 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
 
   const feed = useMemo(() => {
     // Обычный чек уже есть документом «Продажа» — денежную строку того же чека не дублируем
-    const saleDocIds = new Set(docs.filter(d => d.kind === 'SALE' && d.sale).map(d => d.sale!.id));
+    const saleDocIds = new Set(docs.filter(d => (d.kind === 'SALE' || d.kind === 'RETURN') && d.sale).map(d => d.sale!.id));
     const q = search.trim().toLowerCase();
     const moneyType = type === 'ALL' || type === 'MONEY_IN' || type === 'MONEY_OUT';
     const docType = type === 'ALL' || !moneyType;
@@ -174,7 +175,9 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
     // Деньги по текущему отбору: продажа за наличные — тоже поступление
     const income = moneyItems.filter(o => o.type === 'INCOME').reduce((s, o) => s + o.amount, 0)
       + docItems.filter(d => d.kind === 'SALE' && d.sale && !d.sale.isCredit).reduce((s, d) => s + d.total, 0);
-    const expense = moneyItems.filter(o => o.type === 'EXPENSE').reduce((s, o) => s + o.amount, 0);
+    // Возврат — деньги ушли покупателю (только реально отданное, без списанного долга)
+    const expense = moneyItems.filter(o => o.type === 'EXPENSE').reduce((s, o) => s + o.amount, 0)
+      + docItems.filter(d => d.kind === 'RETURN' && d.sale).reduce((s, d) => s + (d.sale!.refund ?? d.total), 0);
     return { groups, count: items.length, income, expense };
   }, [ops, docs, search, type, accountId, category, employeeId, pay]);
 
@@ -391,14 +394,16 @@ const MoneyRow: React.FC<{ op: MoneyOperation; cents?: boolean; onOpen: () => vo
 
 const DocRow: React.FC<{ doc: JournalDoc; cents?: boolean; onOpen: () => void; onMenu: () => void }> = ({ doc, cents, onOpen, onMenu }) => {
   const isSale = doc.kind === 'SALE';
+  const isReturn = doc.kind === 'RETURN';
   return (
     <div className="flex items-stretch">
       <button type="button" onClick={onOpen}
               className="flex-1 min-w-0 flex items-center gap-3 pl-4 pr-2 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50 hover:bg-slate-50/60 dark:hover:bg-slate-700/30 transition-colors">
         <span className={`w-9 h-9 shrink-0 rounded-full flex items-center justify-center ${isSale
           ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400'
+          : isReturn ? 'bg-rose-50 dark:bg-rose-900/30 text-rose-600 dark:text-rose-400'
           : 'bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400'}`}>
-          {isSale ? ReceiptIcon : BoxIcon}
+          {isSale || isReturn ? ReceiptIcon : BoxIcon}
         </span>
         <span className="min-w-0 flex-1">
           <span className="flex items-center gap-1.5">
@@ -415,8 +420,8 @@ const DocRow: React.FC<{ doc: JournalDoc; cents?: boolean; onOpen: () => void; o
           )}
         </span>
         <span className={`shrink-0 font-bold tabular-nums ${isSale && doc.debt === 0
-          ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-white'}`}>
-          {isSale && doc.debt === 0 ? '+' : ''}{formatCurrency(doc.total, cents)} ₽
+          ? 'text-emerald-600 dark:text-emerald-400' : isReturn ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-white'}`}>
+          {isSale && doc.debt === 0 ? '+' : isReturn ? '−' : ''}{formatCurrency(doc.total, cents)} ₽
         </span>
       </button>
       {/* Печать, приём оплаты, удаление — то же меню, что в журнале */}
