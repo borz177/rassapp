@@ -706,7 +706,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       {/* Кнопка корзины — только на телефоне: тёмная плашка с миниатюрами,
           суммой и «Оформить». Подпрыгивает при каждом новом товаре. */}
       {items.length > 0 && !cartOpen && !editing && !pickCustomer && !variantPick && (
-        <div className="lg:hidden fixed left-3 right-3 z-40" style={{ bottom: 'calc(5.75rem + env(safe-area-inset-bottom, 0px))' }}>
+        <div className="lg:hidden fixed left-3 right-3 z-40 vv-anchor" style={{ bottom: 'calc(5.75rem + env(safe-area-inset-bottom, 0px))' }}>
           <button key={totalQty} onClick={() => setCartOpen(true)}
                   className="cart-pop w-full h-16 rounded-[22px] bg-slate-900 dark:bg-slate-800 text-white pl-2.5 pr-2 flex items-center gap-3 shadow-2xl shadow-slate-900/30 ring-1 ring-white/10 active:scale-[0.98] transition-transform">
             <span className="flex -space-x-3 shrink-0">

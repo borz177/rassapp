@@ -978,7 +978,7 @@ const counts = useMemo(() => {
           pointer-events-none, чтобы прозрачные поля по бокам не перехватывали нажатия
           по контенту под ними. */}
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none"
+        className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none vv-anchor"
         style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0px))' }}
       >
       <nav

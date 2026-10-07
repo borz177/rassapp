@@ -8,6 +8,7 @@ import { ThemeProvider } from './src/theme/ThemeContext';
 import AppDialogs from './components/AppDialogs';
 import Toaster from './components/Toaster';
 import { installAlertOverride } from './src/dialogs';
+import { installViewportFix } from './src/viewportFix';
 import { registerSW } from 'virtual:pwa-register';
 import { isDesktopShell } from './src/platform';
 
@@ -59,6 +60,7 @@ installStaleBundleGuard();
 // Сообщения (alert) — окном приложения, а не системной плашкой браузера.
 // Подтверждения (confirm) переписаны на appConfirm в местах вызова.
 installAlertOverride();
+installViewportFix();
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

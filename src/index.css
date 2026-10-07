@@ -1675,3 +1675,8 @@ html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[clas
 .animate-toast-in { animation: toast-in .36s cubic-bezier(.22,1,.36,1) both; }
 .animate-toast-out { animation: toast-out .22s ease-in both; }
 @media (prefers-reduced-motion: reduce) { .animate-toast-in, .animate-toast-out { animation-duration: .01s; } }
+
+/* iOS PWA: нижние панели держим у реального низа экрана (src/viewportFix.ts) */
+html.vv-fix .vv-anchor { transform: translate3d(0, var(--vv-shift, 0px), 0); }
+/* Принудительная перерисовка после возврата из свёрнутого состояния */
+html.vv-reflow body { padding-bottom: 1px; }
