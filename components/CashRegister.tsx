@@ -1035,6 +1035,14 @@ const investorProfitPayouts = useMemo(() => {
         .sort((a, b) => b.receivedProfit - a.receivedProfit);
 }, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod, profitFromPaymentsOnly]);
 
+  // «Это я» (Investor.isOwner): прибыль владельца с его вложений — за тот же
+  // период и по тем же счетам, что и «Моя прибыль». Показывается рядом с долей
+  // менеджера, чтобы его доход был виден целиком, а не в двух разных местах.
+  const ownerProfit = useMemo(
+    () => investorProfitBreakdown.find(b => b.investor.isOwner) || null,
+    [investorProfitBreakdown]
+  );
+
   // 🔹 Состав пула — тот же разрез, что в отчётах: чей это капитал, какая у человека
   // доля и что с неё набежало за выбранный период. На странице общего счёта до сих пор
   // были только суммарные цифры, и понять, кому принадлежат деньги в общей кассе,
@@ -1838,6 +1846,21 @@ const investorProfitPayouts = useMemo(() => {
             <h3 className="text-xl font-bold text-slate-800 dark:text-white">Моя прибыль</h3>
         </div>
 
+        {/* Владелец со своими вложениями («Это я»): весь его доход одной строкой */}
+        {ownerProfit && (ownerProfit.receivedProfit > 0 || totalManagerProfitEarned > 0) && (
+            <div className="flex items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-indigo-50 dark:bg-indigo-500/10 ring-1 ring-indigo-100 dark:ring-indigo-500/20">
+                <div className="min-w-0">
+                    <p className="text-xs font-bold text-indigo-700 dark:text-indigo-300">Всего ваша прибыль</p>
+                    <p className="text-[11px] text-indigo-600/80 dark:text-indigo-300/80 leading-snug">
+                        управление {formatCurrency(totalManagerProfitEarned, appSettings.showCents)} ₽ + вложения «{ownerProfit.investor.name}» {formatCurrency(ownerProfit.receivedProfit, appSettings.showCents)} ₽
+                    </p>
+                </div>
+                <p className="shrink-0 text-lg sm:text-xl font-extrabold text-indigo-700 dark:text-indigo-200 tabular-nums">
+                    {formatCurrency(totalManagerProfitEarned + ownerProfit.receivedProfit, appSettings.showCents)} ₽
+                </p>
+            </div>
+        )}
+
         {/* Карточки в стиле дашборда: 4 карточки, 2 в ряд */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
@@ -1856,6 +1879,11 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(calculatedExpectedProfit, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
+                    {ownerProfit && ownerProfit.expectedProfit > 0 && (
+                        <p className="mt-1.5 text-[11px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-300 leading-tight">
+                            + {formatCurrency(ownerProfit.expectedProfit, appSettings.showCents)} ₽ с вложений
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -1873,6 +1901,11 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(totalManagerProfitEarned, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
+                    {ownerProfit && ownerProfit.receivedProfit > 0 && (
+                        <p className="mt-1.5 text-[11px] sm:text-xs font-semibold text-indigo-600 dark:text-indigo-300 leading-tight">
+                            + {formatCurrency(ownerProfit.receivedProfit, appSettings.showCents)} ₽ с вложений
+                        </p>
+                    )}
                 </div>
             </div>
 
