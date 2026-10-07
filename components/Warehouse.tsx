@@ -595,6 +595,15 @@ const Warehouse: React.FC<WarehouseProps> = ({
         minStock: form.minStock === '' ? undefined : num(form.minStock),
         description: form.description.trim() || undefined,
         isArchived: editing?.isArchived,
+        // Карточку собираем заново — поля варианта переносим явно, иначе правка
+        // одного размера отцепляла бы его от модели
+        variantGroupId: editing?.variantGroupId,
+        variantBase: editing?.variantBase,
+        variantAttrs: editing?.variantAttrs,
+        variantOptions: editing?.variantOptions,
+        variantPhoto: editing?.variantPhoto,
+        variantPhotoBy: editing?.variantPhotoBy,
+        sortOrder: editing?.sortOrder,
         updatedAt: new Date().toISOString(),
       };
       // Начальный остаток нового товара — это приход, а не тихая правка числа:
