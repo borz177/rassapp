@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
+import { friendlyError } from './src/friendlyError';
 import RetailSale from './components/RetailSale';
 import Warehouse from './components/Warehouse';
 import Journal from './components/Journal';
@@ -1514,7 +1515,8 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
   // Сбой связи — не ошибка приложения: без сети запрос и не должен пройти.
   // Такие случаи в консоль не пишем, настоящие ответы сервера с ошибкой — пишем.
   const isConnectionProblem = (error: any): boolean =>
-    !navigator.onLine || isNetworkError(error) || /TIMEOUT/i.test(String(error?.message || ''));
+    !navigator.onLine || isNetworkError(error) || error?.code === 'TIMEOUT' || error?.code === 'NETWORK'
+    || /TIMEOUT/i.test(String(error?.message || ''));
 
   const loadSupportUnreadCount = async (currentUser: User) => {
   if (!currentUser) return;
@@ -2300,6 +2302,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
     const isNetworkError = 
       error.message?.includes('Failed to fetch') ||
       error.message?.includes('TIMEOUT') ||
+      error.code === 'TIMEOUT' || error.code === 'NETWORK' ||
       error.name === 'AbortError' ||
       !navigator.onLine;
 
@@ -2845,7 +2848,7 @@ const handleAddInvestor = async (
       return;
     }
     console.error("❌ Ошибка создания инвестора:", e);
-    alert(`Ошибка: ${e.message || 'Не удалось создать инвестора'}`);
+    alert(`Ошибка: ${friendlyError(e, 'Не удалось создать инвестора')}`);
     throw e;
   }
 };
@@ -3195,7 +3198,7 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       return;
     }
     console.error('❌ Ошибка обновления инвестора:', error);
-    alert(`Не удалось обновить: ${error.message}`);
+    alert(`Не удалось обновить: ${friendlyError(error)}`);
   }
 };
 
@@ -4118,7 +4121,7 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
                 // офлайн-очередь и не бросает) проходила молча: пользователь видел, что платёж
                 // как будто отменился, а на самом деле ничего не сохранилось.
                 console.error('❌ Ошибка отмены платежа:', error);
-                alert(`Не удалось отменить платёж: ${error.message || 'неизвестная ошибка'}`);
+                alert(`Не удалось отменить платёж: ${friendlyError(error, 'неизвестная ошибка')}`);
             }
         }
     }
@@ -4135,7 +4138,7 @@ const handleAddAccount = async (name: string, type: Account['type'] = 'CUSTOM', 
             // 🔒 Раньше ошибка сохранения (не сетевая) проходила молча — правка даты
             // как будто применилась на экране, а на сервер не попала.
             console.error('❌ Ошибка сохранения даты платежа:', error);
-            alert(`Не удалось изменить дату платежа: ${error.message || 'неизвестная ошибка'}`);
+            alert(`Не удалось изменить дату платежа: ${friendlyError(error, 'неизвестная ошибка')}`);
         }
     }
   };
@@ -4377,7 +4380,7 @@ const handleUpdateProfile = async (data: any) => {
 
     } catch(e: any) {
         console.error("Update error:", e);
-        alert(`❌ ${e.message || 'Ошибка сохранения'}`);
+        alert(`❌ ${friendlyError(e, 'Ошибка сохранения')}`);
     }
 };
 const contractCounts = useMemo(() => {

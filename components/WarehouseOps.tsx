@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { productOnWarehouse, stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
@@ -358,7 +359,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
       setOkMessage(`Документ проведён: ${movements.length} движ.`);
       window.setTimeout(() => setOkMessage(null), 3000);
     } catch (e: any) {
-      setError(e.message || 'Не удалось провести документ');
+      setError(friendlyError(e, 'Не удалось провести документ'));
     } finally {
       setSaving(false);
     }

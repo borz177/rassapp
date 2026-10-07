@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import type { Account, Customer, Product, RetailSale as RetailSaleType, RetailSaleItem, StockLocation } from '../types';
 import TopBarBack from './TopBarBack';
 import { maxPickableQty, stockOnWarehouse } from '../src/utils';
@@ -309,7 +310,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
       setCartOpen(false);
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось провести продажу');
+      setError(friendlyError(e, 'Не удалось провести продажу'));
     } finally {
       setSaving(false);
     }

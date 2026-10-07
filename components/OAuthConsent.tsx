@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import Auth from './Auth';
 import { api } from '../services/api';
 
@@ -46,7 +47,7 @@ const OAuthConsent: React.FC = () => {
     }
     api.oauthAuthorizeInfo(request)
       .then(setInfo)
-      .catch(e => setError(e.message));
+      .catch(e => setError(friendlyError(e)));
   }, [authed]);
 
   const decide = async (approve: boolean) => {
@@ -64,7 +65,7 @@ const OAuthConsent: React.FC = () => {
       const { redirectTo } = await api.oauthApprove(request);
       window.location.href = redirectTo;
     } catch (e: any) {
-      setError(e.message || 'Не удалось подтвердить доступ');
+      setError(friendlyError(e, 'Не удалось подтвердить доступ'));
       setBusy(false);
     }
   };

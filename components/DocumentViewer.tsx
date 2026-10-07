@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import ModalPortal from './ModalPortal';
 import { CustomerDocument } from '../types';
 import { docCategoryLabel, docObjectUrl, formatFileSize, isPendingDoc, shareDocument } from '../src/customerDocs';
@@ -278,7 +279,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ documents, startIndex, 
     if (!doc || busy) return;
     setBusy(true);
     try { await shareDocument(doc); }
-    catch (e: any) { if (e?.message && !/cancel/i.test(e.message)) alert(e.message); }
+    catch (e: any) { if (e?.message && !/cancel/i.test(e.message)) alert(friendlyError(e)); }
     finally { setBusy(false); }
   };
 

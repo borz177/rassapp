@@ -1,4 +1,5 @@
 import { haptics } from './haptics';
+import { humanizeText } from './friendlyError';
 
 /**
  * Всплывающие уведомления — плашка сверху, как в нативных приложениях.
@@ -33,7 +34,8 @@ export const toastStore = {
 const DURATION: Record<ToastTone, number> = { success: 2600, info: 3200, warning: 4200, error: 5200 };
 
 const show = (tone: ToastTone, title: string, opts: { message?: string; action?: ToastItem['action']; duration?: number } = {}) => {
-  const text = title.trim();
+  const text = humanizeText(title.trim());
+  if (opts.message) opts = { ...opts, message: humanizeText(opts.message) };
   if (!text) return;
   // Одно и то же подряд (двойное нажатие) — не плодим копии, а продлеваем
   const same = items.find(t => t.title === text && t.message === opts.message);
@@ -61,7 +63,7 @@ export const toast = {
  * и сообщение уйдёт окном.
  */
 export const classifyAlert = (raw: string): { tone: ToastTone; title: string; message?: string } | null => {
-  let text = raw.trim();
+  let text = humanizeText(raw.trim());
   let tone: ToastTone | null = null;
   const lead = /^(✅|✔️|✓|❌|⛔|🚫|⚠️|⚠|ℹ️|📵|📴|🔒|💾|📋|📤|📨|🎉)\s*/u.exec(text);
   if (lead) {
@@ -72,7 +74,7 @@ export const classifyAlert = (raw: string): { tone: ToastTone; title: string; me
     text = text.slice(lead[0].length).trim();
   }
   if (!tone) {
-    tone = /^(ошибка|не удалось|не получилось|сбой|нет связи|нет соединения)/i.test(text) ? 'error'
+    tone = /^(ошибка|не удалось|не получилось|сбой|нет связи|нет соединения|сервер не ответил|сервер временно|сессия истекла)/i.test(text) ? 'error'
       : /^(выберите|укажите|заполните|введите|добавьте|сначала|нельзя|недостаточно|превышен|лимит)/i.test(text) ? 'warning'
       : /(сохранен|скопирован|отправлен|удален|добавлен|обновлен|готово|успешно|принят)/i.test(text) ? 'success'
       : 'info';

@@ -14,6 +14,7 @@
  */
 
 import { classifyAlert, toast } from './toast';
+import { humanizeText } from './friendlyError';
 
 export interface DialogOptions {
   title?: string;
@@ -106,13 +107,14 @@ export function installAlertOverride() {
     // Короткое сообщение — плашкой сверху, работа не останавливается.
     // Длинное объяснение — окном: его надо прочитать, а не поймать взглядом.
     const asToast = classifyAlert(text);
+    const clean = humanizeText(text);
     if (asToast) {
       const { tone, title, message: sub } = asToast;
       toast[tone](title, { message: sub });
       return;
     }
     const last = queue[queue.length - 1];
-    if (last?.kind === 'alert' && last.message === text) return;
-    void appAlert(text);
+    if (last?.kind === 'alert' && last.message === clean) return;
+    void appAlert(clean);
   };
 }

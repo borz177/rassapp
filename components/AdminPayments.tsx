@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { api } from '../services/api';
 import type { AdminPayment } from '../types';
 
@@ -32,7 +33,7 @@ const AdminPayments: React.FC = () => {
       setRows(await api.adminGetPayments());
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось загрузить оплаты');
+      setError(friendlyError(e, 'Не удалось загрузить оплаты'));
     } finally {
       setLoading(false);
     }
@@ -49,7 +50,7 @@ const AdminPayments: React.FC = () => {
       await load();
       setError(res.sent ? null : 'Чек сохранён, но письмо отправить не удалось');
     } catch (e: any) {
-      setError(e.message || 'Не удалось сохранить чек');
+      setError(friendlyError(e, 'Не удалось сохранить чек'));
     } finally {
       setSaving(false);
     }

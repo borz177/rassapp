@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { api } from '../services/api';
 import type { PartnerRow, User } from '../types';
 
@@ -53,7 +54,7 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
       setRequests(pendingRequests);
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось загрузить партнёров');
+      setError(friendlyError(e, 'Не удалось загрузить партнёров'));
     } finally {
       setLoading(false);
     }
@@ -74,7 +75,7 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
       setPickedUserId('');
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось сохранить');
+      setError(friendlyError(e, 'Не удалось сохранить'));
     } finally {
       setSaving(false);
     }
@@ -97,7 +98,7 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
       await load();
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось записать выплату');
+      setError(friendlyError(e, 'Не удалось записать выплату'));
     } finally {
       setSaving(false);
     }
@@ -113,7 +114,7 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
       await load();
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось отклонить заявку');
+      setError(friendlyError(e, 'Не удалось отклонить заявку'));
     } finally {
       setSaving(false);
     }

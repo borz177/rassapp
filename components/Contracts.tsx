@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../types';
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
@@ -709,7 +710,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
           (result.results.failed > 0 ? `Не удалось: ${result.results.failed}` : ''));
     setShowConfirmRemindAll(false);
   } catch (e: any) {
-    alert(`❌ Ошибка: ${e.message}`);
+    alert(`❌ Ошибка: ${friendlyError(e)}`);
   } finally {
     setIsSendingAll(false);
   }

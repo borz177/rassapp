@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
 import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
@@ -451,7 +452,7 @@ const commonData = {
             if (isStaleBundleError(error)) {
               reloadForNewBuild();
             } else {
-              alert(`Ошибка: ${error.message || "Неизвестная ошибка создания PDF"}`);
+              alert(`Ошибка: ${friendlyError(error, "Неизвестная ошибка создания PDF")}`);
             }
           }
           setSendStage('idle');

@@ -1,6 +1,7 @@
 import { CalculatorCategory, DownDiscount, User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope, OAuthConnection, OAuthClientInfo, OAuthClientCreated} from "../types";
 import { offlineStorage, sessionOwnerId } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
+import { NO_CONNECTION_TEXT, SLOW_CONNECTION_TEXT } from '../src/friendlyError';
 import { postJson, mayBeLostRegistration } from '../src/authRequest';
 import { mergeInvestor } from '../src/syncMerge';
 import { contractsTowardLimit, contractLimitOf, COUNTS_ALL_CONTRACTS } from '../src/contractLimit';
@@ -206,6 +207,7 @@ const isNetworkFailure = (error: any): boolean => {
   if (!navigator.onLine) return true;
   if (error.name === 'AbortError') return true;          // сработал наш таймаут
   if (error.name === 'TimeoutError') return true;        // AbortSignal.timeout()
+  if (error.code === 'TIMEOUT' || error.code === 'NETWORK') return true; // fetchWithAuth
   if (error instanceof TypeError) return true;           // 🔑 любой сетевой сбой fetch()
   if (error.name === 'TypeError') return true;           // тот же случай после сериализации
   const msg = String(error.message || '');
@@ -321,9 +323,20 @@ const fetchWithAuth = async (
     return res;
   } catch (error: any) {
     clearTimeout(timeoutId);
+    // Человек видит текст ошибки (окна, формы), поэтому он сразу понятный, а
+    // узнают её как сетевую по name/code — isNetworkFailure, очередь, App.
     if (error.name === 'AbortError') {
       console.warn(`⏱️ Request timeout (${timeout}ms):`, url);
-      throw new Error(`TIMEOUT: Request to ${url} took more than ${timeout}ms`);
+      const e: any = new Error(SLOW_CONNECTION_TEXT);
+      e.name = 'TimeoutError';
+      e.code = 'TIMEOUT';
+      throw e;
+    }
+    if (error instanceof TypeError) {
+      console.warn('📴 Network error:', error.message, url);
+      const e: any = new TypeError(NO_CONNECTION_TEXT);
+      e.code = 'NETWORK';
+      throw e;
     }
     throw error;
   }
@@ -695,9 +708,11 @@ export const api = {
     // Раньше amount приходил с клиента и не проверялся — можно было оплатить рубль
     // и получить год максимального тарифа.
     createPayment: async (paymentData: { returnUrl: string, plan: SubscriptionPlan, months: number }): Promise<any> => {
+        // Сервер сам обращается к платёжной системе — на слабом интернете 8 секунд мало
         const res = await fetchWithAuth(`${API_URL}/payment/create`, {
             method: 'POST',
-            body: JSON.stringify(paymentData)
+            body: JSON.stringify(paymentData),
+            timeout: 20000,
         });
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Ошибка создания платежа');

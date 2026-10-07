@@ -1,5 +1,6 @@
 // components/AdminPanel.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import AdminOAuthClients from './AdminOAuthClients';
 import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
@@ -216,7 +217,7 @@ const AdminPanel: React.FC = () => {
             loadUsers();
             loadSystemStats();
         } catch (e: any) {
-            alert(`❌ Ошибка: ${e.message || 'Не удалось обновить тариф'}`);
+            alert(`❌ Ошибка: ${friendlyError(e, 'Не удалось обновить тариф')}`);
         } finally {
             setActionLoading(false);
         }

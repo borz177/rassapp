@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { ICONS } from '../constants';
 import { AppSettings, TermRate, CalculatorCategory, DownDiscount } from '../types';
 import { calcInstallment, rateFor, applyDownDiscount } from '../src/calcMath';
@@ -366,7 +367,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
       if (copied) alert('✨ Ссылка скопирована!');
       else alert(`📋 Скопируйте ссылку вручную:\n\n${cleanUrl}`);
     } catch (e: any) {
-      alert(e?.message ? `❌ ${e.message}` : '❌ Ошибка сохранения настроек.');
+      alert(e?.message ? `❌ ${friendlyError(e)}` : '❌ Ошибка сохранения настроек.');
     }
   };
 
@@ -437,7 +438,7 @@ const Calculator: React.FC<CalculatorProps> = ({ isPublic = false, appSettings, 
     } catch (e: any) {
       // Без связи — хотя бы в настройки; ссылка обновится при следующем сохранении
       persistSettings();
-      alert(e?.message ? `Ставки сохранены, но ссылку обновить не удалось: ${e.message}` : 'Ставки сохранены');
+      alert(e?.message ? `Ставки сохранены, но ссылку обновить не удалось: ${friendlyError(e)}` : 'Ставки сохранены');
     }
   };
 

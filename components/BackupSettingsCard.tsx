@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { api } from '@/services/api';
 import { BackupSettings, BackupFrequency, ViewState } from '../types';
 import { ICONS } from '../constants';
@@ -59,7 +60,7 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
         setIsCodeStage(!!data.extraEmailPending);
         setExtraEmailInput(data.extraEmailPending || '');
       } catch (e: any) {
-        setError(e.message || 'Не удалось загрузить настройки');
+        setError(friendlyError(e, 'Не удалось загрузить настройки'));
       } finally {
         setIsLoading(false);
       }
@@ -96,7 +97,7 @@ const BackupSettingsCard: React.FC<BackupSettingsCardProps> = ({ onNavigate }) =
     try {
       await action();
     } catch (e: any) {
-      setError(e.message || 'Что-то пошло не так');
+      setError(friendlyError(e, 'Что-то пошло не так'));
     } finally {
       setIsBusy(false);
     }

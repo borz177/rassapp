@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { friendlyError } from '../src/friendlyError';
+import { toast } from '../src/toast';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
 import ModalPortal from './ModalPortal';
@@ -174,13 +176,18 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
       if (data.confirmationUrl) {
         window.location.href = data.confirmationUrl;
       } else {
-        alert("Ошибка инициализации платежа. Проверьте настройки сервера.");
+        // Пользователю «настройки сервера» ни о чём не говорят — он их не видит
+        toast.error('Не удалось открыть страницу оплаты', { message: 'Попробуйте ещё раз через минуту. Деньги не списаны.' });
         setLoading(null);
         setConfirmData(null);
       }
     } catch (error: any) {
       console.error("Payment Error:", error);
-      alert(`Ошибка: ${error.message || 'Не удалось создать платеж'}`);
+      // Деньги на этом шаге не списываются — говорим это прямо, чтобы человек
+      // спокойно повторил, а не писал в поддержку
+      toast.error('Не удалось перейти к оплате', {
+        message: `${friendlyError(error, 'Попробуйте ещё раз через минуту.')} Деньги не списаны.`,
+      });
       setLoading(null);
       setConfirmData(null);
     }

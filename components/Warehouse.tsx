@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { haptics } from '../src/haptics';
 import PriceListSheet from './PriceListSheet';
 import UnitPicker from './UnitPicker';
@@ -537,7 +538,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
       setForm(f => ({ ...f, images: [...f.images, ...urls].slice(0, 5) }));
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось загрузить картинку');
+      setError(friendlyError(e, 'Не удалось загрузить картинку'));
     } finally {
       setUploading(false);
     }
@@ -630,7 +631,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
       setForm(emptyForm);
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось сохранить товар');
+      setError(friendlyError(e, 'Не удалось сохранить товар'));
     } finally {
       setSaving(false);
     }
@@ -688,7 +689,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
       setMovementFor(null); setMovementQty(''); setMovementPrice(''); setMovementNote('');
       setError(null);
     } catch (e: any) {
-      setError(e.message || 'Не удалось записать движение');
+      setError(friendlyError(e, 'Не удалось записать движение'));
     } finally {
       setSaving(false);
     }

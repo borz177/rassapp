@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { api } from '../services/api';
 import { OAuthClientInfo } from '../types';
 import { appConfirm } from '../src/dialogs';
@@ -28,7 +29,7 @@ const AdminOAuthClients: React.FC = () => {
       setClients(await api.adminListOAuthClients());
     } catch (e: any) {
       setClients([]);
-      setError(e.message);
+      setError(friendlyError(e));
     }
   };
   useEffect(() => { load(); }, []);
@@ -43,7 +44,7 @@ const AdminOAuthClients: React.FC = () => {
       setName(''); setUris('');
       await load();
     } catch (e: any) {
-      setError(e.message);
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
@@ -58,7 +59,7 @@ const AdminOAuthClients: React.FC = () => {
       setEditing(null);
       await load();
     } catch (e: any) {
-      setError(e.message);
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }
@@ -71,7 +72,7 @@ const AdminOAuthClients: React.FC = () => {
       await api.adminDisableOAuthClient(client.id);
       await load();
     } catch (e: any) {
-      setError(e.message);
+      setError(friendlyError(e));
     } finally {
       setBusy(false);
     }

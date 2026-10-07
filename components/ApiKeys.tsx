@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { friendlyError } from '../src/friendlyError';
 import { api } from '../services/api';
 import { ApiKeyInfo, ApiKeyScope, OAuthConnection } from '../types';
 import { publicOrigin } from '../src/platform';
@@ -61,7 +62,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
     let alive = true;
     api.listApiKeys()
       .then(list => { if (alive) setKeys(list); })
-      .catch(e => { if (alive) { setKeys([]); setError(e.message); } });
+      .catch(e => { if (alive) { setKeys([]); setError(friendlyError(e)); } });
     api.listOAuthConnections()
       .then(list => { if (alive) setConnections(list); })
       .catch(() => { /* подключений может не быть вовсе — это не ошибка экрана */ });
@@ -77,7 +78,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
       setKeys(await api.listApiKeys());
       setCreating(false); setName(''); setCanWrite(false);
     } catch (e: any) {
-      setError(e.message || 'Не удалось создать ключ');
+      setError(friendlyError(e, 'Не удалось создать ключ'));
     } finally {
       setBusy(false);
     }
@@ -90,7 +91,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
       await api.revokeApiKey(item.id);
       setKeys(await api.listApiKeys());
     } catch (e: any) {
-      setError(e.message || 'Не удалось отозвать ключ');
+      setError(friendlyError(e, 'Не удалось отозвать ключ'));
     } finally {
       setBusy(false);
     }
@@ -103,7 +104,7 @@ const ApiKeys: React.FC<{ allowed: boolean; onUpgrade?: () => void }> = ({ allow
       await api.revokeOAuthConnection(item.id);
       setConnections(await api.listOAuthConnections());
     } catch (e: any) {
-      setError(e.message || 'Не удалось отключить');
+      setError(friendlyError(e, 'Не удалось отключить'));
     } finally {
       setBusy(false);
     }
