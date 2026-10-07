@@ -413,6 +413,13 @@ export interface Product {
   variantAttrs?: Record<string, string>;
   /** Характеристики модели и их значения по порядку — общие для всех вариантов */
   variantOptions?: VariantOption[];
+  /**
+   * Фото «по значению» — обычно по цвету: одно фото на чёрный, другое на белый,
+   * для всех размеров сразу. variantPhotoBy — по какой характеристике, а сама
+   * картинка стоит первой в images. Остальные картинки — общие фото модели.
+   */
+  variantPhoto?: string;
+  variantPhotoBy?: string;
 }
 
 export interface VariantOption {

@@ -178,7 +178,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // и окно не открывалось бы.
   const [showForm, setShowForm] = useState(false);
   // Модель с вариантами: новая (seed — поля из формы товара) или правка группы
-  const [variantSheet, setVariantSheet] = useState<{ groupId?: string; seed?: Partial<Product> } | null>(null);
+  const [variantSheet, setVariantSheet] = useState<{ groupId?: string; seed?: Partial<Product>; adopt?: Product } | null>(null);
+  const [groupMenu, setGroupMenu] = useState<Extract<CatalogEntry, { kind: 'group' }> | null>(null);
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set());
   const [form, setForm] = useState(emptyForm);
   const [uploading, setUploading] = useState(false);
@@ -522,7 +523,7 @@ const Warehouse: React.FC<WarehouseProps> = ({
   useBarcodeScanInput(code => {
     if (showForm) { setError(addFormBarcode(code)); return; }
     scanBeep(handleCatalogCode(code).tone);
-  }, (section === 'catalog' || showForm) && !labelIds && !scanFor);
+  }, (section === 'catalog' || showForm) && !labelIds && !scanFor && !variantSheet);
 
   const addImages = async (files: FileList | null) => {
     if (!files?.length) return;
@@ -755,10 +756,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
               {money(total)} {unitOf(g.items[0].unit)}{low ? ` · мало у ${low}` : ''}
             </p>
           </div>
-          <button onClick={e => { e.stopPropagation(); setVariantSheet({ groupId: g.groupId }); }}
-                  aria-label="Изменить варианты"
-                  className="shrink-0 w-9 h-9 rounded-lg text-slate-400 active:bg-slate-100 dark:active:bg-slate-700 flex items-center justify-center">
-            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M12 20h9" /><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z" /></svg>
+          <button onClick={e => { e.stopPropagation(); setGroupMenu(g); }}
+                  aria-label="Действия с моделью"
+                  className="shrink-0 w-9 h-9 rounded-lg text-slate-400 text-lg leading-none active:bg-slate-100 dark:active:bg-slate-700">
+            ⋮
           </button>
           <span className={`shrink-0 text-slate-400 transition-transform ${open ? 'rotate-180' : ''}`} aria-hidden>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="m6 9 6 6 6-6" /></svg>
@@ -769,6 +770,10 @@ const Warehouse: React.FC<WarehouseProps> = ({
             {g.items.map(p2 => (
               <button key={p2.id} type="button" onClick={() => setOpenProductId(p2.id)}
                       className="w-full pl-4 pr-3 py-2.5 flex items-center gap-3 text-left active:bg-slate-100 dark:active:bg-slate-700/50">
+                <span className="w-9 h-9 shrink-0 rounded-lg overflow-hidden bg-slate-100 dark:bg-slate-700 flex items-center justify-center">
+                  <ProductImage src={p2.images?.[0]} className="w-full h-full object-cover" loading="lazy" draggable={false}
+                                fallback={<span className="text-xs text-slate-400">📦</span>} />
+                </span>
                 <span className="min-w-0 flex-1">
                   <span className="block text-sm font-semibold text-slate-800 dark:text-white truncate">{variantLabel(p2)}</span>
                   <span className="block text-[11px] text-slate-500 dark:text-slate-400 truncate">{p2.sku || 'без артикула'}{p2.barcodes?.[0] ? ` · ${p2.barcodes[0]}` : ''}</span>
@@ -779,7 +784,9 @@ const Warehouse: React.FC<WarehouseProps> = ({
                     {money(stockOf(p2))} {unitOf(p2.unit)}
                   </span>
                 </span>
-                <span className="shrink-0 text-slate-300 dark:text-slate-600">›</span>
+                <span role="button" tabIndex={0} aria-label="Действия с вариантом"
+                      onClick={e => { e.stopPropagation(); setMenuProduct(p2); }}
+                      className="shrink-0 w-8 h-8 -mr-1 rounded-lg flex items-center justify-center text-slate-400 text-lg leading-none active:bg-slate-200 dark:active:bg-slate-700">⋮</span>
               </button>
             ))}
           </div>
@@ -1194,6 +1201,53 @@ const Warehouse: React.FC<WarehouseProps> = ({
 
       </>)}
 
+      {/* Действия с моделью целиком: варианты, этикетки, архив, удаление */}
+      <Sheet open={!!groupMenu} onClose={() => setGroupMenu(null)} className="sm:max-w-sm p-2">
+        {groupMenu && (
+          <>
+            <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400 truncate">
+              {groupMenu.base} · {groupMenu.items.length} вар.
+            </p>
+            <button onClick={() => { const g = groupMenu; setGroupMenu(null); setVariantSheet({ groupId: g.groupId }); }}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              Изменить модель и варианты
+            </button>
+            <button onClick={() => { const g = groupMenu; setGroupMenu(null); setLabelIds(g.items.map(p2 => p2.id)); }}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              Печать этикеток для всех вариантов
+            </button>
+            <button
+              onClick={async () => {
+                const g = groupMenu;
+                setGroupMenu(null);
+                const archive = !g.items[0].isArchived;
+                for (const p2 of g.items) await onSaveProduct({ ...p2, isArchived: archive, updatedAt: new Date().toISOString() });
+              }}
+              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
+              {groupMenu.items[0].isArchived ? 'Вернуть модель из архива' : 'Модель в архив'}
+            </button>
+            <button
+              onClick={async () => {
+                const g = groupMenu;
+                if (!await appConfirm({
+                  title: `Удалить модель «${g.base}»?`,
+                  message: `Удалятся все ${g.items.length} вар. без возможности восстановления. Продажи и движения склада в журнале останутся.`,
+                  confirmLabel: 'Удалить', destructive: true,
+                })) return;
+                setGroupMenu(null);
+                for (const p2 of g.items) await onDeleteProduct(p2.id);
+              }}
+              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-slate-50 dark:active:bg-slate-700">
+              Удалить модель
+            </button>
+            <button onClick={() => setGroupMenu(null)}
+                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
+              Отмена
+            </button>
+          </>
+        )}
+      </Sheet>
+
       {/* Действия над товаром. Отдельным листом, а не рядом кнопок в строке:
           так строка остаётся про товар, а не про то, что с ним можно сделать. */}
       <Sheet open={!!menuProduct} onClose={() => setMenuProduct(null)} className="sm:max-w-sm p-2">
@@ -1351,10 +1405,13 @@ const Warehouse: React.FC<WarehouseProps> = ({
           products={products}
           groupId={variantSheet.groupId}
           seed={variantSheet.seed}
+          adopt={variantSheet.adopt}
+          categories={categories}
           warehouses={shownWarehouses}
           defaultWarehouseId={warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter}
           onClose={() => setVariantSheet(null)}
           onSave={saveVariants}
+          onDeleteGroup={async ids => { for (const id of ids) await onDeleteProduct(id); }}
         />
       )}
 
@@ -1387,6 +1444,17 @@ const Warehouse: React.FC<WarehouseProps> = ({
                   <span className="block text-sm font-bold text-indigo-700 dark:text-indigo-200">Товар с вариантами</span>
                   <span className="block text-[11px] text-indigo-600/80 dark:text-indigo-300/80">Размер, цвет, память — одна карточка, у каждого варианта свой остаток</span>
                 </span>
+              </button>
+            )}
+            {editing && !editing.variantGroupId && (
+              <button type="button"
+                      onClick={() => { const p2 = editing; setShowForm(false); setEditing(null); setForm(emptyForm); setVariantSheet({ adopt: p2 }); }}
+                      className="w-full flex items-center justify-between gap-3 p-3 rounded-2xl bg-slate-50 dark:bg-slate-900/60 text-left">
+                <span className="min-w-0">
+                  <span className="block text-sm font-bold text-slate-800 dark:text-white">Добавить варианты</span>
+                  <span className="block text-[11px] text-slate-500 dark:text-slate-400">Размер, цвет, память — этот товар станет первым вариантом, остаток и история сохранятся</span>
+                </span>
+                <span className="shrink-0 text-indigo-600 dark:text-indigo-300 text-lg">›</span>
               </button>
             )}
             {editing?.variantGroupId && (
