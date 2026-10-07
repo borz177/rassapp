@@ -344,8 +344,21 @@ const isLocallyFresher = (
 const mergeServerData = <T extends { id: string }>(
     current: T[],
     fresh: T[],
-    collectionName: string = 'unknown'
+    collectionName: string = 'unknown',
+    // Пришёл снимок с устройства (обрыв связи), а не ответ сервера: на экране
+    // может быть новее — такой снимок только дополняет список, ничего не заменяя
+    fromCache = false
 ): T[] => {
+    if (fromCache && current.length > 0) {
+        const have = new Set(current.map(i => i.id));
+        const unsynced = getUnsyncedIds();
+        const removedRecently = (id: string) => {
+            const at = recentLocalWritesRef.current.get(id);
+            return !!at && Date.now() - at < RECENT_WRITE_GUARD_MS;
+        };
+        const missing = fresh.filter(i => !have.has(i.id) && !removedRecently(i.id) && !unsynced.has(i.id));
+        return missing.length ? [...current, ...missing] : current;
+    }
     if (fresh.length === 0 && current.length > 0) {
         console.warn(`⚠️ Server returned empty array for "${collectionName}", keeping local data.`);
     }
@@ -751,24 +764,24 @@ const handleSync = async () => {
     try {
       const freshData = await api.fetchAllData();
       if (freshData) {
-        if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers'));
-        if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales'));
-        if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
-        if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
-        if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+        if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers', !!freshData.__fromCache));
+        if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales', !!freshData.__fromCache));
+        if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses', !!freshData.__fromCache));
+        if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts', !!freshData.__fromCache));
+        if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors', !!freshData.__fromCache));
         if (Array.isArray(freshData.lockedInvestorIds)) setLockedInvestorIds(freshData.lockedInvestorIds);
         if (Array.isArray(freshData.lockedAccountIds)) setLockedAccountIds(freshData.lockedAccountIds);
-        if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
-        if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
-        if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
-        if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
-        if (freshData.stockMovements) setStockMovements(prev => mergeServerData(prev, freshData.stockMovements, 'stockMovements'));
-        if (freshData.retailSales) setRetailSales(prev => mergeServerData(prev, freshData.retailSales, 'retailSales'));
-        if (freshData.warehouses) setWarehouses(prev => mergeServerData(prev, freshData.warehouses, 'warehouses'));
+        if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products', !!freshData.__fromCache));
+        if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships', !!freshData.__fromCache));
+        if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers', !!freshData.__fromCache));
+        if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks', !!freshData.__fromCache));
+        if (freshData.stockMovements) setStockMovements(prev => mergeServerData(prev, freshData.stockMovements, 'stockMovements', !!freshData.__fromCache));
+        if (freshData.retailSales) setRetailSales(prev => mergeServerData(prev, freshData.retailSales, 'retailSales', !!freshData.__fromCache));
+        if (freshData.warehouses) setWarehouses(prev => mergeServerData(prev, freshData.warehouses, 'warehouses', !!freshData.__fromCache));
 
         // Настройки — единственный объект, идущий мимо слияния списков, поэтому
         // защита от гонки проверяется здесь вручную.
-        if (freshData.settings && !isLocallyFresher(
+        if (freshData.settings && !freshData.__fromCache && !isLocallyFresher(
               user ? `settings_${user.id}` : '',
               recentLocalWritesRef.current,
               getUnsyncedIds())) {
@@ -778,7 +791,7 @@ const handleSync = async () => {
        
         // Отметку ставим только здесь: очередь могла уехать, а данные не
         // приехать — тогда «обновлено только что» было бы неправдой.
-        setLastSyncedAt(Date.now());
+        if (!freshData.__fromCache) setLastSyncedAt(Date.now());
       }
     } catch (fetchErr: any) {
       console.warn('⚠️ Failed to fetch fresh data:', fetchErr.message);
@@ -1049,21 +1062,21 @@ useEffect(() => {
             // Получаем свежие данные и умно мёржим их с локальными
             const freshData = await api.fetchAllData();
             if (freshData) {
-              if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers'));
-              if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales'));
-              if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses'));
-              if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts'));
-              if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors'));
+              if (freshData.customers) setCustomers(prev => mergeServerData(prev, freshData.customers, 'customers', !!freshData.__fromCache));
+              if (freshData.sales) setSales(prev => mergeServerData(prev, freshData.sales, 'sales', !!freshData.__fromCache));
+              if (freshData.expenses) setExpenses(prev => mergeServerData(prev, freshData.expenses, 'expenses', !!freshData.__fromCache));
+              if (freshData.accounts) setAccounts(prev => mergeServerData(prev, freshData.accounts, 'accounts', !!freshData.__fromCache));
+              if (freshData.investors) setInvestors(prev => mergeServerData(prev, freshData.investors, 'investors', !!freshData.__fromCache));
               if (Array.isArray(freshData.lockedInvestorIds)) setLockedInvestorIds(freshData.lockedInvestorIds);
               if (Array.isArray(freshData.lockedAccountIds)) setLockedAccountIds(freshData.lockedAccountIds);
-              if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products'));
-              if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships'));
-              if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers'));
-              if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks'));
+              if (freshData.products) setProducts(prev => mergeServerData(prev, freshData.products, 'products', !!freshData.__fromCache));
+              if (freshData.partnerships) setPartnerships(prev => mergeServerData(prev, freshData.partnerships, 'partnerships', !!freshData.__fromCache));
+              if (freshData.suppliers) setSuppliers(prev => mergeServerData(prev, freshData.suppliers, 'suppliers', !!freshData.__fromCache));
+              if (freshData.tasks) setTasks(prev => mergeServerData(prev, freshData.tasks, 'tasks', !!freshData.__fromCache));
 
               // То же, что и в handleSync: за секунды между входом и ответом
               // человек мог успеть что-то переключить.
-              if (freshData.settings && !isLocallyFresher(
+              if (freshData.settings && !freshData.__fromCache && !isLocallyFresher(
                     `settings_${localUser.id}`,
                     recentLocalWritesRef.current,
                     getUnsyncedIds())) {
@@ -1462,17 +1475,17 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
     // связь, VPN) подставляет устаревший кэш из IndexedDB — прямая перезапись стирала из UI
     // записи, которых не было в этом устаревшем снимке, даже если они целы на сервере
     // (например, договор пропадал после действия с инвестором на плохой связи).
-    if (data.customers) setCustomers(prev => mergeServerData(prev, data.customers, 'customers'));
-    if (data.products) setProducts(prev => mergeServerData(prev, data.products, 'products'));
-    if (data.sales) setSales(prev => mergeServerData(prev, data.sales, 'sales'));
-    if (data.expenses) setExpenses(prev => mergeServerData(prev, data.expenses, 'expenses'));
-    if (data.accounts) setAccounts(prev => mergeServerData(prev, data.accounts, 'accounts'));
-    if (data.investors) setInvestors(prev => mergeServerData(prev, data.investors, 'investors'));
+    if (data.customers) setCustomers(prev => mergeServerData(prev, data.customers, 'customers', !!data.__fromCache));
+    if (data.products) setProducts(prev => mergeServerData(prev, data.products, 'products', !!data.__fromCache));
+    if (data.sales) setSales(prev => mergeServerData(prev, data.sales, 'sales', !!data.__fromCache));
+    if (data.expenses) setExpenses(prev => mergeServerData(prev, data.expenses, 'expenses', !!data.__fromCache));
+    if (data.accounts) setAccounts(prev => mergeServerData(prev, data.accounts, 'accounts', !!data.__fromCache));
+    if (data.investors) setInvestors(prev => mergeServerData(prev, data.investors, 'investors', !!data.__fromCache));
     if (Array.isArray(data.lockedInvestorIds)) setLockedInvestorIds(data.lockedInvestorIds);
     if (Array.isArray(data.lockedAccountIds)) setLockedAccountIds(data.lockedAccountIds);
-    if (data.partnerships) setPartnerships(prev => mergeServerData(prev, data.partnerships, 'partnerships'));
-    if (data.suppliers) setSuppliers(prev => mergeServerData(prev, data.suppliers, 'suppliers'));
-    if (data.tasks) setTasks(prev => mergeServerData(prev, data.tasks, 'tasks'));
+    if (data.partnerships) setPartnerships(prev => mergeServerData(prev, data.partnerships, 'partnerships', !!data.__fromCache));
+    if (data.suppliers) setSuppliers(prev => mergeServerData(prev, data.suppliers, 'suppliers', !!data.__fromCache));
+    if (data.tasks) setTasks(prev => mergeServerData(prev, data.tasks, 'tasks', !!data.__fromCache));
     if (data.employees?.length > 0 || employees.length === 0) setEmployees(data.employees || []);
 
     let loadedSettings = data.settings || getAppSettings();

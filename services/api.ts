@@ -53,6 +53,41 @@ const queueSave = async (collection: string, item: any, intent?: { kind: string;
 //     а не обгоняет её напрямую;
 //   — дошла новая версия — старые версии того же объекта из очереди убираются:
 //     они уже целиком в ней (интерфейс собирает новую версию поверх старой).
+// ── Снимок данных на устройстве (all_data) ──────────────────────────────────────
+// Снимок пишется при каждой загрузке с сервера. Раньше записи, дошедшие ПОСЛЕ
+// загрузки, в нём не появлялись: при обрыве связи fetchAllData отдавал этот
+// старый снимок, и только что внесённый платёж пропадал с экрана до следующей
+// удачной загрузки. Теперь дошедшая запись сразу попадает и в снимок, а сами
+// изменения снимка идут строго по очереди — иначе две записи подряд затирали бы
+// друг друга при чтении-изменении-записи.
+let snapshotChain: Promise<unknown> = Promise.resolve();
+const withSnapshot = (fn: () => Promise<void>): Promise<void> => {
+  const run = snapshotChain.catch(() => {}).then(fn);
+  snapshotChain = run;
+  return run.catch(() => {});
+};
+/** Последние дошедшие записи: накладываются на снимок, собранный сервером раньше них */
+const deliveredWrites: { collection: string; id: string; item: any | null; at: number }[] = [];
+const noteDelivered = (collection: string, id: string, item: any | null) => {
+  const now = Date.now();
+  deliveredWrites.push({ collection, id, item, at: now });
+  while (deliveredWrites.length && now - deliveredWrites[0].at > 120000) deliveredWrites.shift();
+  void withSnapshot(async () => {
+    const data = await offlineStorage.getCache('all_data').catch(() => null);
+    if (!data || !Array.isArray(data[collection])) return;
+    const list = (data[collection] as any[]).filter(i => i?.id !== id);
+    data[collection] = item ? [item, ...list] : list;
+    await offlineStorage.setCache('all_data', data);
+  });
+};
+const applyDelivered = (data: any, since: number) => {
+  for (const w of deliveredWrites) {
+    if (w.at < since || !Array.isArray(data?.[w.collection])) continue;
+    const list = (data[w.collection] as any[]).filter(i => i?.id !== w.id);
+    data[w.collection] = w.item ? [w.item, ...list] : list;
+  }
+};
+
 const writeChains = new Map<string, Promise<unknown>>();
 const serializeWrite = <T>(key: string, fn: () => Promise<T>): Promise<T> => {
   const prev = writeChains.get(key) || Promise.resolve();
@@ -404,6 +439,10 @@ export const api = {
         }
 
         if (res.ok) {
+          // Отправленное из очереди — тоже в снимок: иначе после выхода из очереди
+          // запись была бы только на сервере и пропала бы при следующем обрыве связи
+          if (item.type === 'saveItem' && sent?.id) noteDelivered(item.collection, sent.id, sent);
+          else if (item.type === 'deleteItem' && item.itemId) noteDelivered(item.collection, item.itemId, null);
           await offlineStorage.removeFromQueue(item.id);
           // Отвергнутые раньше версии того же объекта устарели: после повтора при
           // следующем запуске они записали бы старое поверх только что отправленного
@@ -668,6 +707,7 @@ export const api = {
     // Data Sync
      fetchAllData: async (): Promise<any> => {
     let data: any = null;
+    const requestedAt = Date.now();
     try {
       const res = await fetchWithAuth(`${API_URL}/data`);
       
@@ -691,7 +731,10 @@ export const api = {
         }
       }
 
-      await offlineStorage.setCache('all_data', data);
+      // Сервер собирал ответ до записей, дошедших за время запроса, — накладываем их
+      applyDelivered(data, requestedAt);
+      const snapshot = JSON.parse(JSON.stringify(data));
+      await withSnapshot(() => offlineStorage.setCache('all_data', snapshot));
       // Серверные версии — до наложения очереди ниже: от них считается разница отложенных правок
       MERGED_COLLECTIONS.forEach(c => (data[c] || []).forEach((i: any) => rememberServer(c, i)));
     } catch (error: any) {
@@ -702,7 +745,7 @@ export const api = {
 
       if (error.message === 'TOKEN_EXPIRED') {
         const cachedData = await offlineStorage.getCache('all_data');
-        if (cachedData) return cachedData;
+        if (cachedData) return { ...cachedData, __fromCache: true };
         throw error;
       }
 
@@ -715,7 +758,9 @@ export const api = {
 
       const cachedData = await offlineStorage.getCache('all_data');
       if (cachedData) {
-        data = cachedData;
+        // Это не ответ сервера, а снимок с устройства: на экране может быть
+        // уже новее. Метка не даёт App принять его за свежие данные (см. mergeServerData).
+        data = { ...cachedData, __fromCache: true };
       } else {
         throw error;
       }
@@ -940,6 +985,7 @@ export const api = {
         // Запись дошла — значит связь жива, и следующие можно пробовать сразу.
         markNetworkUp();
         rememberServer(type, savedItem && savedItem.id ? savedItem : item);
+        noteDelivered(type, item.id, savedItem && savedItem.id ? savedItem : item);
         return savedItem;
 
         } catch (error: any) {
@@ -1136,6 +1182,7 @@ export const api = {
     // Сервер временно недоступен — удаление не выполнено, повторим из очереди
     if (isRetryableStatus(res.status)) throw transientError(`HTTP ${res.status}`);
     markNetworkUp();
+    if (res.ok) noteDelivered(type, id, null);
     return { success: true };
   } catch (error: any) {
     if (error.message === 'TOKEN_EXPIRED') {
