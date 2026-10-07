@@ -5,7 +5,7 @@ import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, Inves
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
-import GlassSheet, { SheetSection, SheetField, sheetInputClass } from './GlassSheet';
+import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
 import { appConfirm } from '../src/dialogs';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
@@ -172,6 +172,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   const [editEmail, setEditEmail] = useState('');
   const [editPassword, setEditPassword] = useState('');
   const [editProfit, setEditProfit] = useState('');
+  const [editOwner, setEditOwner] = useState(false);
   const [editLeftDate, setEditLeftDate] = useState('');
   const [editJoinedDate, setEditJoinedDate] = useState('');
   const [editError, setEditError] = useState<string | null>(null);
@@ -224,6 +225,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     setEditEmail(investor.email || '');
     setEditPassword('');
     setEditProfit(investor.profitPercentage.toString());
+    setEditOwner(!!investor.isOwner);
     // Действующие даты — из периодов участия, если они есть: их читает расчёт долей.
     const dates = participationDates(investor);
     setEditJoinedDate((dates.joinedDate || '').split('T')[0]);
@@ -261,6 +263,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       phone: editPhone,
       email: editEmail,
       profitPercentage: Number(editProfit),
+      isOwner: editOwner || undefined,
     }, {
       ...(joinedChanged ? { joinedDate } : {}),
       ...(leftChanged ? { leftPoolDate } : {}),
@@ -273,6 +276,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     const dates = participationDates(investor);
     return editName !== investor.name || editPhone !== (investor.phone || '') || editEmail !== (investor.email || '')
       || editPassword !== '' || editProfit !== investor.profitPercentage.toString()
+      || editOwner !== !!investor.isOwner
       || editJoinedDate !== (dates.joinedDate || '').split('T')[0] || editLeftDate !== (dates.leftPoolDate || '').split('T')[0];
   })();
 
@@ -1289,6 +1293,14 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                 <input className={sheetInputClass} value={editPhone} onChange={e => setEditPhone(e.target.value)}
                        type="tel" inputMode="tel" autoComplete="off" placeholder="+7 900 000-00-00" />
               </SheetField>
+            </SheetSection>
+
+            {/* Владелец, вложивший свои деньги: его две строки в составе кассы
+                (инвестор и менеджер) показываются одной — «вы» */}
+            <SheetSection hint={editOwner
+              ? 'В составе кассы ваша прибыль с вложений и доля за управление показываются одной строкой. Доли других инвесторов не меняются.'
+              : 'Включите, если это ваши собственные деньги в кассе.'}>
+              <SheetToggle label="Это я — владелец" checked={editOwner} onChange={setEditOwner} tone="indigo" />
             </SheetSection>
 
             <SheetSection title="Условия" hint={editError

@@ -1076,8 +1076,13 @@ const investorProfitPayouts = useMemo(() => {
     // Прибыль менеджера по этому же счёту и периоду — уже посчитана для карточек ниже.
     // Своего капитала в пуле у него нет, но доля прибыли есть, и без её суммы строка
     // «Менеджер» стояла с прочерками, а итог не сходился с реальной прибылью счёта.
+    // «Это я» (Investor.isOwner): владелец вложил свои деньги — его строка инвестора
+    // и строка «Менеджер» показываются одной. Расчёт тот же, меняется только показ.
+    const ownerId = (rows.find(r => r.investor.isOwner && r.isActive) || rows.find(r => r.investor.isOwner))?.investor.id;
+
     return {
       rows,
+      ownerId,
       totalCapital,
       managerShare: getManagerSharePercent(acc, investors),
       managerExpected: calculatedExpectedProfit,
@@ -1643,9 +1648,16 @@ const investorProfitPayouts = useMemo(() => {
                               {row.investor.name.charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <p className="font-medium text-slate-700 dark:text-slate-200 truncate">{row.investor.name}</p>
+                              <p className="font-medium text-slate-700 dark:text-slate-200 truncate">
+                                {row.investor.name}
+                                {row.investor.id === poolComposition.ownerId && (
+                                  <span className="ml-1.5 align-middle px-1.5 py-0.5 rounded-md bg-indigo-100 dark:bg-indigo-500/20 text-indigo-700 dark:text-indigo-300 text-[10px] font-bold">вы</span>
+                                )}
+                              </p>
                               <p className="text-[11px] text-slate-400 dark:text-slate-500">
-                                {row.isActive ? `${row.investor.profitPercentage}% ставка · ${Math.round(row.profitShare * 10) / 10}% приб.` : 'вышел из пула'}
+                                {row.investor.id === poolComposition.ownerId
+                                  ? `вложения ${formatCurrency(row.receivedProfit, false)} ₽ · управление ${formatCurrency(poolComposition.managerReceived, false)} ₽`
+                                  : row.isActive ? `${row.investor.profitPercentage}% ставка · ${Math.round(row.profitShare * 10) / 10}% приб.` : 'вышел из пула'}
                               </p>
                             </div>
                           </div>
@@ -1660,15 +1672,17 @@ const investorProfitPayouts = useMemo(() => {
                           </span>
                         </td>
                         <td className="hidden sm:table-cell py-3 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
-                          {formatCurrency(row.expectedProfit, appSettings.showCents)} ₽
+                          {formatCurrency(row.expectedProfit + (row.investor.id === poolComposition.ownerId ? poolComposition.managerExpected : 0), appSettings.showCents)} ₽
                         </td>
                         <td className="py-3 pr-1 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
-                          {formatCurrency(row.receivedProfit, appSettings.showCents)} ₽
+                          {formatCurrency(row.receivedProfit + (row.investor.id === poolComposition.ownerId ? poolComposition.managerReceived : 0), appSettings.showCents)} ₽
                         </td>
                       </tr>
                     ))}
                     {/* Остаток процентов после долей инвесторов — доля менеджера.
-                        Без неё таблица не сходится до 100% и выглядит недосчитанной. */}
+                        Без неё таблица не сходится до 100% и выглядит недосчитанной.
+                        Если владелец отмечен «Это я», она уже в его строке. */}
+                    {!poolComposition.ownerId && (
                     <tr>
                       <td className="py-3 pl-1">
                         <div className="flex items-center gap-2.5">
@@ -1690,6 +1704,7 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(poolComposition.managerReceived, appSettings.showCents)} ₽
                       </td>
                     </tr>
+                    )}
                   </tbody>
                   <tfoot>
                     <tr className="border-t-2 border-slate-200 dark:border-slate-600">
@@ -1711,6 +1726,11 @@ const investorProfitPayouts = useMemo(() => {
               <p className="text-[11px] text-slate-400 dark:text-slate-500 mt-3">
                 Прибыль — за выбранный ниже период; доли — на сегодня.
               </p>
+              {poolComposition.ownerId && (
+                <p className="mt-1.5 text-[11px] leading-snug text-slate-400 dark:text-slate-500">
+                  «Вы» — прибыль ваших вложений и доля за управление: с денег других инвесторов и с договоров, оформленных до их входа. Доли инвесторов от этого не меняются.
+                </p>
+              )}
             </div>
           )}
 
