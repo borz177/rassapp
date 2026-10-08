@@ -81,6 +81,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [title, setTitle] = useState(initialData?.title || '');
   const [category, setCategory] = useState(initialData?.category || 'General');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  // Комментарий к расходу (Expense.description): видно в «Все операции»
+  const [comment, setComment] = useState('');
   const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(null);
   const [managerPayoutSource, setManagerPayoutSource] = useState<'CAPITAL' | 'PROFIT' | null>(null);
   // Общий расход списывается из заработанной прибыли (делится по долям счёта)
@@ -269,6 +271,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             category: 'Оплата партнёру',
             supplierId: initialData?.supplierId,
             saleId: initialData?.saleId,
+            description: comment.trim() || undefined,
         };
         setPendingExpenseData(supplierExpenseData);
         setShowConfirmModal(true);
@@ -307,7 +310,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
         finalDate = now.toISOString();
     }
 
-    const commonData = { amount: numAmount, date: finalDate };
+    const commonData = { amount: numAmount, date: finalDate, description: comment.trim() || undefined };
 
     let expenseData: any;
     if (sourceType === 'INVESTOR') {
@@ -831,6 +834,19 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                     onChange={e => setDate(e.target.value)}
                 />
             </div>
+            <div>
+                <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
+                    Комментарий <span className="font-normal text-slate-400 dark:text-slate-500">— необязательно</span>
+                </label>
+                <textarea
+                    rows={2}
+                    maxLength={1000}
+                    placeholder="Например: за что, кому, по какому договору"
+                    className="w-full p-3 text-base border border-slate-200 dark:border-slate-600 rounded-xl outline-none resize-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white placeholder:text-slate-400 dark:placeholder:text-slate-500"
+                    value={comment}
+                    onChange={e => setComment(e.target.value)}
+                />
+            </div>
         </div>
 
         {/* 🔔 Предупреждение о возможном дубликате */}
@@ -958,6 +974,15 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   {getAccountName(pendingExpenseData.accountId)}
                 </span>
               </div>
+
+              {pendingExpenseData.description && (
+                <div className="flex justify-between gap-3">
+                  <span className="text-slate-500 dark:text-slate-400 shrink-0">Комментарий:</span>
+                  <span className="font-medium text-slate-800 dark:text-white text-right break-words min-w-0 line-clamp-3">
+                    {pendingExpenseData.description}
+                  </span>
+                </div>
+              )}
 
               <div className="flex justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
                 <span className="text-slate-500">Сумма:</span>

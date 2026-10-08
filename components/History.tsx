@@ -144,7 +144,8 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
       .filter(op => !employeeId || op.raw?.createdByUserId === employeeId)
       .filter(op => !q
         || op.title.toLowerCase().includes(q)
-        || String(op.description || '').toLowerCase().includes(q));
+        || String(op.description || '').toLowerCase().includes(q)
+        || String(op.comment || '').toLowerCase().includes(q));
 
     // Категория — понятие денег: выбрана — документы склада не показываем.
     // Счёт есть только у чека; складские накладные к счёту не привязаны.
@@ -384,6 +385,11 @@ const MoneyRow: React.FC<{ op: MoneyOperation; cents?: boolean; onOpen: () => vo
         <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
           {timeOf(op.date)} · {op.description}
         </span>
+        {op.comment && (
+          <span className="block text-xs text-slate-600 dark:text-slate-300 mt-0.5 line-clamp-2 break-words">
+            💬 {op.comment}
+          </span>
+        )}
       </span>
       <span className={`shrink-0 font-bold tabular-nums ${income ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-800 dark:text-white'}`}>
         {income ? '+' : '−'}{formatCurrency(op.amount, cents)} ₽

@@ -25,6 +25,8 @@ export interface MoneyOperation {
   discountAmount?: number;
   discountPercent?: number;
   note?: string;
+  /** Комментарий к расходу (Expense.description) */
+  comment?: string;
   balanceBefore?: number;
   balanceAfter?: number;
 }
@@ -175,6 +177,7 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
       accountId: e.accountId,
       type: 'EXPENSE',
       category: e.category,
+      comment: e.description?.trim() || undefined,
       raw: e
   }));
 

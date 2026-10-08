@@ -334,8 +334,8 @@ const Operations: React.FC<OperationsProps> = ({
                 : 'border-l-red-500'
         }`}
     >
-        <div className="flex items-center gap-3">
-<div className={`p-2.5 rounded-full ${
+        <div className="flex items-center gap-3 min-w-0">
+<div className={`shrink-0 p-2.5 rounded-full ${
                 op.type === 'EXPENSE'
                     ? op.category === 'Salary'
                         ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400'
@@ -348,7 +348,7 @@ const Operations: React.FC<OperationsProps> = ({
                         : ICONS.Expense
                     : ICONS.Income}
             </div>
-            <div>
+            <div className="min-w-0">
                 <p className="font-bold text-slate-800 dark:text-white text-sm flex items-center gap-1.5">
                     <UnsyncedMark id={op.raw?.id} />
                     {op.title}
@@ -361,6 +361,11 @@ const Operations: React.FC<OperationsProps> = ({
                 <p className="text-xs text-slate-500 dark:text-slate-400">
                     {getTimeMsk(op.date)} • {getCategoryLabel(op.description)}
                 </p>
+                {op.comment && (
+                    <p className="text-xs text-slate-600 dark:text-slate-300 mt-0.5 line-clamp-2 break-words">
+                        💬 {op.comment}
+                    </p>
+                )}
                 {/* Расход из прибыли внешне не отличался от обычного, и через месяц было
                     непонятно, почему прибыль просела. Помечаем прямо в списке. */}
                 {op.raw?.fromProfit && (
@@ -380,7 +385,7 @@ const Operations: React.FC<OperationsProps> = ({
                 )}
             </div>
         </div>
-        <div className="text-right">
+        <div className="text-right shrink-0 pl-2">
 <span className={`font-bold block ${op.type === 'EXPENSE' ? 'text-slate-800 dark:text-white' : 'text-emerald-600 dark:text-emerald-400'}`}>
                 {op.type === 'EXPENSE' ? '-' : '+'}{op.amount.toLocaleString()} ₽
             </span>
@@ -538,6 +543,12 @@ const Operations: React.FC<OperationsProps> = ({
                     <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
                         <span className="text-slate-500 dark:text-slate-400 text-sm">Назначение</span>
                         <span className="font-semibold text-slate-800 dark:text-white">{selectedOp.title}</span>
+                    </div>
+                )}
+                {selectedOp.comment && (
+                    <div className="border-b border-slate-100 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400 text-sm">Комментарий</span>
+                        <p className="mt-1 text-sm text-slate-800 dark:text-white whitespace-pre-wrap break-words">{selectedOp.comment}</p>
                     </div>
                 )}
                 {onDelete && selectedOp.type === 'EXPENSE' && (
