@@ -15,6 +15,8 @@ import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
+import { turnoverBreakdown, type TurnoverBreakdown } from '../src/turnoverBreakdown';
+import GlassSheet, { SheetSection } from './GlassSheet';
 import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
@@ -906,6 +908,69 @@ const ProfitDetailsModal = ({
   );
 };
 
+/**
+ * «В обороте» по частям — где лежат деньги и кому они принадлежат.
+ * Обе части сходятся к одной сумме; последняя строка второй части — остаток
+ * (свои вложения и расходы, не списанные с прибыли), чтобы итог всегда сходился.
+ */
+const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onClose: () => void }> = ({ data, showCents, accountName, onClose }) => {
+  const m = (n: number) => `${formatCurrency(n, showCents)} ₽`;
+  const pct = (n: number) => (data.total > 0 ? Math.max(0, n / data.total * 100) : 0);
+  const Row: React.FC<{ label: string; hint?: string; value: number; tone?: string; strong?: boolean }> = ({ label, hint, value, tone, strong }) => (
+    <div className="flex items-center justify-between gap-3 px-4 py-3">
+      <div className="min-w-0">
+        <p className={`text-[15px] ${strong ? 'font-bold' : 'font-medium'} text-slate-800 dark:text-white`}>{label}</p>
+        {hint && <p className="text-[12px] leading-snug text-slate-500 dark:text-slate-400">{hint}</p>}
+      </div>
+      <p className={`shrink-0 tabular-nums text-[15px] font-bold ${tone || 'text-slate-900 dark:text-white'}`}>{m(value)}</p>
+    </div>
+  );
+  const owners = [
+    { key: 'cap', label: 'Вложения инвесторов', value: data.investorCapital, color: 'bg-violet-500' },
+    { key: 'mgr', label: 'Ваша прибыль', value: data.manager.toWithdraw + data.manager.expected, color: 'bg-emerald-500' },
+    { key: 'inv', label: 'Прибыль инвесторов', value: data.investors.toPay + data.investors.expected, color: 'bg-amber-500' },
+    { key: 'rest', label: 'Остаток', value: data.rest, color: 'bg-slate-400' },
+  ];
+  return (
+    <GlassSheet title="В обороте" subtitle={accountName || 'Все счета'} onClose={onClose} cancelLabel="Закрыть">
+      <div className="space-y-6">
+        <div className="text-center">
+          <p className="text-[34px] font-extrabold tabular-nums text-slate-900 dark:text-white leading-none">{m(data.total)}</p>
+          <p className="mt-1.5 text-[13px] text-slate-500 dark:text-slate-400">деньги на счёте + долг клиентов</p>
+        </div>
+
+        <SheetSection title="Где деньги">
+          <Row label="На счёте" hint="Можно потратить или вывести сейчас" value={data.cash} />
+          <Row label="Долг клиентов" hint="Ещё заплатят по договорам" value={data.receivable} strong />
+          <div className="pl-4">
+            <Row label="Возврат закупа" hint="Деньги, потраченные на товар, — вернутся, но это не прибыль" value={data.receivableCost} tone="text-slate-600 dark:text-slate-300" />
+            <Row label="Наценка" hint="Будущая прибыль — ваша и инвесторов" value={data.receivableProfit} tone="text-emerald-600 dark:text-emerald-400" />
+          </div>
+        </SheetSection>
+
+        <SheetSection title="Чьи деньги" hint="Прибыль — полученная и ещё не выведенная, плюс ожидаемая с долга клиентов. Остаток — ваши собственные вложения и расходы, не списанные с прибыли (налоги, закят и т. п.); минус — потрачено больше, чем вложено.">
+          <div className="px-4 pt-3.5 pb-1">
+            <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700">
+              {owners.filter(o => o.value > 0).map(o => (
+                <div key={o.key} className={o.color} style={{ width: `${pct(o.value)}%` }} />
+              ))}
+            </div>
+          </div>
+          {data.investorCapital > 0 && <Row label="Вложения инвесторов" hint="Их деньги, вложенные в договоры" value={data.investorCapital} tone="text-violet-600 dark:text-violet-400" />}
+          <Row label="Ваша прибыль" hint={`к выводу ${m(data.manager.toWithdraw)} · ожидается ${m(data.manager.expected)}`}
+               value={data.manager.toWithdraw + data.manager.expected} tone="text-emerald-600 dark:text-emerald-400" />
+          {(data.investors.toPay !== 0 || data.investors.expected !== 0) && (
+            <Row label="Прибыль инвесторов" hint={`к выплате ${m(data.investors.toPay)} · ожидается ${m(data.investors.expected)}`}
+                 value={data.investors.toPay + data.investors.expected} tone="text-amber-600 dark:text-amber-400" />
+          )}
+          <Row label="Остаток" hint={data.rest >= 0 ? 'Ваши вложения и прочее' : 'Расходы, не списанные ни с чьей прибыли'}
+               value={data.rest} tone={data.rest >= 0 ? 'text-slate-700 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400'} />
+        </SheetSection>
+      </div>
+    </GlassSheet>
+  );
+};
+
 const Dashboard: React.FC<DashboardProps> = ({
     sales: allSales,
     customers,
@@ -1178,6 +1243,17 @@ const currentMonthName = useMemo(() => {
         .reduce((sum, a) => sum + (accountBalances[a.id] || 0), 0);
       return visibleCash + calculatedStats.totalOutstanding;
   }, [selectedAccountId, accountBalances, calculatedStats.totalOutstanding, globalWorkingCapital, accounts]);
+
+  // «В обороте» по частям: где деньги и чьи (src/turnoverBreakdown.ts)
+  const [showTurnover, setShowTurnover] = useState(false);
+  const turnover = useMemo(() => {
+    if (!showTurnover) return null;
+    const accountIds = selectedAccountId ? [selectedAccountId] : accounts.map(a => a.id);
+    return turnoverBreakdown({
+      accounts, accountIds, accountBalances, sales, expenses, investors,
+      profitFromPaymentsOnly,
+    });
+  }, [showTurnover, selectedAccountId, accounts, accountBalances, sales, expenses, investors, profitFromPaymentsOnly]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
@@ -1715,8 +1791,10 @@ useEffect(() => {
     </div>
   </div>
 
-  {/* 3. Оборотные средства (оставлен на 3 месте) */}
-  <div className="dash-stat group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-default">
+  {/* 3. Оборотные средства (оставлен на 3 месте). Нажатие — из чего состоит сумма */}
+  <div role="button" tabIndex={0} onClick={() => setShowTurnover(true)}
+       onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowTurnover(true); } }}
+       className="dash-stat group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.99]">
     <div className="dash-stat-blob absolute -right-6 -top-6 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
     <div className="dash-stat-icon w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1729,8 +1807,15 @@ useEffect(() => {
         {formatCurrency(currentWorkingCapital, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
+      <p className="mt-1.5 text-[10px] sm:text-[11px] font-semibold text-blue-600 dark:text-blue-400">Из чего состоит ›</p>
     </div>
   </div>
+
+  {showTurnover && turnover && (
+    <TurnoverSheet data={turnover} showCents={appSettings.showCents}
+                   accountName={selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : undefined}
+                   onClose={() => setShowTurnover(false)} />
+  )}
 
 
 
