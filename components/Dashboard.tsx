@@ -1248,7 +1248,8 @@ const currentMonthName = useMemo(() => {
   const [showTurnover, setShowTurnover] = useState(false);
   const turnover = useMemo(() => {
     if (!showTurnover) return null;
-    const accountIds = selectedAccountId ? [selectedAccountId] : accounts.map(a => a.id);
+    // Скрытые счета — как в карточке «В обороте» и в кассе: не участвуют в общем итоге
+    const accountIds = selectedAccountId ? [selectedAccountId] : accounts.filter(a => !a.isArchived).map(a => a.id);
     return turnoverBreakdown({
       accounts, accountIds, accountBalances, sales, expenses, investors,
       profitFromPaymentsOnly,
