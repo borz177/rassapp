@@ -31,7 +31,7 @@ const FEATURE_LABELS: { key: keyof PlanLimits; label: string; note?: string }[] 
   { key: 'suppliers', label: 'Модуль «Партнёры»: поставщики и долги по закупу' },
   { key: 'whatsapp', label: 'Авто-напоминания клиентам в WhatsApp' },
   { key: 'tasks', label: 'Поручения сотрудникам' },
-  { key: 'ai', label: 'AI-помощник' },
+  { key: 'ai', label: 'Заполнение клиента по фото паспорта' },
   { key: 'notifications', label: 'Уведомления о платежах и договорах' },
 ];
 
