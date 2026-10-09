@@ -913,6 +913,18 @@ const ProfitDetailsModal = ({
  * Обе части сходятся к одной сумме; последняя строка второй части — остаток
  * (свои вложения и расходы, не списанные с прибыли), чтобы итог всегда сходился.
  */
+/**
+ * Стрелка «›» в углу карточки главной: карточку можно нажать. Раньше стрелка
+ * появлялась только при наведении мыши, а на телефоне это объясняла подпись
+ * «Нажмите для деталей», занимавшая строку в каждой карточке.
+ */
+const CardChevron: React.FC = () => (
+  <svg aria-hidden className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10 w-5 h-5 text-slate-300 dark:text-slate-600 transition-transform duration-300 group-hover:translate-x-0.5"
+       viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+    <polyline points="9 18 15 12 9 6"/>
+  </svg>
+);
+
 const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onClose: () => void }> = ({ data, showCents, accountName, onClose }) => {
   const m = (n: number) => `${formatCurrency(n, showCents)} ₽`;
   const pct = (n: number) => (data.total > 0 ? Math.max(0, n / data.total * 100) : 0);
@@ -1776,6 +1788,7 @@ useEffect(() => {
   {/* 2. Просрочено (НОВАЯ) */}
   <div className="dash-stat group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(220,38,38,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-red-200 flex flex-col relative overflow-hidden cursor-pointer"
        onClick={() => onAction('VIEW_OVERDUE')}>
+    <CardChevron />
     <div className="dash-stat-blob absolute -right-6 -top-6 w-24 h-24 bg-red-50 dark:bg-red-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
     <div className="dash-stat-icon w-10 h-10 sm:w-12 sm:h-12 bg-red-100 dark:bg-red-900/30 rounded-xl flex items-center justify-center text-red-600 dark:text-red-400 mb-4 z-10 relative group-hover:bg-red-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1797,6 +1810,7 @@ useEffect(() => {
        onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setShowTurnover(true); } }}
        className="dash-stat group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-blue-200 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.99]">
     <div className="dash-stat-blob absolute -right-6 -top-6 w-24 h-24 bg-blue-50 dark:bg-blue-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
+    <CardChevron />
     <div className="dash-stat-icon w-10 h-10 sm:w-12 sm:h-12 bg-blue-100 dark:bg-blue-900/30 rounded-xl flex items-center justify-center text-blue-600 dark:text-blue-400 mb-4 z-10 relative group-hover:bg-blue-500 group-hover:text-white transition-colors duration-300 shadow-sm">
       <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/>
@@ -1887,16 +1901,12 @@ useEffect(() => {
         {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-      <p className="text-[10px] sm:text-xs text-slate-400 mt-1">От клиентов в этом месяце</p>
+      <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
     </div>
-    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-      <svg className="w-4 h-4 text-amber-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </div>
+    <CardChevron />
   </div>
 
-  {/* 8. Получено в этом месяце */}
+  {/* 8. Получено платежей за текущий месяц */}
   <div className="dash-stat group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-emerald-200 flex flex-col relative overflow-hidden cursor-pointer active:scale-[0.98]"
        onClick={() => setSelectedPaymentType('received')}>
     <div className="dash-stat-blob absolute -right-6 -top-6 w-24 h-24 bg-emerald-50 dark:bg-emerald-900/20 rounded-full opacity-50 group-hover:scale-150 transition-transform duration-700 pointer-events-none"></div>
@@ -1906,18 +1916,14 @@ useEffect(() => {
       </svg>
     </div>
     <div className="z-10 relative mt-auto">
-      <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено в этом месяце</p>
+      <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено платежей</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
         {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-      <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
+      <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
     </div>
-    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-      <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-        <polyline points="9 18 15 12 9 6"/>
-      </svg>
-    </div>
+    <CardChevron />
   </div>
 </div>
 
@@ -1949,13 +1955,8 @@ useEffect(() => {
             <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
         </p>
         <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
-        <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
     </div>
-    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-        <svg className="w-4 h-4 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="9 18 15 12 9 6"/>
-        </svg>
-    </div>
+    <CardChevron />
 </div>
 {/* Полученная прибыль в этом месяце */}
 <div
@@ -1975,13 +1976,8 @@ useEffect(() => {
             <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
         </p>
         <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
-        <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
     </div>
-    <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-        <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-            <polyline points="9 18 15 12 9 6"/>
-        </svg>
-    </div>
+    <CardChevron />
 </div>
         {/* Общая ожидаемая прибыль */}
         <div onClick={() => setSelectedTotalsType('expected')}
@@ -1998,13 +1994,9 @@ useEffect(() => {
                     {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
                     <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
                 </p>
-                <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
+                <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">По всем договорам</p>
             </div>
-            <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                <svg className="w-4 h-4 text-blue-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                </svg>
-            </div>
+    <CardChevron />
         </div>
 
         {/* Общая полученная прибыль */}
@@ -2022,13 +2014,9 @@ useEffect(() => {
                     {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
                     <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
                 </p>
-                <p className="text-[10px] sm:text-xs text-emerald-500 mt-1">Нажмите для деталей</p>
+                <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">По всем договорам</p>
             </div>
-            <div className="absolute bottom-3 right-3 opacity-0 group-hover:opacity-100 transition-opacity">
-                <svg className="w-4 h-4 text-emerald-400" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <polyline points="9 18 15 12 9 6"/>
-                </svg>
-            </div>
+    <CardChevron />
         </div>
     </div>
 </div>
