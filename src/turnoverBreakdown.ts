@@ -27,8 +27,18 @@ export interface TurnoverBreakdown {
   investorCapital: number;
   manager: { toWithdraw: number; expected: number };
   investors: { toPay: number; expected: number };
+  /** То же по каждому внешнему инвестору (владелец «Это я» входит в manager) */
+  perInvestor: { id: string; name: string; capital: number; toPay: number; expected: number }[];
   rest: number;
+  /**
+   * Долг по договорам, где платёж просрочен больше чем на DOUBTFUL_DAYS дней, —
+   * для закята (сомнительный долг). profit — ожидаемая наценка в нём.
+   */
+  doubtful: { receivable: number; profit: number; contracts: number };
 }
+
+/** С какой просрочки долг считается сомнительным */
+export const DOUBTFUL_DAYS = 90;
 
 const isRealCustomerSale = (sale: Sale, investorIds: Set<string>) =>
   !String(sale.customerId).startsWith('system_') && !investorIds.has(sale.customerId);
@@ -53,6 +63,15 @@ export const turnoverBreakdown = (args: {
   const ownerIds = new Set(investors.filter(i => i.isOwner).map(i => i.id));
   const outsidePct = (shares: { investor: Investor; percentage: number }[]) =>
     shares.filter(x => !ownerIds.has(x.investor.id)).reduce((s, x) => s + x.percentage, 0);
+  // По каждому внешнему инвестору: полученная прибыль, выплаты, ожидаемая
+  const per = new Map<string, { earned: number; out: number; expected: number }>();
+  const perOf = (id: string) => {
+    let row = per.get(id);
+    if (!row) { row = { earned: 0, out: 0, expected: 0 }; per.set(id, row); }
+    return row;
+  };
+  const doubtfulCutoff = now - DOUBTFUL_DAYS * 86400000;
+  let doubtfulReceivable = 0, doubtfulProfit = 0, doubtfulContracts = 0;
 
   const cash = accountIds.reduce((sum, id) => sum + (accountBalances[id] || 0), 0);
 
@@ -63,6 +82,9 @@ export const turnoverBreakdown = (args: {
     if (!ids.has(sale.accountId) || !isRealCustomerSale(sale, investorIds)) continue;
     const remaining = Math.max(0, Number(sale.remainingAmount) || 0);
     receivable += remaining;
+    const isDoubtful = remaining > 0 && (sale.status === 'ACTIVE' || sale.status === 'DRAFT')
+      && (sale.paymentPlan || []).some(p => !p.isPaid && new Date(p.date).getTime() < doubtfulCutoff);
+    if (isDoubtful) { doubtfulReceivable += remaining; doubtfulContracts++; }
 
     const buy = Number(sale.buyPrice) || 0;
     if (buy <= 0 || Number(sale.totalAmount) <= buy) continue;
@@ -74,9 +96,12 @@ export const turnoverBreakdown = (args: {
     if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
       const expected = remaining * margin;
       receivableProfit += expected;
-      const invPct = outsidePct(expectedProfitShares(account, investors, sale));
+      if (isDoubtful) doubtfulProfit += expected;
+      const shares = expectedProfitShares(account, investors, sale);
+      const invPct = outsidePct(shares);
       invExpected += expected * invPct / 100;
       mgrExpected += expected * (100 - invPct) / 100;
+      shares.forEach(x => { if (!ownerIds.has(x.investor.id)) perOf(x.investor.id).expected += expected * x.percentage / 100; });
     }
 
     // Полученная прибыль — по каждому поступлению, доли на его дату
@@ -88,8 +113,10 @@ export const turnoverBreakdown = (args: {
     for (const m of money) {
       if (m.amount <= 0) continue;
       const profit = moneyInProfit(sale, m, profitFromPaymentsOnly);
-      const invPct = outsidePct(paymentProfitShares(account, investors, sale, m));
+      const shares = paymentProfitShares(account, investors, sale, m);
+      const invPct = outsidePct(shares);
       invEarned += profit * invPct / 100;
+      shares.forEach(x => { if (!ownerIds.has(x.investor.id)) perOf(x.investor.id).earned += profit * x.percentage / 100; });
       mgrEarned += profit * (100 - invPct) / 100;
     }
   }
@@ -106,12 +133,13 @@ export const turnoverBreakdown = (args: {
     }
     if (e.investorId && e.payoutType === 'PROFIT') {
       if (ownerIds.has(e.investorId)) mgrOut += Number(e.amount) || 0;
-      else invOut += Number(e.amount) || 0;
+      else { invOut += Number(e.amount) || 0; perOf(e.investorId).out += Number(e.amount) || 0; }
     }
     if (e.fromProfit && e.profitSource !== 'MANAGER') {
       for (const inv of investors) {
         const part = getInvestorProfitDeduction(e, account, investors, inv.id);
-        if (ownerIds.has(inv.id)) mgrOut += part; else invOut += part;
+        if (ownerIds.has(inv.id)) mgrOut += part;
+        else { invOut += part; if (part) perOf(inv.id).out += part; }
       }
     }
   }
@@ -119,19 +147,21 @@ export const turnoverBreakdown = (args: {
   // Вложения инвесторов в эти счета — текущие суммы (после довложений и возвратов)
   const capitalOf = (inv: Investor | undefined) => (inv ? getActivePeriodAt(inv, now)?.initialAmount || 0 : 0);
   let investorCapital = 0;
+  const capitalBy = new Map<string, number>();
+  const addCapital = (inv: Investor | undefined) => {
+    // Владелец («Это я») — не внешний инвестор: его вложения считаем своими (в остатке).
+    // Капитал у инвестора один: если у него и свой счёт, и место в пуле, а в разбивку
+    // попали оба счёта, — считаем его один раз, иначе вложения задвоятся.
+    if (!inv || inv.isOwner || capitalBy.has(inv.id)) return;
+    const c = capitalOf(inv);
+    investorCapital += c;
+    capitalBy.set(inv.id, (capitalBy.get(inv.id) || 0) + c);
+  };
   for (const id of accountIds) {
     const acc = accountOf(id);
     if (!acc) continue;
-    if (acc.type === 'POOL') {
-      // Владелец («Это я») — не внешний инвестор: его вложения считаем своими (в остатке)
-      (acc.poolMemberIds || []).forEach(mid => {
-        const inv = investors.find(i => i.id === mid);
-        if (inv && !inv.isOwner) investorCapital += capitalOf(inv);
-      });
-    } else if (acc.ownerId) {
-      const inv = investors.find(i => i.id === acc.ownerId);
-      if (inv && !inv.isOwner) investorCapital += capitalOf(inv);
-    }
+    if (acc.type === 'POOL') (acc.poolMemberIds || []).forEach(mid => addCapital(investors.find(i => i.id === mid)));
+    else if (acc.ownerId) addCapital(investors.find(i => i.id === acc.ownerId));
   }
 
   const round = (n: number) => Math.round(n * 100) / 100;
@@ -149,6 +179,19 @@ export const turnoverBreakdown = (args: {
     investorCapital: round(investorCapital),
     manager,
     investors: investorsPart,
+    perInvestor: [...new Set([...capitalBy.keys(), ...per.keys()])]
+      .map(id => {
+        const p = per.get(id);
+        return {
+          id, name: investors.find(i => i.id === id)?.name || 'Инвестор',
+          capital: round(capitalBy.get(id) || 0),
+          toPay: round(p ? p.earned - p.out : 0),
+          expected: round(p ? p.expected : 0),
+        };
+      })
+      .filter(x => Math.abs(x.capital) + Math.abs(x.toPay) + Math.abs(x.expected) >= 0.01)
+      .sort((a, b) => (b.capital + b.toPay + b.expected) - (a.capital + a.toPay + a.expected)),
     rest: round(rest),
+    doubtful: { receivable: round(doubtfulReceivable), profit: round(doubtfulProfit), contracts: doubtfulContracts },
   };
 };

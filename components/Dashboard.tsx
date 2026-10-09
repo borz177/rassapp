@@ -17,7 +17,8 @@ import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
 import { turnoverBreakdown, type TurnoverBreakdown } from '../src/turnoverBreakdown';
 import GlassSheet, { SheetSection } from './GlassSheet';
-import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp } from '../src/utils';
+import ZakatSheet from './ZakatSheet';
+import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp, getInvestorAccount } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 import {createPortal} from "react-dom";
 
@@ -108,6 +109,10 @@ interface DashboardProps {
   /** Приходы со склада: долг за принятый товар считается и по ним */
   stockMovements?: StockMovement[];
   expenses?: Expense[];
+  /** Сохранить настройки — окно «Закят» запоминает способ расчёта */
+  onUpdateSettings?: (s: AppSettings) => void;
+  /** Записать выплату закята: открыть форму расхода с готовой суммой */
+  onRecordZakat?: (draft: { accountId: string | null; amount: number; investorId?: string }) => void;
 }
 
 const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: Sale, customerName: string, onClose: () => void, appSettings: AppSettings }) => {
@@ -925,7 +930,7 @@ const CardChevron: React.FC = () => (
   </svg>
 );
 
-const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onClose: () => void }> = ({ data, showCents, accountName, onClose }) => {
+const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onZakat?: () => void; onClose: () => void }> = ({ data, showCents, accountName, onZakat, onClose }) => {
   const m = (n: number) => `${formatCurrency(n, showCents)} ₽`;
   const pct = (n: number) => (data.total > 0 ? Math.max(0, n / data.total * 100) : 0);
   const Row: React.FC<{ label: string; hint?: string; value: number; tone?: string; strong?: boolean }> = ({ label, hint, value, tone, strong }) => (
@@ -960,7 +965,7 @@ const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; ac
           </div>
         </SheetSection>
 
-        <SheetSection title="Чьи деньги" hint="Прибыль — полученная и ещё не выведенная, плюс ожидаемая с долга клиентов. Остаток — ваши собственные вложения и расходы, не списанные с прибыли (налоги, закят и т. п.); минус — потрачено больше, чем вложено.">
+        <SheetSection title="Чьи деньги">
           <div className="px-4 pt-3.5 pb-1">
             <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700">
               {owners.filter(o => o.value > 0).map(o => (
@@ -978,6 +983,26 @@ const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; ac
           <Row label="Остаток" hint={data.rest >= 0 ? 'Ваши вложения и прочее' : 'Расходы, не списанные ни с чьей прибыли'}
                value={data.rest} tone={data.rest >= 0 ? 'text-slate-700 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400'} />
         </SheetSection>
+
+        {onZakat && (
+          <SheetSection>
+            <button type="button" onClick={onZakat}
+                    className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
+              <span className="w-9 h-9 shrink-0 rounded-xl bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 flex items-center justify-center">
+                <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                  <path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a6.5 6.5 0 0 0 11 11z"/>
+                </svg>
+              </span>
+              <span className="min-w-0 flex-1">
+                <span className="block text-[15px] font-semibold text-slate-800 dark:text-white">Закят</span>
+                <span className="block text-[12px] leading-snug text-slate-500 dark:text-slate-400">Сколько и когда платить</span>
+              </span>
+              <svg className="w-5 h-5 shrink-0 text-slate-300 dark:text-slate-600" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </SheetSection>
+        )}
       </div>
     </GlassSheet>
   );
@@ -1003,6 +1028,8 @@ const Dashboard: React.FC<DashboardProps> = ({
     suppliers = [],
     stockMovements = [],
     expenses = [],
+    onUpdateSettings,
+    onRecordZakat,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const macShell = isMacShell();
@@ -1258,15 +1285,37 @@ const currentMonthName = useMemo(() => {
 
   // «В обороте» по частям: где деньги и чьи (src/turnoverBreakdown.ts)
   const [showTurnover, setShowTurnover] = useState(false);
+  const [showZakat, setShowZakat] = useState(false);
+  // Скрытые счета — как в карточке «В обороте» и в кассе: не участвуют в общем итоге
+  const turnoverAccountIds = useMemo(
+    () => (selectedAccountId ? [selectedAccountId] : accounts.filter(a => !a.isArchived).map(a => a.id)),
+    [selectedAccountId, accounts]
+  );
+  // Для закята: товар на складе (только по всем счетам — к счёту склад не привязан)
+  // и долги поставщикам (по выбранному счёту — только закуп по его договорам)
+  const zakatInventory = useMemo(() => {
+    if (!showZakat || selectedAccountId) return { buy: 0, sell: 0 };
+    return (products || []).reduce((acc, p) => {
+      const qty = Math.max(0, Number(p.stock) || 0);
+      return { buy: acc.buy + qty * (Number(p.buyPrice) || 0), sell: acc.sell + qty * (Number(p.price) || 0) };
+    }, { buy: 0, sell: 0 });
+  }, [showZakat, selectedAccountId, products]);
+  const zakatSupplierDebt = useMemo(() => {
+    if (!showZakat) return 0;
+    if (!selectedAccountId) return supplierDebt.all.total;
+    return allSales.reduce((sum, sale) => {
+      if (sale.accountId !== selectedAccountId || !sale.supplierId || !sale.buyPrice || sale.isPartnerDebtPaid) return sum;
+      return sum + Math.max(0, sale.buyPrice - (sale.partnerDebtPaidAmount || 0));
+    }, 0);
+  }, [showZakat, selectedAccountId, allSales, supplierDebt]);
   const turnover = useMemo(() => {
     if (!showTurnover) return null;
-    // Скрытые счета — как в карточке «В обороте» и в кассе: не участвуют в общем итоге
-    const accountIds = selectedAccountId ? [selectedAccountId] : accounts.filter(a => !a.isArchived).map(a => a.id);
+    const accountIds = turnoverAccountIds;
     return turnoverBreakdown({
       accounts, accountIds, accountBalances, sales, expenses, investors,
       profitFromPaymentsOnly,
     });
-  }, [showTurnover, selectedAccountId, accounts, accountBalances, sales, expenses, investors, profitFromPaymentsOnly]);
+  }, [showTurnover, turnoverAccountIds, accounts, accountBalances, sales, expenses, investors, profitFromPaymentsOnly]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
@@ -1828,7 +1877,24 @@ useEffect(() => {
   {showTurnover && turnover && (
     <TurnoverSheet data={turnover} showCents={appSettings.showCents}
                    accountName={selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : undefined}
-                   onClose={() => setShowTurnover(false)} />
+                   onZakat={() => setShowZakat(true)}
+                   onClose={() => { setShowTurnover(false); setShowZakat(false); }} />
+  )}
+  {showZakat && turnover && (
+    <ZakatSheet breakdown={turnover} showCents={appSettings.showCents}
+                accountName={selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : undefined}
+                accountIds={turnoverAccountIds} accounts={accounts} expenses={expenses}
+                investors={investors} sales={allSales}
+                inventory={zakatInventory} supplierDebt={zakatSupplierDebt}
+                settings={appSettings.zakat}
+                onSaveSettings={onUpdateSettings ? z => onUpdateSettings({ ...appSettings, zakat: z }) : undefined}
+                onRecordPayment={onRecordZakat ? ({ amount, investorId }) => {
+                  setShowZakat(false); setShowTurnover(false);
+                  // Закят инвестора — с его счёта (или пула, где он участник)
+                  const accountId = selectedAccountId || (investorId ? getInvestorAccount(investorId, accounts)?.id : undefined) || null;
+                  onRecordZakat({ accountId, amount: Math.round(amount), investorId });
+                } : undefined}
+                onClose={() => setShowZakat(false)} />
   )}
 
 

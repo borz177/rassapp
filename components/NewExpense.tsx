@@ -30,6 +30,13 @@ interface NewExpenseProps {
     maxAmount?: number;
     /** Общий долг поставщику (договоры и поставки на склад) — подсказка при оплате из списка партнёров */
     supplierDebt?: number;
+    /** Выплата закята из окна «Закят»: сразу из прибыли */
+    fromProfit?: boolean;
+    /** Закят за инвестора: выплата инвестору из его прибыли */
+    investorId?: string;
+    payoutType?: 'INVESTMENT' | 'PROFIT';
+    /** Комментарий, например «Закят» */
+    description?: string;
   } | null;
   onClose: () => void;
   onSubmit: (data: any) => void;
@@ -72,21 +79,21 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const saleList: Sale[] = sales || [];
   const isSupplierPayment = !!initialData?.saleId;
 
-  const [sourceType, setSourceType] = useState<'INVESTOR' | 'OTHER'>('OTHER');
+  const [sourceType, setSourceType] = useState<'INVESTOR' | 'OTHER'>(initialData?.investorId ? 'INVESTOR' : 'OTHER');
 
   // Form States
-  const [selectedInvestorId, setSelectedInvestorId] = useState('');
+  const [selectedInvestorId, setSelectedInvestorId] = useState(initialData?.investorId || '');
   const [sourceAccountId, setSourceAccountId] = useState(initialData?.accountId || '');
   const [amount, setAmount] = useState(initialData?.amount ? String(initialData.amount) : '');
   const [title, setTitle] = useState(initialData?.title || '');
   const [category, setCategory] = useState(initialData?.category || 'General');
   const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
   // Комментарий к расходу (Expense.description): видно в «Все операции»
-  const [comment, setComment] = useState('');
-  const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(null);
+  const [comment, setComment] = useState(initialData?.description || '');
+  const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(initialData?.payoutType || null);
   const [managerPayoutSource, setManagerPayoutSource] = useState<'CAPITAL' | 'PROFIT' | null>(null);
   // Общий расход списывается из заработанной прибыли (делится по долям счёта)
-  const [fromProfit, setFromProfit] = useState(false);
+  const [fromProfit, setFromProfit] = useState(!!initialData?.fromProfit);
   // Чью прибыль уменьшает: MANAGER — только менеджера, SHARED — общее дело (делится по долям)
   const [profitSource, setProfitSource] = useState<'MANAGER' | 'SHARED'>('SHARED');
 
@@ -159,6 +166,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
   // Auto-fill Account logic when Investor changes
   useEffect(() => {
+      // Счёт уже выбран тем, кто открыл форму (закят за инвестора по этому счёту)
+      if (initialData?.accountId && initialData.investorId === selectedInvestorId) return;
       if (selectedInvestor) {
           // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
           // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего выплата/списание
@@ -199,7 +208,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       }
       // Зарплата сотрудника — расход менеджера: он нанял, ему и платить из своей доли.
       // Прочие расходы по умолчанию считаются расходом общего дела.
-      setProfitSource(category === 'Salary' ? 'MANAGER' : 'SHARED');
+      // Закят владелец платит со своей доли — инвесторы платят свой сами
+      setProfitSource(category === 'Salary' || category === 'Закят' ? 'MANAGER' : 'SHARED');
       // Сбрасываем поставщика/договор, если категория не "Партнер"
       if (category !== 'Оплата партнёру') {
           setSelectedSupplierId('');
@@ -578,6 +588,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                          <option value="Salary">Зарплата</option>
                          <option value="Marketing">Маркетинг</option>
                          <option value="Taxes">Налоги</option>
+                         <option value="Закят">Закят</option>
                          <option value="Equipment">Оборудование</option>
                          {showSupplierCategory && <option value="Оплата партнёру">Партнер</option>}
                         {/* Свои категории — следом за базовыми: их завели в приходе,

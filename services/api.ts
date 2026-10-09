@@ -1844,6 +1844,10 @@ export const api = {
     },
 
     // Push в iOS-приложении через APNs (см. src/nativePush.ts)
+    /** Учётные цены ЦБ на золото и серебро, ₽ за грамм — для нисаба закята */
+    getMetalPrices: async (): Promise<{ gold: number; silver: number; date: string; source: string }> => {
+        return api.get('/zakat/metal-prices');
+    },
     getNativePushConfig: async (): Promise<{ ios: boolean }> => {
         return api.get('/push/native-config');
     },

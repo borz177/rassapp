@@ -1361,7 +1361,7 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v36';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v37';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
 
   let seen = false;
@@ -4737,6 +4737,16 @@ if (!user && !showSplash) {
                              accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={scopedRetailSales} products={products} suppliers={suppliers}
                   showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
                    stockMovements={scopedMovements} expenses={expenses}
+                   onUpdateSettings={isManager ? handleUpdateSettings : undefined}
+                   onRecordZakat={({ accountId, amount, investorId }) => {
+                     // Каждый платит со своего: свой закят — из своей прибыли, закят
+                     // инвестора — выплатой ему из его прибыли с пометкой «Закят»
+                     setDraftExpenseData(investorId
+                       ? { ...(accountId ? { accountId } : {}), investorId, payoutType: 'PROFIT', amount: amount > 0 ? amount : undefined, description: 'Закят' }
+                       : { ...(accountId ? { accountId } : {}), title: 'Закят', category: 'Закят', amount: amount > 0 ? amount : undefined, fromProfit: true });
+                     rememberFormReturn();
+                     setCurrentView('CREATE_EXPENSE');
+                   }}
                              />}
               {/* 🔹 Дашборд инвестора — с фильтрацией и выходом */}
 {/* 🔹 Дашборд инвестора — с проверкой на загрузку данных */}
@@ -6023,7 +6033,7 @@ if (!user && !showSplash) {
       <div className="px-6 pt-7 pb-6">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Обновление</p>
         <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          Обновили договоры и калькулятор
+          Оборот и закят
         </h3>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
@@ -6031,22 +6041,16 @@ if (!user && !showSplash) {
         <div className="mt-6 space-y-5">
           {[
             {
-              tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-              icon: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5" /><path d="M9 13h6M9 17h4" /></>,
-              title: 'Договоры',
-              text: 'Один раздел: просроченные и архив — в заголовке. Сортировка, фильтры и «Поделиться» списком должников.',
+              tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300',
+              icon: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18M7 15h2" /></>,
+              title: 'В обороте',
+              text: 'Нажмите на карточку на главной — где деньги и чьи они.',
             },
             {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <><rect x="5" y="3" width="14" height="18" rx="2" /><path d="M9 7h6" /><path d="M9 12h.01M12 12h.01M15 12h.01M9 16h.01M12 16h.01M15 16h.01" /></>,
-              title: 'Калькулятор',
-              text: 'Ставки таблицей, категории товара, скидка за взнос и новая страница для клиента.',
-            },
-            {
-              tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
-              icon: <><path d="M8 6h13M8 12h13M8 18h13" /><path d="M3 6h.01M3 12h.01M3 18h.01" /></>,
-              title: 'Журнал',
-              text: 'С магазином деньги и товар — в одной ленте с общим фильтром.',
+              icon: <path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a6.5 6.5 0 0 0 11 11z" />,
+              title: 'Закят',
+              text: 'Ваш и инвесторов, нисаб по ЦБ, выплаты за год.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">

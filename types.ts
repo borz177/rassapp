@@ -773,8 +773,36 @@ export interface PushSubscriptionInfo {
   createdAt: string;
 }
 
+/**
+ * Как считать закят (src/zakat.ts). Все поля необязательны: по умолчанию — лунный год,
+ * нисаб по серебру (как у Муфтията ЧР), долг клиентов целиком, товар по закупу,
+ * долги поставщикам вычитаются.
+ */
+export interface ZakatSettings {
+  /** Год закята: лунный — 2,5%, солнечный — 2,577% (на 11 дней длиннее) */
+  year?: 'LUNAR' | 'SOLAR';
+  /** Нисаб: 595 г серебра, 85 г золота или своя сумма (например, объявленная муфтиятом) */
+  nisabMetal?: 'SILVER' | 'GOLD' | 'CUSTOM';
+  /** Своя сумма нисаба, ₽ — при nisabMetal === 'CUSTOM' */
+  customNisab?: number;
+  /** Не облагать будущую наценку в долге клиентов (подход AAOIFI) */
+  excludeFutureMarkup?: boolean;
+  /** Не облагать долг по договорам с просрочкой больше 90 дней — до получения */
+  excludeDoubtful?: boolean;
+  /** Вычитать долги поставщикам */
+  deductSupplierDebt?: boolean;
+  /** Товар на складе: по цене закупа или по цене продажи */
+  inventoryPrice?: 'BUY' | 'SELL';
+  /** Дата, с которой идёт текущий год закята (ISO-дата) */
+  hawlStart?: string;
+  /** Цена грамма металла вручную — если курс ЦБ недоступен */
+  manualMetalPrice?: number;
+}
+
 export interface AppSettings {
   companyName: string;
+  /** Расчёт закята: окно «В обороте → Закят» */
+  zakat?: ZakatSettings;
   sellerPhone?: string;
   whatsapp?: WhatsAppSettings;
   calculator?: CalculatorSettings;

@@ -6234,6 +6234,38 @@ app.post('/api/push/unsubscribe', auth, async (req, res) => {
 
 // 📱 Нативные push (iPhone): включены ли на сервере. Пока ключа APNs нет,
 // приложение не показывает пункт push вовсе — нерабочая кнопка хуже, чем никакой.
+// 🌙 Учётные цены ЦБ РФ на золото и серебро (₽ за грамм) — для нисаба в расчёте закята.
+// Кэш на 6 часов: ЦБ обновляет цены раз в рабочий день. Если ЦБ недоступен — отдаём
+// последнее полученное значение, а без него 503: клиент предложит ввести цену вручную.
+let metalPricesCache = null; // { at, data }
+app.get('/api/zakat/metal-prices', auth, async (req, res) => {
+  if (metalPricesCache && Date.now() - metalPricesCache.at < 6 * 3600 * 1000) {
+    return res.json(metalPricesCache.data);
+  }
+  try {
+    const fmt = d => `${String(d.getDate()).padStart(2, '0')}/${String(d.getMonth() + 1).padStart(2, '0')}/${d.getFullYear()}`;
+    const to = new Date();
+    const from = new Date(to.getTime() - 14 * 86400000);
+    const r = await fetch(`https://www.cbr.ru/scripts/xml_metall.asp?date_req1=${fmt(from)}&date_req2=${fmt(to)}`,
+      { signal: AbortSignal.timeout(10000) });
+    if (!r.ok) throw new Error(`CBR HTTP ${r.status}`);
+    // Ответ в windows-1251, но нужные поля — латиница и цифры
+    const xml = Buffer.from(await r.arrayBuffer()).toString('latin1');
+    const last = {};
+    for (const m of xml.matchAll(/<Record Date="(\d\d)\.(\d\d)\.(\d{4})" Code="(\d)"><Buy>([\d,]+)<\/Buy>/g)) {
+      last[m[4]] = { date: `${m[3]}-${m[2]}-${m[1]}`, price: Number(m[5].replace(',', '.')) };
+    }
+    if (!last['1'] || !last['2']) throw new Error('CBR: нет цен');
+    const data = { gold: last['1'].price, silver: last['2'].price, date: last['1'].date, source: 'ЦБ РФ' };
+    metalPricesCache = { at: Date.now(), data };
+    res.json(data);
+  } catch (err) {
+    console.error('metal-prices:', err.message);
+    if (metalPricesCache) return res.json(metalPricesCache.data);
+    res.status(503).json({ error: 'Цены ЦБ сейчас недоступны' });
+  }
+});
+
 app.get('/api/push/native-config', auth, async (req, res) => {
   res.json({ ios: apns.enabled });
 });
