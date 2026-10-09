@@ -3,6 +3,7 @@ import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } fr
 import PassportScan, { type PassportFields } from './PassportScan';
 import { Customer } from '../types';
 import { appAlert, appConfirm } from '../src/dialogs';
+import { fileToJpeg } from '../src/jpeg';
 
 /**
  * Клиент — добавление и редактирование одной формой, листом (GlassSheet).
@@ -73,13 +74,14 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
   const valid = form.name.trim().length > 0 && form.phone.trim().length > 0;
   const canSave = valid && !saving && (editing ? dirty : true);
 
-  const onPhoto = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Фото клиента хранится в самой карточке и показывается кружком — 512 точек
+  // хватает с запасом. Снимок с телефона целиком (3–12 МБ) не проходил на сервер
+  // (413) и раздувал загрузку всех данных при каждом входе.
+  const onPhoto = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
     if (!file) return;
-    const reader = new FileReader();
-    reader.onloadend = () => set('photo', String(reader.result || ''));
-    reader.readAsDataURL(file);
+    set('photo', await fileToJpeg(file, 512, 150_000));
   };
 
   // Распознанный паспорт заполняет только пустые поля: набранное руками

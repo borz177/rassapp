@@ -22,3 +22,34 @@ export const canvasToJpeg = (canvas: HTMLCanvasElement, maxChars = MAX_UPLOAD_CH
   small.getContext('2d')!.drawImage(canvas, 0, 0, small.width, small.height);
   return small.toDataURL('image/jpeg', 0.7);
 };
+
+/** Файл в data URL как есть */
+const readAsDataUrl = (file: File) => new Promise<string>((resolve, reject) => {
+  const reader = new FileReader();
+  reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
+  reader.onloadend = () => resolve(String(reader.result || ''));
+  reader.readAsDataURL(file);
+});
+
+/**
+ * Фото с телефона (3–12 МБ) — в JPEG нужного размера: maxSide точек по длинной
+ * стороне и не длиннее maxChars в base64. Поворот из EXIF браузер учитывает при
+ * отрисовке сам. Формат, который браузер не рисует (HEIC на компьютере), —
+ * возвращаем как есть.
+ */
+export const fileToJpeg = async (file: File, maxSide: number, maxChars = MAX_UPLOAD_CHARS): Promise<string> => {
+  const src = await readAsDataUrl(file);
+  try {
+    const img = new Image();
+    img.src = src;
+    await img.decode();
+    const k = Math.min(1, maxSide / Math.max(img.naturalWidth, img.naturalHeight));
+    const canvas = document.createElement('canvas');
+    canvas.width = Math.round(img.naturalWidth * k);
+    canvas.height = Math.round(img.naturalHeight * k);
+    canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+    return canvasToJpeg(canvas, maxChars);
+  } catch {
+    return src;
+  }
+};

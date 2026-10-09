@@ -1,7 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { api } from '../services/api';
 import PassportCamera from './PassportCamera';
-import { canvasToJpeg } from '../src/jpeg';
+import { fileToJpeg } from '../src/jpeg';
 
 export interface PassportFields {
   name: string;
@@ -70,36 +70,9 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
     if (LABELS.some(l => (fields[l.key] || '').trim())) onApply(fields);
   };
 
-  const readFile = (file: File) => new Promise<string>((resolve, reject) => {
-    const reader = new FileReader();
-    reader.onerror = () => reject(new Error('Не удалось прочитать файл'));
-    reader.onloadend = () => resolve(String(reader.result || ''));
-    reader.readAsDataURL(file);
-  });
-
-  /**
-   * Фото из галереи — 3–5 МБ: такой запрос сервер не принимал (413), и до
-   * распознавания он не доходил. Уменьшаем на телефоне до 2000 точек по длинной
-   * стороне — столько же оставляет и сервер, текста паспорта хватает, а
-   * отправка по мобильной сети в разы быстрее. Поворот из EXIF браузер
-   * учитывает сам при отрисовке.
-   */
-  const shrinkImage = async (file: File): Promise<string> => {
-    const src = await readFile(file);
-    try {
-      const img = new Image();
-      img.src = src;
-      await img.decode();
-      const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
-      const canvas = document.createElement('canvas');
-      canvas.width = Math.round(img.naturalWidth * k);
-      canvas.height = Math.round(img.naturalHeight * k);
-      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
-      return canvasToJpeg(canvas);
-    } catch {
-      return src; // формат, который браузер не рисует (HEIC на компьютере), — как есть
-    }
-  };
+  // Фото из галереи — 3–12 МБ: такой запрос сервер не принимал (413). Уменьшаем
+  // на телефоне до 2000 точек — столько же оставляет и сервер, текста хватает.
+  const shrinkImage = (file: File) => fileToJpeg(file, 2000);
 
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
