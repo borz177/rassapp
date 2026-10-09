@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Flashlight, FlashlightOff, Image as ImageIcon, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import { haptics } from '../src/haptics';
-import { canvasToJpeg } from '../src/jpeg';
+import { canvasToJpeg, fileToJpeg } from '../src/jpeg';
 import type { PassportFields } from './PassportScan';
 
 /**
@@ -49,12 +49,10 @@ interface Props {
   recognize: (dataUrl: string) => Promise<PassportFields>;
   /** Готово: подставить поля. preview — снимок, по которому распознали */
   onDone: (fields: PassportFields, preview: string) => void;
-  /** Открыть выбор фото из галереи (вызывается в обработчике нажатия) */
-  onGallery: () => void;
   onClose: () => void;
 }
 
-const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose }) => {
+const PassportCamera: React.FC<Props> = ({ recognize, onDone, onClose }) => {
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const frameRef = useRef<HTMLDivElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
@@ -66,6 +64,9 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
   const [attempt, setAttempt] = useState(0);
   const attemptsRef = useRef(0);
   const bestRef = useRef<{ fields: PassportFields; preview: string } | null>(null);
+  // «Из галереи» — не выходя из окна: выбранное фото встаёт в рамку вместо видео
+  const galleryRef = useRef<HTMLInputElement | null>(null);
+  const [still, setStill] = useState<string | null>(null);
   const setPhaseBoth = (p: Phase) => { phaseRef.current = p; setPhase(p); };
 
   const stopCamera = () => {
@@ -94,9 +95,9 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
     return canvasToJpeg(canvas);
   };
 
-  const capture = async () => {
+  const capture = async (fromGallery?: string) => {
     if (phaseRef.current === 'recognizing') return;
-    const dataUrl = grabFrame();
+    const dataUrl = fromGallery || grabFrame();
     if (!dataUrl) return;
     haptics.light();
     setPhaseBoth('recognizing');
@@ -107,7 +108,8 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
       if (!bestRef.current || filledCount(fields) > filledCount(bestRef.current.fields)) {
         bestRef.current = { fields, preview: dataUrl };
       }
-      if (goodEnough(fields) || attemptsRef.current >= MAX_ATTEMPTS) {
+      // Фото из галереи не переснять — что прочиталось, то и подставляем
+      if (goodEnough(fields) || attemptsRef.current >= MAX_ATTEMPTS || fromGallery) {
         const best = bestRef.current!;
         if (filledCount(best.fields) > 0) {
           haptics.success();
@@ -115,22 +117,43 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
           onDone(best.fields, best.preview);
           return;
         }
+        setStill(null);
         setPhaseBoth('aiming');
-        setHint('Не прочиталось. Уберите блики и держите разворот целиком в рамке — или нажмите «Снять»');
+        setHint(fromGallery
+          ? 'На этом фото не прочиталось — выберите другое или наведите камеру'
+          : 'Не прочиталось. Уберите блики и держите разворот целиком в рамке — или нажмите «Снять»');
         attemptsRef.current = 0;
+        bestRef.current = null;
         return;
       }
       setPhaseBoth('aiming');
       setHint('Почти — держите ровнее, без бликов');
     } catch (e: any) {
       haptics.error();
+      setStill(null);
       // Лимит или нет связи — повторять самим бессмысленно
       setErrorText(e?.message || 'Не удалось распознать паспорт');
       setPhaseBoth('error');
     }
   };
+
+  const pickFromGallery = () => galleryRef.current?.click();
+  const onGalleryFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    e.target.value = '';
+    if (!file) return; // передумали — остаёмся в камере
+    const dataUrl = await fileToJpeg(file, 2000);
+    setErrorText('');
+    setStill(dataUrl);
+    attemptsRef.current = 0;
+    bestRef.current = null;
+    phaseRef.current = 'aiming';
+    await capture(dataUrl);
+  };
   const captureRef = useRef(capture);
   captureRef.current = capture;
+  const stillRef = useRef<string | null>(null);
+  stillRef.current = still;
 
   useEffect(() => {
     let alive = true;
@@ -150,7 +173,7 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
     const tick = () => {
       if (!alive) return;
       const video = videoRef.current, frame = frameRef.current;
-      if (phaseRef.current !== 'recognizing' && phaseRef.current !== 'error' && video && frame && video.videoWidth) {
+      if (phaseRef.current !== 'recognizing' && phaseRef.current !== 'error' && !stillRef.current && video && frame && video.videoWidth) {
         const vw = video.videoWidth, vh = video.videoHeight;
         const box = video.getBoundingClientRect(), fr = frame.getBoundingClientRect();
         const scale = Math.max(box.width / vw, box.height / vh);
@@ -254,9 +277,16 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
   return (
     <ModalPortal onClose={onClose}>
       <div className="fixed inset-0 bg-black text-white select-none overflow-hidden" style={{ zIndex: 260 }}>
+        <input ref={galleryRef} type="file" accept="image/*" className="hidden" onChange={onGalleryFile} />
         <video ref={videoRef} playsInline muted autoPlay className="absolute inset-0 w-full h-full object-cover" />
+        {still && <img src={still} alt="" className="absolute inset-0 w-full h-full object-contain bg-black" />}
 
-        {phase !== 'error' && (
+        {still && phase === 'recognizing' && (
+          <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+            <span className="w-12 h-12 rounded-full border-4 border-white/30 border-t-white animate-spin" />
+          </div>
+        )}
+        {phase !== 'error' && !still && (
           <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
             <div ref={frameRef}
                  className={`relative w-[78%] max-w-sm rounded-2xl border-[3px] transition-colors duration-200 ${frameColor}`}
@@ -296,7 +326,7 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
                         className="flex-1 py-3 rounded-2xl bg-white/10 font-bold text-sm active:scale-95 transition-transform">
                   Повторить
                 </button>
-                <button type="button" onClick={() => { stopCamera(); onGallery(); }}
+                <button type="button" onClick={pickFromGallery}
                         className="flex-1 py-3 rounded-2xl bg-indigo-600 font-bold text-sm active:scale-95 transition-transform">
                   Из галереи
                 </button>
@@ -312,7 +342,7 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
               {phase === 'starting' ? 'Включаем камеру…' : hint}
             </p>
             <div className="mx-auto max-w-sm grid grid-cols-3 items-center">
-              <button type="button" onClick={() => { stopCamera(); onGallery(); }}
+              <button type="button" onClick={pickFromGallery}
                       className="justify-self-start flex flex-col items-center gap-1 text-xs font-semibold active:scale-95 transition-transform">
                 <span className="w-12 h-12 rounded-full bg-black/50 backdrop-blur flex items-center justify-center"><ImageIcon size={22} /></span>
                 Из галереи

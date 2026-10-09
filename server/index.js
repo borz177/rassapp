@@ -3883,91 +3883,29 @@ const yandexOcr = async (base64Jpeg, model) => {
   return (data && data.result && data.result.textAnnotation) || {};
 };
 
-/** «ИВАНОВ» → «Иванов», «АННА-МАРИЯ» → «Анна-Мария» */
-const titleCaseRu = (s) => String(s || '').toLowerCase()
-  .replace(/(^|[\s-])([а-яёa-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
-
-/** Строки текста страницы — из блоков или из fullText */
-const ocrLines = (ann) => {
-  const lines = [];
-  (ann.blocks || []).forEach(b => (b.lines || []).forEach(l => { if (l.text) lines.push(String(l.text).trim()); }));
-  if (!lines.length && ann.fullText) String(ann.fullText).split('\n').forEach(t => t.trim() && lines.push(t.trim()));
-  return lines;
-};
-
-/** «Паспорт выдан …» — строки после надписи до даты выдачи или кода подразделения */
-const passportIssuer = (lines) => {
-  const start = lines.findIndex(l => /выдан/i.test(l));
-  if (start < 0) return '';
-  const out = [];
-  const first = lines[start].replace(/.*выдан[:\s]*/i, '').trim();
-  if (first) out.push(first);
-  for (let i = start + 1; i < lines.length && out.length < 4; i++) {
-    const l = lines[i];
-    if (/\d{2}\.\d{2}\.\d{4}|дата|код|подразд|подпись|личн/i.test(l)) break;
-    if (/[А-ЯЁ]{2,}/.test(l)) out.push(l);
-  }
-  return out.join(' ');
-};
-
-/** Адрес со страницы «Место жительства»: строки с регионом, улицей, домом */
-const passportAddress = (lines) => {
-  const ADDR = /(обл|респ|край|р-н|район|г\.|город|с\.|пос|ул\.|улица|пр-т|пер\.|д\.|дом|кв\.)/i;
-  const out = lines.filter(l => ADDR.test(l) && !/выдан|паспорт|подразд/i.test(l));
-  return out.slice(0, 4).join(', ');
-};
-
-/** Значение поля по подписи: «Фамилия АЛИЕВ» в одной строке или «Фамилия» и «АЛИЕВ» в следующей */
-const labeledValue = (lines, label) => {
-  const i = lines.findIndex(l => label.test(l));
-  if (i < 0) return '';
-  const rest = lines[i].replace(label, '').replace(/^[\s:.]+/, '').trim();
-  if (rest) return rest;
-  const next = lines[i + 1] || '';
-  return /^[А-ЯЁ][А-ЯЁ\s-]+$/.test(next.trim()) ? next.trim() : '';
-};
+const { parsePassportPage, titleCaseRu } = require('./passportParse');
 
 /**
- * Один запрос — обычное чтение страницы («page»), поля — по подписям паспорта
- * («Фамилия», «Паспорт выдан», …). Шаблонная модель «passport» не нужна: на
- * проверках она отдавала только часть полей, «кем выдан» — с ошибкой (подменяла
- * город), а стоит дороже обычного чтения. ent оставлен пустым — разбор ниже
- * умеет брать поле и из шаблона, если когда-нибудь его вернут.
+ * Чтение страницы («page») и разбор в server/passportParse.js: машиночитаемая
+ * зона, подписи по координатам, дата рождения по датам на странице. Шаблонная
+ * модель «passport» — только если после разбора нет фамилии, даты рождения или
+ * номера: она дороже и «кем выдан» путает, но ФИО и дату на настоящих паспортах
+ * обычно берёт — значит, второй запрос уходит лишь на трудных снимках.
  */
 const recognizePassportViaYandex = async (base64Jpeg) => {
   const page = await yandexOcr(base64Jpeg, 'page');
-  const ent = {};
-  const lines = ocrLines(page);
-
-  const surname = ent.surname || labeledValue(lines, /^фамилия/i);
-  const firstName = ent.name || labeledValue(lines, /^имя/i);
-  const middle = ent.middle_name || labeledValue(lines, /^отчество/i);
-
-  // Серия и номер: «96 15 123456» — 10 цифр подряд (с пробелами), не дата и не код подразделения
-  let digits = String(ent.number || '').replace(/\D/g, '');
-  if (digits.length < 10) {
-    const m = lines.join(' ').match(/(?:^|\D)(\d{2})\s?(\d{2})\s?(?:№\s?)?(\d{6})(?!\d)/);
-    if (m) digits = m[1] + m[2] + m[3];
+  const { result, missing } = parsePassportPage(page);
+  if (!result.address && (missing.surname || missing.birthDate || missing.number)) {
+    const ann = await yandexOcr(base64Jpeg, 'passport').catch(() => ({}));
+    const ent = {};
+    (ann.entities || []).forEach(e => { if (e && e.name && e.text) ent[e.name] = String(e.text).trim(); });
+    if (missing.surname && ent.surname) {
+      result.name = [ent.surname, ent.name, ent.middle_name].filter(Boolean).map(titleCaseRu).join(' ');
+    }
+    if (missing.birthDate && ent.birth_date) result.birthDate = ent.birth_date;
+    const digits = String(ent.number || '').replace(/\D/g, '');
+    if (missing.number && digits.length >= 10) { result.series = digits.slice(0, 4); result.number = digits.slice(4, 10); }
   }
-  const birthLine = lines.find(l => /рожд/i.test(l) && /\d{2}\.\d{2}\.\d{4}/.test(l));
-  const birthIdx = lines.findIndex(l => /дата рожд/i.test(l));
-  const birthDate = ent.birth_date
-    || (birthLine && birthLine.match(/\d{2}\.\d{2}\.\d{4}/)[0])
-    || (birthIdx >= 0 && (lines[birthIdx + 1] || '').match(/\d{2}\.\d{2}\.\d{4}/)?.[0])
-    || '';
-
-  const result = {
-    name: [surname, firstName, middle].filter(Boolean).map(titleCaseRu).join(' '),
-    series: digits.length >= 10 ? digits.slice(0, 4) : '',
-    number: digits.length >= 10 ? digits.slice(4, 10) : '',
-    // Сначала — текст как напечатан: модель «passport» отдаёт «кем выдан» строчными
-    // и бывает, что подменяет город (на снимке «по Чеченской Республике» — у неё «по г. Москве»)
-    issuedBy: passportIssuer(lines) || ent.issued_by || '',
-    address: '',
-    birthDate,
-  };
-  // Не главный разворот (страница прописки) — полей нет, ищем адрес в тексте
-  if (!result.name && !result.number) result.address = passportAddress(lines);
   return result;
 };
 

@@ -117,7 +117,6 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
         <PassportCamera
           recognize={dataUrl => api.recognizePassport(dataUrl)}
           onDone={(fields, dataUrl) => { setCameraOpen(false); applyFields(fields, dataUrl); }}
-          onGallery={() => { setCameraOpen(false); galleryRef.current?.click(); }}
           onClose={() => setCameraOpen(false)}
         />
       )}
