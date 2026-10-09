@@ -358,6 +358,24 @@ export const getManagerProfitDeduction = (
 };
 
 /**
+ * Скидка клиенту, оформленная расходом «из прибыли»: делится между менеджером и
+ * инвесторами по их долям, как любой общий расход. customerId/saleId — кому и по
+ * какому договору дали скидку: их показывают в выплатах кассы и в операциях.
+ */
+export const CLIENT_DISCOUNT = 'Скидка клиенту';
+
+/** Кому и по какому договору дана скидка: «Иванов Иван · Айфон 15» */
+export const clientDiscountLabel = (
+  expense: Pick<Expense, 'customerId' | 'saleId'>,
+  customers: { id: string; name: string }[],
+  sales: { id: string; productName: string }[]
+): string => {
+  const client = customers.find(c => c.id === expense.customerId)?.name;
+  const product = sales.find(s => s.id === expense.saleId)?.productName;
+  return [client, product && `«${product}»`].filter(Boolean).join(' · ');
+};
+
+/**
  * Сколько из расхода уменьшает прибыль КОНКРЕТНОГО инвестора.
  *
  * Здесь учитываются только общие расходы с флагом fromProfit. Адресные выплаты

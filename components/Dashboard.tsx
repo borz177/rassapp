@@ -1808,7 +1808,6 @@ useEffect(() => {
         {formatCurrency(currentWorkingCapital, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
-      <p className="mt-1.5 text-[10px] sm:text-[11px] font-semibold text-blue-600 dark:text-blue-400">Из чего состоит ›</p>
     </div>
   </div>
 

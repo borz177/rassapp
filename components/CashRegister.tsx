@@ -9,7 +9,7 @@ import AccountCashTab from './AccountCashTab';
 import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
 import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
-import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances, CLIENT_DISCOUNT, clientDiscountLabel } from '../src/utils';
 import { appConfirm } from '../src/dialogs';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
@@ -803,6 +803,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                 // Сколько стоил расход целиком — чтобы было видно, что списана только доля
                 fullAmount: isShared ? Number(e.amount) : null,
                 isShared,
+                // Скидка клиенту: кому и по какому договору
+                discountFor: e.category === CLIENT_DISCOUNT ? clientDiscountLabel(e, customers, sales) : null,
             };
         })
         .filter(e => e.amount > 0.009)
@@ -888,7 +890,7 @@ const investorProfitPayouts = useMemo(() => {
     };
     const inAccount = (e: Expense) => profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId;
 
-    type PayoutRow = { id: string; title: string; date: string; amount: number; investorId: string; isShared?: boolean };
+    type PayoutRow = { id: string; title: string; date: string; amount: number; investorId: string; isShared?: boolean; fullAmount?: number; discountFor?: string | null };
 
     // 1) Адресные выплаты инвестору — как и раньше.
     const direct: PayoutRow[] = expenses
@@ -913,12 +915,13 @@ const investorProfitPayouts = useMemo(() => {
                 const share = getInvestorProfitDeduction(e, account, investors, investor.id);
                 if (share <= 0.01) return;
                 shared.push({ id: `${e.id}_${investor.id}`, title: e.title, date: e.date,
-                              amount: share, investorId: investor.id, isShared: true });
+                              amount: share, investorId: investor.id, isShared: true, fullAmount: Number(e.amount),
+                              discountFor: e.category === CLIENT_DISCOUNT ? clientDiscountLabel(e, customers, sales) : null });
             });
         });
 
     return [...direct, ...shared].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [expenses, accounts, investors, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
+}, [expenses, accounts, investors, customers, sales, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
 
 
 
@@ -2136,14 +2139,23 @@ const investorProfitPayouts = useMemo(() => {
                         managerProfitPayouts.map(e => (
                             <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
                                 <div className="flex justify-between items-start gap-3">
-                                    <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.title}</p>
+                                    <div className="min-w-0">
+                                        <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.discountFor != null ? 'Скидка клиенту' : e.title}</p>
+                                        {e.discountFor && (
+                                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{e.discountFor}</p>
+                                        )}
+                                    </div>
                                     <span className="font-bold text-sm text-rose-600 dark:text-rose-400 shrink-0">-{formatCurrency(e.amount, appSettings.showCents)} ₽</span>
                                 </div>
                                 {/* Куда ушло: категория расхода и счёт. Без этого в списке
                                     висела бы безымянная сумма, и понять причину было нельзя. */}
                                 <div className="flex items-center gap-1.5 flex-wrap mt-1">
                                     <span className="text-[10px] text-slate-400">{formatDate(e.date)}</span>
-                                    {e.category && e.category !== 'Моя выплата' && (
+                                    {e.discountFor != null ? (
+                                        <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                                            Скидка
+                                        </span>
+                                    ) : e.category && e.category !== 'Моя выплата' && (
                                         <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
                                             {e.category}
                                         </span>
@@ -2161,7 +2173,7 @@ const investorProfitPayouts = useMemo(() => {
                                     иначе цифра в списке не сойдётся с суммой расхода в операциях. */}
                                 {e.isShared && e.fullAmount != null && (
                                     <p className="text-[10px] text-slate-400 mt-0.5">
-                                        Ваша доля от расхода на {formatCurrency(e.fullAmount, appSettings.showCents)} ₽
+                                        Ваша доля от {e.discountFor != null ? 'скидки' : 'расхода'} на {formatCurrency(e.fullAmount, appSettings.showCents)} ₽
                                     </p>
                                 )}
                             </div>
@@ -2292,12 +2304,27 @@ const investorProfitPayouts = useMemo(() => {
                                 <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
                                     <div className="flex justify-between items-start">
                                         <div className="min-w-0 flex-1">
-                                            <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.title}</p>
+                                            <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.discountFor != null ? 'Скидка клиенту' : e.title}</p>
+                                            {e.discountFor && (
+                                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{e.discountFor}</p>
+                                            )}
                                             <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{investor?.name || 'Инвестор'}</p>
                                         </div>
                                         <span className="font-bold text-sm text-rose-600 dark:text-rose-400 ml-3 shrink-0">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
                                     </div>
-                                    <p className="text-[10px] text-slate-400 mt-0.5">{formatDate(e.date)}</p>
+                                    <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                                        <span className="text-[10px] text-slate-400">{formatDate(e.date)}</span>
+                                        {e.discountFor != null && (
+                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
+                                                Скидка
+                                            </span>
+                                        )}
+                                    </div>
+                                    {e.isShared && e.fullAmount != null && (
+                                        <p className="text-[10px] text-slate-400 mt-0.5">
+                                            Доля инвестора от {e.discountFor != null ? 'скидки' : 'расхода'} на {formatCurrency(e.fullAmount, appSettings.showCents)} ₽
+                                        </p>
+                                    )}
                                 </div>
                             );
                         })

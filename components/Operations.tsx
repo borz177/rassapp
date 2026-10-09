@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../types';
-import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, expenseProfitSplit } from '../src/utils';
+import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, expenseProfitSplit, CLIENT_DISCOUNT, clientDiscountLabel } from '../src/utils';
 import { incomeCancelPlan } from '../src/incomeCancel';
 import { buildMoneyOperations } from '../src/moneyOperations';
 import { ICONS } from '../constants';
@@ -543,6 +543,12 @@ const Operations: React.FC<OperationsProps> = ({
                     <div className="flex justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
                         <span className="text-slate-500 dark:text-slate-400 text-sm">Назначение</span>
                         <span className="font-semibold text-slate-800 dark:text-white">{selectedOp.title}</span>
+                    </div>
+                )}
+                {selectedOp.type === 'EXPENSE' && selectedOp.raw?.category === CLIENT_DISCOUNT && clientDiscountLabel(selectedOp.raw, customers, sales) && (
+                    <div className="flex justify-between gap-3 border-b border-slate-100 dark:border-slate-700 pb-2">
+                        <span className="text-slate-500 dark:text-slate-400 text-sm shrink-0">Клиент</span>
+                        <span className="font-semibold text-slate-800 dark:text-white text-right">{clientDiscountLabel(selectedOp.raw, customers, sales)}</span>
                     </div>
                 )}
                 {selectedOp.comment && (
