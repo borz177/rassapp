@@ -3883,7 +3883,7 @@ const yandexOcr = async (base64Jpeg, model) => {
   return (data && data.result && data.result.textAnnotation) || {};
 };
 
-const { parsePassportPage, titleCaseRu } = require('./passportParse');
+const { parsePassportPage, titleCaseRu, maskedLayout } = require('./passportParse');
 
 /**
  * Чтение страницы («page») и разбор в server/passportParse.js: машиночитаемая
@@ -3895,6 +3895,11 @@ const { parsePassportPage, titleCaseRu } = require('./passportParse');
 const recognizePassportViaYandex = async (base64Jpeg) => {
   const page = await yandexOcr(base64Jpeg, 'page');
   const { result, missing } = parsePassportPage(page);
+  // ВРЕМЕННО: раскладка без личных данных, когда «кем выдан» или место рождения
+  // не нашлись на главном развороте — чтобы понять, как лежит текст на настоящих паспортах
+  if (result.name && (!result.issuedBy || !result.birthPlace)) {
+    console.log('🔎 passport layout (masked):', JSON.stringify({ issuedBy: !!result.issuedBy, birthPlace: !!result.birthPlace, lines: maskedLayout(page) }));
+  }
   if (!result.address && (missing.surname || missing.birthDate || missing.number)) {
     const ann = await yandexOcr(base64Jpeg, 'passport').catch(() => ({}));
     const ent = {};

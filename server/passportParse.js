@@ -128,7 +128,7 @@ const DATE = /\d{2}\.\d{2}\.\d{4}/;
 const valueNear = (items, label, accept) => {
   const L = items.find(i => label.test(i.text));
   if (!L) return '';
-  const rest = L.text.replace(label, '').replace(/^[\s:.]+/, '').trim();
+  const rest = L.text.slice(L.text.search(label)).replace(label, '').replace(/^[\s:.]+/, '').trim();
   if (rest && accept(rest)) return rest;
   if (L.noBox) {
     const k = items.indexOf(L);
@@ -150,10 +150,10 @@ const valueNear = (items, label, accept) => {
  * «С. ШАЛИ ШАЛИНСКОГО Р-НА ЧЕЧЕНСКОЙ РЕСП.»), пока не встретится другая подпись.
  */
 const birthPlaceNear = (items) => {
-  const L = items.find(i => /^место\s*рожд/i.test(i.text));
+  const L = items.find(i => /место\s*рожд/i.test(i.text));
   if (!L) return '';
-  const ok = (t) => CYR3.test(t) && !/фамил|^имя|отчеств|^пол\b|дата|PNRUS|выдан/i.test(t);
-  const rest = L.text.replace(/^место\s*рожд\S*/i, '').replace(/^[\s:.]+/, '').trim();
+  const ok = (t) => CYR3.test(t) && !/фамил|^имя|отчеств|^пол\b|дата|PNRUS|выдан|место\s*рожд/i.test(t);
+  const rest = L.text.replace(/.*место\s*рожд\S*/i, '').replace(/^[\s:.]+/, '').trim();
   if (L.noBox) {
     const k = items.indexOf(L);
     return [rest, ...items.slice(k + 1, k + 4).map(i => i.text)].filter(t => t && ok(t)).slice(0, 3).join(' ');
@@ -203,7 +203,7 @@ const titleCaseRu = (s) => String(s || '').toLowerCase()
   .replace(/(^|[\s-])([а-яёa-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
 
 const CYR3 = /[А-Яа-яЁё]{3,}/;
-const NOT_ISSUER = /российская|федерац|паспорт|выдан|дата|код|подразд|подпись|личн|фамил|отчеств|рожд|PNRUS/i;
+const NOT_ISSUER = /российская|федерац|паспорт\s+выдан|^\s*выдан|дата|код\s*подр|подразделен|подпись|личн|фамил|отчеств|рожд|PNRUS/i;
 
 /**
  * «Кем выдан» по положению: всё, что напечатано между «Паспорт выдан» и «Дата
@@ -212,12 +212,15 @@ const NOT_ISSUER = /российская|федерац|паспорт|выда�
  * Чеченской Республике») не отбрасываем — у части паспортов так и напечатано.
  */
 const issuerByPosition = (items) => {
-  const D = items.find(i => !i.noBox && /дата\s*выдач/i.test(i.text));
+  // Нижняя граница — «Дата выдачи» или «Код подразделения» (что выше)
+  const D = items.filter(i => !i.noBox && /дата\s*выдач|код\s*подр/i.test(i.text)).sort((a, b) => a.cy - b.cy)[0];
   if (!D) return '';
-  const S = items.find(i => /выдан/i.test(i.text) && !/дата/i.test(i.text) && i.cy < D.cy);
-  const top = S ? S.cy + S.h * 0.3 : D.cy - D.h * 9;
+  const S = items.find(i => /в[ыь]дан/i.test(i.text) && !/дата/i.test(i.text) && i.cy < D.cy);
+  // С надписи «Паспорт выдан» (включая строку справа от неё — орган часто
+  // начинается в той же строке), без неё — до девяти строк над датой выдачи
+  const top = S ? S.cy - S.h * 0.7 : D.cy - D.h * 9;
   const parts = [];
-  const rest = S ? S.text.replace(/.*выдан[:\s]*/i, '').trim() : '';
+  const rest = S ? S.text.replace(/.*в[ыь]дан[:\s]*/i, '').trim() : '';
   if (rest && CYR3.test(rest)) parts.push(rest);
   items
     .filter(i => i !== S && i.cy > top && i.cy < D.cy - D.h * 0.5 && CYR3.test(i.text) && !NOT_ISSUER.test(i.text))
@@ -304,4 +307,15 @@ const parsePassportPage = (ann) => {
   };
 };
 
-module.exports = { parsePassportPage, parseMrz, mrzCheck, mrzToRu, titleCaseRu, ocrItems };
+/**
+ * Раскладка строк без личных данных — для журнала, когда поле не нашлось:
+ * подписи паспорта остаются словами, остальные буквы → «А», цифры → «9».
+ */
+// Только целые слова: «ПОЛ» внутри фамилии «ПОЛЯКОВ» не должно уцелеть
+const LABEL_WORDS = /(?<![A-Za-zА-Яа-яЁё])(паспорт|выдан|дата|выдачи|код|подразделения|фамилия|имя|отчество|пол|рождения|место|личный|подпись|российская|федерация)(?![A-Za-zА-Яа-яЁё])/gi;
+const maskedLayout = (ann) => ocrItems(ann).map(i => {
+  const masked = i.text.split(LABEL_WORDS).map((part, k) => (k % 2 ? part : part.replace(/[A-Za-zА-Яа-яЁё]/g, 'А').replace(/\d/g, '9'))).join('');
+  return `${Math.round(i.x0)},${Math.round(i.y0)}-${Math.round(i.x1)},${Math.round(i.y1)} ${masked}`;
+});
+
+module.exports = { maskedLayout, parsePassportPage, parseMrz, mrzCheck, mrzToRu, titleCaseRu, ocrItems };
