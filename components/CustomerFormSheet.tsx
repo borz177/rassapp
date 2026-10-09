@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
 import PassportScan, { type PassportFields } from './PassportScan';
 import { Customer } from '../types';
@@ -84,7 +84,9 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
 
   // Распознанный паспорт заполняет только пустые поля: набранное руками
   // важнее — его вводили осознанно, а распознавание ошибается.
-  const applyPassport = (f: PassportFields) => setForm(prev => ({
+  // Форма до подстановки из паспорта — для «Отменить»
+  const beforePassport = useRef<typeof form | null>(null);
+  const applyPassport = (f: PassportFields) => setForm(prev => (beforePassport.current = prev, {
     ...prev,
     name: prev.name.trim() ? prev.name : f.name || prev.name,
     address: prev.address.trim() ? prev.address : f.address || prev.address,
@@ -186,7 +188,8 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
         {/* Съёмка паспорта — перед полями: вручную набирать нужно, только когда фото нет */}
         {canScanPassport && (
           <SheetSection plain hint="Сфотографируйте разворот — поля ниже заполнятся сами. Заполненные вручную не перезапишутся.">
-            <PassportScan onApply={applyPassport} />
+            <PassportScan onApply={applyPassport}
+                          onUndo={() => { if (beforePassport.current) setForm(beforePassport.current); beforePassport.current = null; }} />
           </SheetSection>
         )}
 

@@ -11,8 +11,10 @@ export interface PassportFields {
 }
 
 interface PassportScanProps {
-  /** Что подставить в форму. Вызывается только после подтверждения человеком */
+  /** Подставить распознанное в форму — сразу после распознавания */
   onApply: (fields: PassportFields) => void;
+  /** Вернуть форму как была до подстановки */
+  onUndo?: () => void;
   className?: string;
 }
 
@@ -33,12 +35,12 @@ const LABELS: { key: keyof PassportFields; label: string }[] = [
  * камера телефона и есть сканер, а свой видоискатель с рамкой добавил бы шаг
  * там, где системный уже всё умеет.
  *
- * Распознанное не подставляется молча: сперва показываем, что прочиталось, и
- * только по кнопке переносим в поля. Ошибка распознавания в паспортных данных
- * стоит дорого, а заметить её в уже заполненной форме почти невозможно —
- * человек видит текст и считает, что сам его ввёл.
+ * Распознанное подставляется в поля сразу — лишнее нажатие мешало. Но молча
+ * не подставляем: под кнопками пишем, какие поля заполнены, просим проверить и
+ * даём «Отменить». Ошибка в паспортных данных стоит дорого, и человек должен
+ * видеть, что этот текст ввёл не он.
  */
-const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) => {
+const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className = '' }) => {
   // Два отдельных поля вместо одного: `capture` заставляет систему открыть
   // камеру, и снять его на лету нельзя — атрибут читается в момент нажатия.
   // Дёргать DOM ради этого не стоит, а два скрытых поля ничего не стоят.
@@ -71,6 +73,7 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) 
       setPreview(dataUrl);
       const fields = await api.recognizePassport(dataUrl);
       setResult(fields);
+      if (LABELS.some(l => (fields[l.key] || '').trim())) onApply(fields);
     } catch (err: any) {
       setError(err?.message || 'Не удалось распознать паспорт');
       setPreview(null);
@@ -115,41 +118,22 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, className = '' }) 
       )}
 
       {result && (
-        <div className="mt-3 rounded-xl border border-indigo-100 dark:border-indigo-900/40 bg-indigo-50/50 dark:bg-indigo-900/10 p-3 space-y-2">
-          <div className="flex items-start gap-3">
-            {preview && (
-              <img src={preview} alt="" decoding="sync"
-                   className="w-14 h-14 rounded-lg object-cover shrink-0 border border-indigo-100 dark:border-indigo-900/40" />
-            )}
-            <div className="min-w-0 flex-1 space-y-1">
-              {filled.length === 0 ? (
-                <p className="text-xs text-slate-500 dark:text-slate-400">
-                  Ничего не прочиталось. Снимите паспорт целиком при хорошем освещении.
-                </p>
-              ) : filled.map(({ key, label }) => (
-                <div key={key} className="flex items-baseline justify-between gap-3 text-xs">
-                  <span className="text-slate-400 dark:text-slate-500 shrink-0">{label}</span>
-                  <span className="font-semibold text-slate-700 dark:text-slate-200 text-right break-words">
-                    {result[key]}
-                  </span>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {filled.length > 0 && (
-            <div className="flex gap-2 pt-1">
-              <button type="button"
-                      onClick={() => { setResult(null); setPreview(null); }}
-                      className="flex-1 py-2 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 text-xs font-bold">
-                Не подставлять
-              </button>
-              <button type="button"
-                      onClick={() => { onApply(result); setResult(null); setPreview(null); }}
-                      className="flex-[1.5] py-2 rounded-lg bg-indigo-600 text-white text-xs font-bold active:scale-95 transition-transform">
-                Подставить в форму
-              </button>
-            </div>
+        <div className="mt-2 flex items-center gap-3 rounded-xl border border-emerald-100 dark:border-emerald-900/40 bg-emerald-50/60 dark:bg-emerald-900/15 px-3 py-2">
+          {preview && filled.length > 0 && (
+            <img src={preview} alt="" decoding="sync"
+                 className="w-9 h-9 rounded-md object-cover shrink-0 border border-emerald-100 dark:border-emerald-900/40" />
+          )}
+          <p className="min-w-0 flex-1 text-xs leading-snug text-slate-600 dark:text-slate-300">
+            {filled.length === 0
+              ? 'Ничего не прочиталось. Снимите паспорт целиком, без бликов.'
+              : <><span className="font-semibold text-emerald-700 dark:text-emerald-400">✓ Заполнено:</span> {filled.map(l => (l.key === 'name' ? l.label : l.label.toLowerCase())).join(', ')}. Проверьте поля.</>}
+          </p>
+          {filled.length > 0 && onUndo && (
+            <button type="button"
+                    onClick={() => { onUndo(); setResult(null); setPreview(null); }}
+                    className="shrink-0 text-xs font-semibold text-slate-500 dark:text-slate-400 active:opacity-60">
+              Отменить
+            </button>
           )}
         </div>
       )}

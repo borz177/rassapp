@@ -87,22 +87,18 @@ const getTargetUserId = (user) => {
 
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
-// ИИ-функции выключены во всех тарифах, и причин теперь две. Правовая:
-// обращение к зарубежной модели — трансграничная передача персональных данных,
-// требующая уведомления Роскомнадзора (ч. 3 ст. 12 152-ФЗ). Техническая: с
-// адреса этого сервера (Москва, AS9123) OpenRouter, Google и Anthropic отвечают
-// 403 — запрос до них не доходит вовсе, и кнопка распознавания показывала бы
-// ошибку на каждое нажатие. Роут написан провайдеро-независимым: появится
-// доступный сервис (Яндекс Vision с этого сервера отвечает) — поставить здесь
-// ai: true нужным тарифам и вернуть проверку тарифа в checkAccess('AI').
+// ai — распознавание паспорта, тариф «Стандарт» и выше. Работает через Яндекс
+// Vision OCR (YANDEX_VISION_API_KEY): российский сервис, данные не уходят за
+// рубеж (ч. 3 ст. 12 152-ФЗ), и с этого сервера он отвечает — зарубежные модели
+// (OpenRouter, Google, Anthropic) с адреса в Москве отвечают 403.
 const PLAN_LIMITS = {
   TRIAL:        { contracts: 1000,  investors: 1,  employees: 0,  whatsapp: false, ai: false,  suppliers: true, investorPools: true, notifications: true,  tasks: true , shop: true , contractTemplates: true , api: true  },
   // contractsCountAll — на «Старте» лимит на все договоры за всё время, а не только на
   // договоры в работе (как на «Стандарте»). Зеркало — src/contractLimit.ts.
   START:        { contracts: 100, contractsCountAll: true, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false, api: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
-  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true , api: true  },
-  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: false,  suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true , api: true  },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
+  BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,   suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true , api: true  },
+  BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,   suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true , api: true  },
 };
 
 
@@ -1285,6 +1281,16 @@ await pool.query(`CREATE INDEX IF NOT EXISTS idx_push_subscriptions_user_id ON p
 // Токены устройств нативных приложений (пока — iPhone через APNs). Веб-push сюда
 // не подходит: у него другая подписка (endpoint + ключи), у APNs — один токен.
 // environment — в какой среде APNs токен сработал (production / sandbox), см. apns.js
+// Сколько раз за день аккаунт распознавал паспорт — дневной лимит (PASSPORT_DAILY_LIMIT)
+await pool.query(`
+  CREATE TABLE IF NOT EXISTS ai_usage (
+    user_id TEXT NOT NULL,
+    day DATE NOT NULL,
+    count INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, day)
+  );
+`);
+
 await pool.query(`
   CREATE TABLE IF NOT EXISTS native_push_tokens (
     token TEXT PRIMARY KEY,
@@ -3858,15 +3864,130 @@ const recognizePassportViaGemini = async (base64Jpeg) => {
     && data.candidates[0].content.parts[0] && data.candidates[0].content.parts[0].text);
 };
 
+/**
+ * Яндекс Vision OCR — российский сервис: данные паспорта не уходят за рубеж, и
+ * с этого сервера он отвечает (зарубежные модели — 403). Модель «passport» сама
+ * раскладывает главный разворот на поля (entities); «кем выдан» и адрес прописки
+ * она полями не отдаёт — их достаём из распознанного текста страницы.
+ */
+const yandexOcr = async (base64Jpeg, model) => {
+  // x-data-logging-enabled: false — Яндекс не сохраняет снимок у себя (иначе
+  // запросы логируются для улучшения сервиса, а это паспорт чужого человека)
+  const headers = {
+    Authorization: `Api-Key ${process.env.YANDEX_VISION_API_KEY}`,
+    'Content-Type': 'application/json',
+    'x-data-logging-enabled': 'false',
+  };
+  if (process.env.YANDEX_FOLDER_ID) headers['x-folder-id'] = process.env.YANDEX_FOLDER_ID;
+  const { data } = await axios.post('https://ocr.api.cloud.yandex.net/ocr/v1/recognizeText',
+    { mimeType: 'JPEG', languageCodes: ['ru'], model, content: base64Jpeg },
+    { timeout: 30000, headers });
+  return (data && data.result && data.result.textAnnotation) || {};
+};
+
+/** «ИВАНОВ» → «Иванов», «АННА-МАРИЯ» → «Анна-Мария» */
+const titleCaseRu = (s) => String(s || '').toLowerCase()
+  .replace(/(^|[\s-])([а-яёa-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
+
+/** Строки текста страницы — из блоков или из fullText */
+const ocrLines = (ann) => {
+  const lines = [];
+  (ann.blocks || []).forEach(b => (b.lines || []).forEach(l => { if (l.text) lines.push(String(l.text).trim()); }));
+  if (!lines.length && ann.fullText) String(ann.fullText).split('\n').forEach(t => t.trim() && lines.push(t.trim()));
+  return lines;
+};
+
+/** «Паспорт выдан …» — строки после надписи до даты выдачи или кода подразделения */
+const passportIssuer = (lines) => {
+  const start = lines.findIndex(l => /выдан/i.test(l));
+  if (start < 0) return '';
+  const out = [];
+  const first = lines[start].replace(/.*выдан[:\s]*/i, '').trim();
+  if (first) out.push(first);
+  for (let i = start + 1; i < lines.length && out.length < 4; i++) {
+    const l = lines[i];
+    if (/\d{2}\.\d{2}\.\d{4}|дата|код|подразд|подпись|личн/i.test(l)) break;
+    if (/[А-ЯЁ]{2,}/.test(l)) out.push(l);
+  }
+  return out.join(' ');
+};
+
+/** Адрес со страницы «Место жительства»: строки с регионом, улицей, домом */
+const passportAddress = (lines) => {
+  const ADDR = /(обл|респ|край|р-н|район|г\.|город|с\.|пос|ул\.|улица|пр-т|пер\.|д\.|дом|кв\.)/i;
+  const out = lines.filter(l => ADDR.test(l) && !/выдан|паспорт|подразд/i.test(l));
+  return out.slice(0, 4).join(', ');
+};
+
+/** Значение поля по подписи: «Фамилия АЛИЕВ» в одной строке или «Фамилия» и «АЛИЕВ» в следующей */
+const labeledValue = (lines, label) => {
+  const i = lines.findIndex(l => label.test(l));
+  if (i < 0) return '';
+  const rest = lines[i].replace(label, '').replace(/^[\s:.]+/, '').trim();
+  if (rest) return rest;
+  const next = lines[i + 1] || '';
+  return /^[А-ЯЁ][А-ЯЁ\s-]+$/.test(next.trim()) ? next.trim() : '';
+};
+
+/**
+ * Две модели параллельно: «passport» раскладывает разворот на поля, но
+ * возвращает только их — без «кем выдан» и без остального текста; «page»
+ * читает страницу целиком. Берём поле из «passport», чего нет — по подписи
+ * из текста страницы. Два запроса ≈ 26 копеек за снимок.
+ */
+const recognizePassportViaYandex = async (base64Jpeg) => {
+  const [ann, page] = await Promise.all([
+    yandexOcr(base64Jpeg, 'passport'),
+    yandexOcr(base64Jpeg, 'page').catch(() => ({})),
+  ]);
+  const ent = {};
+  (ann.entities || []).forEach(e => { if (e && e.name && e.text) ent[e.name] = String(e.text).trim(); });
+  const lines = ocrLines(page);
+
+  const surname = ent.surname || labeledValue(lines, /^фамилия/i);
+  const firstName = ent.name || labeledValue(lines, /^имя/i);
+  const middle = ent.middle_name || labeledValue(lines, /^отчество/i);
+
+  // Серия и номер: «96 15 123456» — 10 цифр подряд (с пробелами), не дата и не код подразделения
+  let digits = String(ent.number || '').replace(/\D/g, '');
+  if (digits.length < 10) {
+    const m = lines.join(' ').match(/(?:^|\D)(\d{2})\s?(\d{2})\s?(?:№\s?)?(\d{6})(?!\d)/);
+    if (m) digits = m[1] + m[2] + m[3];
+  }
+  const birthLine = lines.find(l => /рожд/i.test(l) && /\d{2}\.\d{2}\.\d{4}/.test(l));
+  const birthIdx = lines.findIndex(l => /дата рожд/i.test(l));
+  const birthDate = ent.birth_date
+    || (birthLine && birthLine.match(/\d{2}\.\d{2}\.\d{4}/)[0])
+    || (birthIdx >= 0 && (lines[birthIdx + 1] || '').match(/\d{2}\.\d{2}\.\d{4}/)?.[0])
+    || '';
+
+  const result = {
+    name: [surname, firstName, middle].filter(Boolean).map(titleCaseRu).join(' '),
+    series: digits.length >= 10 ? digits.slice(0, 4) : '',
+    number: digits.length >= 10 ? digits.slice(4, 10) : '',
+    // Сначала — текст как напечатан: модель «passport» отдаёт «кем выдан» строчными
+    // и бывает, что подменяет город (на снимке «по Чеченской Республике» — у неё «по г. Москве»)
+    issuedBy: passportIssuer(lines) || ent.issued_by || '',
+    address: '',
+    birthDate,
+  };
+  // Не главный разворот (страница прописки) — полей нет, ищем адрес в тексте
+  if (!result.name && !result.number) result.address = passportAddress(lines);
+  return result;
+};
+
+const PASSPORT_DAILY_LIMIT = 50;
+
 app.post('/api/ai/passport', auth, async (req, res) => {
   try {
-    const recognize = process.env.OPENROUTER_API_KEY ? recognizePassportViaOpenRouter
+    const recognize = process.env.YANDEX_VISION_API_KEY ? recognizePassportViaYandex
+      : process.env.OPENROUTER_API_KEY ? recognizePassportViaOpenRouter
       : process.env.GEMINI_API_KEY ? recognizePassportViaGemini
       : null;
     if (!recognize) {
       return res.status(503).json({
         error: 'Распознавание не подключено',
-        msg: 'Администратору нужно добавить OPENROUTER_API_KEY в настройки сервера.',
+        msg: 'Администратору нужно добавить YANDEX_VISION_API_KEY в настройки сервера.',
       });
     }
 
@@ -3879,7 +4000,7 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     if (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].ai) {
       return res.status(403).json({
         error: 'Недоступно на вашем тарифе',
-        msg: 'Распознавание паспорта входит в тариф «Бизнес».',
+        msg: 'Распознавание паспорта входит в тарифы «Стандарт» и «Бизнес».',
       });
     }
 
@@ -3887,6 +4008,19 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     const match = raw.match(/^data:(image\/[a-zA-Z+]+);base64,(.+)$/);
     if (!match) return res.status(400).json({ error: 'Ожидается изображение' });
 
+    // Дневной лимит на аккаунт (менеджер и его сотрудники вместе) — каждое
+    // распознавание платное, и бот или зациклившаяся кнопка не должны разогнать
+    // счёт. Считаем попытку до вызова сервиса: неудачные тоже стоят денег.
+    const usage = await pool.query(
+      `INSERT INTO ai_usage (user_id, day, count) VALUES ($1, (now() AT TIME ZONE 'Europe/Moscow')::date, 1)
+       ON CONFLICT (user_id, day) DO UPDATE SET count = ai_usage.count + 1
+       RETURNING count`, [targetUserId]);
+    if (usage.rows[0].count > PASSPORT_DAILY_LIMIT) {
+      return res.status(429).json({
+        error: 'Лимит на сегодня исчерпан',
+        msg: `Сегодня распознано уже ${PASSPORT_DAILY_LIMIT} паспортов — это дневной лимит. Завтра снова можно, а пока заполните поля вручную.`,
+      });
+    }
     const input = Buffer.from(match[2], 'base64');
     if (input.length > 12 * 1024 * 1024) {
       return res.status(413).json({ error: 'Файл слишком большой' });

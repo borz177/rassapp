@@ -1548,12 +1548,17 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
   const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API'): boolean => {
     if (!user) return false;
 
-    // 🔒 ИИ решается до общего пропуска: строкой ниже админ, сотрудник и
-    // инвестор получают доступ ко всему, и кнопка распознавания у них
-    // оставалась бы видимой при выключенном ИИ. Проверять тариф для неё
-    // бессмысленно — до провайдеров с этого сервера нет доступа вовсе
-    // (см. развёрнутое объяснение у case 'AI' ниже).
-    if (feature === 'AI') return false;
+    // 🔒 ИИ (распознавание паспорта) решается до общего пропуска: строкой ниже
+    // сотрудник и инвестор получают доступ ко всему. Сотруднику приходит тариф
+    // менеджера (/api/auth/me), инвестор клиентов не заводит. Тариф — «Стандарт» и
+    // выше, как PLAN_LIMITS.ai на сервере, который проверяет его ещё раз.
+    if (feature === 'AI') {
+      if (isInvestor) return false;
+      if (user.role === 'admin') return true;
+      const aiSub = user.subscription;
+      if (!aiSub || new Date() > new Date(aiSub.expiresAt)) return false;
+      return aiSub.plan === 'STANDARD' || aiSub.plan === 'BUSINESS' || aiSub.plan === 'BUSINESS_PRO';
+    }
 
     if (isEmployee || isInvestor || user.role === 'admin') return true;
 
@@ -1571,16 +1576,6 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // 🔒 BUSINESS_PRO — надстройка над BUSINESS (см. server/index.js PLAN_LIMITS: у обоих
         // ai/whatsapp/employees одинаково включены), поэтому везде, где разрешён BUSINESS,
         // должен быть разрешён и BUSINESS_PRO — иначе BUSINESS_PRO ошибочно лишался этих функций.
-        // 🔒 ИИ выключен у всех, и дело не в тарифе: с российского адреса сервера
-        // OpenRouter, Google и Anthropic отвечают 403 — запрос до них не доходит
-        // вовсе. Кнопка «Заполнить из фото паспорта» показывала бы ошибку на
-        // каждое нажатие, поэтому её нет ни у кого.
-        //
-        // Включить обратно, когда появится доступный провайдер (например Яндекс
-        // Vision — он с этого сервера отвечает): вернуть здесь
-        // `plan === 'BUSINESS' || plan === 'BUSINESS_PRO'` и поставить ai: true
-        // тем же тарифам в PLAN_LIMITS на сервере.
-        // (сам case не нужен: выход стоит выше, и TypeScript его уже исключил)
         case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
         // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
         // период для того и нужен, чтобы увидеть, за что платят.
