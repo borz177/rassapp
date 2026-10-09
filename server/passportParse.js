@@ -145,6 +145,42 @@ const valueNear = (items, label, accept) => {
   return below.length ? below[0].text : '';
 };
 
+/**
+ * Место рождения: справа от подписи и строки под этим значением (бывает 2–3:
+ * «С. ШАЛИ ШАЛИНСКОГО Р-НА ЧЕЧЕНСКОЙ РЕСП.»), пока не встретится другая подпись.
+ */
+const birthPlaceNear = (items) => {
+  const L = items.find(i => /^место\s*рожд/i.test(i.text));
+  if (!L) return '';
+  const ok = (t) => CYR3.test(t) && !/фамил|^имя|отчеств|^пол\b|дата|PNRUS|выдан/i.test(t);
+  const rest = L.text.replace(/^место\s*рожд\S*/i, '').replace(/^[\s:.]+/, '').trim();
+  if (L.noBox) {
+    const k = items.indexOf(L);
+    return [rest, ...items.slice(k + 1, k + 4).map(i => i.text)].filter(t => t && ok(t)).slice(0, 3).join(' ');
+  }
+  const out = [];
+  let anchor = null;
+  if (rest && ok(rest)) { out.push(rest); anchor = L; }
+  else {
+    const first = items
+      .filter(i => i !== L && i.x0 >= L.x0 + (L.x1 - L.x0) * 0.5 && Math.abs(i.cy - L.cy) < Math.max(i.h, L.h) * 0.7 && ok(i.text))
+      .sort((a, b) => a.x0 - b.x0)[0]
+      || items.filter(i => i !== L && i.y0 >= L.y1 - L.h * 0.3 && i.y0 - L.y1 < L.h * 2.5 && ok(i.text)).sort((a, b) => a.y0 - b.y0)[0];
+    if (!first) return '';
+    out.push(first.text); anchor = first;
+  }
+  // Продолжение — строки ниже, начинающиеся примерно там же, без разрыва больше двух строк
+  let last = anchor;
+  for (const i of items.filter(x => x !== L && x !== anchor && x.cy > anchor.cy).sort((a, b) => a.cy - b.cy)) {
+    if (out.length >= 3) break;
+    if (i.y0 - last.y1 > last.h * 2) break;
+    if (!ok(i.text)) break;
+    if (Math.abs(i.x0 - anchor.x0) > Math.max(60, (anchor.x1 - anchor.x0) * 0.6)) continue;
+    out.push(i.text); last = i;
+  }
+  return out.join(' ');
+};
+
 const isName = (t) => UPPER_WORDS.test(t.trim()) && t.trim().length >= 2 && !/ФЕДЕРАЦ|РОССИЙ|ПАСПОРТ|МУЖ|ЖЕН/.test(t);
 
 /** Самая ранняя правдоподобная дата (человеку 14+), кроме даты выдачи */
@@ -166,7 +202,32 @@ const fallbackBirthDate = (items) => {
 const titleCaseRu = (s) => String(s || '').toLowerCase()
   .replace(/(^|[\s-])([а-яёa-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
 
-/** «Паспорт выдан …» — строки после надписи до даты выдачи или кода подразделения */
+const CYR3 = /[А-Яа-яЁё]{3,}/;
+const NOT_ISSUER = /российская|федерац|паспорт|выдан|дата|код|подразд|подпись|личн|фамил|отчеств|рожд|PNRUS/i;
+
+/**
+ * «Кем выдан» по положению: всё, что напечатано между «Паспорт выдан» и «Дата
+ * выдачи» (она и «Код подразделения» читаются почти всегда). Нет надписи
+ * «Паспорт выдан» — берём строки прямо над «Датой выдачи». Строчные («по
+ * Чеченской Республике») не отбрасываем — у части паспортов так и напечатано.
+ */
+const issuerByPosition = (items) => {
+  const D = items.find(i => !i.noBox && /дата\s*выдач/i.test(i.text));
+  if (!D) return '';
+  const S = items.find(i => /выдан/i.test(i.text) && !/дата/i.test(i.text) && i.cy < D.cy);
+  const top = S ? S.cy + S.h * 0.3 : D.cy - D.h * 9;
+  const parts = [];
+  const rest = S ? S.text.replace(/.*выдан[:\s]*/i, '').trim() : '';
+  if (rest && CYR3.test(rest)) parts.push(rest);
+  items
+    .filter(i => i !== S && i.cy > top && i.cy < D.cy - D.h * 0.5 && CYR3.test(i.text) && !NOT_ISSUER.test(i.text))
+    .sort((a, b) => a.cy - b.cy || a.x0 - b.x0)
+    .slice(0, 5)
+    .forEach(i => parts.push(i.text));
+  return parts.join(' ');
+};
+
+/** «Паспорт выдан …» — строки после надписи до даты выдачи или кода подразделения (когда нет координат) */
 const passportIssuer = (lines) => {
   const start = lines.findIndex(l => /выдан/i.test(l) && !/дата/i.test(l));
   if (start < 0) return '';
@@ -229,9 +290,10 @@ const parsePassportPage = (ann) => {
   const result = {
     name: [surname, firstName, middle].filter(Boolean).map(titleCaseRu).join(' '),
     series, number,
-    issuedBy: passportIssuer(lines),
+    issuedBy: issuerByPosition(items) || passportIssuer(lines),
     address: '',
     birthDate,
+    birthPlace: birthPlaceNear(items),
   };
   // Не главный разворот (страница прописки) — полей нет, ищем адрес в тексте
   if (!result.name && !result.number) result.address = passportAddress(lines);

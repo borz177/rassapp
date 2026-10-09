@@ -91,7 +91,8 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
   const applyPassport = (f: PassportFields) => setForm(prev => (beforePassport.current = prev, {
     ...prev,
     name: prev.name.trim() ? prev.name : f.name || prev.name,
-    address: prev.address.trim() ? prev.address : f.address || prev.address,
+    // Адрес прописки — со страницы прописки; нет его — место рождения с главного разворота
+    address: prev.address.trim() ? prev.address : f.address || f.birthPlace || prev.address,
     passportSeries: prev.passportSeries.trim() ? prev.passportSeries : f.series || prev.passportSeries,
     passportNumber: prev.passportNumber.trim() ? prev.passportNumber : f.number || prev.passportNumber,
     passportIssuedBy: prev.passportIssuedBy.trim() ? prev.passportIssuedBy : f.issuedBy || prev.passportIssuedBy,

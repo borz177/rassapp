@@ -3981,6 +3981,8 @@ app.post('/api/ai/passport', auth, async (req, res) => {
       issuedBy: clean(parsed.issuedBy, 200),
       address: clean(parsed.address, 200),
       birthDate: clean(parsed.birthDate, 10),
+      // Место рождения — приложение подставляет его в «Адрес», если адреса нет
+      birthPlace: clean(parsed.birthPlace, 200),
     };
 
     if (Object.values(result).filter(Boolean).length === 0) {

@@ -10,6 +10,8 @@ export interface PassportFields {
   issuedBy: string;
   address: string;
   birthDate: string;
+  /** Место рождения — в карточке идёт в «Адрес», если адрес не распознан */
+  birthPlace?: string;
 }
 
 interface PassportScanProps {
@@ -27,6 +29,7 @@ const LABELS: { key: keyof PassportFields; label: string }[] = [
   { key: 'issuedBy', label: 'Кем выдан' },
   { key: 'address', label: 'Адрес' },
   { key: 'birthDate', label: 'Дата рождения' },
+  { key: 'birthPlace', label: 'Место рождения' },
 ];
 
 /**

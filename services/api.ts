@@ -844,7 +844,7 @@ export const api = {
      */
     recognizePassport: async (imageDataUrl: string): Promise<{
       name: string; series: string; number: string;
-      issuedBy: string; address: string; birthDate: string;
+      issuedBy: string; address: string; birthDate: string; birthPlace?: string;
     }> => {
       const res = await fetch(`${API_URL}/ai/passport`, {
         method: 'POST',
