@@ -1,5 +1,6 @@
 import React, { useRef, useState } from 'react';
 import { api } from '../services/api';
+import PassportCamera from './PassportCamera';
 
 export interface PassportFields {
   name: string;
@@ -50,6 +51,23 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<PassportFields | null>(null);
   const [preview, setPreview] = useState<string | null>(null);
+  // Одна кнопка «Сканировать паспорт». На телефоне — камера прямо в приложении
+  // со своим автоснимком (PassportCamera), там же «Из галереи». Нет доступа к
+  // камере из страницы (не https, старый браузер) — системная камера. На
+  // компьютере камеры для документов обычно нет — сразу выбор файла.
+  const [cameraOpen, setCameraOpen] = useState(false);
+  const isTouch = typeof window !== 'undefined' && window.matchMedia?.('(pointer: coarse)').matches;
+  const inAppCamera = typeof window !== 'undefined' && window.isSecureContext && !!navigator.mediaDevices?.getUserMedia;
+  const startScan = () => {
+    if (!isTouch) galleryRef.current?.click();
+    else if (inAppCamera) { setError(null); setCameraOpen(true); }
+    else cameraRef.current?.click();
+  };
+  const applyFields = (fields: PassportFields, dataUrl: string) => {
+    setPreview(dataUrl);
+    setResult(fields);
+    if (LABELS.some(l => (fields[l.key] || '').trim())) onApply(fields);
+  };
 
   const readFile = (file: File) => new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
@@ -71,9 +89,7 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
     try {
       const dataUrl = await readFile(file);
       setPreview(dataUrl);
-      const fields = await api.recognizePassport(dataUrl);
-      setResult(fields);
-      if (LABELS.some(l => (fields[l.key] || '').trim())) onApply(fields);
+      applyFields(await api.recognizePassport(dataUrl), dataUrl);
     } catch (err: any) {
       setError(err?.message || 'Не удалось распознать паспорт');
       setPreview(null);
@@ -91,25 +107,22 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
       <input ref={galleryRef} type="file" accept="image/*"
              className="hidden" onChange={handleFile} />
 
-      <div className="flex gap-2">
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => cameraRef.current?.click()}
-          className="flex-[1.6] flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-bold disabled:opacity-60 active:scale-95 transition-transform"
-        >
-          {busy ? 'Распознаём…' : '📷 Снять паспорт'}
-        </button>
-        {/* Снимок бывает уже сделан — переснимать его только ради формы незачем. */}
-        <button
-          type="button"
-          disabled={busy}
-          onClick={() => galleryRef.current?.click()}
-          className="flex-1 flex items-center justify-center gap-1.5 py-2.5 rounded-xl bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 text-sm font-bold disabled:opacity-60 active:scale-95 transition-transform"
-        >
-          🖼 Галерея
-        </button>
-      </div>
+      <button
+        type="button"
+        disabled={busy}
+        onClick={startScan}
+        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-bold disabled:opacity-60 active:scale-[0.98] transition-transform"
+      >
+        {busy ? 'Распознаём…' : '📷 Сканировать паспорт'}
+      </button>
+      {cameraOpen && (
+        <PassportCamera
+          recognize={dataUrl => api.recognizePassport(dataUrl)}
+          onDone={(fields, dataUrl) => { setCameraOpen(false); applyFields(fields, dataUrl); }}
+          onGallery={() => { setCameraOpen(false); galleryRef.current?.click(); }}
+          onClose={() => setCameraOpen(false)}
+        />
+      )}
 
       {error && (
         <div className="mt-2 rounded-xl border border-amber-200 dark:border-amber-800 bg-amber-50 dark:bg-amber-900/20 px-3 py-2 text-xs text-amber-700 dark:text-amber-300">

@@ -187,7 +187,7 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
 
         {/* Съёмка паспорта — перед полями: вручную набирать нужно, только когда фото нет */}
         {canScanPassport && (
-          <SheetSection plain hint="Сфотографируйте разворот — поля ниже заполнятся сами. Заполненные вручную не перезапишутся.">
+          <SheetSection plain hint="Наведите камеру на разворот с фото — поля заполнятся сами.">
             <PassportScan onApply={applyPassport}
                           onUndo={() => { if (beforePassport.current) setForm(beforePassport.current); beforePassport.current = null; }} />
           </SheetSection>

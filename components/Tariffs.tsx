@@ -431,7 +431,9 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                   </span>
                 )}
               </div>
-              <p className={`mt-1 text-sm ${muted}`}>{plan.tagline}</p>
+              {/* Высота под две строки: на компьютере подпись «Бизнеса» переносится,
+                  и без неё цена и кнопка этой карточки съезжали ниже соседних */}
+              <p className={`mt-1 text-sm lg:min-h-[2.5rem] ${muted}`}>{plan.tagline}</p>
 
               <div className="mt-6">
                 <div className="flex items-baseline gap-1.5">

@@ -87,7 +87,7 @@ const getTargetUserId = (user) => {
 
 
 // ✅ КОНФИГУРАЦИЯ ЛИМИТОВ ТАРИФОВ
-// ai — распознавание паспорта, тариф «Стандарт» и выше. Работает через Яндекс
+// ai — распознавание паспорта, тарифы «Бизнес» и «Бизнес Pro». Работает через Яндекс
 // Vision OCR (YANDEX_VISION_API_KEY): российский сервис, данные не уходят за
 // рубеж (ч. 3 ст. 12 152-ФЗ), и с этого сервера он отвечает — зарубежные модели
 // (OpenRouter, Google, Anthropic) с адреса в Москве отвечают 403.
@@ -96,7 +96,7 @@ const PLAN_LIMITS = {
   // contractsCountAll — на «Старте» лимит на все договоры за всё время, а не только на
   // договоры в работе (как на «Стандарте»). Зеркало — src/contractLimit.ts.
   START:        { contracts: 100, contractsCountAll: true, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false, api: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: true,  suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
   BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,   suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true , api: true  },
   BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,   suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true , api: true  },
 };
@@ -3866,9 +3866,7 @@ const recognizePassportViaGemini = async (base64Jpeg) => {
 
 /**
  * Яндекс Vision OCR — российский сервис: данные паспорта не уходят за рубеж, и
- * с этого сервера он отвечает (зарубежные модели — 403). Модель «passport» сама
- * раскладывает главный разворот на поля (entities); «кем выдан» и адрес прописки
- * она полями не отдаёт — их достаём из распознанного текста страницы.
+ * с этого сервера он отвечает (зарубежные модели — 403). Каждый вызов платный.
  */
 const yandexOcr = async (base64Jpeg, model) => {
   // x-data-logging-enabled: false — Яндекс не сохраняет снимок у себя (иначе
@@ -3930,18 +3928,15 @@ const labeledValue = (lines, label) => {
 };
 
 /**
- * Две модели параллельно: «passport» раскладывает разворот на поля, но
- * возвращает только их — без «кем выдан» и без остального текста; «page»
- * читает страницу целиком. Берём поле из «passport», чего нет — по подписи
- * из текста страницы. Два запроса ≈ 26 копеек за снимок.
+ * Один запрос — обычное чтение страницы («page»), поля — по подписям паспорта
+ * («Фамилия», «Паспорт выдан», …). Шаблонная модель «passport» не нужна: на
+ * проверках она отдавала только часть полей, «кем выдан» — с ошибкой (подменяла
+ * город), а стоит дороже обычного чтения. ent оставлен пустым — разбор ниже
+ * умеет брать поле и из шаблона, если когда-нибудь его вернут.
  */
 const recognizePassportViaYandex = async (base64Jpeg) => {
-  const [ann, page] = await Promise.all([
-    yandexOcr(base64Jpeg, 'passport'),
-    yandexOcr(base64Jpeg, 'page').catch(() => ({})),
-  ]);
+  const page = await yandexOcr(base64Jpeg, 'page');
   const ent = {};
-  (ann.entities || []).forEach(e => { if (e && e.name && e.text) ent[e.name] = String(e.text).trim(); });
   const lines = ocrLines(page);
 
   const surname = ent.surname || labeledValue(lines, /^фамилия/i);
@@ -4000,7 +3995,7 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     if (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].ai) {
       return res.status(403).json({
         error: 'Недоступно на вашем тарифе',
-        msg: 'Распознавание паспорта входит в тарифы «Стандарт» и «Бизнес».',
+        msg: 'Распознавание паспорта входит в тарифы «Бизнес» и «Бизнес Pro».',
       });
     }
 
@@ -4027,11 +4022,12 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     }
 
     // Уменьшаем на сервере, а не доверяем клиенту: фотография с телефона весит
-    // мегабайты, а для чтения текста хватает полутора тысяч пикселей по длинной
-    // стороне. Заодно это прямо режет счёт: картинка тарифицируется по размеру.
+    // мегабайты, а для чтения текста паспорта хватает 2000 точек по длинной
+    // стороне (при 1600 мелкие номер и «кем выдан» уже путались). Яндекс берёт
+    // плату за страницу, а не за размер.
     const prepared = await sharp(input)
       .rotate()
-      .resize({ width: 1600, height: 1600, fit: 'inside', withoutEnlargement: true })
+      .resize({ width: 2000, height: 2000, fit: 'inside', withoutEnlargement: true })
       .jpeg({ quality: 82 })
       .toBuffer();
 

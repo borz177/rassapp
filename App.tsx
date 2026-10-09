@@ -1550,14 +1550,14 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 
     // 🔒 ИИ (распознавание паспорта) решается до общего пропуска: строкой ниже
     // сотрудник и инвестор получают доступ ко всему. Сотруднику приходит тариф
-    // менеджера (/api/auth/me), инвестор клиентов не заводит. Тариф — «Стандарт» и
-    // выше, как PLAN_LIMITS.ai на сервере, который проверяет его ещё раз.
+    // менеджера (/api/auth/me), инвестор клиентов не заводит. Тарифы — «Бизнес» и
+    // «Бизнес Pro», как PLAN_LIMITS.ai на сервере, который проверяет его ещё раз.
     if (feature === 'AI') {
       if (isInvestor) return false;
       if (user.role === 'admin') return true;
       const aiSub = user.subscription;
       if (!aiSub || new Date() > new Date(aiSub.expiresAt)) return false;
-      return aiSub.plan === 'STANDARD' || aiSub.plan === 'BUSINESS' || aiSub.plan === 'BUSINESS_PRO';
+      return aiSub.plan === 'BUSINESS' || aiSub.plan === 'BUSINESS_PRO';
     }
 
     if (isEmployee || isInvestor || user.role === 'admin') return true;
