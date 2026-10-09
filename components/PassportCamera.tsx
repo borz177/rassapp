@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react';
 import { Flashlight, FlashlightOff, Image as ImageIcon, X } from 'lucide-react';
 import ModalPortal from './ModalPortal';
 import { haptics } from '../src/haptics';
+import { canvasToJpeg } from '../src/jpeg';
 import type { PassportFields } from './PassportScan';
 
 /**
@@ -90,7 +91,7 @@ const PassportCamera: React.FC<Props> = ({ recognize, onDone, onGallery, onClose
     const canvas = document.createElement('canvas');
     canvas.width = Math.round(w * k); canvas.height = Math.round(h * k);
     canvas.getContext('2d')!.drawImage(video, x, y, w, h, 0, 0, canvas.width, canvas.height);
-    return canvas.toDataURL('image/jpeg', 0.86);
+    return canvasToJpeg(canvas);
   };
 
   const capture = async () => {

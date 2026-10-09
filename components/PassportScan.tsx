@@ -1,6 +1,7 @@
 import React, { useRef, useState } from 'react';
 import { api } from '../services/api';
 import PassportCamera from './PassportCamera';
+import { canvasToJpeg } from '../src/jpeg';
 
 export interface PassportFields {
   name: string;
@@ -76,6 +77,30 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
     reader.readAsDataURL(file);
   });
 
+  /**
+   * Фото из галереи — 3–5 МБ: такой запрос сервер не принимал (413), и до
+   * распознавания он не доходил. Уменьшаем на телефоне до 2000 точек по длинной
+   * стороне — столько же оставляет и сервер, текста паспорта хватает, а
+   * отправка по мобильной сети в разы быстрее. Поворот из EXIF браузер
+   * учитывает сам при отрисовке.
+   */
+  const shrinkImage = async (file: File): Promise<string> => {
+    const src = await readFile(file);
+    try {
+      const img = new Image();
+      img.src = src;
+      await img.decode();
+      const k = Math.min(1, 2000 / Math.max(img.naturalWidth, img.naturalHeight));
+      const canvas = document.createElement('canvas');
+      canvas.width = Math.round(img.naturalWidth * k);
+      canvas.height = Math.round(img.naturalHeight * k);
+      canvas.getContext('2d')!.drawImage(img, 0, 0, canvas.width, canvas.height);
+      return canvasToJpeg(canvas);
+    } catch {
+      return src; // формат, который браузер не рисует (HEIC на компьютере), — как есть
+    }
+  };
+
   const handleFile = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     // Значение сбрасываем сразу: иначе выбор того же файла второй раз не
@@ -87,7 +112,7 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
     setResult(null);
     setBusy(true);
     try {
-      const dataUrl = await readFile(file);
+      const dataUrl = await shrinkImage(file);
       setPreview(dataUrl);
       applyFields(await api.recognizePassport(dataUrl), dataUrl);
     } catch (err: any) {
