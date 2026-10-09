@@ -135,9 +135,12 @@ const valueNear = (items, label, accept) => {
     for (const n of [items[k + 1], items[k - 1]]) if (n && accept(n.text)) return n.text;
     return '';
   }
+  // Справа от подписи — на той же высоте или чуть выше: на настоящих паспортах
+  // значение напечатано над мелкой подписью, низ значения — до 2,5 её высот выше
   const sameRow = items
-    .filter(i => i !== L && i.x0 >= L.x0 + (L.x1 - L.x0) * 0.5 && Math.abs(i.cy - L.cy) < Math.max(i.h, L.h) * 0.7 && accept(i.text))
-    .sort((a, b) => a.x0 - b.x0);
+    .filter(i => i !== L && i.x0 >= L.x0 + (L.x1 - L.x0) * 0.5
+      && i.y1 >= L.y0 - L.h * 2.5 && i.y0 <= L.y1 + L.h * 0.5 && accept(i.text))
+    .sort((a, b) => Math.abs(a.cy - L.cy) - Math.abs(b.cy - L.cy) || a.x0 - b.x0);
   if (sameRow.length) return sameRow[0].text;
   const below = items
     .filter(i => i !== L && i.y0 >= L.y1 - L.h * 0.3 && i.y0 - L.y1 < L.h * 2.5 && i.x1 > L.x0 && accept(i.text))
@@ -150,9 +153,9 @@ const valueNear = (items, label, accept) => {
  * «С. ШАЛИ ШАЛИНСКОГО Р-НА ЧЕЧЕНСКОЙ РЕСП.»), пока не встретится другая подпись.
  */
 const birthPlaceNear = (items) => {
-  const L = items.find(i => /место\s*рожд/i.test(i.text));
+  const L = items.find(i => /место\s*рожд/i.test(i.text)) || items.find(i => /^место[.…:\s]*$/i.test(i.text));
   if (!L) return '';
-  const ok = (t) => CYR3.test(t) && !/фамил|^имя|отчеств|^пол\b|дата|PNRUS|выдан|место\s*рожд/i.test(t);
+  const ok = (t) => CYR3.test(t) && !/фамил|^имя|отчеств|^пол\b|дата|PNRUS|выдан|место|рожд|подпись|личн/i.test(t) && !SPACED.test(t);
   const rest = L.text.replace(/.*место\s*рожд\S*/i, '').replace(/^[\s:.]+/, '').trim();
   if (L.noBox) {
     const k = items.indexOf(L);
@@ -173,7 +176,9 @@ const birthPlaceNear = (items) => {
   let last = anchor;
   for (const i of items.filter(x => x !== L && x !== anchor && x.cy > anchor.cy).sort((a, b) => a.cy - b.cy)) {
     if (out.length >= 3) break;
-    if (i.y0 - last.y1 > last.h * 2) break;
+    if (i.y0 - last.y1 > Math.max(last.h, anchor.h) * 2.5) break;
+    // Колонка подписей слева («рождения» — вторая строка подписи) — пропускаем
+    if (i.x1 <= anchor.x0 + 20) continue;
     if (!ok(i.text)) break;
     if (Math.abs(i.x0 - anchor.x0) > Math.max(60, (anchor.x1 - anchor.x0) * 0.6)) continue;
     out.push(i.text); last = i;
@@ -203,6 +208,8 @@ const titleCaseRu = (s) => String(s || '').toLowerCase()
   .replace(/(^|[\s-])([а-яёa-z])/g, (m, sep, ch) => sep + ch.toUpperCase());
 
 const CYR3 = /[А-Яа-яЁё]{3,}/;
+/** Шапка вразрядку: «Р О С С И Й С К А Я  Ф Е Д Е Р А Ц И Я» */
+const SPACED = /^(?:\S\s+){4,}\S?$/;
 const NOT_ISSUER = /российская|федерац|паспорт\s+выдан|^\s*выдан|дата|код\s*подр|подразделен|подпись|личн|фамил|отчеств|рожд|PNRUS/i;
 
 /**
@@ -218,12 +225,12 @@ const issuerByPosition = (items) => {
   const S = items.find(i => /в[ыь]дан/i.test(i.text) && !/дата/i.test(i.text) && i.cy < D.cy);
   // С надписи «Паспорт выдан» (включая строку справа от неё — орган часто
   // начинается в той же строке), без неё — до девяти строк над датой выдачи
-  const top = S ? S.cy - S.h * 0.7 : D.cy - D.h * 9;
+  const top = S ? S.y0 - S.h * 2.2 : D.cy - D.h * 9;
   const parts = [];
   const rest = S ? S.text.replace(/.*в[ыь]дан[:\s]*/i, '').trim() : '';
   if (rest && CYR3.test(rest)) parts.push(rest);
   items
-    .filter(i => i !== S && i.cy > top && i.cy < D.cy - D.h * 0.5 && CYR3.test(i.text) && !NOT_ISSUER.test(i.text))
+    .filter(i => i !== S && i.cy > top && i.cy < D.cy - D.h * 0.5 && CYR3.test(i.text) && !NOT_ISSUER.test(i.text) && !SPACED.test(i.text))
     .sort((a, b) => a.cy - b.cy || a.x0 - b.x0)
     .slice(0, 5)
     .forEach(i => parts.push(i.text));
@@ -283,6 +290,16 @@ const parsePassportPage = (ann) => {
   else {
     const m = lines.join(' ').match(/(?:^|\D)(\d{2})\s?(\d{2})\s?(?:№\s?)?(\d{6})(?!\d)/);
     if (m) { series = m[1] + m[2]; number = m[3]; }
+    else {
+      // Красный номер на полях напечатан вертикально и читается кусками
+      // («96», «15 123456») — склеиваем цифры столбца сверху вниз
+      const vertical = items.filter(i => !i.noBox && i.h > (i.x1 - i.x0) * 2 && /\d/.test(i.text)).sort((a, b) => a.y0 - b.y0);
+      for (const first of vertical) {
+        const col = vertical.filter(i => Math.abs(i.cx - first.cx) < 40 && i.y0 >= first.y0);
+        const digits = col.map(i => i.text.replace(/\D/g, '')).join('');
+        if (digits.length >= 10) { series = digits.slice(0, 4); number = digits.slice(4, 10); break; }
+      }
+    }
   }
 
   const labeledBirth = valueNear(items, /^дата рожд/i, t => DATE.test(t));
