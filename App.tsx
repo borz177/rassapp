@@ -1361,7 +1361,7 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v37';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v38';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
 
   let seen = false;
@@ -6028,24 +6028,25 @@ if (!user && !showSplash) {
       <div className="px-6 pt-7 pb-6">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Обновление</p>
         <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          Оборот и закят
+          Сканирование паспорта
         </h3>
+        <p className="mt-1.5 text-[14px] text-slate-500 dark:text-slate-400">На тарифах «Бизнес» и «Бизнес Pro»</p>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
             словами: результат, а не устройство. */}
         <div className="mt-6 space-y-5">
           {[
             {
-              tone: 'bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300',
-              icon: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="M3 10h18M7 15h2" /></>,
-              title: 'В обороте',
-              text: 'Нажмите на карточку на главной — где деньги и чьи они.',
+              tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+              icon: <><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></>,
+              title: 'Наведите камеру',
+              text: 'ФИО, паспорт, кем выдан и место рождения заполнятся сами.',
             },
             {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <path d="M20.5 14.5A8.5 8.5 0 1 1 9.5 3.5a6.5 6.5 0 0 0 11 11z" />,
-              title: 'Закят',
-              text: 'Ваш и инвесторов, нисаб по ЦБ, выплаты за год.',
+              icon: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" /></>,
+              title: 'Или из галереи',
+              text: 'Готовое фото паспорта — прямо в окне сканирования.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">

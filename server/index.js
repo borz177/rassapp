@@ -3895,9 +3895,11 @@ const { parsePassportPage, titleCaseRu, maskedLayout } = require('./passportPars
 const recognizePassportViaYandex = async (base64Jpeg) => {
   const page = await yandexOcr(base64Jpeg, 'page');
   const { result, missing } = parsePassportPage(page);
-  // ВРЕМЕННО: раскладка без личных данных, когда «кем выдан» или место рождения
-  // не нашлись на главном развороте — чтобы понять, как лежит текст на настоящих паспортах
-  if (result.name && (!result.issuedBy || !result.birthPlace)) {
+  // Диагностика по запросу (PASSPORT_DEBUG=1 в /var/www/env/rassapp.env): раскладка
+  // строк без личных данных (буквы → «А», цифры → «9»), когда «кем выдан» или
+  // место рождения не нашлись — чтобы подстроить разбор под новый вид паспорта.
+  // По умолчанию выключена: длина слов — тоже сведения о чужом паспорте.
+  if (process.env.PASSPORT_DEBUG === '1' && result.name && (!result.issuedBy || !result.birthPlace)) {
     console.log('🔎 passport layout (masked):', JSON.stringify({ issuedBy: !!result.issuedBy, birthPlace: !!result.birthPlace, lines: maskedLayout(page) }));
   }
   if (!result.address && (missing.surname || missing.birthDate || missing.number)) {
