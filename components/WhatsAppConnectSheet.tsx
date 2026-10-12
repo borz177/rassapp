@@ -45,6 +45,16 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
   const [qr, setQr] = useState<string | null>(null);
   const [linkedPhone, setLinkedPhone] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  // Новый код отменяет прежний — даём минуту ввести текущий, а не перебиваем его случайно
+  const [codeAt, setCodeAt] = useState(0);
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!code) return;
+    const t = window.setInterval(() => setNow(Date.now()), 1000);
+    return () => window.clearInterval(t);
+  }, [code]);
+  const NEW_CODE_AFTER_MS = 60000;
+  const newCodeIn = code ? Math.max(0, Math.ceil((codeAt + NEW_CODE_AFTER_MS - now) / 1000)) : 0;
   const alive = useRef(true);
   useEffect(() => () => { alive.current = false; }, []);
 
@@ -107,8 +117,10 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
     try {
       const r = await api.waBuiltin.pair(phone);
       if (!alive.current) return;
-      if ((r as any).loggedIn) { checkStatus(); return; }
+      if (r.loggedIn) { checkStatus(); return; }
       setCode(r.code);
+      setCodeAt(Date.now());
+      setNow(Date.now());
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : 'Не удалось получить код');
     } finally {
@@ -126,6 +138,9 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
   };
 
   const phoneDigits = phone.replace(/\D/g, '');
+  // Как номер увидит WhatsApp: 8XXXXXXXXXX и 9XXXXXXXXX — российские
+  const normalizedPhone = phoneDigits.length === 11 && phoneDigits.startsWith('8') ? '7' + phoneDigits.slice(1)
+    : phoneDigits.length === 10 && phoneDigits.startsWith('9') ? '7' + phoneDigits : phoneDigits;
 
   return (
     <GlassSheet
@@ -182,7 +197,7 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
             {method === 'code' && (
               <>
                 {!code ? (
-                  <SheetSection hint="Номер, на котором установлен WhatsApp — с него и будут уходить сообщения клиентам.">
+                  <SheetSection hint="Номер, на котором установлен WhatsApp (или WhatsApp Business) — с него и будут уходить сообщения клиентам.">
                     <div className="p-4 space-y-3">
                       <input
                         type="tel" inputMode="tel" autoComplete="tel"
@@ -198,13 +213,21 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
                     </div>
                   </SheetSection>
                 ) : (
-                  <SheetSection title="Код для WhatsApp">
-                    <div className="p-5 flex flex-col items-center gap-3">
+                  <SheetSection title="Код для WhatsApp"
+                                hint="Новый код отменяет предыдущий — вводите последний полученный.">
+                    <div className="p-5 flex flex-col items-center gap-3 text-center">
+                      <span className="text-[14px] text-slate-500 dark:text-slate-400">
+                        Введите в WhatsApp на номере <b className="text-slate-800 dark:text-slate-100 whitespace-nowrap">{formatPhone(normalizedPhone)}</b>
+                      </span>
                       <span className="font-mono text-[34px] font-bold tracking-[0.12em] text-slate-900 dark:text-white select-all">{formatCode(code)}</span>
-                      <div className="flex gap-2">
+                      <div className="flex flex-wrap justify-center gap-2">
                         <button type="button" onClick={copyCode}
                                 className="h-10 px-4 rounded-xl bg-slate-100 dark:bg-slate-700 text-[14px] font-semibold text-slate-700 dark:text-slate-200 active:opacity-70">
                           {copied ? 'Скопировано' : 'Скопировать'}
+                        </button>
+                        <button type="button" onClick={requestCode} disabled={newCodeIn > 0 || codeLoading}
+                                className="h-10 px-4 rounded-xl text-[14px] font-semibold text-slate-500 dark:text-slate-400 disabled:opacity-50 active:opacity-70">
+                          {newCodeIn > 0 ? `Новый код через ${newCodeIn} с` : 'Получить новый код'}
                         </button>
                         <button type="button" onClick={() => { setCode(null); setError(null); }}
                                 className="h-10 px-4 rounded-xl text-[14px] font-semibold text-slate-500 dark:text-slate-400 active:opacity-70">
@@ -217,7 +240,7 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
 
                 <SheetSection title="Где ввести код">
                   <ol className="divide-y divide-slate-100 dark:divide-slate-700/70">
-                    <Step n={1}>Откройте WhatsApp на телефоне с этим номером</Step>
+                    <Step n={1}>Откройте WhatsApp на телефоне именно с этим номером. Если номер в <b>WhatsApp Business</b> — открывайте WhatsApp Business</Step>
                     <Step n={2}>Настройки → <b>Связанные устройства</b> → <b>Привязка устройства</b></Step>
                     <Step n={3}>Нажмите <b>«Связать по номеру телефона»</b> и введите код</Step>
                   </ol>

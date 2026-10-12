@@ -1887,17 +1887,105 @@ app.get('/api/integrations/whatsapp/builtin/status', auth, async (req, res) => {
   } catch (e) { waBuiltinError(res, e, 'status'); }
 });
 
+// Отвязать номер и снять встроенный способ из настроек (сам пользователь или админ)
+const disconnectBuiltinWa = async (userId) => {
+  await waTransport.removeBuiltinSession(userId);
+  const { settings } = await readWaSettings(userId);
+  if (settings?.provider === 'builtin') {
+    const next = { ...settings, enabled: false };
+    delete next.provider;
+    await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(next), userId]);
+  }
+};
+
 app.post('/api/integrations/whatsapp/builtin/disconnect', auth, async (req, res) => {
   try {
-    await waTransport.removeBuiltinSession(req.user.id);
-    const { settings } = await readWaSettings(req.user.id);
-    if (settings?.provider === 'builtin') {
-      const next = { ...settings, enabled: false };
-      delete next.provider;
-      await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(next), req.user.id]);
-    }
+    await disconnectBuiltinWa(req.user.id);
     res.json({ success: true });
   } catch (e) { waBuiltinError(res, e, 'disconnect'); }
+});
+
+// ── Админ-панель: кто подключил WhatsApp, на связи ли, сколько отправлено ──
+// Ключи сессий и токены Green API наружу не отдаём.
+app.get('/api/admin/whatsapp', adminAuth, async (req, res) => {
+  try {
+    const r = await pool.query(`
+      SELECT u.id, u.email, u.name, u.subscription, u.whatsapp_settings,
+             b.phone AS builtin_phone, b.created_at AS builtin_since,
+             COALESCE(t.sent, 0) AS sent_today, COALESCE(t.failed, 0) AS failed_today, COALESCE(t.skipped, 0) AS skipped_today,
+             COALESCE(w.sent, 0) AS sent_7d, COALESCE(w.failed, 0) AS failed_7d, COALESCE(w.skipped, 0) AS skipped_7d,
+             w.last_at, w.last_error
+      FROM users u
+      LEFT JOIN wa_builtin b ON b.user_id = u.id
+      LEFT JOIN wa_daily t ON t.user_id = u.id AND t.day = CURRENT_DATE
+      LEFT JOIN (
+        SELECT user_id, SUM(sent) AS sent, SUM(failed) AS failed, SUM(skipped) AS skipped, MAX(last_at) AS last_at,
+               (ARRAY_AGG(last_error ORDER BY day DESC) FILTER (WHERE last_error IS NOT NULL))[1] AS last_error
+        FROM wa_daily WHERE day > CURRENT_DATE - 7 GROUP BY user_id
+      ) w ON w.user_id = u.id
+      WHERE (u.whatsapp_settings->>'enabled') = 'true' OR b.user_id IS NOT NULL
+      ORDER BY (b.user_id IS NOT NULL) DESC, u.email`);
+
+    const parse = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
+    const rows = await Promise.all(r.rows.map(async (row) => {
+      const settings = parse(row.whatsapp_settings) || {};
+      const sub = parse(row.subscription) || {};
+      const builtin = settings.provider === 'builtin' || !!row.builtin_since;
+      let live = null;
+      let quota = null;
+      if (builtin && waTransport.builtinAvailable()) {
+        const session = await waTransport.getBuiltin(row.id);
+        if (session) {
+          try {
+            const st = await waTransport.builtin.status(session.token);
+            live = { loggedIn: !!waField(st, 'LoggedIn'), connected: !!waField(st, 'Connected') };
+          } catch { live = null; }
+          quota = await waTransport.builtinQuota(row.id, session.created_at);
+        }
+      }
+      return {
+        userId: row.id,
+        email: row.email,
+        name: row.name,
+        plan: getEffectivePlan(sub) || sub.plan || null,
+        provider: builtin ? 'builtin' : 'greenapi',
+        enabled: !!settings.enabled,
+        phone: row.builtin_phone || null,
+        idInstance: builtin ? null : (settings.idInstance || null),
+        since: row.builtin_since,
+        reminderTime: settings.reminderTime || null,
+        reminderDays: settings.reminderDays || null,
+        live, quota,
+        today: { sent: row.sent_today, failed: row.failed_today, skipped: row.skipped_today },
+        week: { sent: Number(row.sent_7d), failed: Number(row.failed_7d), skipped: Number(row.skipped_7d) },
+        lastAt: row.last_at,
+        lastError: row.last_error,
+      };
+    }));
+
+    // Сам WhatsApp-сервис: отвечает ли и сколько в нём сессий
+    let service = { available: waTransport.builtinAvailable(), reachable: false };
+    if (service.available) {
+      try {
+        const users = await axios.get(`${process.env.WA_BUILTIN_URL.replace(/\/+$/, '')}/admin/users`,
+          { headers: { Authorization: process.env.WA_BUILTIN_ADMIN_TOKEN }, timeout: 8000 });
+        const list = users.data?.data ?? users.data;
+        service = { available: true, reachable: true, sessions: Array.isArray(list) ? list.length : null };
+      } catch { service = { available: true, reachable: false }; }
+    }
+
+    res.json({ service, rows });
+  } catch (e) {
+    console.error('❌ admin whatsapp:', e);
+    res.status(500).json({ error: 'Server error' });
+  }
+});
+
+app.post('/api/admin/whatsapp/:userId/disconnect', adminAuth, async (req, res) => {
+  try {
+    await disconnectBuiltinWa(String(req.params.userId));
+    res.json({ success: true });
+  } catch (e) { waBuiltinError(res, e, 'admin disconnect'); }
 });
 
 // PDF договора и истории платежей при встроенном WhatsApp — через сервер:
@@ -2199,6 +2287,9 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       });
     }
 
+    // Встроенный WhatsApp шлёт с паузами (бережёт номер от блокировки), и рассылка
+    // не уложилась бы в один запрос — для него она идёт в фоне, итог — уведомлением
+    const runMass = async () => {
     for (const item of overdueSales) {
   try {
     const monthlyPaymentText = item.monthlyPayment.toLocaleString('ru-RU');
@@ -2243,7 +2334,7 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       results.failed++;
       results.errors.push({
         customer: item.customer.name,
-        error: 'Green API failed'
+        error: 'WhatsApp failed'
       });
     }
 
@@ -2271,6 +2362,14 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       );
     }
 
+    return results;
+    };
+
+    if (settings.provider === 'builtin') {
+      runMass().catch(e => console.error('💥 send-reminder-all (фон):', e.message));
+      return res.json({ success: true, background: true, results: { total: overdueSales.length, sent: 0, failed: 0, errors: [] } });
+    }
+    await runMass();
     return res.json({ success: true, results });
 
   } catch (err) {

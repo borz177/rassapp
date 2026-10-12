@@ -697,6 +697,13 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
   try {
     const result = await api.sendOverdueReminderAll();
+    // Встроенный WhatsApp шлёт с паузами, чтобы номер не ограничили, — итог придёт уведомлением
+    if (result.background) {
+      const minutes = Math.max(1, Math.ceil(result.results.total * 12 / 60));
+      alert(`✅ Рассылка запущена\n\n${result.results.total} сообщений уйдут постепенно, примерно за ${minutes} мин., — так WhatsApp не ограничит ваш номер. Итог придёт в уведомлениях.`);
+      setShowConfirmRemindAll(false);
+      return;
+    }
     setSentStats({ sent: result.results.sent, total: result.results.total });
     alert(`✅ Готово!\n\nОтправлено: ${result.results.sent} из ${result.results.total}\n` +
           (result.results.failed > 0 ? `Не удалось: ${result.results.failed}` : ''));

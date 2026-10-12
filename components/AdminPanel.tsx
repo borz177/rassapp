@@ -5,6 +5,7 @@ import { friendlyError } from '../src/friendlyError';
 import AdminOAuthClients from './AdminOAuthClients';
 import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
+import AdminWhatsApp from './AdminWhatsApp';
 import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
@@ -71,7 +72,7 @@ const AdminPanel: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all'); // 🔹 Новый фильтр
-    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'partners' | 'payments' | 'logs' | 'apps'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'partners' | 'payments' | 'whatsapp' | 'logs' | 'apps'>('users');
     // 🎁 Реферальная программа
     const [referrals, setReferrals] = useState<any>(null);
     const [referralsLoading, setReferralsLoading] = useState(false);
@@ -439,6 +440,7 @@ const getContractUsage = (user: User): {
                     { id: 'referrals', label: '🎁 Рефералы' },
                     { id: 'partners', label: '🤝 Партнёры' },
                     { id: 'payments', label: '🧾 Оплаты' },
+                    { id: 'whatsapp', label: '💬 WhatsApp' },
                     { id: 'logs', label: '📜 Логи' },
                     { id: 'apps', label: '🔌 Помощники' },
                 ] as const).map(tab => (
@@ -661,6 +663,8 @@ const getContractUsage = (user: User): {
             {activeTab === 'apps' && <AdminOAuthClients />}
 
             {activeTab === 'payments' && <AdminPayments />}
+
+            {activeTab === 'whatsapp' && <AdminWhatsApp />}
 
             {activeTab === 'stats' && (
                 <div className="space-y-4">

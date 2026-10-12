@@ -36,6 +36,23 @@ const wuz = async (method, path, token, body, timeout = 20000) =>
 const wuzAdmin = async (method, path, body) =>
   unwrap(await axios({ method, url: WA_URL + path, headers: { Authorization: WA_ADMIN }, data: body, timeout: 15000 }));
 
+// ── Бережная отправка встроенным способом ────────────────────────────────
+// WhatsApp ограничивает номера, которые шлют много, быстро, однотипно и тем,
+// у кого WhatsApp нет. Поэтому для встроенного способа:
+//   • дневной лимит, растущий с «возрастом» подключения (прогрев номера);
+//   • пауза между сообщениями со случайным разбросом;
+//   • «печатает…» перед отправкой — как у живого человека;
+//   • номера без WhatsApp пропускаем, а не шлём в пустоту.
+// Green API своих ограничений не получает — у него свои правила.
+const dailyLimitFor = (ageDays) => (ageDays < 3 ? 40 : ageDays < 7 ? 100 : 250);
+const PACE_MIN_MS = 4000;
+const PACE_MAX_MS = 9000;
+const rand = (min, max) => min + Math.floor(Math.random() * (max - min + 1));
+const sleep = (ms) => new Promise(r => setTimeout(r, ms));
+const lastSendAt = new Map();        // userId → время последней отправки (в этом процессе)
+const onWhatsAppCache = new Map();   // номер → { ok, at }
+const ON_WA_TTL_MS = 7 * 24 * 3600 * 1000;
+
 const errText = (e) => {
   const status = e.response?.status;
   const body = e.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : '';
@@ -43,18 +60,86 @@ const errText = (e) => {
 };
 
 function createWaTransport(pool) {
-  const ensureTable = () => pool.query(`
-    CREATE TABLE IF NOT EXISTS wa_builtin (
-      user_id    TEXT PRIMARY KEY,
-      token      TEXT NOT NULL,
-      wuz_id     TEXT,
-      phone      TEXT,
-      created_at TIMESTAMPTZ DEFAULT NOW(),
-      updated_at TIMESTAMPTZ DEFAULT NOW()
-    )`);
+  const ensureTable = async () => {
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_builtin (
+        user_id    TEXT PRIMARY KEY,
+        token      TEXT NOT NULL,
+        wuz_id     TEXT,
+        phone      TEXT,
+        created_at TIMESTAMPTZ DEFAULT NOW(),
+        updated_at TIMESTAMPTZ DEFAULT NOW()
+      )`);
+    // Сколько отправлено по дням — для лимита и для админ-панели (оба способа)
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS wa_daily (
+        user_id    TEXT NOT NULL,
+        day        DATE NOT NULL DEFAULT CURRENT_DATE,
+        provider   TEXT,
+        sent       INTEGER NOT NULL DEFAULT 0,
+        failed     INTEGER NOT NULL DEFAULT 0,
+        skipped    INTEGER NOT NULL DEFAULT 0,
+        last_at    TIMESTAMPTZ,
+        last_error TEXT,
+        PRIMARY KEY (user_id, day)
+      )`);
+  };
+
+  /** Учёт отправки: sent | failed | skipped */
+  const record = async (userId, settings, outcome, error = null) => {
+    try {
+      await pool.query(
+        `INSERT INTO wa_daily (user_id, day, provider, sent, failed, skipped, last_at, last_error)
+         VALUES ($1, CURRENT_DATE, $2, $3, $4, $5, NOW(), $6)
+         ON CONFLICT (user_id, day) DO UPDATE SET
+           provider = EXCLUDED.provider,
+           sent = wa_daily.sent + EXCLUDED.sent,
+           failed = wa_daily.failed + EXCLUDED.failed,
+           skipped = wa_daily.skipped + EXCLUDED.skipped,
+           last_at = NOW(),
+           last_error = COALESCE(EXCLUDED.last_error, wa_daily.last_error)`,
+        [userId, isBuiltin(settings) ? 'builtin' : 'greenapi',
+          outcome === 'sent' ? 1 : 0, outcome === 'failed' ? 1 : 0, outcome === 'skipped' ? 1 : 0,
+          error ? String(error).slice(0, 200) : null]
+      );
+    } catch (e) { console.warn('⚠️ wa_daily:', e.message); }
+  };
+
+  /** Лимит на сегодня для встроенного способа и сколько уже ушло */
+  const builtinQuota = async (userId, createdAt) => {
+    const ageDays = createdAt ? (Date.now() - new Date(createdAt).getTime()) / 86400000 : 0;
+    const limit = dailyLimitFor(ageDays);
+    const r = await pool.query('SELECT sent FROM wa_daily WHERE user_id = $1 AND day = CURRENT_DATE', [userId]);
+    const sent = r.rows[0]?.sent || 0;
+    return { limit, sent, left: Math.max(0, limit - sent) };
+  };
+
+  /** Есть ли у номера WhatsApp. Не удалось проверить — считаем, что есть */
+  const onWhatsApp = async (token, phone) => {
+    const cached = onWhatsAppCache.get(phone);
+    if (cached && Date.now() - cached.at < ON_WA_TTL_MS) return cached.ok;
+    try {
+      const r = await wuz('post', '/user/check', token, { Phone: [phone] }, 15000);
+      const users = field(r, 'Users') || [];
+      const ok = users.length ? !!field(users[0], 'IsInWhatsapp') : true;
+      onWhatsAppCache.set(phone, { ok, at: Date.now() });
+      return ok;
+    } catch { return true; }
+  };
+
+  /** Пауза между сообщениями одного номера и «печатает…» перед отправкой */
+  const humanize = async (userId, token, phone, message) => {
+    const last = lastSendAt.get(userId) || 0;
+    const wait = last + rand(PACE_MIN_MS, PACE_MAX_MS) - Date.now();
+    if (wait > 0) await sleep(wait);
+    try {
+      await wuz('post', '/chat/presence', token, { Phone: phone, State: 'composing', Media: '' }, 10000);
+      await sleep(Math.min(4000, 1200 + (message || '').length * 8) + rand(0, 800));
+    } catch { /* без «печатает…» тоже отправим */ }
+  };
 
   const getBuiltin = async (userId) =>
-    (await pool.query('SELECT token, wuz_id, phone FROM wa_builtin WHERE user_id = $1', [userId])).rows[0] || null;
+    (await pool.query('SELECT token, wuz_id, phone, created_at FROM wa_builtin WHERE user_id = $1', [userId])).rows[0] || null;
 
   /** Сессия пользователя во встроенном сервисе — создаём при первом подключении */
   const ensureBuiltinSession = async (userId) => {
@@ -114,16 +199,31 @@ function createWaTransport(pool) {
    * (пустой текст, плохой номер), а не ошибка доставки.
    */
   const sendText = async (userId, settings, rawPhone, message, logTag = '') => {
+    const result = await sendTextRaw(userId, settings, rawPhone, message, logTag);
+    await record(userId, settings, result.ok ? 'sent' : result.skipped ? 'skipped' : 'failed', result.ok ? null : result.reason);
+    return result;
+  };
+
+  const sendTextRaw = async (userId, settings, rawPhone, message, logTag = '') => {
     if (!message) return { ok: false, skipped: true, reason: 'пустое сообщение' };
     const { phone, reason } = normalizePhone(rawPhone);
     if (!phone) return { ok: false, skipped: true, reason };
+
+    if (isBuiltin(settings)) {
+      const row = await getBuiltin(userId);
+      if (!row) return { ok: false, skipped: true, reason: 'встроенный WhatsApp не подключён' };
+      const quota = await builtinQuota(userId, row.created_at);
+      if (quota.left <= 0) return { ok: false, skipped: true, reason: `дневной лимит ${quota.limit}` };
+      if (!(await onWhatsApp(row.token, phone))) return { ok: false, skipped: true, reason: 'у номера нет WhatsApp' };
+      await humanize(userId, row.token, phone, message);
+    }
 
     for (let attempt = 1; attempt <= 2; attempt++) {
       try {
         if (isBuiltin(settings)) {
           const row = await getBuiltin(userId);
-          if (!row) return { ok: false, skipped: true, reason: 'встроенный WhatsApp не подключён' };
           const r = await wuz('post', '/chat/send/text', row.token, { Phone: phone, Body: message });
+          lastSendAt.set(userId, Date.now());
           return field(r, 'Id') || field(r, 'Details') ? { ok: true, skipped: false, reason: null } : { ok: false, skipped: false, reason: 'ответ без Id' };
         }
         const r = await axios.post(
@@ -148,23 +248,31 @@ function createWaTransport(pool) {
 
   /** Документ (PDF договора, истории платежей) — только встроенный способ */
   const sendDocument = async (userId, rawPhone, base64, fileName, mime = 'application/pdf') => {
+    const settings = { provider: 'builtin' };
     const { phone, reason } = normalizePhone(rawPhone);
-    if (!phone) return { ok: false, reason };
+    if (!phone) { await record(userId, settings, 'skipped', reason); return { ok: false, reason }; }
     const row = await getBuiltin(userId);
     if (!row) return { ok: false, reason: 'встроенный WhatsApp не подключён' };
+    const quota = await builtinQuota(userId, row.created_at);
+    if (quota.left <= 0) { await record(userId, settings, 'skipped', 'дневной лимит'); return { ok: false, reason: `дневной лимит ${quota.limit}` }; }
+    if (!(await onWhatsApp(row.token, phone))) { await record(userId, settings, 'skipped', 'нет WhatsApp'); return { ok: false, reason: 'у номера нет WhatsApp' }; }
     try {
       const r = await wuz('post', '/chat/send/document', row.token,
         { Phone: phone, FileName: fileName, Document: `data:${mime};base64,${base64}` }, 60000);
-      return field(r, 'Id') || field(r, 'Details') ? { ok: true } : { ok: false, reason: 'ответ без Id' };
+      const ok = !!(field(r, 'Id') || field(r, 'Details'));
+      lastSendAt.set(userId, Date.now());
+      await record(userId, settings, ok ? 'sent' : 'failed', ok ? null : 'ответ без Id');
+      return ok ? { ok: true } : { ok: false, reason: 'ответ без Id' };
     } catch (e) {
       console.error(`🔴 WhatsApp документ → ${phone}: ${errText(e)}`);
+      await record(userId, settings, 'failed', `HTTP ${e.response?.status || 'network'}`);
       return { ok: false, reason: `HTTP ${e.response?.status || 'network'}` };
     }
   };
 
   return {
     ensureTable, builtinAvailable, getBuiltin, ensureBuiltinSession, removeBuiltinSession,
-    getState, isConfigured, sendText, sendDocument,
+    getState, isConfigured, sendText, sendDocument, builtinQuota,
     // Сессия встроенного сервиса — для экрана подключения
     builtin: {
       connect: (token) => wuz('post', '/session/connect', token, { Subscribe: [], Immediate: true }),

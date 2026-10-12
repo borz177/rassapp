@@ -356,6 +356,31 @@ const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reje
     reader.readAsDataURL(blob);
 });
 
+export interface AdminWhatsAppRow {
+    userId: string;
+    email: string;
+    name: string;
+    plan: string | null;
+    provider: 'builtin' | 'greenapi';
+    enabled: boolean;
+    phone: string | null;
+    idInstance: string | null;
+    since: string | null;
+    reminderTime: string | null;
+    reminderDays: number[] | null;
+    live: { loggedIn: boolean; connected: boolean } | null;
+    quota: { limit: number; sent: number; left: number } | null;
+    today: { sent: number; failed: number; skipped: number };
+    week: { sent: number; failed: number; skipped: number };
+    lastAt: string | null;
+    lastError: string | null;
+}
+
+export interface AdminWhatsAppReport {
+    service: { available: boolean; reachable: boolean; sessions?: number | null };
+    rows: AdminWhatsAppRow[];
+}
+
 export const api = {
 
 
@@ -1430,6 +1455,17 @@ export const api = {
     },
 
     // --- 🧾 ОПЛАТЫ И ЧЕКИ ---
+    /** Админ: у кого подключён WhatsApp, на связи ли, сколько отправлено */
+    adminGetWhatsApp: async (): Promise<AdminWhatsAppReport> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/whatsapp`, { timeout: 30000 });
+        if (!res.ok) throw new Error('Не удалось загрузить WhatsApp-подключения');
+        return res.json();
+    },
+    adminDisconnectWhatsApp: async (userId: string): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/whatsapp/${encodeURIComponent(userId)}/disconnect`, { method: 'POST', timeout: 20000 });
+        if (!res.ok) throw new Error('Не удалось отключить');
+    },
+
     adminGetPayments: async (): Promise<AdminPayment[]> => {
         const res = await fetchWithAuth(`${API_URL}/admin/payments`);
         if (!res.ok) throw new Error('Не удалось загрузить оплаты');
@@ -1976,6 +2012,8 @@ export const api = {
       template?: 'overdue';
     }): Promise<{
       success: boolean;
+      /** Встроенный WhatsApp: рассылка идёт в фоне, итог — уведомлением */
+      background?: boolean;
       results: {
         total: number;
         sent: number;
