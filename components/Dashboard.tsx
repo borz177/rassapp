@@ -12,6 +12,7 @@ import { supplierSupplyDebt } from '../src/supplierLedger';
 import ModeSwitch from './ModeSwitch';
 import { ICONS } from '../constants';
 import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
+import WhatsAppAlertBanner from './WhatsAppAlertBanner';
 import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
 import { turnoverBreakdown, type TurnoverBreakdown } from '../src/turnoverBreakdown';
@@ -1613,6 +1614,9 @@ useEffect(() => {
         {/* Подписка заканчивается в ближайшие сутки либо уже закончилась.
             Компонент сам решает, показываться ли — здесь условия не дублируем. */}
         <SubscriptionExpiryBanner user={user} onRenew={() => onAction('TARIFFS')} />
+        {(user?.role === 'manager' || user?.role === 'admin') && (
+          <WhatsAppAlertBanner appSettings={appSettings} onOpen={() => onAction('INTEGRATIONS')} />
+        )}
 
         {/* «Моя премия» — только у сотрудника с назначенным процентом.
             Компонент сам запрашивает числа с сервера и прячется, если процента нет. */}

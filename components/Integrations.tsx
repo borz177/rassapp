@@ -8,6 +8,7 @@ import { api } from '../services/api';
 import { publicOrigin } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
 import WhatsAppConnectSheet from './WhatsAppConnectSheet';
+import { SheetSection, SheetField, SheetToggle, SheetSegmented, sheetInputClass } from './GlassSheet';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -58,6 +59,13 @@ const DEFAULT_TEMPLATES = {
 };
 
 // Русское склонение: 1 день, 2 дня, 5 дней
+const WA_ICON = "M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z";
+
+const formatWaPhone = (digits: string) =>
+  /^7\d{10}$/.test(digits)
+    ? `+7 ${digits.slice(1, 4)} ${digits.slice(4, 7)}-${digits.slice(7, 9)}-${digits.slice(9)}`
+    : `+${digits}`;
+
 const pluralDays = (n: number) => {
   const abs = Math.abs(n) % 100;
   const last = abs % 10;
@@ -373,8 +381,66 @@ const Integrations: React.FC<IntegrationsProps> = ({
     alert("Скопировано!");
   };
 
+  // Срок подписки Green API — строкой в карточке WhatsApp. Показываем, только
+  // если он известен: партнёрский инстанс отдаёт его сам, свой — только если
+  // пользователь вписал дату руками (Green API её не сообщает).
+  const greenSubscriptionRow = (() => {
+    if (!waSubscription) return null;
+    const manual = !waSubscription.available;
+    if (!manual && !waSubscription.expirationDate) return null;
+    if (manual && waSubscription.reason !== 'not_partner_instance') return null;
+    const iso = manual ? appSettings.whatsapp?.expiresAt : waSubscription.expirationDate;
+    const days = manual
+      ? (iso ? Math.ceil((new Date(iso + 'T23:59:59').getTime() - Date.now()) / 86400000) : null)
+      : (waSubscription.daysLeft ?? null);
+    const quota = waSubscription.planIssue === 'quota';
+    const expired = !!waSubscription.isExpired || (days !== null && days < 0) || quota;
+    const soon = !expired && days !== null && days <= 7;
+    const date = iso ? new Date(iso).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+    const tone = expired ? 'text-rose-600 dark:text-rose-400' : soon ? 'text-amber-600 dark:text-amber-400' : 'text-slate-500 dark:text-slate-400';
+    return (
+      <div className="px-4 py-3 space-y-1">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[15px] text-slate-900 dark:text-white">Подписка Green API{waSubscription.tariff ? ` · ${waSubscription.tariff}` : ''}</span>
+          <span className={`text-[14px] font-medium ${tone}`}>
+            {quota ? 'лимит исчерпан' : expired ? 'истекла' : date ? `до ${date}` : 'срок не указан'}
+          </span>
+        </div>
+        {(expired || soon) && (
+          <p className={`text-[12px] leading-snug ${tone}`}>
+            {quota ? 'Месячный лимит тарифа исчерпан — смените тариф в личном кабинете Green API.'
+              : expired ? 'Отправка не работает, пока не продлите подписку в личном кабинете Green API.'
+                : `Осталось ${days} ${pluralDays(days!)}.`}
+          </p>
+        )}
+        {manual && (
+          <label className="flex items-center justify-between gap-3 pt-1">
+            <span className="text-[12px] text-slate-400 dark:text-slate-500">Дата вводится вручную: свой инстанс срок не сообщает</span>
+            <input type="date" value={appSettings.whatsapp?.expiresAt || ''}
+                   onChange={e => onUpdateSettings({ ...appSettings, whatsapp: { ...appSettings.whatsapp!, expiresAt: e.target.value || undefined } })}
+                   className="shrink-0 bg-transparent text-[14px] text-indigo-600 dark:text-indigo-400 outline-none" />
+          </label>
+        )}
+      </div>
+    );
+  })();
+
+  // Статус подключения одной строкой — под названием в карточке WhatsApp
+  const waStatus = !isConnected
+    ? { dot: 'bg-slate-300 dark:bg-slate-600', text: 'Не подключён' }
+    : isBuiltin && connectionStatus === 'NOT_AUTHORIZED'
+      ? { dot: 'bg-rose-500', text: 'Отключился — напоминания не уходят' }
+      : isBuiltin
+        ? { dot: 'bg-emerald-500', text: `Подключён в приложении${builtinPhone ? ` · ${formatWaPhone(builtinPhone)}` : ''}` }
+        : { dot: connectionStatus === 'NOT_AUTHORIZED' ? 'bg-amber-500' : 'bg-emerald-500', text: 'Подключён · Green API' };
+
+  const reminderRow = (day: number, label: string, description: string) => (
+    <SheetToggle label={label} description={description}
+                 checked={!!reminderDays?.includes(day)} onChange={() => toggleDay(day)} />
+  );
+
   return (
-    <div className="space-y-6 animate-fade-in pb-20">
+    <div className="max-w-2xl space-y-6 animate-fade-in pb-24">
       <header className="flex items-center gap-3">
         <button onClick={onBack} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white">{ICONS.Back}</button>
         <div>
@@ -383,397 +449,208 @@ const Integrations: React.FC<IntegrationsProps> = ({
         </div>
       </header>
 
-      {/* 🔹 Карточка WhatsApp — новая структура */}
-      <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-200 dark:border-slate-700 transition-all duration-300">
-        {/* Заголовок карточки */}
-        <div className="p-5 flex justify-between items-center bg-white dark:bg-slate-800">
-          <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white ${isConnected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M17.472 14.382c-.297-.149-1.758-.867-2.03-.967-.273-.099-.471-.148-.67.15-.197.297-.767.966-.94 1.164-.173.199-.347.223-.644.075-.297-.15-1.255-.463-2.39-1.475-.883-.788-1.48-1.761-1.653-2.059-.173-.297-.018-.458.13-.606.134-.133.298-.347.446-.52.149-.174.198-.298.298-.497.099-.198.05-.371-.025-.52-.075-.149-.669-1.612-.916-2.207-.242-.579-.487-.5-.669-.51-.173-.008-.371-.01-.57-.01-.198 0-.52.074-.792.372-.272.297-1.04 1.016-1.04 2.479 0 1.462 1.065 2.875 1.213 3.074.149.198 2.096 3.2 5.077 4.487.709.306 1.262.489 1.694.625.712.227 1.36.195 1.871.118.571-.085 1.758-.719 2.006-1.413.248-.694.248-1.289.173-1.413-.074-.124-.272-.198-.57-.347m-5.421 7.403h-.004a9.87 9.87 0 01-5.031-1.378l-.361-.214-3.741.982.998-3.648-.235-.374a9.86 9.86 0 01-1.51-5.26c.001-5.45 4.436-9.884 9.888-9.884 2.64 0 5.122 1.03 6.988 2.898a9.825 9.825 0 012.893 6.994c-.003 5.45-4.437 9.884-9.885 9.884m8.413-18.297A11.815 11.815 0 0012.05 0C5.495 0 .16 5.335.157 11.892c0 2.096.547 4.142 1.588 5.945L.057 24l6.305-1.654a11.882 11.882 0 005.683 1.448h.005c6.554 0 11.89-5.335 11.893-11.893a11.821 11.821 0 00-3.48-8.413Z"/>
-              </svg>
-            </div>
-            <div>
-              <h3 className="font-bold text-slate-800 dark:text-white">WhatsApp</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                {!isConnected ? 'Не подключён'
-                  : isBuiltin ? `Подключён в приложении${builtinPhone ? ` · +${builtinPhone}` : ''}`
-                  : 'Через сторонний сервис (Green API)'}
-              </p>
-            </div>
+      {/* ── WhatsApp: состояние и подключение ───────────────────────────── */}
+      <SheetSection title="WhatsApp">
+        <div className="flex items-center gap-3 px-4 py-3.5">
+          <span className={`w-11 h-11 shrink-0 rounded-2xl flex items-center justify-center text-white ${isConnected ? 'bg-emerald-500' : 'bg-slate-300 dark:bg-slate-600'}`}>
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><path d={WA_ICON} /></svg>
+          </span>
+          <div className="min-w-0 flex-1">
+            <p className="text-[16px] font-semibold text-slate-900 dark:text-white">Напоминания клиентам</p>
+            <p className="mt-0.5 flex items-center gap-1.5 text-[13px] text-slate-500 dark:text-slate-400">
+              <span className={`w-2 h-2 shrink-0 rounded-full ${waStatus.dot}`} />
+              <span className="truncate">{waStatus.text}</span>
+            </p>
           </div>
-          {/* 🔹 Переключатель убран — теперь только кнопки */}
+          {isConnected && (
+            <button onClick={handleDisconnect} className="shrink-0 text-[14px] font-semibold text-rose-600 dark:text-rose-400 active:opacity-60">
+              Отключить
+            </button>
+          )}
         </div>
 
-        {/* Срок подписки инстанса. Показываем, только если он вообще известен:
-            инстанс, заведённый мимо нашего партнёрского аккаунта, партнёрский
-            метод не отдаёт, и пустая строка «неизвестно» пользы не несёт. */}
-        {isConnected && !isBuiltin && (waSubscription?.available
-          ? !!waSubscription.expirationDate
-          : waSubscription?.reason === 'not_partner_instance'
-            && (!!appSettings.whatsapp?.expiresAt || !!waSubscription.planIssue)) && (() => {
-          // Партнёрский инстанс — срок приходит с сервера. Свой — только тот, что
-          // пользователь вписал руками: Green API его не отдаёт.
-          const manual = !waSubscription?.available;
-          const iso = manual ? appSettings.whatsapp?.expiresAt : waSubscription?.expirationDate;
-          const days = manual
-            ? (iso ? Math.ceil((new Date(iso + 'T23:59:59').getTime() - Date.now()) / 86400000) : null)
-            : (waSubscription?.daysLeft ?? null);
-          const quota = waSubscription?.planIssue === 'quota';
-          const expired = !!waSubscription?.isExpired || (days !== null && days < 0) || quota;
-          const soon = !expired && days !== null && days <= 7;
-          const date = iso ? new Date(iso).toLocaleDateString('ru-RU', {
-            day: 'numeric', month: 'long', year: 'numeric'
-          }) : null;
-          return (
-            <div className={`mx-5 mb-5 rounded-xl px-4 py-3 text-sm border ${
-              expired
-                ? 'bg-rose-50 dark:bg-rose-900/20 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300'
-                : soon
-                  ? 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-300'
-                  : 'bg-slate-50 dark:bg-slate-900/40 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300'
-            }`}>
-              <div className="flex items-center justify-between gap-3">
-                <span className="font-semibold">
-                  {quota ? 'Лимит тарифа исчерпан' : expired ? 'Подписка истекла' : 'Подписка активна'}
-                </span>
-                {waSubscription?.tariff && (
-                  <span className="text-xs font-bold opacity-70">{waSubscription.tariff}</span>
-                )}
-              </div>
-              <p className="mt-1 text-xs">
-                {quota
-                  ? 'Green API отвечает, что месячный лимит тарифа исчерпан. Отправка не работает, пока не смените тариф в личном кабинете.'
-                  : expired
-                    ? `Срок закончился${date ? ` ${date}` : ''}. Отправка сообщений не работает, пока не продлите её в личном кабинете Green API.`
-                    : `Действует до ${date}${days !== null ? ` · осталось ${days} ${pluralDays(days)}` : ''}.`}
-              </p>
-              {manual && (
-                <p className="mt-1 text-[11px] opacity-70">
-                  Дата указана вручную: свой инстанс Green API не сообщает срок автоматически.
-                </p>
-              )}
-            </div>
-          );
-        })()}
-
-        {/* Своим инстансам срок можно вписать руками: Green API отдаёт его только
-            для инстансов партнёрского аккаунта, ни один метод уровня инстанса
-            эту дату не возвращает. Без неё напомнить о продлении нечем. */}
-        {isConnected && !isBuiltin && waSubscription && !waSubscription.available
-          && waSubscription.reason === 'not_partner_instance' && (
-          <div className="mx-5 mb-5 flex flex-wrap items-center gap-3">
-            <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
-              Подписка действует до
-            </label>
-            <input
-              type="date"
-              value={appSettings.whatsapp?.expiresAt || ''}
-              onChange={e => onUpdateSettings({
-                ...appSettings,
-                whatsapp: { ...appSettings.whatsapp!, expiresAt: e.target.value || undefined }
-              })}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-600 bg-slate-50 dark:bg-slate-900 text-sm text-slate-700 dark:text-slate-300"
-            />
-          </div>
-        )}
-
-        {/* Не подключён: главный способ — прямо в приложении (код или QR),
-            запасной — свой аккаунт Green API с ключами */}
         {!isConnected && !showCredentials && (
-          <div className="px-5 pb-5 space-y-2">
-            <button
-              onClick={() => setConnectOpen(true)}
-              className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:opacity-90 transition-all flex items-center justify-center gap-2"
-            >
-              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M15 7h3a5 5 0 015 5 5 5 0 01-5 5h-3m-6 0H6a5 5 0 01-5-5 5 5 0 015-5h3m6 0v6m0 0h-6m6 0V7"/>
-              </svg>
+          <div className="px-4 pb-4">
+            <button onClick={() => setConnectOpen(true)}
+                    className="w-full h-12 rounded-xl bg-emerald-600 text-white text-[16px] font-semibold active:opacity-85 transition-opacity">
               Подключить WhatsApp
             </button>
-            <p className="text-center text-xs text-slate-400 dark:text-slate-500">По коду из WhatsApp или QR — за минуту, без регистраций</p>
-            <button
-              onClick={handleShowCredentials}
-              className="w-full py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
-            >
-              Подключить через сторонний сервис (Green API)
+            <p className="mt-2 text-center text-[12px] text-slate-400 dark:text-slate-500">По коду из WhatsApp или QR — за минуту, без регистраций</p>
+          </div>
+        )}
+
+        {isBuiltin && isConnected && connectionStatus === 'NOT_AUTHORIZED' && (
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="text-[14px] text-slate-600 dark:text-slate-300">Номер отвязан от сервиса</span>
+            <button onClick={() => setConnectOpen(true)} className="shrink-0 h-9 px-3.5 rounded-xl bg-emerald-600 text-white text-[14px] font-semibold active:opacity-85">
+              Подключить снова
             </button>
           </div>
         )}
 
-        {/* 🔹 Поля ввода токенов */}
-        {showCredentials && (
-          <div className="px-5 pb-5 space-y-4 animate-fade-in border-t border-slate-100 dark:border-slate-700 pt-5">
-            <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl text-sm text-blue-700 dark:text-blue-400">
-              <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
-              <p>2. Создайте инстанс и скопируйте данные ниже.</p>
-            </div>
+        {/* Green API: срок подписки инстанса и ключи */}
+        {isConnected && !isBuiltin && greenSubscriptionRow}
+        {isConnected && !isBuiltin && !showCredentials && (
+          <button onClick={() => setShowCredentials(true)}
+                  className="w-full flex items-center justify-between px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
+            <span className="text-[15px] text-slate-900 dark:text-white">Ключи Green API</span>
+            <span className="text-[14px] text-indigo-600 dark:text-indigo-400 font-medium">Изменить</span>
+          </button>
+        )}
+      </SheetSection>
 
-            <div className="grid grid-cols-1 gap-3">
-              <div>
-                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">idInstance</label>
-                <input type="text" className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 dark:text-white font-mono text-sm" value={idInstance} onChange={e => setIdInstance(e.target.value)} placeholder="1101000001" />
-              </div>
-              <div>
-                <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">apiTokenInstance</label>
-                <div className="relative">
-                  <input type={isTokenVisible ? "text" : "password"} className="w-full p-3 pr-10 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 dark:text-white font-mono text-sm" value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder="••••••••" />
-                  <button type="button" onClick={() => setIsTokenVisible(!isTokenVisible)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                    {isTokenVisible ? '👁️' : '🔒'}
-                  </button>
-                </div>
-              </div>
-            </div>
+      {!isConnected && !showCredentials && (
+        <button onClick={handleShowCredentials}
+                className="-mt-3 w-full text-center text-[13px] font-medium text-slate-500 dark:text-slate-400 active:opacity-60">
+          Подключить через сторонний сервис (Green API)
+        </button>
+      )}
 
-            {connectionStatus !== 'IDLE' && (
-              <div className={`flex items-center gap-2 p-3 rounded-xl text-sm ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : connectionStatus === 'ERROR' ? 'bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400' : 'bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400'}`}>
-                <div className={`w-2 h-2 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
-                {connectionStatus === 'AUTHORIZED' ? 'Готово к подключению' : connectionStatus === 'NOT_AUTHORIZED' ? 'Неверные токены или инстанс не авторизован' : 'Ошибка соединения'}
-              </div>
-            )}
-
-            <div className="flex gap-3">
-              <button onClick={() => setShowCredentials(false)} className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-all">
-                Отмена
-              </button>
-              <button
-                onClick={handleSaveConnection}
-                disabled={isTesting}
-                className={`flex-1 py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isTesting ? 'bg-slate-300 text-slate-500 cursor-wait' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200'}`}
-              >
-                {isTesting ? <><span className="animate-spin">⏳</span> Проверка...</> : <><span>✅</span> Подключить</>}
+      {/* ── Ключи Green API ─────────────────────────────────────────────── */}
+      {showCredentials && (
+        <SheetSection title="Green API"
+                      hint={<>Ключи из <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline">личного кабинета Green API</a>: создайте инстанс и скопируйте idInstance и apiTokenInstance.</>}>
+          <SheetField label="idInstance">
+            <input className={`${sheetInputClass} font-mono`} value={idInstance} onChange={e => setIdInstance(e.target.value)} placeholder="1101000001" inputMode="numeric" />
+          </SheetField>
+          <SheetField label="apiTokenInstance">
+            <div className="flex items-center gap-2">
+              <input type={isTokenVisible ? 'text' : 'password'} className={`${sheetInputClass} font-mono`} value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder="••••••••" />
+              <button type="button" onClick={() => setIsTokenVisible(!isTokenVisible)} className="shrink-0 text-[13px] font-medium text-indigo-600 dark:text-indigo-400">
+                {isTokenVisible ? 'Скрыть' : 'Показать'}
               </button>
             </div>
+          </SheetField>
+          <div className="flex items-center justify-between gap-3 px-4 py-3">
+            <span className="flex items-center gap-2 text-[14px] text-slate-600 dark:text-slate-300">
+              <span className={`w-2 h-2 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-rose-500' : connectionStatus === 'NOT_AUTHORIZED' ? 'bg-amber-500' : 'bg-slate-300'}`} />
+              {connectionStatus === 'AUTHORIZED' ? 'Связь есть' : connectionStatus === 'NOT_AUTHORIZED' ? 'Инстанс не авторизован' : connectionStatus === 'ERROR' ? 'Ошибка соединения' : 'Не проверено'}
+            </span>
+            <button onClick={() => checkConnection(idInstance, apiToken).catch(console.error)} disabled={isTesting}
+                    className="text-[14px] font-medium text-indigo-600 dark:text-indigo-400 disabled:opacity-50">
+              {isTesting ? 'Проверка…' : 'Проверить'}
+            </button>
           </div>
-        )}
+          <div className="flex gap-2 p-3">
+            <button onClick={() => setShowCredentials(false)}
+                    className="flex-1 h-11 rounded-xl bg-slate-100 dark:bg-slate-700 text-[15px] font-semibold text-slate-600 dark:text-slate-200 active:opacity-80">
+              Отмена
+            </button>
+            <button onClick={handleSaveConnection} disabled={isTesting}
+                    className="flex-1 h-11 rounded-xl bg-emerald-600 text-white text-[15px] font-semibold disabled:opacity-50 active:opacity-85">
+              {isTesting ? 'Проверка…' : 'Подключить'}
+            </button>
+          </div>
+        </SheetSection>
+      )}
 
-        {/* 🔹 Если подключено: статус + настройки */}
-        {isConnected && (
-          <>
-            {/* Статус-бар: всегда виден */}
-            {/* Встроенный WhatsApp отвалился (сменили телефон, удалили связанное
-                устройство) — без этого напоминания просто молча перестают уходить */}
-            {isBuiltin && connectionStatus === 'NOT_AUTHORIZED' ? (
-              <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-100 dark:border-amber-900/40 flex items-center justify-between gap-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">WhatsApp отключился</p>
-                  <p className="text-xs text-amber-700/80 dark:text-amber-300/80">Напоминания не уходят, пока номер не привязан снова</p>
-                </div>
-                <button onClick={() => setConnectOpen(true)} className="shrink-0 h-9 px-3 rounded-xl bg-amber-600 text-white text-xs font-bold active:opacity-80">
-                  Подключить снова
-                </button>
+      {isConnected && !showCredentials && (
+        <>
+          {/* ── Рассылка ──────────────────────────────────────────────────── */}
+          <SheetSection title="Рассылка" hint="Одно напоминание по платежу в день. Клиентам, у которых уведомления выключены в карточке, не пишем.">
+            <label className="flex items-center justify-between gap-3 px-4 py-3">
+              <span className="text-[16px] text-slate-900 dark:text-white">Время отправки</span>
+              <select value={reminderTime} onChange={e => setReminderTime(e.target.value)}
+                      className="bg-transparent text-right text-[16px] font-medium text-indigo-600 dark:text-indigo-400 outline-none cursor-pointer">
+                {generateTimeOptions().map(time => (<option key={time} value={time}>{time}</option>))}
+              </select>
+            </label>
+            {reminderRow(-1, 'За день до оплаты', 'Предупреждение накануне')}
+            {reminderRow(0, 'В день оплаты', 'Напоминание в сам день платежа')}
+            {reminderRow(1, 'При просрочке', 'Пока долг не погашен')}
+            {reminderDays?.includes(1) && (
+              <label className="flex items-center justify-between gap-3 px-4 py-3">
+                <span className="text-[16px] text-slate-900 dark:text-white">Повторять при просрочке</span>
+                <select value={overdueInterval} onChange={e => setOverdueInterval(Number(e.target.value))}
+                        className="bg-transparent text-right text-[16px] font-medium text-indigo-600 dark:text-indigo-400 outline-none cursor-pointer">
+                  <option value={1}>каждый день</option>
+                  <option value={3}>раз в 3 дня</option>
+                  <option value={7}>раз в неделю</option>
+                  <option value={14}>раз в 2 недели</option>
+                </select>
+              </label>
+            )}
+          </SheetSection>
+
+          {/* ── Шаблоны ───────────────────────────────────────────────────── */}
+          <SheetSection title="Шаблоны сообщений">
+            <div className="p-3 space-y-3">
+              <SheetSegmented
+                value={activeTemplateTab}
+                onChange={setActiveTemplateTab}
+                options={[{ id: 'UPCOMING', label: 'Заранее' }, { id: 'TODAY', label: 'В день' }, { id: 'OVERDUE', label: 'Просрочка' }]}
+              />
+              <textarea
+                className="w-full h-44 resize-none rounded-xl bg-slate-50 dark:bg-slate-900 p-3 text-[15px] leading-relaxed text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                value={getCurrentTemplate()} onChange={e => updateTemplate(e.target.value)} placeholder="Текст сообщения…"
+              />
+              <div className="-mx-3 px-3 flex gap-1.5 overflow-x-auto no-scrollbar">
+                {['имя', 'товар', 'сумма', 'дата', 'долг', 'итого', 'месяцы', 'товары_блок', 'итого_блок'].map(v => (
+                  <button key={v} onClick={() => insertVariable(v)}
+                          className="shrink-0 h-8 px-2.5 rounded-lg bg-slate-100 dark:bg-slate-700 text-[13px] font-mono text-slate-600 dark:text-slate-300 active:opacity-70">
+                    {`{${v}}`}
+                  </button>
+                ))}
               </div>
-            ) : (
-            <div className="px-5 py-3 bg-emerald-50 dark:bg-emerald-900/30 border-t border-emerald-100 dark:border-emerald-900/50 flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
-                <span className="text-sm font-bold text-emerald-800 dark:text-emerald-400">WhatsApp подключен</span>
-              </div>
-              <div className="flex items-center gap-2">
-                {/* Ключи есть только у способа через Green API */}
-                {!isBuiltin && (
-                <button
-                  onClick={() => setShowCredentials(true)}
-                  className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"
-                >
-                  ✏️ Изменить токены
-                </button>
-                )}
-                <button onClick={handleDisconnect} className="text-xs text-red-600 font-bold hover:underline flex items-center gap-1">
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
-                  Отключить
-                </button>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-2 pt-1 text-[13px] font-medium">
+                <button type="button" onClick={previewTemplate} className="text-indigo-600 dark:text-indigo-400 active:opacity-60">Предпросмотр</button>
+                <button type="button" onClick={resetCurrentTemplate} className="text-slate-500 dark:text-slate-400 active:opacity-60">Сбросить этот</button>
+                <button type="button" onClick={resetAllTemplates} className="text-rose-600 dark:text-rose-400 active:opacity-60">Сбросить все</button>
               </div>
             </div>
-            )}
+          </SheetSection>
 
-            {/* 🔹 Блок с токенами — показывается ТОЛЬКО при showCredentials */}
-            {showCredentials && (
-              <div className="p-5 space-y-6 border-t border-slate-100 dark:border-slate-700 animate-fade-in">
-                {/* Credentials для редактирования */}
-                <div className="space-y-4">
-                  <div className="bg-blue-50 dark:bg-blue-900/30 p-4 rounded-xl text-sm text-blue-700 dark:text-blue-400">
-                    <p>1. Зарегистрируйтесь на <a href="https://console.green-api.com" target="_blank" rel="noreferrer" className="underline font-bold">Green API Console</a>.</p>
-                    <p>2. Создайте инстанс (можно Developer — бесплатно).</p>
-                    <p>3. Скопируйте <b>idInstance</b> и <b>apiTokenInstance</b> сюда.</p>
-                  </div>
-
-                  <div className="grid md:grid-cols-2 gap-4">
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">idInstance</label>
-                      <input type="text" className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 dark:text-white font-mono text-sm" value={idInstance} onChange={e => setIdInstance(e.target.value)} placeholder="1101000001" />
-                    </div>
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">apiTokenInstance</label>
-                      <div className="relative">
-                        <input type={isTokenVisible ? "text" : "password"} className="w-full p-3 pr-10 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 dark:text-white font-mono text-sm" value={apiToken} onChange={e => setApiToken(e.target.value)} placeholder="••••••••" />
-                        <button type="button" onClick={() => setIsTokenVisible(!isTokenVisible)} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
-                          {isTokenVisible ? '👁️' : '🔒'}
-                        </button>
+          {/* ── Автоответчик ──────────────────────────────────────────────── */}
+          <SheetSection title="Автоответчик"
+                        hint={isBuiltin ? 'Автоответчик пока работает только при подключении через Green API.' : 'Клиент пишет слово — бот отвечает сам. Название компании берётся из общих настроек.'}>
+            {isBuiltin ? (
+              <div className="px-4 py-3 text-[15px] text-slate-400 dark:text-slate-500">Недоступен при встроенном подключении</div>
+            ) : (
+              <>
+                <SheetToggle label="Чат-бот" description="Отвечает на команды клиентов" checked={botEnabled} onChange={setBotEnabled} tone="indigo" />
+                {botEnabled && (
+                  <>
+                    <SheetToggle label="История и долг" description="Клиент пишет: история, остаток, долг" checked={historyEnabled} onChange={setHistoryEnabled} tone="indigo" />
+                    <SheetToggle label="Условия рассрочки" description="Клиент пишет: условия" checked={conditionsEnabled} onChange={setConditionsEnabled} tone="indigo" />
+                    <div className="px-4 py-3">
+                      <p className="text-[12px] font-medium text-slate-500 dark:text-slate-400">Webhook для настроек инстанса Green API</p>
+                      <div className="mt-1 flex items-center gap-2">
+                        <span className="min-w-0 flex-1 truncate font-mono text-[13px] text-slate-700 dark:text-slate-200 select-all">{`${publicOrigin()}/api/integrations/whatsapp/webhook`}</span>
+                        <button onClick={() => copyToClipboard(`${publicOrigin()}/api/integrations/whatsapp/webhook`)}
+                                className="shrink-0 text-[13px] font-medium text-indigo-600 dark:text-indigo-400">Скопировать</button>
                       </div>
                     </div>
-                  </div>
-                </div>
-
-                {/* Status check */}
-                <div className="flex items-center justify-between gap-4 border-t border-slate-100 dark:border-slate-700 pt-4">
-                  <div className="flex items-center gap-2">
-                    <div className={`w-3 h-3 rounded-full ${connectionStatus === 'AUTHORIZED' ? 'bg-emerald-500' : connectionStatus === 'ERROR' ? 'bg-red-500' : 'bg-amber-500'}`}></div>
-                    <span className="text-sm font-bold text-slate-700 dark:text-slate-300">
-                      {connectionStatus === 'AUTHORIZED' ? 'Подключено' : connectionStatus === 'NOT_AUTHORIZED' ? 'Не авторизован' : 'Не проверено'}
-                    </span>
-                  </div>
-                  <button
-                    onClick={() => checkConnection(idInstance, apiToken).catch(console.error)}
-                    disabled={isTesting}
-                    className="text-sm text-indigo-600 font-bold hover:underline"
-                  >
-                    {isTesting ? 'Проверка...' : 'Проверить связь'}
-                  </button>
-                </div>
-
-                {/* Кнопки: Сохранить / Отмена */}
-                <div className="flex gap-3 pt-4">
-                  <button
-                    onClick={() => setShowCredentials(false)}
-                    className="flex-1 py-3 bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600 transition-all"
-                  >
-                    Скрыть
-                  </button>
-                  <button
-                    onClick={handleSaveConnection}
-                    disabled={isTesting}
-                    className={`flex-1 py-3 font-bold rounded-xl transition-all flex items-center justify-center gap-2 ${isTesting ? 'bg-slate-300 text-slate-500 cursor-wait' : 'bg-emerald-600 text-white hover:bg-emerald-700 shadow-lg shadow-emerald-200'}`}
-                  >
-                    {isTesting ? <><span className="animate-spin">⏳</span> Проверка...</> : <><span>✅</span> Сохранить токены</>}
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* 🔹 Остальные настройки (рассылка, шаблоны, бот) — всегда видны при подключении */}
-            {!showCredentials && (
-              <div className="p-5 space-y-6 border-t border-slate-100 dark:border-slate-700">
-                {/* Schedule */}
-                <div>
-                  <h4 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 text-sm flex items-center gap-2">
-                    {ICONS.Clock} Настройки рассылки
-                  </h4>
-                  <div className="grid grid-cols-2 gap-4 mb-4">
-                    <div>
-                      <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">Время отправки</label>
-                      <select value={reminderTime} onChange={e => setReminderTime(e.target.value)} className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-sm bg-slate-50 dark:bg-slate-900 dark:text-white">
-                        {generateTimeOptions().map(time => (<option key={time} value={time}>{time}</option>))}
-                      </select>
-                    </div>
-                  </div>
-                  <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-2 block">Когда напоминать?</label>
-                  <div className="flex flex-wrap gap-2">
-                    {/* 🔹 ИСПРАВЛЕНО: добавлена опциональная цепочка ?. */}
-                    <button onClick={() => toggleDay(0)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays?.includes(0) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}>В день оплаты</button>
-                    <button onClick={() => toggleDay(-1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays?.includes(-1) ? 'bg-indigo-600 text-white border-indigo-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}>За 1 день</button>
-                    <button onClick={() => toggleDay(1)} className={`px-3 py-1.5 rounded-lg text-xs border font-medium transition-all ${reminderDays?.includes(1) ? 'bg-red-600 text-white border-red-600' : 'bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-600'}`}>При просрочке</button>
-                  </div>
-                </div>
-
-                {/* 🔹 ИСПРАВЛЕНО: добавлена опциональная цепочка ?. */}
-                {reminderDays?.includes(1) && (
-                  <div className="mt-4 p-3 bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-900/50 rounded-xl">
-                    <label className="text-xs font-bold text-amber-800 dark:text-amber-400 uppercase mb-2 block">⏱ Интервал напоминаний при просрочке</label>
-                    <select value={overdueInterval} onChange={e => setOverdueInterval(Number(e.target.value))} className="w-full p-2 border border-amber-300 dark:border-amber-900/50 rounded-lg text-sm bg-white dark:bg-slate-900 text-amber-900 dark:text-amber-300 font-medium">
-                      <option value={1}>Каждый день</option>
-                      <option value={3}>Раз в 3 дня</option>
-                      <option value={7}>Раз в неделю</option>
-                      <option value={14}>Раз в 2 недели</option>
-                    </select>
-                    <p className="text-[10px] text-amber-700 dark:text-amber-400 mt-1">💡 Клиент получит повторное напоминание только через указанный интервал, если долг не погашен</p>
-                  </div>
+                  </>
                 )}
-
-                <hr className="border-slate-100 dark:border-slate-700" />
-
-                {/* Templates */}
-                <div>
-                  <h4 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 text-sm flex items-center gap-2">{ICONS.File} Шаблоны сообщений</h4>
-                  <div className="flex bg-slate-100 dark:bg-slate-700 p-1 rounded-xl mb-3">
-                    <button onClick={() => setActiveTemplateTab('UPCOMING')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'UPCOMING' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Заранее</button>
-                    <button onClick={() => setActiveTemplateTab('TODAY')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'TODAY' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Сегодня</button>
-                    <button onClick={() => setActiveTemplateTab('OVERDUE')} className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${activeTemplateTab === 'OVERDUE' ? 'bg-white dark:bg-slate-800 text-slate-800 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>Просрочка</button>
-                  </div>
-                  <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-xl border border-slate-200 dark:border-slate-700">
-                    <textarea className="w-full bg-white dark:bg-slate-900 dark:text-white border border-slate-200 dark:border-slate-600 rounded-xl p-3 text-sm outline-none focus:border-indigo-400 h-32 resize-none" value={getCurrentTemplate()} onChange={e => updateTemplate(e.target.value)} placeholder="Текст сообщения..." />
-                    <div className="mt-3 space-y-3">
-                      <div>
-                        <p className="text-[10px] uppercase font-bold text-slate-400 mb-2">Переменные:</p>
-                        <div className="flex flex-wrap gap-2">
-                          {['имя', 'дата', 'товары_блок', 'итого_блок', 'товар', 'сумма', 'долг', 'итого', 'месяцы'].map(v => (
-                            <button key={v} onClick={() => insertVariable(v)} className="text-xs bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 px-2 py-1 rounded-md text-slate-600 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 hover:text-indigo-600 dark:hover:text-indigo-400 hover:border-indigo-200 dark:hover:border-indigo-800 transition-colors">{`{${v}}`}</button>
-                          ))}
-                        </div>
-                      </div>
-                      <div className="flex items-center justify-between pt-2 border-t border-slate-200 dark:border-slate-700">
-                        <button type="button" onClick={previewTemplate} className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium flex items-center gap-1" title="Посмотреть, как будет выглядеть сообщение">👁️ Предпросмотр</button>
-                        <div className="flex items-center gap-3">
-                          <button type="button" onClick={resetCurrentTemplate} className="text-[10px] text-amber-600 hover:text-amber-800 font-medium flex items-center gap-1" title="Сбросить только этот шаблон">↩️ Этот шаблон</button>
-                          <button type="button" onClick={resetAllTemplates} className="text-[10px] text-red-600 hover:text-red-800 font-medium flex items-center gap-1" title="Сбросить все 3 шаблона">🗑️ Все по умолчанию</button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <hr className="border-slate-100 dark:border-slate-700"/>
-
-                {/* ЧАТ-БОТ */}
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <h4 className="font-semibold text-slate-700 dark:text-slate-300 text-sm flex items-center gap-2">🤖 Чат-бот (Автоответчик)</h4>
-                    <div className="relative inline-flex items-center cursor-pointer" onClick={() => setBotEnabled(!botEnabled)}>
-                      <input type="checkbox" className="sr-only peer" checked={botEnabled} onChange={() => {}} />
-                      <div className={`w-11 h-6 rounded-full peer peer-checked:bg-indigo-600 peer-focus:outline-none transition-colors ${botEnabled ? 'bg-indigo-600' : 'bg-slate-200 dark:bg-slate-600'}`}>
-                        <div className={`absolute top-[2px] left-[2px] bg-white border border-gray-300 dark:border-slate-500 rounded-full h-5 w-5 transition-transform ${botEnabled ? 'translate-x-full' : ''}`}></div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {botEnabled && (
-                    <div className="bg-slate-50 dark:bg-slate-700/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700 space-y-4 animate-fade-in">
-                      <div>
-                        <label className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 block">Webhook URL</label>
-                        <div className="flex gap-2">
-                          <input readOnly className="w-full p-2 border border-slate-200 dark:border-slate-600 rounded-lg text-xs bg-white dark:bg-slate-900 text-slate-600 dark:text-slate-300 font-mono select-all" value={`${publicOrigin()}/api/integrations/whatsapp/webhook`} />
-                          <button onClick={() => copyToClipboard(`${publicOrigin()}/api/integrations/whatsapp/webhook`)} className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-600 rounded-lg text-xs font-bold text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 whitespace-nowrap">Копировать</button>
-                        </div>
-                        <p className="text-[10px] text-slate-400 mt-1">Укажите этот URL в настройках инстанса Green API</p>
-                      </div>
-
-                      <div className="bg-indigo-50 dark:bg-indigo-900/30 border border-indigo-200 dark:border-indigo-900/50 rounded-xl p-4 space-y-3">
-                        <h5 className="font-semibold text-indigo-900 dark:text-indigo-300 text-sm">Активные команды:</h5>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input type="checkbox" checked={historyEnabled} onChange={e => setHistoryEnabled(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
-                          <div><p className="text-sm font-medium text-indigo-900 dark:text-indigo-300">📋 История / Долг</p><p className="text-xs text-indigo-600 dark:text-indigo-400">Клиент пишет: *история*, *остаток*, *долг*</p></div>
-                        </label>
-                        <label className="flex items-center gap-3 cursor-pointer">
-                          <input type="checkbox" checked={conditionsEnabled} onChange={e => setConditionsEnabled(e.target.checked)} className="w-4 h-4 text-indigo-600 rounded focus:ring-indigo-500" />
-                          <div><p className="text-sm font-medium text-indigo-900 dark:text-indigo-300">📝 Условия рассрочки</p><p className="text-xs text-indigo-600 dark:text-indigo-400">Клиент пишет: *условия*</p></div>
-                        </label>
-                      </div>
-
-                      <div className="bg-emerald-50 dark:bg-emerald-900/30 border border-emerald-200 dark:border-emerald-900/50 rounded-xl p-4">
-                        <div className="flex gap-3"><div className="text-2xl">💬</div><div><p className="text-sm font-bold text-emerald-900 dark:text-emerald-300 mb-1">Бот работает по текстовым командам</p><p className="text-xs text-emerald-700 dark:text-emerald-400">Название компании для бота берётся из общих настроек: <b>{appSettings?.companyName || 'Наша Компания'}</b></p></div></div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                <button onClick={handleSaveSettings} className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200">
-                  Сохранить настройки
-                </button>
-              </div>
+              </>
             )}
-          </>
-        )}
-      </div>
+          </SheetSection>
+
+          {/* ── Советы для встроенного способа ────────────────────────────── */}
+          {isBuiltin && (
+            <SheetSection title="Чтобы номер не ограничили">
+              <ul className="divide-y divide-slate-100 dark:divide-slate-700/70">
+                {[
+                  ['Отдельный номер', 'Лучше WhatsApp Business с названием, фото и описанием компании.'],
+                  ['Клиенты знают номер', 'Попросите сохранить его при оформлении договора — писать «чужим» рискованнее.'],
+                  ['Без рекламы и ссылок', 'Напоминания должны оставаться напоминаниями.'],
+                  ['Отвечайте клиентам', 'Живая переписка снижает риск. Приложение само делает паузы и не превышает дневной лимит.'],
+                ].map(([t, d]) => (
+                  <li key={t} className="px-4 py-3">
+                    <p className="text-[15px] font-medium text-slate-900 dark:text-white">{t}</p>
+                    <p className="mt-0.5 text-[13px] leading-snug text-slate-500 dark:text-slate-400">{d}</p>
+                  </li>
+                ))}
+              </ul>
+            </SheetSection>
+          )}
+
+          <button onClick={handleSaveSettings}
+                  className="w-full h-12 rounded-2xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[16px] font-semibold active:opacity-85">
+            Сохранить настройки
+          </button>
+        </>
+      )}
 
       {/* 🔹 МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА */}
       {showPreview && (

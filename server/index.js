@@ -1883,7 +1883,9 @@ app.get('/api/integrations/whatsapp/builtin/status', auth, async (req, res) => {
         await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(next), req.user.id]);
       }
     }
-    res.json({ exists: true, loggedIn, connected: !!waField(st, 'Connected'), phone });
+    // Остаток дневного лимита — приложение предупреждает, когда он исчерпан
+    const quota = loggedIn ? await waTransport.builtinQuota(req.user.id, session.created_at) : null;
+    res.json({ exists: true, loggedIn, connected: !!waField(st, 'Connected'), phone, quota });
   } catch (e) { waBuiltinError(res, e, 'status'); }
 });
 

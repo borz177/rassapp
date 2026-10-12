@@ -1381,7 +1381,7 @@ export const api = {
         pair: async (phone: string): Promise<{ code: string; loggedIn?: boolean }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/pair`, {
             method: 'POST', body: JSON.stringify({ phone }), timeout: 40000,
         })),
-        status: async (): Promise<{ exists: boolean; loggedIn: boolean; connected?: boolean; phone?: string | null }> =>
+        status: async (): Promise<{ exists: boolean; loggedIn: boolean; connected?: boolean; phone?: string | null; quota?: { limit: number; sent: number; left: number } | null }> =>
             waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/status`, { timeout: 15000 })),
         disconnect: async (): Promise<void> => { await waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/disconnect`, { method: 'POST', timeout: 20000 })); },
         /** PDF клиенту через встроенный WhatsApp — файл уходит через наш сервер */

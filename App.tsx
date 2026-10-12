@@ -1777,6 +1777,8 @@ const dashboardStats = useMemo(() => {
           case 'ADD_PRODUCT': setCurrentView('MANAGE_PRODUCTS'); break;
           // Из плашки об истекающей подписке на главной
           case 'TARIFFS': setPreviousView(currentView); setCurrentView('TARIFFS'); break;
+          // Из плашки «WhatsApp отключился» на главной
+          case 'INTEGRATIONS': setPreviousView(currentView); setCurrentView('INTEGRATIONS'); break;
       }
   };
 
@@ -5090,7 +5092,8 @@ if (!user && !showSplash) {
               )}
 
               {currentView === 'INTEGRATIONS' && (
-                <PagePush onClose={() => setCurrentView('SETTINGS')}>
+                // С главной сюда ведёт плашка «WhatsApp отключился» — туда и возвращаемся
+                <PagePush onClose={() => setCurrentView(previousView === 'DASHBOARD' ? 'DASHBOARD' : 'SETTINGS')}>
                   {(requestClose: () => void) => (
                     <Suspense fallback={<LazyFallback />}>
                       <Integrations appSettings={appSettings} onUpdateSettings={handleUpdateSettings}

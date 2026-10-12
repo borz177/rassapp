@@ -67,6 +67,29 @@ async function sendPushToUser(userId, title, body) {
 }
 
 // 🔹 Уведомление в приложении об отправленном напоминании (учитывает тумблер пользователя)
+// Тревога «WhatsApp отключился». Не глушится настройкой «об отправленных
+// сообщениях» — только общим выключателем уведомлений.
+async function notifyWhatsAppDisconnected(userId) {
+  try {
+    const settingsResult = await pool.query(
+      `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+      [`settings_${userId}`, userId]
+    );
+    const notifSettings = settingsResult.rows[0]?.data?.notifications;
+    if (notifSettings?.enabled === false) return;
+    const title = 'WhatsApp отключился';
+    const body = 'Напоминания клиентам сегодня не ушли. Подключите WhatsApp заново: Настройки → Интеграции.';
+    const nid = `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, title, body, data) VALUES ($1, $2, 'WHATSAPP_SENT', $3, $4, $5)`,
+      [nid, userId, title, body, JSON.stringify({ reason: 'whatsapp_disconnected' })]
+    );
+    if (notifSettings?.pushEnabled !== false) await sendPushToUser(userId, title, body);
+  } catch (e) {
+    console.error(`${LOG_PREFIX} ❌ notifyWhatsAppDisconnected:`, e.message);
+  }
+}
+
 async function createWhatsAppSentNotification(userId, title, body, data) {
   try {
     const settingsResult = await pool.query(
@@ -288,6 +311,10 @@ async function processRemindersForUser(user) {
   const state = await waTransport.getState(id, settings);
   if (state && state !== 'authorized') {
     console.warn(`${LOG_PREFIX} [${id}] ⛔ Инстанс не авторизован (${state}) — рассылка пропущена`);
+    // Встроенный номер отвалился (сменили телефон, удалили связанное устройство) —
+    // без предупреждения владелец узнал бы об этом только от клиентов. Проверка
+    // идёт раз в день, во время рассылки, — значит и уведомление раз в день.
+    if (settings.provider === 'builtin') await notifyWhatsAppDisconnected(id);
     return;
   }
 
