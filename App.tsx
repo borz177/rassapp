@@ -1199,8 +1199,10 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v38';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v39';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
+  // Сейчас в окне — сбой WhatsApp-напоминаний: инвесторам они ни к чему
+  if (user.role === 'investor') return;
 
   let seen = false;
   try { seen = !!localStorage.getItem(STORAGE_KEY); } catch { /* без хранилища — покажем */ }
@@ -5859,32 +5861,38 @@ if (!user && !showSplash) {
   >
     <div
       role="dialog"
-      aria-label="Что нового"
+      aria-label="Объявление"
       className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-[28px] shadow-2xl ring-1 ring-slate-200/70 dark:ring-slate-800 overflow-hidden animate-dialog-in"
       onClick={e => e.stopPropagation()}
     >
       <div className="px-6 pt-7 pb-6">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Обновление</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400">Важно</p>
         <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          Сканирование паспорта
+          Временный сбой WhatsApp-напоминаний
         </h3>
-        <p className="mt-1.5 text-[14px] text-slate-500 dark:text-slate-400">На тарифах «Бизнес» и «Бизнес Pro»</p>
+        <p className="mt-1.5 text-[14px] text-slate-500 dark:text-slate-400">Неполадки у провайдера сервиса отправки</p>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
             словами: результат, а не устройство. */}
         <div className="mt-6 space-y-5">
           {[
             {
-              tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-              icon: <><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2" /><path d="M7 12h10" /></>,
-              title: 'Наведите камеру',
-              text: 'ФИО, паспорт, кем выдан и место рождения заполнятся сами.',
+              tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+              icon: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" /></>,
+              title: 'Напоминания могут не уходить',
+              text: 'Автоматические напоминания клиентам временно могут не отправляться или уходить с задержкой.',
             },
             {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <><rect x="3" y="4" width="18" height="16" rx="2" /><circle cx="9" cy="10" r="2" /><path d="m21 16-5-5-9 9" /></>,
-              title: 'Или из галереи',
-              text: 'Готовое фото паспорта — прямо в окне сканирования.',
+              icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>,
+              title: 'Данные в порядке',
+              text: 'Договоры и платежи не затронуты — сбой касается только отправки сообщений.',
+            },
+            {
+              tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+              icon: <><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z" /></>,
+              title: 'Напомнить можно вручную',
+              text: 'Кнопка «Напомнить» открывает WhatsApp на вашем телефоне и работает как обычно.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
@@ -5901,11 +5909,15 @@ if (!user && !showSplash) {
           ))}
         </div>
 
+        <p className="mt-6 text-[13px] leading-snug text-slate-500 dark:text-slate-400">
+          Сроки восстановления провайдер пока не называет. Как только всё заработает — сообщим. Приносим извинения за неудобства.
+        </p>
+
         <button
           onClick={() => setShowTemplateUpdateModal(false)}
-          className="mt-7 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform"
+          className="mt-5 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform"
         >
-          Отлично
+          Понятно
         </button>
       </div>
     </div>

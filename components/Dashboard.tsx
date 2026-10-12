@@ -52,30 +52,38 @@ const pluralRu = (n: number, one: string, few: string, many: string): string => 
   return many;
 };
 
-// Текст напоминания подстраивается под то, за сколько дней до срока его отправляют:
-// в день оплаты — просьба оплатить сегодня, заранее — предупреждение о дате.
+// Текст напоминания — в том же оформлении, что и автоматическое напоминание
+// в WhatsApp (заголовок, имя, дата, товар с суммой), но без аята в конце.
+// Строка о сроке подстраивается под то, за сколько дней до оплаты отправляют.
 const buildPaymentReminder = (opts: {
   customerName: string; productName: string; amount: number;
   dayKey: string; date: Date; showCents?: boolean; companyName?: string;
 }): string => {
   const { customerName, productName, amount, dayKey, date, showCents, companyName } = opts;
   const days = daysUntilDayKey(dayKey);
-  const sum = `*${formatCurrency(amount, showCents)} ₽*`;
   const when = date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' });
 
-  let body: string;
+  let dateLine: string;
   if (days < 0) {
     const late = Math.abs(days);
-    body = `По договору «${productName}» платёж от ${when} пока не поступил — ${late} ${pluralRu(late, 'день', 'дня', 'дней')} просрочки.\n\n💰 Сумма к оплате: ${sum}\n\nПожалуйста, погасите задолженность.`;
+    dateLine = `⚠️ Платёж от *${when}* пока не поступил — ${late} ${pluralRu(late, 'день', 'дня', 'дней')} просрочки.`;
   } else if (days === 0) {
-    body = `Сегодня день оплаты по договору «${productName}».\n\n💰 Сумма к оплате: ${sum}`;
+    dateLine = `📅 Сегодня *${when}* — день оплаты!`;
   } else if (days === 1) {
-    body = `Напоминаем: завтра, ${when}, очередной платёж по договору «${productName}».\n\n💰 Сумма к оплате: ${sum}`;
+    dateLine = `📅 Завтра, *${when}*, — день оплаты.`;
   } else {
-    body = `Напоминаем о предстоящем платеже по договору «${productName}».\n\n📅 Дата: ${when} (через ${days} ${pluralRu(days, 'день', 'дня', 'дней')})\n💰 Сумма: ${sum}`;
+    dateLine = `📅 *${when}* — день оплаты (через ${days} ${pluralRu(days, 'день', 'дня', 'дней')}).`;
   }
 
-  return `${customerName}!\n\n${body}${companyName ? `\n\n${companyName}` : ''}`;
+  const lines = [
+    '🔔 *Напоминание об оплате*',
+    `*${customerName}!*`,
+    dateLine,
+    `🔸 *${productName}*\n   • К оплате: *${formatCurrency(amount, showCents)} ₽*`,
+  ];
+  if (days < 0) lines.push('Пожалуйста, погасите задолженность.');
+  if (companyName) lines.push(companyName);
+  return lines.join('\n\n');
 };
 
 
