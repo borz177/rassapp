@@ -19,6 +19,18 @@ const builtinAvailable = () => !!(WA_URL && WA_ADMIN);
 // Ответ WuzAPI обёрнут в { code, data, success } — отдаём data
 const unwrap = (res) => (res && res.data && res.data.data !== undefined ? res.data.data : res && res.data);
 
+/**
+ * Поле ответа без учёта регистра: версии WuzAPI отдают то LoggedIn, то loggedIn.
+ * Из-за этого привязанный номер считался непривязанным.
+ */
+const field = (obj, name) => {
+  if (!obj || typeof obj !== 'object') return undefined;
+  if (obj[name] !== undefined) return obj[name];
+  const lower = name.toLowerCase();
+  const key = Object.keys(obj).find(k => k.toLowerCase() === lower);
+  return key === undefined ? undefined : obj[key];
+};
+
 const wuz = async (method, path, token, body, timeout = 20000) =>
   unwrap(await axios({ method, url: WA_URL + path, headers: { Token: token }, data: body, timeout }));
 const wuzAdmin = async (method, path, body) =>
@@ -77,7 +89,7 @@ function createWaTransport(pool) {
         const row = await getBuiltin(userId);
         if (!row || !builtinAvailable()) return 'notAuthorized';
         const st = await wuz('get', '/session/status', row.token, undefined, 10000);
-        return st?.LoggedIn ? 'authorized' : 'notAuthorized';
+        return field(st, 'LoggedIn') ? 'authorized' : 'notAuthorized';
       }
       const r = await axios.get(
         `${GREEN_API}/waInstance${settings.idInstance}/getStateInstance/${settings.apiTokenInstance}`,
@@ -112,7 +124,7 @@ function createWaTransport(pool) {
           const row = await getBuiltin(userId);
           if (!row) return { ok: false, skipped: true, reason: 'встроенный WhatsApp не подключён' };
           const r = await wuz('post', '/chat/send/text', row.token, { Phone: phone, Body: message });
-          return r?.Id || r?.Details ? { ok: true, skipped: false, reason: null } : { ok: false, skipped: false, reason: 'ответ без Id' };
+          return field(r, 'Id') || field(r, 'Details') ? { ok: true, skipped: false, reason: null } : { ok: false, skipped: false, reason: 'ответ без Id' };
         }
         const r = await axios.post(
           `${GREEN_API}/waInstance${settings.idInstance}/sendMessage/${settings.apiTokenInstance}`,
@@ -143,7 +155,7 @@ function createWaTransport(pool) {
     try {
       const r = await wuz('post', '/chat/send/document', row.token,
         { Phone: phone, FileName: fileName, Document: `data:${mime};base64,${base64}` }, 60000);
-      return r?.Id || r?.Details ? { ok: true } : { ok: false, reason: 'ответ без Id' };
+      return field(r, 'Id') || field(r, 'Details') ? { ok: true } : { ok: false, reason: 'ответ без Id' };
     } catch (e) {
       console.error(`🔴 WhatsApp документ → ${phone}: ${errText(e)}`);
       return { ok: false, reason: `HTTP ${e.response?.status || 'network'}` };
@@ -164,4 +176,4 @@ function createWaTransport(pool) {
   };
 }
 
-module.exports = { createWaTransport, isBuiltin };
+module.exports = { createWaTransport, isBuiltin, waField: field };

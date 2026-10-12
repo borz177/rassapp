@@ -22,7 +22,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const axios = require('axios');
 const { normalizePhone } = require('./phone-utils');
-const { createWaTransport } = require('./waTransport');
+const { createWaTransport, waField } = require('./waTransport');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
@@ -1782,8 +1782,8 @@ const waSleep = (ms) => new Promise(r => setTimeout(r, ms));
 // 409 «уже подключён» — не ошибка: окно могли открыть повторно.
 const ensureBuiltinConnected = async (token) => {
   const st = await waTransport.builtin.status(token);
-  if (st?.LoggedIn) return { loggedIn: true };
-  if (!st?.Connected) {
+  if (waField(st, 'LoggedIn')) return { loggedIn: true };
+  if (!waField(st, 'Connected')) {
     try { await waTransport.builtin.connect(token); }
     catch (e) { if (e.response?.status !== 409) throw e; }
     await waSleep(1500);
@@ -1797,7 +1797,8 @@ const fetchBuiltinQr = async (token) => {
     for (let i = 0; i < 3; i++) {
       try {
         const q = await waTransport.builtin.qr(token);
-        if (q?.QRCode) return q.QRCode;
+        const code = waField(q, 'QRCode');
+        if (code) return code;
       } catch { /* QR ещё не готов */ }
       await waSleep(1200);
     }
@@ -1847,8 +1848,9 @@ app.post('/api/integrations/whatsapp/builtin/pair', auth, async (req, res) => {
     const conn = await ensureBuiltinConnected(session.token);
     if (conn.loggedIn) return res.json({ loggedIn: true });
     const r = await waTransport.builtin.pairPhone(session.token, phone);
-    if (!r?.LinkingCode) return res.status(502).json({ error: 'Не удалось получить код. Попробуйте ещё раз.' });
-    res.json({ code: r.LinkingCode });
+    const linking = waField(r, 'LinkingCode');
+    if (!linking) return res.status(502).json({ error: 'Не удалось получить код. Попробуйте ещё раз.' });
+    res.json({ code: linking });
   } catch (e) { waBuiltinError(res, e, 'pair'); }
 });
 
@@ -1857,11 +1859,11 @@ app.get('/api/integrations/whatsapp/builtin/status', auth, async (req, res) => {
     const session = await waTransport.getBuiltin(req.user.id);
     if (!session || !waTransport.builtinAvailable()) return res.json({ exists: false, loggedIn: false });
     const st = await waTransport.builtin.status(session.token);
-    const loggedIn = !!st?.LoggedIn;
+    const loggedIn = !!waField(st, 'LoggedIn');
     let phone = session.phone || null;
     if (loggedIn) {
       // Номер из идентификатора сессии: 79001234567:12@s.whatsapp.net
-      const jid = String(st.Jid || st.jid || '');
+      const jid = String(waField(st, 'Jid') || '');
       const fromJid = jid.split(/[:@]/)[0];
       if (/^\d{10,15}$/.test(fromJid) && fromJid !== phone) {
         phone = fromJid;
@@ -1881,7 +1883,7 @@ app.get('/api/integrations/whatsapp/builtin/status', auth, async (req, res) => {
         await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(next), req.user.id]);
       }
     }
-    res.json({ exists: true, loggedIn, connected: !!st?.Connected, phone });
+    res.json({ exists: true, loggedIn, connected: !!waField(st, 'Connected'), phone });
   } catch (e) { waBuiltinError(res, e, 'status'); }
 });
 
