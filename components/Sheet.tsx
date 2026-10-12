@@ -151,7 +151,10 @@ const Sheet: React.FC<SheetProps> = ({
         className={`fixed inset-0 z-modal-top flex justify-center ${
           isSheet ? 'items-end sm:items-center p-0 sm:p-4' : 'items-center p-6'
         }`}
-        style={zIndex ? { zIndex } : undefined}
+        // Рамку сверху под статус-бар (.z-modal-top) убираем: внутри неё не
+        // доставало затемнение, и над листом оставалась светлая полоса. Под
+        // статус-бар лист не заходит и так — его высота ограничена ниже.
+        style={{ borderTopWidth: 0, ...(zIndex ? { zIndex } : null) }}
         // Портал не отменяет всплытия по дереву React: без этого нажатие в листе
         // доходило бы до карточки, из которой его открыли, и открывало её
         onClick={e => e.stopPropagation()}
@@ -167,10 +170,10 @@ const Sheet: React.FC<SheetProps> = ({
           // Лист не заходит под чёлку: сверху остаётся полоска затемнённого экрана
           style={isSheet ? {
             maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - 10px - ${keyboard}px)`,
-            ...(keyboard > 0 ? { marginBottom: keyboard, paddingBottom: 0, transition: 'margin-bottom 0.18s ease-out' } : null),
+            ...(keyboard > 0 ? { marginBottom: keyboard, borderBottomWidth: 0, transition: 'margin-bottom 0.18s ease-out' } : null),
           } : undefined}
           className={`relative bg-white dark:bg-slate-800 shadow-2xl ${
-            isSheet ? 'w-full rounded-t-[28px] sm:rounded-3xl max-sm:pb-[env(safe-area-inset-bottom,0px)]' : 'w-full max-w-xs rounded-3xl'
+            isSheet ? 'w-full rounded-t-[28px] sm:rounded-3xl' : 'w-full max-w-xs rounded-3xl'
           } ${
             leaving
               ? (isSheet ? 'animate-slide-down-sheet' : 'animate-dialog-out')
