@@ -22,6 +22,8 @@ interface IntegrationsProps {
   onOpenTariffs?: () => void;
   /** Встроенный WhatsApp входит в тариф (Бизнес и выше). Green API — на любом, как раньше */
   builtinAllowed?: boolean;
+  /** Green API — со «Стандарта». Уже подключённые работают на любом тарифе */
+  greenAllowed?: boolean;
 }
 
 const DEFAULT_TEMPLATES = {
@@ -85,7 +87,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
     onSettingsChanged,
     apiAllowed = false,
     onOpenTariffs,
-    builtinAllowed = true
+    builtinAllowed = true,
+    greenAllowed = true
 }) => {
   // 🔹 НОВАЯ ЛОГИКА: isConnected вместо waEnabled
   const [isConnected, setIsConnected] = useState(false);
@@ -475,7 +478,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
         {!isConnected && !builtinAllowed && !showCredentials && (
           <div className="px-4 pb-4 space-y-3">
             <p className="text-[14px] leading-snug text-slate-500 dark:text-slate-400">
-              Подключение прямо в приложении — в тарифах «Бизнес» и «Бизнес Pro». На вашем тарифе можно подключить через сторонний сервис.
+              {greenAllowed
+                ? 'Подключение прямо в приложении — в тарифах «Бизнес» и «Бизнес Pro». На вашем тарифе можно подключить через сторонний сервис.'
+                : 'Напоминания клиентам в WhatsApp — с тарифа «Стандарт». Подключение прямо в приложении, за минуту, — в «Бизнесе» и «Бизнес Pro».'}
             </p>
             {onOpenTariffs && !isIOSApp() && (
               <button onClick={onOpenTariffs}
@@ -516,7 +521,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
         )}
       </SheetSection>
 
-      {!isConnected && !showCredentials && (
+      {!isConnected && greenAllowed && !showCredentials && (
         <button onClick={handleShowCredentials}
                 className="-mt-3 w-full text-center text-[13px] font-medium text-slate-500 dark:text-slate-400 active:opacity-60">
           Подключить через сторонний сервис (Green API)

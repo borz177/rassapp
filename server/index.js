@@ -3077,6 +3077,21 @@ app.get('/api/auth/me', auth, async (req, res) => {
 app.post('/api/user/whatsapp', auth, async (req, res) => {
   const settings = req.body;
   try {
+    // Green API — с тарифа «Стандарт». Кто подключил его раньше на «Старте» или
+    // «Пробном», работает как прежде: не пускаем только новое подключение —
+    // включение заново или другие ключи.
+    if (settings?.enabled && settings.provider !== 'builtin' && req.user.role !== 'admin') {
+      const cur = await pool.query('SELECT subscription, whatsapp_settings FROM users WHERE id = $1', [req.user.id]);
+      const parse = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
+      const plan = getEffectivePlan(parse(cur.rows[0]?.subscription)) || 'TRIAL';
+      if (plan === 'START' || plan === 'TRIAL') {
+        const old = parse(cur.rows[0]?.whatsapp_settings) || {};
+        const alreadyConnected = old.enabled && old.provider !== 'builtin' && old.idInstance && old.idInstance === settings.idInstance;
+        if (!alreadyConnected) {
+          return res.status(403).json({ error: 'Недоступно на вашем тарифе', msg: 'WhatsApp-напоминания — с тарифа «Стандарт».' });
+        }
+      }
+    }
     await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2',
       [JSON.stringify(settings), req.user.id]
     );

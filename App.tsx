@@ -1199,10 +1199,10 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v39';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v40';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
-  // Сейчас в окне — сбой WhatsApp-напоминаний: инвесторам они ни к чему
-  if (user.role === 'investor') return;
+  // Сейчас в окне — WhatsApp в приложении: подключает только владелец аккаунта
+  if (user.role !== 'manager' && user.role !== 'admin') return;
 
   let seen = false;
   try { seen = !!localStorage.getItem(STORAGE_KEY); } catch { /* без хранилища — покажем */ }
@@ -1385,7 +1385,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'WHATSAPP_GREEN' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API'): boolean => {
     if (!user) return false;
 
     // 🔒 ИИ (распознавание паспорта) решается до общего пропуска: строкой ниже
@@ -1419,6 +1419,8 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // Встроенный WhatsApp (как PLAN_LIMITS на сервере) — в «Бизнесе» и «Бизнес Pro».
         // Green API этим не ограничен — подключается на любом тарифе, как раньше.
         case 'WHATSAPP': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
+        // Green API — со «Стандарта» (кто подключил раньше, работает и дальше)
+        case 'WHATSAPP_GREEN': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
         // период для того и нужен, чтобы увидеть, за что платят.
         case 'CONTRACT_TEMPLATES': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
@@ -5102,6 +5104,7 @@ if (!user && !showSplash) {
                                     apiAllowed={checkAccess('API') && (user?.role === 'manager' || user?.role === 'admin')}
                                     onOpenTariffs={() => setCurrentView('TARIFFS')}
                                     builtinAllowed={checkAccess('WHATSAPP') || user?.role === 'admin'}
+                                    greenAllowed={checkAccess('WHATSAPP_GREEN') || user?.role === 'admin'}
                                     whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
                                     onSettingsChanged={() => {
 
@@ -5869,33 +5872,33 @@ if (!user && !showSplash) {
       onClick={e => e.stopPropagation()}
     >
       <div className="px-6 pt-7 pb-6">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-amber-600 dark:text-amber-400">Важно</p>
+        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-emerald-600 dark:text-emerald-400">Новое</p>
         <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          Временный сбой WhatsApp-напоминаний
+          WhatsApp прямо в приложении
         </h3>
-        <p className="mt-1.5 text-[14px] text-slate-500 dark:text-slate-400">Неполадки у провайдера сервиса отправки</p>
+        <p className="mt-1.5 text-[14px] text-slate-500 dark:text-slate-400">Подключение за минуту — в тарифах «Бизнес» и «Бизнес Pro»</p>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
             словами: результат, а не устройство. */}
         <div className="mt-6 space-y-5">
           {[
             {
-              tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
-              icon: <><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z" /><path d="M12 9v4M12 17h.01" /></>,
-              title: 'Напоминания могут не уходить',
-              text: 'Автоматические напоминания клиентам временно могут не отправляться или уходить с задержкой.',
-            },
-            {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>,
-              title: 'Данные в порядке',
-              text: 'Договоры и платежи не затронуты — сбой касается только отправки сообщений.',
+              icon: <><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z" /></>,
+              title: 'Без регистраций и ключей',
+              text: 'Код из WhatsApp или QR — и напоминания уходят клиентам с вашего номера.',
             },
             {
               tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-              icon: <><path d="M21 11.5a8.4 8.4 0 0 1-12.4 7.4L3 21l2.1-5.4A8.4 8.4 0 1 1 21 11.5z" /></>,
-              title: 'Напомнить можно вручную',
-              text: 'Кнопка «Напомнить» открывает WhatsApp на вашем телефоне и работает как обычно.',
+              icon: <><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" /><path d="M14 2v6h6" /></>,
+              title: 'Договор и чек — сразу клиенту',
+              text: 'PDF уходит в WhatsApp при оформлении и при оплате.',
+            },
+            {
+              tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+              icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>,
+              title: 'Бережно к номеру',
+              text: 'Паузы и дневной лимит, чтобы WhatsApp не ограничил номер.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
@@ -5912,16 +5915,42 @@ if (!user && !showSplash) {
           ))}
         </div>
 
-        <p className="mt-6 text-[13px] leading-snug text-slate-500 dark:text-slate-400">
-          Сроки восстановления провайдер пока не называет. Как только всё заработает — сообщим. Приносим извинения за неудобства.
-        </p>
-
-        <button
-          onClick={() => setShowTemplateUpdateModal(false)}
-          className="mt-5 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform"
-        >
-          Понятно
-        </button>
+        {/* Кнопка по тарифу: на «Бизнесе» — сразу подключить, ниже — в тарифы.
+            На iPhone подписку в приложении не продаём (правила App Store). */}
+        {(() => {
+          const canBuiltin = checkAccess('WHATSAPP') || user?.role === 'admin';
+          const go = (view: ViewState) => { setShowTemplateUpdateModal(false); setPreviousView(currentView); setCurrentView(view); };
+          if (canBuiltin) return (
+            <>
+              <button onClick={() => go('INTEGRATIONS')}
+                      className="mt-7 w-full h-12 bg-emerald-600 text-white text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
+                Подключить
+              </button>
+              <button onClick={() => setShowTemplateUpdateModal(false)}
+                      className="mt-2 w-full h-11 text-[15px] font-semibold text-slate-500 dark:text-slate-400 active:opacity-60">
+                Позже
+              </button>
+            </>
+          );
+          if (isIOSApp()) return (
+            <button onClick={() => setShowTemplateUpdateModal(false)}
+                    className="mt-7 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
+              Понятно
+            </button>
+          );
+          return (
+            <>
+              <button onClick={() => go('TARIFFS')}
+                      className="mt-7 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
+                Перейти на «Бизнес»
+              </button>
+              <button onClick={() => setShowTemplateUpdateModal(false)}
+                      className="mt-2 w-full h-11 text-[15px] font-semibold text-slate-500 dark:text-slate-400 active:opacity-60">
+                Позже
+              </button>
+            </>
+          );
+        })()}
       </div>
     </div>
   </div>
