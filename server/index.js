@@ -1813,6 +1813,24 @@ const fetchBuiltinQr = async (token) => {
   return tryQr();
 };
 
+// Номер отвязали на телефоне («Связанные устройства»): в сервисе осталось старое
+// устройство, и WhatsApp выкидывает каждое его подключение — ни код, ни QR не
+// выдаются. Пересоздаём сессию с нуля, сохраняя дату подключения (от неё
+// считается прогрев номера и дневной лимит).
+const freshBuiltinSession = async (userId) => {
+  let session = await waTransport.ensureBuiltinSession(userId);
+  let st = null;
+  try { st = await waTransport.builtin.status(session.token); } catch { /* проверим при подключении */ }
+  if (st && !waField(st, 'LoggedIn') && waField(st, 'Jid')) {
+    const since = session.created_at;
+    await waTransport.removeBuiltinSession(userId);
+    session = await waTransport.ensureBuiltinSession(userId);
+    if (since) await pool.query('UPDATE wa_builtin SET created_at = $2 WHERE user_id = $1', [userId, since]);
+    console.log(`ℹ️ WA builtin: сессия ${userId} пересоздана — номер был отвязан на телефоне`);
+  }
+  return session;
+};
+
 const waBuiltinError = (res, e, what) => {
   console.error(`🔴 WA builtin ${what}:`, e.response?.status || '', e.message);
   res.status(502).json({ error: 'WhatsApp-сервис не ответил. Попробуйте ещё раз через минуту.' });
@@ -1821,7 +1839,7 @@ const waBuiltinError = (res, e, what) => {
 app.post('/api/integrations/whatsapp/builtin/start', auth, async (req, res) => {
   if (!(await waBuiltinGate(req, res))) return;
   try {
-    const session = await waTransport.ensureBuiltinSession(req.user.id);
+    const session = await freshBuiltinSession(req.user.id);
     const r = await ensureBuiltinConnected(session.token);
     res.json({ loggedIn: r.loggedIn });
   } catch (e) { waBuiltinError(res, e, 'start'); }

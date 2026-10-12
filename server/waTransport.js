@@ -162,7 +162,14 @@ function createWaTransport(pool) {
     if (!row) return;
     try { await wuz('post', '/session/logout', row.token); } catch { /* уже не в сети — не важно */ }
     if (row.wuz_id) {
-      try { await wuzAdmin('delete', `/admin/users/${row.wuz_id}`); } catch (e) { console.warn('⚠️ WA builtin delete user:', errText(e)); }
+      // Полное удаление: выход из WhatsApp, данные устройства, сессия в памяти.
+      // Простое удаление оставляло старое устройство, и новое подключение
+      // WhatsApp сразу выкидывал («logged out from another device»).
+      try { await wuzAdmin('delete', `/admin/users/${row.wuz_id}/full`); }
+      catch (e) {
+        console.warn('⚠️ WA builtin full delete:', errText(e));
+        try { await wuzAdmin('delete', `/admin/users/${row.wuz_id}`); } catch { /* уже нет */ }
+      }
     }
     await pool.query('DELETE FROM wa_builtin WHERE user_id = $1', [userId]);
   };
