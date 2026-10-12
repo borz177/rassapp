@@ -1199,7 +1199,7 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v40';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v41';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
   // Сейчас в окне — WhatsApp в приложении: подключает только владелец аккаунта
   if (user.role !== 'manager' && user.role !== 'admin') return;
@@ -5896,9 +5896,9 @@ if (!user && !showSplash) {
             },
             {
               tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
-              icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>,
-              title: 'Бережно к номеру',
-              text: 'Паузы и дневной лимит, чтобы WhatsApp не ограничил номер.',
+              icon: <><circle cx="12" cy="12" r="9" /><path d="M12 7v5l3 2" /></>,
+              title: 'Пока неизвестно, когда заработает Green API',
+              text: 'Мы постарались не поднимать цены, хотя встроенный WhatsApp обходится нам недёшево.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
