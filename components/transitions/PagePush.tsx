@@ -94,6 +94,27 @@ const EDGE_ZONE = 28; // px from the left edge where a back-swipe can start
 const COMMIT_RATIO = 0.33; // fraction of width dragged to commit the close
 const VELOCITY_COMMIT = 0.55; // px/ms flick speed to commit the close regardless of distance
 
+// Тачпад: свайп двумя пальцами приходит колёсиком с горизонтальным сдвигом.
+// Конец жеста не сообщается — считаем, что он кончился, когда события стихли.
+const WHEEL_IDLE_MS = 140;
+const WHEEL_COMMIT_RATIO = 0.3;
+const WHEEL_FLICK_VELOCITY = 1.1; // px/мс — быстрый мах закрывает и на коротком ходу
+const WHEEL_FLICK_MIN = 60;
+/** После жеста инерция тачпада ещё шлёт события — не даём им начать новый */
+const WHEEL_COOLDOWN_MS = 400;
+const WHEEL_EASE = 'transform 0.26s cubic-bezier(0.32, 0.72, 0, 1)';
+
+/** Под курсором горизонтальный список, который ещё может прокрутиться влево */
+const canScrollLeft = (target: EventTarget | null, root: HTMLElement): boolean => {
+  let el = target instanceof Element ? target as HTMLElement : null;
+  while (el && el !== root) {
+    const ox = getComputedStyle(el).overflowX;
+    if ((ox === 'auto' || ox === 'scroll') && el.scrollWidth > el.clientWidth + 1 && el.scrollLeft > 0) return true;
+    el = el.parentElement;
+  }
+  return false;
+};
+
 interface DragState {
   startX: number;
   startY: number;
@@ -323,6 +344,73 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
     setLiveTransform(0, width, true);
     window.setTimeout(clearInlineTransform, CLOSE_DURATION);
   };
+
+  // ── Свайп назад на тачпаде ─────────────────────────────────────────────
+  // Как в Safari на Mac: два пальца вправо — страница едет за ними, отпустили
+  // дальше трети ширины или махнули быстро — уходит, иначе возвращается.
+  // На компьютере у слоя переходы выключены (index.css), поэтому анимацию
+  // ухода и возврата задаём здесь явно. Раздел под страницей в программе для
+  // Mac скрыт и при жесте не показываем: страница там прозрачная (стекло у
+  // карточки под ней), и список просвечивал бы сквозь неё.
+  useEffect(() => {
+    const root = rootRef.current;
+    if (!root) return;
+    const w = { active: false, intercepted: false, offset: 0, timer: 0, cooldownUntil: 0, samples: [] as { t: number; x: number }[] };
+    const place = (px: number, animate: boolean) => {
+      const width = root.offsetWidth || window.innerWidth;
+      root.style.willChange = 'transform';
+      root.style.transition = animate ? WHEEL_EASE : 'none';
+      root.style.transform = `translateX(${Math.max(0, Math.min(px, width))}px)`;
+    };
+    const end = () => {
+      w.timer = 0;
+      if (!w.active) return;
+      w.active = false;
+      w.cooldownUntil = performance.now() + WHEEL_COOLDOWN_MS;
+      const width = root.offsetWidth || window.innerWidth;
+      const first = w.samples[0];
+      const last = w.samples[w.samples.length - 1];
+      const velocity = first && last && last.t > first.t ? (last.x - first.x) / (last.t - first.t) : 0;
+      const committed = w.offset > width * WHEEL_COMMIT_RATIO || (velocity > WHEEL_FLICK_VELOCITY && w.offset > WHEEL_FLICK_MIN);
+      if (w.intercepted) { if (committed) consumeBack(); return; }
+      if (committed && !closingRef.current) {
+        place(width, true);
+        closingRef.current = true;
+        setClosing(true);
+      } else {
+        place(0, true);
+        window.setTimeout(clearInlineTransform, CLOSE_DURATION);
+      }
+    };
+    const onWheel = (e: WheelEvent) => {
+      if (closingRef.current || e.ctrlKey) return; // ctrl — это щипок (масштаб)
+      const dx = e.deltaX * (e.deltaMode === 1 ? 16 : 1);
+      if (!w.active) {
+        if (performance.now() < w.cooldownUntil) return;
+        // Только отчётливо горизонтальный жест вправо (deltaX < 0)
+        if (dx >= 0 || Math.abs(dx) < Math.abs(e.deltaY) * 1.5) return;
+        if (canScrollLeft(e.target, root)) return;
+        w.active = true;
+        w.offset = 0;
+        w.samples = [];
+        w.intercepted = hasBackInterceptor();
+      }
+      e.preventDefault();
+      w.offset = Math.max(0, w.offset - dx);
+      const now = performance.now();
+      w.samples.push({ t: now, x: w.offset });
+      while (w.samples.length > 2 && now - w.samples[0].t > 80) w.samples.shift();
+      if (!w.intercepted) place(w.offset, false);
+      window.clearTimeout(w.timer);
+      w.timer = window.setTimeout(end, WHEEL_IDLE_MS);
+    };
+    root.addEventListener('wheel', onWheel, { passive: false });
+    return () => {
+      root.removeEventListener('wheel', onWheel);
+      window.clearTimeout(w.timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const idle = entered && !closing;
 

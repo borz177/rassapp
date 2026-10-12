@@ -187,6 +187,9 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       passed.current = false;
       refreshingRef.current = true;
       setRefreshing(true);
+      // Пока крутится колесо, значок синхронизации у названия компании прячем
+      // (.ptr-refreshing в index.css) — иначе на экране два индикатора сразу
+      document.documentElement.classList.add('ptr-refreshing');
       settle(THRESHOLD);
 
       const startedAt = Date.now();
@@ -199,6 +202,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
         if (spent < MIN_SPIN_MS) await new Promise(r => setTimeout(r, MIN_SPIN_MS - spent));
         refreshingRef.current = false;
         setRefreshing(false);
+        document.documentElement.classList.remove('ptr-refreshing');
         settle(0);
       }
     };
@@ -214,6 +218,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       window.removeEventListener('touchend', onEnd);
       window.removeEventListener('touchcancel', onEnd);
       if (frame.current) cancelAnimationFrame(frame.current);
+      document.documentElement.classList.remove('ptr-refreshing');
       moveContent(0, false);
     };
   }, []);
