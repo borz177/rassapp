@@ -1353,7 +1353,7 @@ export const api = {
     waBuiltin: {
         start: async (): Promise<{ loggedIn: boolean }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/start`, { method: 'POST', timeout: 30000 })),
         qr: async (): Promise<{ loggedIn: boolean; qr?: string | null }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/qr`, { timeout: 20000 })),
-        pair: async (phone: string): Promise<{ code: string }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/pair`, {
+        pair: async (phone: string): Promise<{ code: string; loggedIn?: boolean }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/pair`, {
             method: 'POST', body: JSON.stringify({ phone }), timeout: 40000,
         })),
         status: async (): Promise<{ exists: boolean; loggedIn: boolean; connected?: boolean; phone?: string | null }> =>

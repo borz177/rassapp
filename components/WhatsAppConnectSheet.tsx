@@ -18,8 +18,9 @@ interface Props {
 }
 
 const POLL_MS = 2500;
-// WhatsApp меняет QR примерно раз в 20 секунд — старый уже не сработает
-const QR_REFRESH_MS = 20000;
+// WhatsApp меняет QR каждые ~20 секунд, а сервис закрывает канал через минуту;
+// запрашиваем чаще, чтобы показывать свежий и сразу подхватывать перезапуск
+const QR_REFRESH_MS = 8000;
 
 const formatCode = (code: string) => (code.length === 8 ? `${code.slice(0, 4)}-${code.slice(4)}` : code);
 const formatPhone = (digits?: string | null) =>
@@ -105,7 +106,9 @@ const WhatsAppConnectSheet: React.FC<Props> = ({ onClose, onConnected }) => {
     setCode(null);
     try {
       const r = await api.waBuiltin.pair(phone);
-      if (alive.current) setCode(r.code);
+      if (!alive.current) return;
+      if ((r as any).loggedIn) { checkStatus(); return; }
+      setCode(r.code);
     } catch (e) {
       if (alive.current) setError(e instanceof Error ? e.message : 'Не удалось получить код');
     } finally {

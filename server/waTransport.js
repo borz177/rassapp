@@ -156,6 +156,7 @@ function createWaTransport(pool) {
     // Сессия встроенного сервиса — для экрана подключения
     builtin: {
       connect: (token) => wuz('post', '/session/connect', token, { Subscribe: [], Immediate: true }),
+      disconnect: (token) => wuz('post', '/session/disconnect', token),
       status: (token) => wuz('get', '/session/status', token, undefined, 10000),
       qr: (token) => wuz('get', '/session/qr', token, undefined, 15000),
       pairPhone: (token, phone) => wuz('post', '/session/pairphone', token, { Phone: phone }, 30000),

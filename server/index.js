@@ -1775,6 +1775,43 @@ const waBuiltinGate = async (req, res) => {
   return true;
 };
 
+const waSleep = (ms) => new Promise(r => setTimeout(r, ms));
+
+// Сессия должна быть на связи с серверами WhatsApp: QR живёт около минуты, потом
+// сервис закрывает канал, и без нового connect ни QR, ни код по номеру не выдаст.
+// 409 «уже подключён» — не ошибка: окно могли открыть повторно.
+const ensureBuiltinConnected = async (token) => {
+  const st = await waTransport.builtin.status(token);
+  if (st?.LoggedIn) return { loggedIn: true };
+  if (!st?.Connected) {
+    try { await waTransport.builtin.connect(token); }
+    catch (e) { if (e.response?.status !== 409) throw e; }
+    await waSleep(1500);
+  }
+  return { loggedIn: false };
+};
+
+// QR появляется не мгновенно, а после подключения; не вышло — перезапускаем сессию
+const fetchBuiltinQr = async (token) => {
+  const tryQr = async () => {
+    for (let i = 0; i < 3; i++) {
+      try {
+        const q = await waTransport.builtin.qr(token);
+        if (q?.QRCode) return q.QRCode;
+      } catch { /* QR ещё не готов */ }
+      await waSleep(1200);
+    }
+    return null;
+  };
+  let qr = await tryQr();
+  if (qr) return qr;
+  try { await waTransport.builtin.disconnect(token); } catch { /* не был подключён */ }
+  await waSleep(500);
+  try { await waTransport.builtin.connect(token); } catch (e) { if (e.response?.status !== 409) throw e; }
+  await waSleep(2000);
+  return tryQr();
+};
+
 const waBuiltinError = (res, e, what) => {
   console.error(`🔴 WA builtin ${what}:`, e.response?.status || '', e.message);
   res.status(502).json({ error: 'WhatsApp-сервис не ответил. Попробуйте ещё раз через минуту.' });
@@ -1784,10 +1821,8 @@ app.post('/api/integrations/whatsapp/builtin/start', auth, async (req, res) => {
   if (!(await waBuiltinGate(req, res))) return;
   try {
     const session = await waTransport.ensureBuiltinSession(req.user.id);
-    // «Уже подключено» — не ошибка: человек мог открыть экран второй раз
-    try { await waTransport.builtin.connect(session.token); } catch (e) { if (e.response?.status !== 500) throw e; }
-    const st = await waTransport.builtin.status(session.token);
-    res.json({ loggedIn: !!st?.LoggedIn });
+    const r = await ensureBuiltinConnected(session.token);
+    res.json({ loggedIn: r.loggedIn });
   } catch (e) { waBuiltinError(res, e, 'start'); }
 });
 
@@ -1796,10 +1831,9 @@ app.get('/api/integrations/whatsapp/builtin/qr', auth, async (req, res) => {
   try {
     const session = await waTransport.getBuiltin(req.user.id);
     if (!session) return res.status(409).json({ error: 'Сначала начните подключение' });
-    const st = await waTransport.builtin.status(session.token);
-    if (st?.LoggedIn) return res.json({ loggedIn: true });
-    const q = await waTransport.builtin.qr(session.token);
-    res.json({ loggedIn: false, qr: q?.QRCode || null });
+    const r = await ensureBuiltinConnected(session.token);
+    if (r.loggedIn) return res.json({ loggedIn: true });
+    res.json({ loggedIn: false, qr: await fetchBuiltinQr(session.token) });
   } catch (e) { waBuiltinError(res, e, 'qr'); }
 });
 
@@ -1810,6 +1844,8 @@ app.post('/api/integrations/whatsapp/builtin/pair', auth, async (req, res) => {
   try {
     const session = await waTransport.getBuiltin(req.user.id);
     if (!session) return res.status(409).json({ error: 'Сначала начните подключение' });
+    const conn = await ensureBuiltinConnected(session.token);
+    if (conn.loggedIn) return res.json({ loggedIn: true });
     const r = await waTransport.builtin.pairPhone(session.token, phone);
     if (!r?.LinkingCode) return res.status(502).json({ error: 'Не удалось получить код. Попробуйте ещё раз.' });
     res.json({ code: r.LinkingCode });
