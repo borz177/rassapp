@@ -1,9 +1,9 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import Sheet from './Sheet';
 import { friendlyError } from '../src/friendlyError';
 import type { Product, StockLocation, StockMovement, Supplier } from '../types';
 import { DEFAULT_WAREHOUSE_ID } from '../types';
 import { productOnWarehouse, stockOnWarehouse, applyStockDelta as withDelta } from '../src/utils';
-import ModalPortal from './ModalPortal';
 import BarcodeScanner, { ScanButton, type ScanOutcome } from './BarcodeScanner';
 import { findProductByCode, productMatchesQuery } from '../src/barcode';
 import { useBarcodeScanInput } from '../src/barcodeWedge';
@@ -530,11 +530,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
 
       {/* Ввод количества */}
       {picking && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setPicking(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setPicking(null)} className="sm:max-w-sm p-5 space-y-3">
               <div>
                 <h3 className="font-bold text-slate-800 dark:text-white truncate">{picking.name}</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -581,18 +577,12 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
                   В документ
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
 
       {/* Документ */}
       {docOpen && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setDocOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[90vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setDocOpen(false)} className="sm:max-w-lg max-h-[90vh] flex flex-col overflow-hidden">
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
                 <div>
                   <h3 className="font-bold text-slate-800 dark:text-white">{docTitle}</h3>
@@ -725,9 +715,7 @@ const WarehouseOps: React.FC<WarehouseOpsProps> = ({
                   {negativeRows.length > 0 ? 'Провести в минус' : 'Провести'}
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
       {/* Камера в непрерывном режиме: коробка за коробкой, без закрытия */}
       {scanOpen && (

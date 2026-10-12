@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Sheet from './Sheet';
 import { api } from '@/services/api';
 import { Capacitor } from '@capacitor/core';
 import { Filesystem, Directory } from '@capacitor/filesystem';
@@ -137,8 +138,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
     };
 
     return (
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl p-6 space-y-5 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-lg p-6 space-y-5 overflow-y-auto overscroll-contain">
                 <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
                     <h3 className="text-xl font-bold text-slate-800 dark:text-white">Экспорт данных в Excel</h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl">✕</button>
@@ -238,8 +238,7 @@ const DataExport: React.FC<DataExportProps> = ({ onClose }) => {
                         </button>
                     </div>
                 </div>
-            </div>
-        </div>
+            </Sheet>
     );
 };
 

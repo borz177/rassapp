@@ -1,10 +1,10 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import Sheet from './Sheet';
 import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../types';
 import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, expenseProfitSplit, CLIENT_DISCOUNT, clientDiscountLabel } from '../src/utils';
 import { incomeCancelPlan } from '../src/incomeCancel';
 import { buildMoneyOperations } from '../src/moneyOperations';
 import { ICONS } from '../constants';
-import ModalPortal from './ModalPortal';
 import SelectSheet from './SelectSheet';
 import UnsyncedMark from './UnsyncedMark';
 
@@ -416,8 +416,7 @@ const Operations: React.FC<OperationsProps> = ({
       </>)}
 
       {selectedOp && (
-    <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedOp(null)}>
-        <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl overflow-hidden" onClick={e => e.stopPropagation()}>
+    <Sheet onClose={() => setSelectedOp(null)} className="sm:max-w-sm overflow-y-auto overscroll-contain">
             <div className={`p-6 text-white ${
                 selectedOp.type === 'EXPENSE' 
                     ? selectedOp.category === 'Salary' 
@@ -577,8 +576,7 @@ const Operations: React.FC<OperationsProps> = ({
                     Закрыть
                 </button>
             </div>
-        </div>
-    </div>
+        </Sheet>
 )}
 {/* Подтверждение отмены расхода. Перечисляем последствия поимённо: операция
     затрагивает не только остаток счёта, но и прибыль, капитал инвестора и долг
@@ -604,9 +602,7 @@ const Operations: React.FC<OperationsProps> = ({
     }
 
     return (
-      <ModalPortal>
-        <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !isCancelling && setCancelTarget(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-6" onClick={ev => ev.stopPropagation()}>
+      <Sheet onClose={() => setCancelTarget(null)} dismissible={!isCancelling} className="sm:max-w-md p-6">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">Отменить приход?</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
                     «{sale.productName || (isDeposit ? 'Пополнение от инвестора' : 'Прочий приход')}» — {formatCurrency(plan.amount)} ₽ от {formatDate(sale.startDate)}
@@ -678,9 +674,7 @@ const Operations: React.FC<OperationsProps> = ({
                         {isCancelling ? 'Отменяем…' : 'Отменить приход'}
                     </button>
                 </div>
-            </div>
-        </div>
-      </ModalPortal>
+            </Sheet>
     );
 })()}
 {cancelTarget && cancelTarget.type === 'EXPENSE' && (() => {
@@ -714,9 +708,7 @@ const Operations: React.FC<OperationsProps> = ({
     }
 
     return (
-      <ModalPortal>
-        <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !isCancelling && setCancelTarget(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-2xl sm:rounded-2xl shadow-2xl p-6" onClick={ev => ev.stopPropagation()}>
+      <Sheet onClose={() => setCancelTarget(null)} dismissible={!isCancelling} className="sm:max-w-md p-6">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">Отменить расход?</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 mb-4">
                     «{e.title}» — {formatCurrency(Number(e.amount))} ₽
@@ -763,9 +755,7 @@ const Operations: React.FC<OperationsProps> = ({
                         {isCancelling ? 'Отменяем…' : 'Отменить расход'}
                     </button>
                 </div>
-            </div>
-        </div>
-      </ModalPortal>
+            </Sheet>
     );
 })()}
     </div>

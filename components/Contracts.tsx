@@ -1,4 +1,6 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
+import Sheet from './Sheet';
+import { useSheetDrag } from '../src/sheetDrag';
 import { friendlyError } from '../src/friendlyError';
 import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../types';
 import { ICONS } from '../constants';
@@ -84,11 +86,9 @@ const ContractInfoModal = ({
   useEffect(() => () => { if (noticeTimer.current) clearTimeout(noticeTimer.current); }, []);
 
 
-  const [isClosing, setIsClosing] = useState(false);
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+  const closeRef = useRef<() => void>(onClose);
+  const handleClose = () => closeRef.current();
 
   const planPayments = sale.paymentPlan.filter(p => !p.isRealPayment);
 const realPayments = sale.paymentPlan.filter(p => p.isRealPayment && p.isPaid);
@@ -218,15 +218,7 @@ const handleSendReminder = async () => {
   }
 };
 
-   return createPortal(
-    <div
-      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-sm sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        onClick={e => e.stopPropagation()}
-      >
+   return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
         {/* 🔥 ШАПКА С КНОПКОЙ «НАПОМНИТЬ» */}
         <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
@@ -377,10 +369,7 @@ const handleSendReminder = async () => {
           </div>,
           document.body
         )}
-      </div>
-    </div>,
-    document.body
-  );
+      </Sheet>;
 };
 
 const InfoItem = ({ label, value, color = 'text-slate-800 dark:text-white', small = false }: {
@@ -500,6 +489,9 @@ const Contracts: React.FC<ContractsProps> = ({
   const getCreatorName = (sale: Sale) => employees.find(e => e.id === sale.createdByUserId)?.name;
   const [activeMenuId, setActiveMenuId] = useState<string | null>(null);
   const [isMenuClosing, setIsMenuClosing] = useState(false);
+  // Меню на телефоне смахивается вниз за любое место. Затемнение не гасим за
+  // пальцем: оно гаснет своей анимацией, когда меню закроется.
+  const menuSheetRef = useSheetDrag({ onDismiss: () => closeActionMenu() });
   const [deletingSale, setDeletingSale] = useState<Sale | null>(null);
   const [deleteStage, setDeleteStage] = useState<'idle' | 'working' | 'done'>('idle');
   const [deleteError, setDeleteError] = useState<string | null>(null);
@@ -954,7 +946,10 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
 
         {isMobile ? (
           <div className={`fixed left-0 right-0 bottom-0 z-[9999] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}>
-            <div className="bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl w-full mx-auto overflow-hidden">
+            <div ref={menuSheetRef} className="bg-white dark:bg-slate-800 rounded-t-[28px] shadow-2xl w-full mx-auto overflow-hidden relative">
+              <div aria-hidden className="absolute inset-x-0 top-0 flex justify-center pt-2 pointer-events-none">
+                <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />
+              </div>
               {content}
             </div>
           </div>

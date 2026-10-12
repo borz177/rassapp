@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Sheet from './Sheet';
 import { friendlyError } from '../src/friendlyError';
 import { api } from '../services/api';
 import type { AdminPayment } from '../types';
@@ -116,10 +117,7 @@ const AdminPayments: React.FC = () => {
       )}
 
       {target && (
-        <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-             onClick={() => setTarget(null)}>
-          <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-               onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setTarget(null)} className="sm:max-w-md p-5 space-y-3">
             <h3 className="font-bold text-slate-800 dark:text-white">Чек НПД</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               {target.user_email} · {money(target.amount)} ₽ · {dateTime(target.paid_at)}
@@ -142,8 +140,7 @@ const AdminPayments: React.FC = () => {
                 Сохранить и отправить
               </button>
             </div>
-          </div>
-        </div>
+          </Sheet>
       )}
     </div>
   );

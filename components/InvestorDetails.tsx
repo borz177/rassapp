@@ -1,4 +1,5 @@
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
+import Sheet from './Sheet';
 import { percentError } from '../src/investorPercent';
 import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
@@ -22,35 +23,15 @@ const FormSheet: React.FC<{
   onClose: () => void;
   children: React.ReactNode;
 }> = ({ title, subtitle, accent, icon, submitLabel, canSubmit, onSubmit, onClose, children }) => {
-  const [isClosing, setIsClosing] = useState(false);
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
-
-  useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const sync = () => setKeyboardOffset(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)));
-    sync();
-    vv.addEventListener('resize', sync);
-    vv.addEventListener('scroll', sync);
-    return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
-  }, []);
-
-  const close = () => { setIsClosing(true); setTimeout(onClose, 260); };
+  // Закрыть с уходом листа; над клавиатурой лист поднимается сам (Sheet)
+  const closeRef = useRef<() => void>(onClose);
+  const close = () => closeRef.current();
 
   const tone = accent === 'red'
     ? { bg: 'bg-rose-50 dark:bg-rose-900/30', text: 'text-rose-600 dark:text-rose-400', btn: 'bg-rose-600 hover:bg-rose-700' }
     : { bg: 'bg-indigo-50 dark:bg-indigo-900/30', text: 'text-indigo-600 dark:text-indigo-400', btn: 'bg-gradient-to-r from-indigo-600 to-indigo-700 hover:from-indigo-700 hover:to-indigo-800' };
 
-  return createPortal(
-    <div
-      className={`fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
-      onClick={close}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden ${keyboardOffset > 0 ? '' : 'safe-area-pb'} ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        style={keyboardOffset > 0 ? { marginBottom: keyboardOffset, transition: 'margin-bottom 0.18s ease-out' } : undefined}
-        onClick={e => e.stopPropagation()}
-      >
+  return <Sheet onClose={onClose} closeRef={closeRef} zIndex={9999} className="sm:max-w-md overflow-hidden">
         <div className="p-5 space-y-4">
           <div className="flex items-center gap-3">
             <div className={`w-10 h-10 rounded-2xl ${tone.bg} ${tone.text} flex items-center justify-center shrink-0`}>{icon}</div>
@@ -75,10 +56,7 @@ const FormSheet: React.FC<{
             </button>
           </div>
         </div>
-      </div>
-    </div>,
-    document.body
-  );
+      </Sheet>;
 };
 
 interface InvestorDetailsProps {
@@ -1204,9 +1182,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       )}
 
       {/* Profit detail modal — тоже через портал, иначе перекрывается нижней навигацией */}
-      {showProfitDetails && createPortal(
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setShowProfitDetails(false)}>
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl flex flex-col max-h-[80vh]" onClick={e => e.stopPropagation()}>
+      {showProfitDetails && <Sheet onClose={() => setShowProfitDetails(false)} zIndex={9999} className="sm:max-w-md flex flex-col max-h-[80vh] overflow-hidden">
             <div className="p-5 border-b border-slate-200 dark:border-slate-700">
               <h3 className="text-lg font-bold text-slate-800 dark:text-white">Детализация прибыли</h3>
               <p className="text-sm text-slate-500 dark:text-slate-400">К выплате: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(totalProfitEarned - totalProfitWithdrawn, appSettings.showCents)} ₽</span></p>
@@ -1244,10 +1220,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
             <div className="p-4 border-t border-slate-100 dark:border-slate-700">
               <button onClick={() => setShowProfitDetails(false)} className="w-full py-3 bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 font-bold rounded-xl hover:bg-slate-200 dark:hover:bg-slate-600">Закрыть</button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </Sheet>}
 
       {/* Delete confirmation modal — через портал по той же причине */}
       {showDeleteConfirm && createPortal(

@@ -1,5 +1,5 @@
-import React, { useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import React, { useMemo, useState, useRef } from 'react';
+import Sheet from './Sheet';
 import { AppSettings, Sale } from '../types';
 import { ProfitTotalRow } from '../src/profitTotals';
 import { formatCurrency, formatDate } from '../src/utils';
@@ -31,14 +31,12 @@ interface ProfitTotalsModalProps {
 const ProfitTotalsModal: React.FC<ProfitTotalsModalProps> = ({
   type, rows, total, appSettings, onClose, onSelectCustomer, onOpenContract,
 }) => {
-  const [isClosing, setIsClosing] = useState(false);
   const [query, setQuery] = useState('');
   const [limit, setLimit] = useState(30);
 
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+  const closeRef = useRef<() => void>(onClose);
+  const handleClose = () => closeRef.current();
 
   const cents = appSettings?.showCents;
   const isExpected = type === 'expected';
@@ -65,15 +63,7 @@ const ProfitTotalsModal: React.FC<ProfitTotalsModalProps> = ({
   const title = isExpected ? 'Ожидается прибыли' : 'Получено прибыли';
   const amountLabel = isExpected ? 'Осталось получить' : 'Получено денег';
 
-  return createPortal(
-    <div
-      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        onClick={e => e.stopPropagation()}
-      >
+  return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
         <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
           isExpected
             ? 'bg-gradient-to-r from-slate-600 to-blue-600'
@@ -190,10 +180,7 @@ const ProfitTotalsModal: React.FC<ProfitTotalsModalProps> = ({
             </button>
           )}
         </div>
-      </div>
-    </div>,
-    document.body
-  );
+      </Sheet>;
 };
 
 export default ProfitTotalsModal;

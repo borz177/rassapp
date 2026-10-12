@@ -1,11 +1,10 @@
-import React, { useMemo, useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useModeOrder } from '../src/modeOrder';
 import SwapModesButton from './SwapModesButton';
 import MacDashboardHero from './MacDashboardHero';
 import { isMacShell } from '../src/platform';
 import ProfitTotalsModal from './ProfitTotalsModal';
 import { profitTotals } from '../src/profitTotals';
-import ModalPortal from './ModalPortal';
 import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier, StockMovement, Expense } from '../types';
 import DashboardCash from './DashboardCash';
 import AccountHead from './AccountHead';
@@ -17,10 +16,10 @@ import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
 import { turnoverBreakdown, type TurnoverBreakdown } from '../src/turnoverBreakdown';
 import GlassSheet, { SheetSection } from './GlassSheet';
+import Sheet from './Sheet';
 import ZakatSheet from './ZakatSheet';
 import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp, getInvestorAccount } from '../src/utils';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
-import {createPortal} from "react-dom";
 
 // Календарный день платежа в виде «YYYY-MM-DD» по московскому времени.
 //
@@ -125,21 +124,12 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
     const status = statusMap[sale.status] || { label: sale.status, color: 'bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600' };
 
     // 🔹 НОВОЕ
-    const [isClosing, setIsClosing] = useState(false);
-    const handleClose = () => {
-        setIsClosing(true);
-        setTimeout(onClose, 200);
-    };
+    // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+    const closeRef = useRef<() => void>(onClose);
+    const handleClose = () => closeRef.current();
 
    return (
-        <div
-          className={`fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
-          onClick={handleClose}
-        >
-            <div
-              className={`bg-white dark:bg-slate-800 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
-              onClick={e => e.stopPropagation()}
-            >
+        <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-md overflow-y-auto overscroll-contain">
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
                     <h3 className="text-xl font-bold mb-1">{sale.productName}</h3>
@@ -211,8 +201,7 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                         Закрыть
                     </button>
                 </div>
-            </div>
-        </div>
+            </Sheet>
     );
 };
 
@@ -226,11 +215,9 @@ const PaymentActionModal = ({
     onViewSchedule: (sale: Sale) => void, totalDue: number, appSettings: AppSettings
 }) => {
     // 🔹 НОВОЕ
-    const [isClosing, setIsClosing] = useState(false);
-    const handleClose = () => {
-        setIsClosing(true);
-        setTimeout(onClose, 200);
-    };
+    // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+    const closeRef = useRef<() => void>(onClose);
+    const handleClose = () => closeRef.current();
 
     const phone = waPhoneDigits(customerPhone);
     const daysLeft = daysUntilDayKey(dueDayKey);
@@ -257,14 +244,7 @@ const PaymentActionModal = ({
     };
 
     return (
-        <div
-            className={`fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/60 backdrop-blur-md ${isClosing ? 'animate-fade-out' : 'animate-in fade-in zoom-in duration-300'}`}
-            onClick={handleClose}
-        >
-            <div
-                className={`bg-white dark:bg-slate-800 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden border border-white/20 ${isClosing ? 'animate-zoom-out-modal' : ''}`}
-                onClick={e => e.stopPropagation()}
-            >
+        <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-md overflow-y-auto overscroll-contain">
                 <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
                     <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
                     <h3 className="text-xl font-bold mb-1">{customerName}</h3>
@@ -336,8 +316,7 @@ const PaymentActionModal = ({
                         <span>График платежей</span>
                     </button>
                 </div>
-            </div>
-        </div>
+            </Sheet>
     );
 };
 
@@ -361,11 +340,9 @@ const PaymentDetailsModal = ({
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
   // 🔹 НОВОЕ
-  const [isClosing, setIsClosing] = useState(false);
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+    const closeRef = useRef<() => void>(onClose);
+    const handleClose = () => closeRef.current();
 
   const items = useMemo(() => {
     const result: Array<{
@@ -452,15 +429,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
     ? 'Нет ожидаемых платежей в этом месяце'
     : 'Нет полученных платежей в этом месяце';
 
-    return createPortal(
-    <div
-      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        onClick={e => e.stopPropagation()}
-      >
+    return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
         {/* Шапка */}
         <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
           type === 'expected'
@@ -556,10 +525,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
         >
           Закрыть
         </button>
-      </div>
-    </div>,
-    document.body
-  );
+      </Sheet>;
 };
 
 
@@ -580,11 +546,9 @@ const ProfitDetailsModal = ({
   const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
   // 🔹 НОВОЕ
-  const [isClosing, setIsClosing] = useState(false);
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+    const closeRef = useRef<() => void>(onClose);
+    const handleClose = () => closeRef.current();
   const items = useMemo(() => {
     const result: Array<{
       sale: Sale;
@@ -757,15 +721,7 @@ const ProfitDetailsModal = ({
     };
   };
 
-  return createPortal(
-    <div
-      className={`fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm ${isClosing ? 'animate-fade-out' : 'animate-fade-in'}`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-lg sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        onClick={e => e.stopPropagation()}
-      >
+  return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
         {/* Шапка */}
         <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
           type === 'expected'
@@ -907,10 +863,7 @@ const ProfitDetailsModal = ({
         >
           Закрыть
         </button>
-      </div>
-    </div>,
-    document.body
-  );
+      </Sheet>;
 };
 
 /**
@@ -1725,11 +1678,7 @@ useEffect(() => {
         </div>
 
         {showSupplierDebt && (
-          <ModalPortal>
-            <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-                 onClick={() => setShowSupplierDebt(false)}>
-              <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col animate-slide-up-sheet"
-                   onClick={e => e.stopPropagation()}>
+          <Sheet onClose={() => setShowSupplierDebt(false)} className="sm:max-w-sm max-h-[75vh] flex flex-col">
                 <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
                   <h3 className="font-bold text-slate-800 dark:text-white">Мы должны</h3>
                   <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1752,9 +1701,7 @@ useEffect(() => {
                     Открыть партнёров
                   </button>
                 </div>
-              </div>
-            </div>
-          </ModalPortal>
+              </Sheet>
         )}
 
         {/* Overview Tab.

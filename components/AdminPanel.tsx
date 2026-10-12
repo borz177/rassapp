@@ -1,5 +1,6 @@
 // components/AdminPanel.tsx
 import React, { useState, useEffect, useMemo } from 'react';
+import Sheet from './Sheet';
 import { friendlyError } from '../src/friendlyError';
 import AdminOAuthClients from './AdminOAuthClients';
 import AdminPartners from './AdminPartners';
@@ -893,8 +894,7 @@ const getContractUsage = (user: User): {
 
             {/* 🔹 Modal: Управление тарифом */}
             {selectedUser && (
-                <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setSelectedUser(null)}>
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6 max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
+                <Sheet onClose={() => setSelectedUser(null)} className="sm:max-w-md p-6 max-h-[90vh] overflow-y-auto overscroll-contain">
                         <div className="flex items-start justify-between mb-4">
                             <div>
                                 <h3 className="text-xl font-bold text-slate-800 dark:text-white">📋 Управление тарифом</h3>
@@ -1016,14 +1016,12 @@ const getContractUsage = (user: User): {
                                 {actionLoading ? <><span className="animate-spin">⏳</span> Сохранение...</> : '✅ Применить изменения'}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </Sheet>
             )}
 
             {/* 🔹 Modal: API Key */}
             {apiModalUser && (
-                <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => setApiModalUser(null)}>
-                    <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl p-6" onClick={e => e.stopPropagation()}>
+                <Sheet onClose={() => setApiModalUser(null)} className="sm:max-w-md p-6">
                         <div className="flex items-start justify-between mb-4">
                             <div>
                                 <h3 className="text-xl font-bold text-slate-800 dark:text-white">🔑 API Доступ</h3>
@@ -1081,8 +1079,7 @@ const getContractUsage = (user: User): {
                                 {actionLoading ? 'Генерация...' : '✨ Выдать новый ключ'}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </Sheet>
             )}
         </div>
     );

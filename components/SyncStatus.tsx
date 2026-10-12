@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ModalPortal from './ModalPortal';
+import Sheet from './Sheet';
 import { appConfirm } from '../src/dialogs';
 
 export interface SyncQueueItem {
@@ -128,11 +128,7 @@ const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, on
       </button>
 
       {open && (
-        <ModalPortal onClose={() => setOpen(false)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setOpen(false)} className="sm:max-w-md max-h-[85vh] flex flex-col overflow-hidden">
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700 shrink-0">
                 <h3 className="font-bold text-slate-800 dark:text-white">Не отправлено на сервер</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
@@ -202,9 +198,7 @@ const SyncStatus: React.FC<SyncStatusProps> = ({ status, isOnline, isSyncing, on
                   Закрыть
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
     </>
   );

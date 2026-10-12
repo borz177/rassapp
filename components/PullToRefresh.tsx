@@ -17,15 +17,34 @@ const THRESHOLD = 56;
 const MAX_PULL = 130;
 /** Сколько держать индикатор минимум: иначе быстрый ответ мигает и читается как сбой. */
 const MIN_SPIN_MS = 450;
+/** Индикатор — круг 40 px; встаёт в зазор между шапкой и уехавшим вниз контентом. */
+const SPINNER = 40;
+const EASE = 'cubic-bezier(0.32, 0.72, 0, 1)';
+
+/**
+ * Сдвигает контент страницы (Layout помечает его data-ptr-content) за пальцем.
+ *
+ * Сдвиг — через position: relative + top, а не transform: transform сделал бы
+ * контент точкой отсчёта для position: fixed внутри него, и модалки с панелями
+ * поехали бы вместе со страницей (из-за этой ловушки в приложении появился
+ * ModalPortal). top такой ловушки не создаёт, а перерисовка при нём дешёвая —
+ * браузер просто переносит уже разложенный блок.
+ */
+const moveContent = (px: number, animate: boolean) => {
+  const el = document.querySelector<HTMLElement>('[data-ptr-content]');
+  if (!el) return;
+  el.style.transition = animate ? `top 0.3s ${EASE}` : 'none';
+  el.style.top = px > 0 ? `${px}px` : '';
+};
+
+/** На планшете и компьютере шапка другая и индикатор скрыт — контент не двигаем. */
+const isPhoneWidth = () => window.matchMedia('(max-width: 767px)').matches;
 
 /**
  * Обновление списка потягиванием вниз — как в нативных приложениях.
  *
- * Содержимое страницы намеренно не сдвигается: двигается только индикатор.
- * Сдвиг делается через transform, а элемент с transform становится точкой
- * отсчёта для position: fixed внутри себя — в этом приложении на такие ловушки
- * уже наступали, из-за них появился ModalPortal. Ради красоты жеста ломать
- * позиционирование всех модалок и панелей нельзя.
+ * Контент едет за пальцем (moveContent), индикатор встаёт в открывшийся зазор
+ * под шапкой; пока идёт обновление, контент держится на пороге.
  *
  * Сопротивление нелинейное: чем дальше тянешь, тем меньше отклик, и у жеста
  * появляется предел. Линейная тяга ощущается как рывок и не даёт понять,
@@ -43,6 +62,12 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
   const engaged = useRef(false);
   const passed = useRef(false);
   const refreshingRef = useRef(false);
+  const shiftContent = useRef(false);
+  // onRefresh из App пересоздаётся при каждом рендере, а обновление само
+  // вызывает рендер: с ним в зависимостях эффект перевешивал слушатели посреди
+  // жеста, и очистка возвращала контент на место, пока крутится индикатор.
+  const onRefreshRef = useRef(onRefresh);
+  onRefreshRef.current = onRefresh;
 
   useEffect(() => {
     /**
@@ -76,6 +101,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       if (insideScrolledArea(e.target)) return;
 
       active.current = true;
+      shiftContent.current = isPhoneWidth();
       startY.current = e.touches[0].clientY;
       startX.current = e.touches[0].clientX;
     };
@@ -100,6 +126,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       // чувствует, что дальше некуда.
       const distance = MAX_PULL * (1 - Math.exp(-dy / MAX_PULL));
       setPull(distance);
+      if (shiftContent.current) moveContent(distance, false);
 
       if (!passed.current && distance >= THRESHOLD) {
         passed.current = true;
@@ -117,16 +144,21 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       active.current = false;
       engaged.current = false;
 
-      if (!passed.current) { setPull(0); return; }
+      if (!passed.current) {
+        setPull(0);
+        if (shiftContent.current) moveContent(0, true);
+        return;
+      }
 
       passed.current = false;
       refreshingRef.current = true;
       setRefreshing(true);
       setPull(THRESHOLD);
+      if (shiftContent.current) moveContent(THRESHOLD, true);
 
       const startedAt = Date.now();
       try {
-        await onRefresh();
+        await onRefreshRef.current();
       } catch {
         // Отказ обновления — не повод ломать жест: индикатор просто уедет.
       } finally {
@@ -135,6 +167,7 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
         refreshingRef.current = false;
         setRefreshing(false);
         setPull(0);
+        if (shiftContent.current) moveContent(0, true);
       }
     };
 
@@ -148,8 +181,9 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       window.removeEventListener('touchmove', onMove);
       window.removeEventListener('touchend', onEnd);
       window.removeEventListener('touchcancel', onEnd);
+      moveContent(0, false);
     };
-  }, [onRefresh]);
+  }, []);
 
   if (pull <= 0 && !refreshing) return null;
 
@@ -160,11 +194,12 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       aria-hidden
       className="md:hidden fixed left-0 right-0 z-40 flex justify-center pointer-events-none"
       style={{
-        top: 'calc(env(safe-area-inset-top, 0px) + 0.75rem)',
-        transform: `translateY(${pull * 0.55}px)`,
+        // Низ шапки — там же, где начинается контент (.mobile-main-offset)
+        top: 'calc(env(safe-area-inset-top, 0px) + 4rem)',
+        transform: `translateY(${Math.max(0, (pull - SPINNER) / 2)}px)`,
         // Пока палец на экране — никаких переходов: индикатор должен идти
         // ровно за пальцем. Плавность включается на возврате.
-        transition: refreshing || pull === 0 ? 'transform 0.3s cubic-bezier(0.32, 0.72, 0, 1)' : 'none',
+        transition: refreshing || pull === 0 ? `transform 0.3s ${EASE}` : 'none',
         opacity: refreshing ? 1 : Math.min(1, progress * 1.4),
       }}
     >

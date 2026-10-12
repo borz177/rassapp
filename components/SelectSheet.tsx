@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Sheet from './Sheet';
 import ModalPortal from './ModalPortal';
 
 export interface SelectSheetOption {
@@ -60,15 +61,7 @@ const SelectSheet: React.FC<SelectSheetProps> = ({ label, title, value, options,
       </button>
 
       {open && (
-        <ModalPortal>
-          <div
-            className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setOpen(false)}
-          >
-            <div
-              className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[70vh] flex flex-col animate-slide-up-sheet"
-              onClick={e => e.stopPropagation()}
-            >
+        <Sheet onClose={() => setOpen(false)} className="sm:max-w-sm max-h-[70vh] flex flex-col">
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
                 <h3 className="font-bold text-slate-800 dark:text-white">{title ?? label ?? 'Выбор'}</h3>
               </div>
@@ -96,9 +89,7 @@ const SelectSheet: React.FC<SelectSheetProps> = ({ label, title, value, options,
                   );
                 })}
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
     </div>
   );

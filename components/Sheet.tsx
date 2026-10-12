@@ -1,5 +1,6 @@
-import React, { useCallback, useLayoutEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
+import { isPhoneWidth, playGhostExit, useSheetDrag } from '../src/sheetDrag';
 
 interface SheetProps {
   /**
@@ -24,16 +25,19 @@ interface SheetProps {
   className?: string;
   /** Закрывать по нажатию на затемнение. Выключают, когда идёт запись */
   dismissible?: boolean;
+  /** Слой, если лист открывают поверх другого окна с высоким z-index */
+  zIndex?: number;
+  /**
+   * Сюда лист кладёт свой «закрыть с уходом» — для кода окна вне разметки
+   * (обработчики, которые после дела закрывают окно).
+   */
+  closeRef?: React.MutableRefObject<() => void>;
   children: React.ReactNode | ((requestClose: () => void) => React.ReactNode);
 }
 
 const OUT_MS = { sheet: 280, dialog: 180 };
 
-// Смахивание листа вниз (телефон): дальше или быстрее — закрывается
-const DISMISS_DISTANCE = 110;
-const DISMISS_VELOCITY = 0.6; // px/мс
-const isPhoneWidth = () =>
-  typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
+
 
 /**
  * Модальный лист с уходом, а не с исчезновением.
@@ -49,7 +53,7 @@ const isPhoneWidth = () =>
  * уход с середины.
  */
 const Sheet: React.FC<SheetProps> = ({
-  onClose, open, variant = 'sheet', className = '', dismissible = true, children,
+  onClose, open, variant = 'sheet', className = '', dismissible = true, zIndex, closeRef, children,
 }) => {
   const controlled = open !== undefined;
   const [closing, setClosing] = useState(false);
@@ -76,18 +80,22 @@ const Sheet: React.FC<SheetProps> = ({
   const shown = useRef(children);
   if (!controlled || open) shown.current = children;
 
-  // ── Смахивание вниз за ручку (только лист и только на телефоне) ─────────
-  // Как у остальных листов приложения (GlassSheet): ручка сверху, лист идёт за
-  // пальцем, затемнение гаснет вместе с ним. Уехавший смахиванием лист больше
-  // не играет анимацию ухода — он уже за краем экрана.
+  // ── Смахивание вниз (только лист и только на телефоне) ─────────────────
+  // За любое место листа, как в Telegram (src/sheetDrag.ts). Уехавший
+  // смахиванием лист больше не играет анимацию ухода — он уже за краем экрана.
   const swipeable = variant === 'sheet' && dismissible && isPhoneWidth();
-  const [dragY, setDragY] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const [swipedAway, setSwipedAway] = useState(false);
-  const drag = useRef<{ y0: number; t0: number; dy: number } | null>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  // Виден ли лист сейчас: только такой при снятии доигрывает уход на копии
+  const visibleRef = useRef(false);
+  const isSheetRef = useRef(variant === 'sheet');
+  useLayoutEffect(() => () => {
+    if (visibleRef.current && rootRef.current) playGhostExit(rootRef.current, isSheetRef.current ? OUT_MS.sheet : OUT_MS.dialog, isSheetRef.current);
+  }, []);
   // Управляемый лист открыли снова — он снова на месте
   useLayoutEffect(() => {
-    if (controlled && open) { setSwipedAway(false); setDragY(0); }
+    if (controlled && open) setSwipedAway(false);
   }, [open, controlled]);
 
   const requestClose = useCallback(() => {
@@ -98,86 +106,81 @@ const Sheet: React.FC<SheetProps> = ({
     setClosing(true);
     setTimeout(onClose, OUT_MS[variant]);
   }, [onClose, variant, controlled]);
+  if (closeRef) closeRef.current = requestClose;
 
-  const onDragStart = (e: React.PointerEvent) => {
-    if (!swipeable || e.pointerType === 'mouse') return;
-    drag.current = { y0: e.clientY, t0: performance.now(), dy: 0 };
-    setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-  };
-  const onDragMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const raw = e.clientY - drag.current.y0;
-    const dy = raw > 0 ? raw : raw / 6; // вверх — с сопротивлением, как в iOS
-    drag.current.dy = dy;
-    setDragY(dy);
-  };
-  const onDragEnd = () => {
-    const d = drag.current;
-    drag.current = null;
-    setDragging(false);
-    if (!d) return;
-    const velocity = d.dy / Math.max(1, performance.now() - d.t0);
-    if (d.dy > DISMISS_DISTANCE || (d.dy > 24 && velocity > DISMISS_VELOCITY)) {
+  // Клавиатура на телефоне закрывает низ листа — поднимаем лист на её высоту,
+  // чтобы поле и кнопки под ним оставались видны
+  const [keyboard, setKeyboard] = useState(0);
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !isSheetRef.current || !isPhoneWidth()) return;
+    const sync = () => setKeyboard(Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop)));
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
+  }, []);
+
+  const panelRef = useSheetDrag({
+    enabled: swipeable,
+    backdrop: () => backdropRef.current,
+    onDismiss: () => {
       if (closingRef.current) return;
       closingRef.current = true;
-      setDragY(window.innerHeight);       // доезжает вниз тем же движением
-      setTimeout(() => { setSwipedAway(true); onClose(); }, 260);
-    } else {
-      setDragY(0);
-    }
-  };
+      visibleRef.current = false; // лист уже за краем — копия для ухода не нужна
+      setSwipedAway(true);
+      onClose();
+    },
+  });
 
   // wasOpen покрывает отрисовку между закрытием и слой-эффектом: без него лист
   // успевал моргнуть пустотой.
-  if (controlled && !open && !exiting && !wasOpen.current) return null;
-  if (swipedAway) return null;
+  if (controlled && !open && !exiting && !wasOpen.current) { visibleRef.current = false; return null; }
+  if (swipedAway) { visibleRef.current = false; return null; }
 
   const leaving = controlled ? !open : closing;
   const isSheet = variant === 'sheet';
+  visibleRef.current = !leaving;
+  isSheetRef.current = isSheet;
 
   return (
     // Шаг «назад» отдаём листу: без onClose он закрыл бы страницу под окном.
     <ModalPortal onClose={requestClose}>
       <div
-        className={`fixed inset-0 z-modal-top flex justify-center bg-slate-900/60 backdrop-blur-sm ${
+        ref={rootRef}
+        className={`fixed inset-0 z-modal-top flex justify-center ${
           isSheet ? 'items-end sm:items-center p-0 sm:p-4' : 'items-center p-6'
-        } ${leaving ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
-        style={swipeable && (dragging || dragY > 0) ? {
-          opacity: Math.max(0.3, 1 - dragY / 500),
-          transition: dragging ? 'none' : 'opacity 0.26s ease',
-        } : undefined}
-        onClick={() => { if (dismissible) requestClose(); }}
+        }`}
+        style={zIndex ? { zIndex } : undefined}
+        // Портал не отменяет всплытия по дереву React: без этого нажатие в листе
+        // доходило бы до карточки, из которой его открыли, и открывало её
+        onClick={e => e.stopPropagation()}
       >
+        {/* Затемнение отдельным слоем: при смахивании гаснет оно, а не лист */}
         <div
-          onClick={e => e.stopPropagation()}
+          ref={backdropRef}
+          className={`absolute inset-0 bg-slate-900/60 backdrop-blur-sm ${leaving ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+          onClick={() => { if (dismissible) requestClose(); }}
+        />
+        <div
+          ref={panelRef}
           // Лист не заходит под чёлку: сверху остаётся полоска затемнённого экрана
-          style={{
-            ...(isSheet ? { maxHeight: 'calc(100dvh - env(safe-area-inset-top, 0px) - 10px)' } : null),
-            ...(swipeable && (dragging || dragY !== 0) ? {
-              transform: `translateY(${dragY}px)`,
-              transition: dragging ? 'none' : 'transform 0.28s cubic-bezier(0.32, 0.72, 0, 1)',
-            } : null),
-          }}
+          style={isSheet ? {
+            maxHeight: `calc(100dvh - env(safe-area-inset-top, 0px) - 10px - ${keyboard}px)`,
+            ...(keyboard > 0 ? { marginBottom: keyboard, paddingBottom: 0, transition: 'margin-bottom 0.18s ease-out' } : null),
+          } : undefined}
           className={`relative bg-white dark:bg-slate-800 shadow-2xl ${
-            isSheet ? 'w-full rounded-t-[28px] sm:rounded-3xl' : 'w-full max-w-xs rounded-3xl'
+            isSheet ? 'w-full rounded-t-[28px] sm:rounded-3xl max-sm:pb-[env(safe-area-inset-bottom,0px)]' : 'w-full max-w-xs rounded-3xl'
           } ${
             leaving
               ? (isSheet ? 'animate-slide-down-sheet' : 'animate-dialog-out')
               : (isSheet ? 'animate-sheet-in' : 'animate-dialog-in')
           } ${className}`}
         >
-          {/* Ручка: за неё лист смахивается вниз. Поверх содержимого, чтобы
+          {/* Ручка — подсказка, что лист смахивается. Поверх содержимого, чтобы
               не сдвигать вёрстку листов, которые её не ждали. */}
           {swipeable && (
-            <div
-              aria-hidden
-              className="absolute inset-x-0 top-0 h-6 z-20 flex justify-center pt-2 touch-none"
-              onPointerDown={onDragStart}
-              onPointerMove={onDragMove}
-              onPointerUp={onDragEnd}
-              onPointerCancel={onDragEnd}
-            >
+            <div aria-hidden className="absolute inset-x-0 top-0 h-6 z-20 flex justify-center pt-2 pointer-events-none">
               <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />
             </div>
           )}

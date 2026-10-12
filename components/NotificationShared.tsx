@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import Sheet from './Sheet';
 import { ICONS } from '../constants';
 import { AppNotification, NotificationType } from '../types';
 
@@ -105,27 +106,14 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
   // Рассылки от администратора архивировать нельзя — у них нет этого понятия на сервере
   const canArchive = onArchiveToggle && notification.type !== 'ADMIN_BROADCAST';
 
-  // 180мс = длительность animate-dialog-out — даём анимации закрытия доиграть перед
-  // тем, как реально снять модалку с рендера (или дёрнуть архивирование у родителя).
-  const [isClosing, setIsClosing] = useState(false);
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 180);
-  };
-  const handleArchiveClick = () => {
-    setIsClosing(true);
-    setTimeout(() => onArchiveToggle!(notification), 180);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose). Архивирование
+  // снимает окно у родителя — уход тогда доигрывает сам лист (копией).
+  const closeRef = useRef<() => void>(onClose);
+  const handleClose = () => closeRef.current();
+  const handleArchiveClick = () => onArchiveToggle!(notification);
 
   return (
-    <div
-      className={`fixed inset-0 z-modal-top bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-5 ${isClosing ? 'animate-dialog-out' : 'animate-dialog-in'}`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-sm p-5">
         <div className="flex items-start gap-3">
           <div className={`shrink-0 p-2.5 rounded-xl ${meta.bg} ${meta.text}`}>{meta.icon}</div>
           <div className="min-w-0 flex-1">
@@ -157,7 +145,6 @@ export const NotificationDetailModal: React.FC<NotificationDetailModalProps> = (
             )}
           </button>
         )}
-      </div>
-    </div>
+      </Sheet>
   );
 };

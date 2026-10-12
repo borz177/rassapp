@@ -51,49 +51,49 @@ const I = {
   chevron: <path d="m6 9 6 6 6-6" />,
 };
 
-const FEATURES: { icon: React.ReactNode; title: string; text: string; tone: string; plan?: string }[] = [
+const FEATURES: { icon: React.ReactNode; title: string; text: string; plan?: string }[] = [
   {
-    icon: I.contract, tone: 'from-indigo-500 to-violet-500',
+    icon: I.contract,
     title: 'Договоры и графики платежей',
     text: 'Первый взнос, срок и наценка — график считается сам. Просрочки видны сразу, платёж принимается в два касания, договор печатается в PDF.',
   },
   {
-    icon: I.investors, tone: 'from-emerald-500 to-teal-500',
+    icon: I.investors,
     title: 'Прибыль инвесторов — честно и сразу',
     text: 'У каждого инвестора свой счёт и процент. В общей кассе прибыль делится по вложенной сумме и проценту каждого — без таблиц и ручных расчётов.',
   },
   {
-    icon: I.whatsapp, tone: 'from-green-500 to-emerald-500',
+    icon: I.whatsapp,
     title: 'Напоминания в WhatsApp',
     text: 'Клиенты получают напоминание о платеже автоматически — по шаблону, который вы настроите.',
   },
   {
-    icon: I.wallet, tone: 'from-sky-500 to-indigo-500',
+    icon: I.wallet,
     title: 'Касса и расходы',
     text: 'Счета, приход, расход и переводы. Остаток по каждому счёту сходится с тем, что в кассе.',
   },
   {
-    icon: I.team, tone: 'from-amber-500 to-orange-500', plan: 'Бизнес',
+    icon: I.team, plan: 'Бизнес',
     title: 'Сотрудники и права',
     text: 'Отдельный вход для каждого, права на создание, правку и удаление. Видно, кто что оформил, — можно назначить премию от прибыли.',
   },
   {
-    icon: I.shop, tone: 'from-fuchsia-500 to-pink-500', plan: 'Бизнес Pro',
+    icon: I.shop, plan: 'Бизнес Pro',
     title: 'Магазин и склад',
     text: 'Продажи за наличные и в долг, касса с чеком, остатки по складам, приход от поставщиков и инвентаризация.',
   },
   {
-    icon: I.offline, tone: 'from-slate-500 to-slate-700',
+    icon: I.offline,
     title: 'Работает и без интернета',
     text: 'Записи сохраняются на устройстве и уходят на сервер, как только связь вернётся.',
   },
   {
-    icon: I.reports, tone: 'from-rose-500 to-orange-500',
+    icon: I.reports,
     title: 'Отчёты и выгрузка',
     text: 'Прибыль, долги и поступления за любой период. Выгрузка в Excel и резервная копия на почту.',
   },
   {
-    icon: I.api, tone: 'from-cyan-500 to-blue-500', plan: 'Бизнес',
+    icon: I.api, plan: 'Бизнес',
     title: 'API для интеграций',
     text: 'Подключите сайт, бота или 1С к своим данным по ключу — с документацией и примерами.',
   },
@@ -228,7 +228,7 @@ const ScreensCarousel: React.FC = () => {
       <div className="relative mx-auto max-w-5xl rounded-[22px] bg-white dark:bg-slate-800 ring-1 ring-slate-200/80 dark:ring-white/10 shadow-[0_50px_100px_-40px_rgba(30,41,59,.55)] overflow-hidden">
         {/* Строка окна браузера */}
         <div className="flex items-center gap-1.5 h-10 px-4 border-b border-slate-200/70 dark:border-white/10 bg-slate-50/80 dark:bg-slate-900/40">
-          <span className="w-3 h-3 rounded-full bg-rose-400" /><span className="w-3 h-3 rounded-full bg-amber-400" /><span className="w-3 h-3 rounded-full bg-emerald-400" />
+          {[0, 1, 2].map(k => <span key={k} className="w-3 h-3 rounded-full bg-slate-300 dark:bg-white/20" />)}
           <span className="mx-auto h-6 w-full max-w-[260px] rounded-lg bg-white dark:bg-white/5 ring-1 ring-slate-200/70 dark:ring-white/10 text-[11px] text-slate-400 flex items-center justify-center">
             rassrochka.pro
           </span>
@@ -321,7 +321,7 @@ export default function Landing() {
 
 
   return (
-    <div className="landing min-h-screen bg-[#f7f8fb] dark:bg-[#0b1020] text-slate-900 dark:text-white antialiased selection:bg-indigo-200/70 dark:selection:bg-indigo-500/40">
+    <div className="landing min-h-screen bg-[#f7f8fb] dark:bg-[#0b1020] text-slate-900 dark:text-white antialiased selection:bg-blue-200/70 dark:selection:bg-blue-500/40">
       <style>{`
         .landing [data-reveal] { opacity: 0; transform: translateY(24px); transition: opacity .8s cubic-bezier(.2,.8,.2,1), transform .8s cubic-bezier(.2,.8,.2,1); }
         .landing [data-reveal].is-visible { opacity: 1; transform: none; }
@@ -331,7 +331,7 @@ export default function Landing() {
         .landing .float-a { animation: landing-float 7s ease-in-out infinite; }
         .landing .float-b { animation: landing-float 8s ease-in-out 1.2s infinite; }
         .landing .float-c { animation: landing-float 9s ease-in-out .6s infinite; }
-        .landing .grid-bg { background-image: linear-gradient(rgba(99,102,241,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(99,102,241,.07) 1px, transparent 1px); background-size: 44px 44px; mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%); }
+        .landing .grid-bg { background-image: linear-gradient(rgba(37,99,235,.06) 1px, transparent 1px), linear-gradient(90deg, rgba(37,99,235,.06) 1px, transparent 1px); background-size: 44px 44px; mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%); -webkit-mask-image: radial-gradient(ellipse at 50% 0%, black 30%, transparent 75%); }
         .dark .landing .grid-bg { background-image: linear-gradient(rgba(148,163,184,.07) 1px, transparent 1px), linear-gradient(90deg, rgba(148,163,184,.07) 1px, transparent 1px); }
         @media (prefers-reduced-motion: reduce) { .landing .float-a, .landing .float-b, .landing .float-c { animation: none; } .landing [data-reveal] { transition: none; opacity: 1; transform: none; } }
       `}</style>
@@ -362,23 +362,23 @@ export default function Landing() {
       {/* ── Первый экран ── */}
       <section className="relative overflow-hidden pt-32 sm:pt-40 pb-16 sm:pb-24 px-5">
         <div className="absolute inset-0 grid-bg pointer-events-none" />
-        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-gradient-to-br from-indigo-400/25 via-violet-400/15 to-sky-300/20 dark:from-indigo-600/25 dark:via-violet-600/15 dark:to-sky-500/10 blur-3xl pointer-events-none" />
+        <div className="absolute -top-40 left-1/2 -translate-x-1/2 w-[900px] h-[600px] rounded-full bg-gradient-to-br from-blue-400/20 to-blue-300/10 dark:from-blue-600/20 dark:to-blue-500/5 blur-3xl pointer-events-none" />
 
         <div className="relative mx-auto max-w-6xl grid lg:grid-cols-[1.05fr_1fr] gap-14 lg:gap-10 items-center">
           <div className="text-center lg:text-left">
             <div data-reveal className="inline-flex items-center gap-2 h-8 pl-1.5 pr-3.5 rounded-full bg-white/80 dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10 text-[13px] font-medium text-slate-600 dark:text-slate-300 backdrop-blur">
-              <span className="px-2 py-0.5 rounded-full bg-indigo-600 text-white text-[11px] font-bold">Новое</span>
+              <span className="px-2 py-0.5 rounded-full bg-blue-600 text-white text-[11px] font-bold">Новое</span>
               Обновили дизайн и поиск
             </div>
             <h1 data-reveal data-reveal-delay="1" className="mt-6 text-[40px] leading-[1.05] sm:text-[60px] font-extrabold tracking-[-0.035em]">
               Рассрочка под контролем —{' '}
-              <span className="bg-gradient-to-r from-indigo-600 via-violet-600 to-sky-500 bg-clip-text text-transparent">от договора до прибыли</span>
+              <span className="bg-gradient-to-r from-blue-700 to-blue-500 dark:from-blue-400 dark:to-blue-300 bg-clip-text text-transparent">от договора до прибыли</span>
             </h1>
             <p data-reveal data-reveal-delay="2" className="mt-6 text-[17px] sm:text-[19px] leading-relaxed text-slate-600 dark:text-slate-300 max-w-xl mx-auto lg:mx-0">
               Договоры и графики платежей, напоминания клиентам в WhatsApp, касса и честный расчёт прибыли инвесторов — в одном приложении.
             </p>
             <div data-reveal data-reveal-delay="3" className="mt-9 flex flex-col sm:flex-row gap-3 justify-center lg:justify-start">
-              <a href={href} className="group inline-flex items-center justify-center gap-2 h-13 px-7 py-3.5 rounded-2xl bg-indigo-600 text-white text-[16px] font-semibold shadow-[0_12px_30px_-10px_rgba(79,70,229,.7)] hover:bg-indigo-500 hover:-translate-y-0.5 active:translate-y-0 transition-all">
+              <a href={href} className="group inline-flex items-center justify-center gap-2 h-13 px-7 py-3.5 rounded-2xl bg-blue-600 text-white text-[16px] font-semibold shadow-[0_12px_30px_-10px_rgba(37,99,235,.7)] hover:bg-blue-500 hover:-translate-y-0.5 active:translate-y-0 transition-all">
                 Попробовать бесплатно
                 <Icon d={I.arrow} size={18} className="group-hover:translate-x-0.5 transition-transform" />
               </a>
@@ -416,22 +416,22 @@ export default function Landing() {
           <div id="showcase" data-reveal data-reveal-delay="2" className="relative mx-auto w-full max-w-[560px] scroll-mt-28">
             <div className="relative rounded-[22px] bg-white/80 dark:bg-slate-800/70 ring-1 ring-slate-200/80 dark:ring-white/10 shadow-[0_40px_80px_-30px_rgba(30,41,59,.45)] backdrop-blur overflow-hidden">
               <div className="flex items-center gap-1.5 h-9 px-4 border-b border-slate-200/70 dark:border-white/10">
-                <span className="w-2.5 h-2.5 rounded-full bg-rose-400" /><span className="w-2.5 h-2.5 rounded-full bg-amber-400" /><span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                {[0, 1, 2].map(k => <span key={k} className="w-2.5 h-2.5 rounded-full bg-slate-300 dark:bg-white/20" />)}
                 <span className="ml-3 h-5 flex-1 max-w-[220px] rounded-md bg-slate-100 dark:bg-white/5 text-[10px] text-slate-400 flex items-center px-2">rassrochka.pro</span>
               </div>
               <img src="/screens/app-dashboard.jpg" alt="Главный экран FinUchet" className="w-full aspect-[16/10] object-cover object-left-top" />
             </div>
 
             <div className="float-a absolute -left-2 sm:-left-10 top-[22%] flex items-center gap-2.5 sm:gap-3 pl-2.5 sm:pl-3 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-2xl bg-white/90 dark:bg-slate-800/90 ring-1 ring-slate-200/70 dark:ring-white/10 shadow-xl backdrop-blur">
-              <span className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-emerald-100 dark:bg-emerald-500/15 text-emerald-600 dark:text-emerald-300 flex items-center justify-center"><Icon d={I.check} size={18} /></span>
+              <span className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center"><Icon d={I.check} size={18} /></span>
               <span><span className="block text-[10px] sm:text-[12px] text-slate-500 dark:text-slate-400">Платёж принят</span><span className="block text-[12px] sm:text-[15px] font-bold">+12 500 ₽</span></span>
             </div>
             <div className="float-b absolute -right-2 sm:-right-8 bottom-[8%] sm:bottom-auto sm:top-[48%] flex items-center gap-2.5 sm:gap-3 pl-2.5 sm:pl-3 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-2xl bg-white/90 dark:bg-slate-800/90 ring-1 ring-slate-200/70 dark:ring-white/10 shadow-xl backdrop-blur">
-              <span className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-green-100 dark:bg-green-500/15 text-green-600 dark:text-green-300 flex items-center justify-center"><Icon d={I.whatsapp} size={18} /></span>
+              <span className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center"><Icon d={I.whatsapp} size={18} /></span>
               <span><span className="block text-[10px] sm:text-[12px] text-slate-500 dark:text-slate-400">Напоминание отправлено</span><span className="block text-[12px] sm:text-[15px] font-bold">WhatsApp · завтра платёж</span></span>
             </div>
             <div className="float-c absolute left-6 sm:left-10 -bottom-6 hidden sm:flex items-center gap-2.5 sm:gap-3 pl-2.5 sm:pl-3 pr-3 sm:pr-4 py-2 sm:py-2.5 rounded-2xl bg-white/90 dark:bg-slate-800/90 ring-1 ring-slate-200/70 dark:ring-white/10 shadow-xl backdrop-blur">
-              <span className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-indigo-100 dark:bg-indigo-500/15 text-indigo-600 dark:text-indigo-300 flex items-center justify-center"><Icon d={I.investors} size={18} /></span>
+              <span className="w-7 h-7 sm:w-9 sm:h-9 rounded-lg sm:rounded-xl bg-blue-50 dark:bg-blue-500/15 text-blue-600 dark:text-blue-300 flex items-center justify-center"><Icon d={I.investors} size={18} /></span>
               <span><span className="block text-[10px] sm:text-[12px] text-slate-500 dark:text-slate-400">Прибыль инвестора за месяц</span><span className="block text-[12px] sm:text-[15px] font-bold">48 300 ₽</span></span>
             </div>
           </div>
@@ -442,7 +442,7 @@ export default function Landing() {
       <section id="features" className="scroll-mt-24 px-5 py-20 sm:py-28">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-2xl mx-auto text-center">
-            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Возможности</p>
+            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Возможности</p>
             <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[32px] sm:text-[44px] leading-tight font-extrabold tracking-[-0.03em]">Всё, что нужно бизнесу на рассрочке</h2>
             <p data-reveal data-reveal-delay="2" className="mt-4 text-[17px] text-slate-600 dark:text-slate-300">Вместо тетради, таблиц и памяти — один учёт, которому можно доверять.</p>
           </div>
@@ -451,7 +451,7 @@ export default function Landing() {
             {FEATURES.map((f, i) => (
               <div key={f.title} data-reveal data-reveal-delay={String((i % 3) + 1)}
                    className={`group relative rounded-3xl p-6 sm:p-7 bg-white dark:bg-white/[0.04] ring-1 ring-slate-200/80 dark:ring-white/10 hover:shadow-[0_24px_50px_-28px_rgba(30,41,59,.45)] hover:-translate-y-0.5 transition-all duration-300`}>
-                <span className={`inline-flex w-11 h-11 rounded-2xl bg-gradient-to-br ${f.tone} text-white items-center justify-center shadow-sm`}>
+                <span className="inline-flex w-11 h-11 rounded-2xl bg-blue-50 text-blue-600 dark:bg-blue-500/15 dark:text-blue-300 items-center justify-center">
                   <Icon d={f.icon} size={21} />
                 </span>
                 <h3 className="mt-5 text-[19px] font-bold tracking-tight">{f.title}</h3>
@@ -467,7 +467,7 @@ export default function Landing() {
       <section id="screens" className="scroll-mt-24 px-5 pb-20 sm:pb-28">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-2xl mx-auto text-center">
-            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Интерфейс</p>
+            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Интерфейс</p>
             <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[32px] sm:text-[44px] leading-tight font-extrabold tracking-[-0.03em]">Понятно с первого дня</h2>
           </div>
           <div data-reveal data-reveal-delay="2" className="mt-12">
@@ -480,13 +480,13 @@ export default function Landing() {
       <section id="how" className="scroll-mt-24 px-5 pb-20 sm:pb-28">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-2xl mx-auto text-center">
-            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Как начать</p>
+            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Как начать</p>
             <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[32px] sm:text-[44px] leading-tight font-extrabold tracking-[-0.03em]">Три шага — и учёт работает</h2>
           </div>
           <div className="mt-14 grid md:grid-cols-3 gap-4">
             {STEPS.map((s, i) => (
               <div key={s.title} data-reveal data-reveal-delay={String(i + 1)} className="relative rounded-3xl p-7 bg-white dark:bg-white/[0.04] ring-1 ring-slate-200/80 dark:ring-white/10">
-                <span className="text-[44px] font-extrabold leading-none bg-gradient-to-br from-indigo-600 to-sky-500 bg-clip-text text-transparent">{i + 1}</span>
+                <span className="text-[44px] font-extrabold leading-none bg-gradient-to-br from-blue-700 to-blue-500 dark:from-blue-400 dark:to-blue-300 bg-clip-text text-transparent">{i + 1}</span>
                 <h3 className="mt-4 text-[19px] font-bold tracking-tight">{s.title}</h3>
                 <p className="mt-2 text-[15px] leading-relaxed text-slate-600 dark:text-slate-300">{s.text}</p>
               </div>
@@ -499,7 +499,7 @@ export default function Landing() {
       <section id="pricing" className="scroll-mt-24 px-5 pb-20 sm:pb-28">
         <div className="mx-auto max-w-6xl">
           <div className="max-w-2xl mx-auto text-center">
-            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Тарифы</p>
+            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Тарифы</p>
             <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[32px] sm:text-[44px] leading-tight font-extrabold tracking-[-0.03em]">Платите за то, чем пользуетесь</h2>
             <p data-reveal data-reveal-delay="2" className="mt-4 text-[17px] text-slate-600 dark:text-slate-300">Начните с {TRIAL_DAYS} бесплатных дней, затем выберите тариф. Чем дольше срок — тем ниже цена за месяц.</p>
             <div data-reveal data-reveal-delay="3" className="mt-8 inline-grid grid-cols-4 gap-1 p-1 rounded-2xl bg-white dark:bg-white/5 ring-1 ring-slate-200 dark:ring-white/10">
@@ -511,7 +511,7 @@ export default function Landing() {
                             months === m ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow' : 'text-slate-600 dark:text-slate-300'
                           }`}>
                     {m} мес.
-                    {pct > 0 && <span className={`text-[10px] font-medium ${months === m ? 'opacity-70' : 'text-emerald-600 dark:text-emerald-400'}`}>−{pct}%</span>}
+                    {pct > 0 && <span className={`text-[10px] font-medium ${months === m ? 'opacity-70' : 'text-blue-600 dark:text-blue-400'}`}>−{pct}%</span>}
                   </button>
                 );
               })}
@@ -522,43 +522,41 @@ export default function Landing() {
             {PLAN_CATALOG.map((p, i) => {
               const base = prices[p.key] || p.basePrice;
               const monthly = Math.ceil(base * (1 - (discounts[months] || 0)));
-              const dark = p.featured;
+              const accent = p.featured; // выделенный тариф — синяя карточка
               return (
                 <div key={p.key} data-reveal data-reveal-delay={String((i % 4) + 1)}
                      className={`relative flex flex-col rounded-3xl p-6 ${
-                       dark
-                         ? 'bg-slate-900 text-white ring-1 ring-slate-900 shadow-[0_30px_60px_-30px_rgba(15,23,42,.8)] dark:bg-indigo-600 dark:ring-indigo-500'
-                         : p.gold
-                           ? 'bg-gradient-to-b from-amber-50 to-white ring-1 ring-amber-200 dark:from-amber-500/10 dark:to-transparent dark:ring-amber-500/30'
-                           : 'bg-white ring-1 ring-slate-200/80 dark:bg-white/[0.04] dark:ring-white/10'
+                       accent
+                         ? 'bg-blue-600 text-white ring-1 ring-blue-600 shadow-[0_30px_60px_-30px_rgba(37,99,235,.8)] dark:ring-blue-500'
+                         : 'bg-white ring-1 ring-slate-200/80 dark:bg-white/[0.04] dark:ring-white/10'
                      }`}>
                   <div className="flex items-center justify-between">
                     <h3 className="text-[18px] font-bold">{p.name}</h3>
-                    {p.badge && <span className="px-2.5 py-1 rounded-full bg-white/15 text-[11px] font-semibold">{p.badge}</span>}
+                    {p.badge && <span className="px-2.5 py-1 rounded-full bg-white/20 text-[11px] font-semibold">{p.badge}</span>}
                   </div>
-                  <p className={`mt-1 text-[14px] ${dark ? 'text-white/70' : 'text-slate-500 dark:text-slate-400'}`}>{p.tagline}</p>
+                  <p className={`mt-1 text-[14px] ${accent ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'}`}>{p.tagline}</p>
                   <div className="mt-6 flex items-baseline gap-1">
                     <span className="text-[38px] font-extrabold tracking-tight tabular-nums">{rub(monthly)}</span>
-                    <span className={`text-[14px] font-medium ${dark ? 'text-white/70' : 'text-slate-500 dark:text-slate-400'}`}>₽ / мес</span>
+                    <span className={`text-[14px] font-medium ${accent ? 'text-white/80' : 'text-slate-500 dark:text-slate-400'}`}>₽ / мес</span>
                   </div>
-                  <p className={`mt-1 min-h-[18px] text-[12px] tabular-nums ${dark ? 'text-white/60' : 'text-slate-400 dark:text-slate-500'}`}>
+                  <p className={`mt-1 min-h-[18px] text-[12px] tabular-nums ${accent ? 'text-white/75' : 'text-slate-400 dark:text-slate-500'}`}>
                     {months > 1 ? `${rub(monthly * months)} ₽ за ${months} мес.` : 'Оплата помесячно'}
                   </p>
                   <a href={href}
                      className={`mt-6 h-11 rounded-xl flex items-center justify-center text-[15px] font-semibold transition-colors ${
-                       dark ? 'bg-white text-slate-900 hover:bg-slate-100' : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
+                       accent ? 'bg-white text-blue-700 hover:bg-blue-50' : 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-200'
                      }`}>
                     Начать с пробного периода
                   </a>
-                  <div className={`my-6 h-px ${dark ? 'bg-white/15' : 'bg-slate-200/80 dark:bg-white/10'}`} />
-                  <p className={`mb-3 text-[12px] font-medium ${dark ? 'text-white/60' : 'text-slate-500 dark:text-slate-400'}`}>
+                  <div className={`my-6 h-px ${accent ? 'bg-white/25' : 'bg-slate-200/80 dark:bg-white/10'}`} />
+                  <p className={`mb-3 text-[12px] font-medium ${accent ? 'text-white/75' : 'text-slate-500 dark:text-slate-400'}`}>
                     {p.includes ? `Всё из «${p.includes}», а также:` : 'Что входит:'}
                   </p>
                   <ul className="space-y-2.5">
                     {p.features.map(f => (
                       <li key={f} className="flex gap-2.5 text-[14px] leading-snug">
-                        <Icon d={I.check} size={16} className={`mt-[2px] shrink-0 ${dark ? 'text-emerald-300' : 'text-emerald-500'}`} />
-                        <span className={dark ? 'text-white/90' : 'text-slate-700 dark:text-slate-200'}>{f}</span>
+                        <Icon d={I.check} size={16} className={`mt-[2px] shrink-0 ${accent ? 'text-white' : 'text-blue-600 dark:text-blue-400'}`} />
+                        <span className={accent ? 'text-white' : 'text-slate-700 dark:text-slate-200'}>{f}</span>
                       </li>
                     ))}
                   </ul>
@@ -572,13 +570,13 @@ export default function Landing() {
 
       {/* ── iPhone ── */}
       <section id="iphone" className="scroll-mt-24 px-5 pb-20 sm:pb-28">
-        <div className="mx-auto max-w-4xl rounded-[32px] p-8 sm:p-12 bg-gradient-to-br from-indigo-600 via-violet-600 to-indigo-700 text-white relative overflow-hidden shadow-[0_40px_80px_-40px_rgba(79,70,229,.8)]">
+        <div className="mx-auto max-w-4xl rounded-[32px] p-8 sm:p-12 bg-gradient-to-br from-blue-600 to-blue-800 text-white relative overflow-hidden shadow-[0_40px_80px_-40px_rgba(37,99,235,.8)]">
           <div className="absolute -right-24 -bottom-24 w-80 h-80 rounded-full bg-white/10 blur-2xl pointer-events-none" />
           <div className="relative grid sm:grid-cols-[1fr_auto] gap-8 items-center">
             <div>
               <span className="inline-flex w-11 h-11 rounded-2xl bg-white/15 items-center justify-center"><Icon d={I.apple} size={22} /></span>
               <h2 className="mt-5 text-[28px] sm:text-[34px] leading-tight font-extrabold tracking-[-0.03em]">На iPhone — как приложение</h2>
-              <p className="mt-3 text-[16px] text-indigo-100">Откройте сайт в Safari и добавьте FinUchet на экран «Домой» — он запускается как обычное приложение, во весь экран.</p>
+              <p className="mt-3 text-[16px] text-blue-100">Откройте сайт в Safari и добавьте FinUchet на экран «Домой» — он запускается как обычное приложение, во весь экран.</p>
             </div>
             <ol className="space-y-3 text-[15px]">
               {[
@@ -587,7 +585,7 @@ export default function Landing() {
                 [I.check, 'Откройте FinUchet с экрана'],
               ].map(([icon, text], i) => (
                 <li key={i} className="flex items-center gap-3 px-4 py-3 rounded-2xl bg-white/10 ring-1 ring-white/15 backdrop-blur">
-                  <span className="w-8 h-8 rounded-xl bg-white text-indigo-600 flex items-center justify-center shrink-0"><Icon d={icon} size={17} /></span>
+                  <span className="w-8 h-8 rounded-xl bg-white text-blue-600 flex items-center justify-center shrink-0"><Icon d={icon} size={17} /></span>
                   {text as string}
                 </li>
               ))}
@@ -600,7 +598,7 @@ export default function Landing() {
       <section id="faq" className="scroll-mt-24 px-5 pb-20 sm:pb-28">
         <div className="mx-auto max-w-3xl">
           <div className="text-center">
-            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-indigo-600 dark:text-indigo-400">Вопросы</p>
+            <p data-reveal className="text-[13px] font-semibold uppercase tracking-[0.18em] text-blue-600 dark:text-blue-400">Вопросы</p>
             <h2 data-reveal data-reveal-delay="1" className="mt-3 text-[32px] sm:text-[44px] leading-tight font-extrabold tracking-[-0.03em]">Частые вопросы</h2>
           </div>
           <div data-reveal data-reveal-delay="2" className="mt-12 rounded-3xl bg-white dark:bg-white/[0.04] ring-1 ring-slate-200/80 dark:ring-white/10 divide-y divide-slate-200/80 dark:divide-white/10 overflow-hidden">
@@ -632,7 +630,7 @@ export default function Landing() {
           <div className="relative">
             <h2 className="text-[32px] sm:text-[48px] leading-tight font-extrabold tracking-[-0.035em]">Наведите порядок в рассрочке</h2>
             <p className="mt-4 text-[17px] text-slate-600 dark:text-slate-300">{TRIAL_DAYS} дня бесплатно. Без карты. Данные — ваши: выгрузка в Excel в любой момент.</p>
-            <a href={href} className="group mt-9 inline-flex items-center gap-2 h-13 px-8 py-4 rounded-2xl bg-indigo-600 text-white text-[16px] font-semibold shadow-[0_12px_30px_-10px_rgba(79,70,229,.7)] hover:bg-indigo-500 hover:-translate-y-0.5 transition-all">
+            <a href={href} className="group mt-9 inline-flex items-center gap-2 h-13 px-8 py-4 rounded-2xl bg-blue-600 text-white text-[16px] font-semibold shadow-[0_12px_30px_-10px_rgba(37,99,235,.7)] hover:bg-blue-500 hover:-translate-y-0.5 transition-all">
               Попробовать бесплатно
               <Icon d={I.arrow} size={18} className="group-hover:translate-x-0.5 transition-transform" />
             </a>

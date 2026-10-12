@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import TabPill from './TabPill';
-import { createPortal } from 'react-dom';
+import Sheet from './Sheet';
 import { Task, User } from '../types';
 import { ICONS } from '../constants';
 import { haptic } from './feedback';
@@ -63,7 +63,6 @@ const TaskModal: React.FC<{
   onDelete?: (taskId: string) => void;
 }> = ({ task, draft, userId, employees, canAssign, onClose, onSave, onDelete }) => {
   const base = task || draft || null;
-  const [isClosing, setIsClosing] = useState(false);
   const [title, setTitle] = useState(base?.title || '');
   const [note, setNote] = useState(base?.note || '');
   const [isFavorite, setIsFavorite] = useState(!!base?.isFavorite);
@@ -87,10 +86,6 @@ const TaskModal: React.FC<{
   const titleRef = useRef<HTMLTextAreaElement>(null);
   const noteRef = useRef<HTMLTextAreaElement>(null);
 
-  // Высота выехавшей клавиатуры: на неё поднимаем окно, чтобы поле ввода и кнопки
-  // не оказались под ней. visualViewport — единственный способ узнать эту высоту,
-  // обычный resize на мобильных о клавиатуре не сообщает.
-  const [keyboardOffset, setKeyboardOffset] = useState(0);
   const [confirmDelete, setConfirmDelete] = useState(false);
 
   // Курсор сразу в поле — окно открывается готовым к печати.
@@ -103,30 +98,12 @@ const TaskModal: React.FC<{
   }, []);
 
   useEffect(() => {
-    const vv = window.visualViewport;
-    if (!vv) return;
-    const sync = () => {
-      // Сколько экрана закрыто клавиатурой снизу
-      const covered = window.innerHeight - vv.height - vv.offsetTop;
-      setKeyboardOffset(Math.max(0, Math.round(covered)));
-    };
-    sync();
-    vv.addEventListener('resize', sync);
-    vv.addEventListener('scroll', sync);
-    return () => {
-      vv.removeEventListener('resize', sync);
-      vv.removeEventListener('scroll', sync);
-    };
-  }, []);
-
-  useEffect(() => {
     if (showNote) noteRef.current?.focus();
   }, [showNote]);
 
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 260);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+  const closeRef = useRef<() => void>(onClose);
+  const handleClose = () => closeRef.current();
 
   const handleSubmit = () => {
     const trimmed = title.trim();
@@ -183,25 +160,8 @@ const TaskModal: React.FC<{
         : 'bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-600'
     }`;
 
-  // Через портал в body: страница задач живёт внутри .page-push-layer, а это
-  // position: fixed с z-index: 30 — он создаёт свой контекст наложения, и окно с любым
-  // z-index оставалось бы под нижней навигацией (z-50) и внутри его overflow-y: auto.
-  return createPortal(
-    <div
-      className={`fixed inset-0 z-[9999] flex items-end sm:items-center justify-center sm:p-4 bg-slate-900/60 backdrop-blur-sm ${
-        isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'
-      }`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden ${
-          keyboardOffset > 0 ? '' : 'safe-area-pb'
-        } ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        // Поднимаем окно ровно на высоту клавиатуры, чтобы поле и кнопки оставались видны.
-        // Когда клавиатура закрыта, отступ снизу задаёт safe-area-pb (вырез на iPhone).
-        style={keyboardOffset > 0 ? { marginBottom: keyboardOffset, transition: 'margin-bottom 0.18s ease-out' } : undefined}
-        onClick={e => e.stopPropagation()}
-      >
+  // Лист (Sheet) сам выносится в body порталом и поднимается над клавиатурой
+  return <><Sheet onClose={onClose} closeRef={closeRef} zIndex={9999} className="sm:max-w-md overflow-hidden">
         <div className="p-5 space-y-3">
           <textarea
             ref={titleRef}
@@ -320,18 +280,11 @@ const TaskModal: React.FC<{
             </button>
           )}
         </div>
-      </div>
+      </Sheet>
 
       {/* Подтверждение удаления — поверх окна задачи */}
       {confirmDelete && task && onDelete && (
-        <div
-          className="absolute inset-0 z-10 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-modal-fade-in"
-          onClick={e => { e.stopPropagation(); setConfirmDelete(false); }}
-        >
-          <div
-            className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-3xl shadow-2xl p-5 text-center animate-dialog-in"
-            onClick={e => e.stopPropagation()}
-          >
+        <Sheet variant="dialog" onClose={() => setConfirmDelete(false)} className="p-5 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400">
               {ICONS.Delete}
             </div>
@@ -353,12 +306,9 @@ const TaskModal: React.FC<{
                 Удалить
               </button>
             </div>
-          </div>
-        </div>
+        </Sheet>
       )}
-    </div>,
-    document.body
-  );
+    </>;
 };
 
 // ─────────────────────────────────────────────────────────────────────────────

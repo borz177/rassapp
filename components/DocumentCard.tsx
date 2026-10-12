@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
+import Sheet from './Sheet';
 import type { Account, AppSettings, Customer, Product, RetailSale, StockMovement, Supplier, User } from '../types';
 import { formatCurrency, retailPaidAmount } from '../src/utils';
 import { KIND_LABEL, printJournalDoc, type JournalDoc } from '../src/journalDocs';
 import TopBarBack from './TopBarBack';
 import TabPill from './TabPill';
-import ModalPortal from './ModalPortal';
 import ProductPickerPage from './ProductPickerPage';
 import SubPage from './transitions/SubPage';
 import RetailReturnSheet from './RetailReturnSheet';
@@ -413,11 +413,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
       )}
 
       {picked && (
-        <ModalPortal onClose={() => setPicked(null)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setPicked(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setPicked(null)} className="sm:max-w-sm p-5 space-y-3">
               <div>
                 <h3 className="font-bold text-slate-800 dark:text-white truncate">{picked.name}</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -459,17 +455,11 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
                   Добавить
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
 
       {editOpen && (
-        <ModalPortal onClose={() => setEditOpen(false)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setEditOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[85vh] overflow-y-auto p-5 space-y-3"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setEditOpen(false)} className="sm:max-w-md max-h-[85vh] overflow-y-auto overscroll-contain p-5 space-y-3">
               <h3 className="font-bold text-slate-800 dark:text-white">
                 {KIND_LABEL[doc.kind]} №{doc.number}
               </h3>
@@ -556,9 +546,7 @@ const DocumentCard: React.FC<DocumentCardProps> = ({
                   Сохранить
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
     </div>
   );

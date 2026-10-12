@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import { createPortal } from 'react-dom';
+import Sheet from './Sheet';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../types';
 import { ICONS } from '../constants';
@@ -605,15 +605,7 @@ const expectedTotalProfit = useMemo(() => {
       </div>
 
       {/* 🔹 Модалка: история выплат */}
-      {showPayoutsModal && createPortal(
-        <div
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => setShowPayoutsModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-slate-800 w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
+      {showPayoutsModal && <Sheet onClose={() => setShowPayoutsModal(false)} className="sm:max-w-md overflow-hidden max-h-[85vh] flex flex-col">
             <div className="px-5 py-4 bg-gradient-to-r from-violet-600 to-purple-600 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-base font-bold text-white">Мои выплаты</h3>
@@ -686,21 +678,10 @@ const expectedTotalProfit = useMemo(() => {
                 Закрыть
               </button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </Sheet>}
 
       {/* 🔹 Модалка: откуда прибыль (детализация начислений за выбранный период) */}
-      {showAccrualsModal && createPortal(
-        <div
-          className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-          onClick={() => setShowAccrualsModal(false)}
-        >
-          <div
-            className="bg-white dark:bg-slate-800 w-full sm:max-w-md sm:rounded-3xl rounded-t-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col"
-            onClick={e => e.stopPropagation()}
-          >
+      {showAccrualsModal && <Sheet onClose={() => setShowAccrualsModal(false)} className="sm:max-w-md overflow-hidden max-h-[85vh] flex flex-col">
             <div className="px-5 py-4 bg-gradient-to-r from-emerald-600 to-emerald-500 flex items-center justify-between shrink-0">
               <div>
                 <h3 className="text-base font-bold text-white">Откуда прибыль</h3>
@@ -748,10 +729,7 @@ const expectedTotalProfit = useMemo(() => {
                 Закрыть
               </button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </Sheet>}
     </div>
   );
 };

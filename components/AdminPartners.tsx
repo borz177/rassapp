@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import Sheet from './Sheet';
 import { friendlyError } from '../src/friendlyError';
 import { api } from '../services/api';
 import type { PartnerRow, User } from '../types';
@@ -334,10 +335,7 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
 
       {/* Окно выплаты */}
       {payoutFor && (
-        <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-             onClick={() => setPayoutFor(null)}>
-          <div className="bg-white dark:bg-slate-800 w-full sm:max-w-md rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-3"
-               onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setPayoutFor(null)} className="sm:max-w-md p-5 space-y-3">
             <h3 className="font-bold text-slate-800 dark:text-white">Выплата — {payoutFor.name}</h3>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               Деньги переводятся вне системы. Здесь фиксируется факт: сумма, способ и номер чека —
@@ -370,8 +368,7 @@ const AdminPartners: React.FC<{ users: User[] }> = ({ users }) => {
                 Записать
               </button>
             </div>
-          </div>
-        </div>
+          </Sheet>
       )}
     </div>
   );

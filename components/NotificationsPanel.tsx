@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import Sheet from './Sheet';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
 import { AppNotification } from '../types';
@@ -28,11 +29,9 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
 
   // Даём закрывающей анимации доиграть (280мс = длительность animate-slide-down-sheet)
   // перед тем как реально снять панель с рендера.
-  const [isClosing, setIsClosing] = useState(false);
-  const handleClose = () => {
-    setIsClosing(true);
-    setTimeout(onClose, 280);
-  };
+  // Закрыть с уходом листа (Sheet кладёт сюда свой requestClose)
+  const closeRef = useRef<() => void>(onClose);
+  const handleClose = () => closeRef.current();
 
   // Счётчик берём с сервера, а не из загруженного куска: в окне теперь только
   // неделя, и считать непрочитанные по ней значило бы занижать бейдж.
@@ -100,16 +99,9 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
   };
 
   return (
-    <div
-      className={`fixed inset-0 bg-slate-900/60 backdrop-blur-sm flex items-end sm:items-center justify-center z-modal ${isClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
-      onClick={handleClose}
-    >
-      <div
-        className={`bg-white dark:bg-slate-800 w-full sm:w-[440px] h-[85vh] sm:h-[640px] rounded-t-3xl sm:rounded-3xl flex flex-col shadow-2xl ${isClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-        onClick={(e) => e.stopPropagation()}
-      >
+    <><Sheet onClose={onClose} closeRef={closeRef} className="sm:w-[440px] sm:max-w-none h-[85vh] sm:h-[640px] flex flex-col">
         {/* Header */}
-        <div className="p-4 border-b dark:border-slate-700 flex items-center justify-between">
+        <div className="p-4 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
             <div className="bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 p-2 rounded-lg">{ICONS.Bell}</div>
             <h2 className="text-lg font-bold text-slate-800 dark:text-white">Уведомления</h2>
@@ -234,8 +226,9 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
             {ICONS.Settings} Настройки
           </button>
         </div>
-      </div>
+      </Sheet>
 
+      {/* Подробности — отдельным окном поверх ленты */}
       {detailNotif && (
         <NotificationDetailModal
           notification={detailNotif}
@@ -243,7 +236,7 @@ const NotificationsPanel: React.FC<NotificationsPanelProps> = ({ onClose, onUnre
           onArchiveToggle={handleArchiveToggle}
         />
       )}
-    </div>
+    </>
   );
 };
 

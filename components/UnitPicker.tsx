@@ -1,5 +1,5 @@
 import React, { useMemo, useState } from 'react';
-import ModalPortal from './ModalPortal';
+import Sheet from './Sheet';
 import {
   UNITS, GROUP_ORDER, GROUP_TITLES, CONTENT_UNITS, UnitGroup,
   findUnit, isPackUnit, packLabel, unitOf, DEFAULT_UNIT,
@@ -141,15 +141,7 @@ const UnitPicker: React.FC<UnitPickerProps> = ({
       )}
 
       {open && (
-        <ModalPortal>
-          <div
-            className="fixed inset-0 z-sheet-select flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-            onClick={() => setOpen(false)}
-          >
-            <div
-              className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[80vh] flex flex-col animate-slide-up-sheet"
-              onClick={e => e.stopPropagation()}
-            >
+        <Sheet onClose={() => setOpen(false)} zIndex={250} className="sm:max-w-sm max-h-[80vh] flex flex-col">
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
                 <h3 className="font-bold text-slate-800 dark:text-white mb-3">Единица измерения</h3>
                 <input
@@ -226,9 +218,7 @@ const UnitPicker: React.FC<UnitPickerProps> = ({
                   )}
                 </div>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
     </>
   );

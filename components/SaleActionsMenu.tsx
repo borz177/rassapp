@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import Sheet from './Sheet';
 import { createPortal } from 'react-dom';
 import { Printer, Trash2, X, MoreVertical } from 'lucide-react';
 import { Sale, Customer, User, AppSettings } from '../types';
@@ -76,15 +77,7 @@ const SaleActionsMenu: React.FC<SaleActionsMenuProps> = ({
         <MoreVertical size={18} />
       </button>
 
-      {open && createPortal(
-        <div
-          className="fixed inset-0 z-modal bg-slate-900/50 backdrop-blur-sm flex items-end sm:items-center justify-center animate-fade-in"
-          onClick={e => { stop(e); setOpen(false); }}
-        >
-          <div
-            onClick={stop}
-            className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-2xl sm:rounded-2xl shadow-2xl overflow-hidden animate-slide-up-sheet sm:animate-scale-in"
-          >
+      {open && <Sheet onClose={() => setOpen(false)} className="sm:max-w-sm overflow-hidden pt-3">
             <div className="flex items-center justify-between px-4 py-3 border-b border-slate-100 dark:border-slate-700">
               <span className="text-sm font-semibold text-slate-700 dark:text-slate-300">Действия</span>
               <button onClick={() => setOpen(false)} className="p-1 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300" aria-label="Закрыть">
@@ -127,10 +120,7 @@ const SaleActionsMenu: React.FC<SaleActionsMenuProps> = ({
                 Отмена
               </button>
             </div>
-          </div>
-        </div>,
-        document.body
-      )}
+          </Sheet>}
 
       {confirming && createPortal(
         <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm animate-fade-in" onClick={stop}>

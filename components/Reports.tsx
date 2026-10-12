@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import Sheet from './Sheet';
 import { useModeOrder } from '../src/modeOrder';
 import SwapModesButton from './SwapModesButton';
 import TabPill from './TabPill';
@@ -287,10 +288,10 @@ const Reports: React.FC<ReportsProps> = ({
 
     // Modal state
     const [activeModal, setActiveModal] = useState<'payments' | 'investor_payouts' | 'other_expenses' | null>(null);
-    const [closingModal, setClosingModal] = useState<'active' | 'export' | null>(null);
 
-    const closeActiveModal = () => setClosingModal('active');
-    const closeExportModal = () => setClosingModal('export');
+    // Уход доигрывает сам лист (Sheet), стоит только снять окно
+    const closeActiveModal = () => setActiveModal(null);
+    const closeExportModal = () => setExportModal(null);
 
     // Export modal state
     const [exportModal, setExportModal] = useState<'pdf' | 'csv' | null>(null);
@@ -1290,22 +1291,8 @@ const Reports: React.FC<ReportsProps> = ({
             </div>
 
             {/* Export Options Modal */}
-            {(exportModal || closingModal === 'export') && (
-                <div
-                    className="fixed inset-0 z-[200] flex items-center justify-center p-4"
-                    onClick={closeExportModal}
-                >
-                    <div className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${closingModal === 'export' ? 'animate-fade-out' : ''}`} />
-                    <div
-                        className={`relative w-full max-w-sm bg-white dark:bg-slate-800 rounded-2xl shadow-2xl overflow-hidden ${closingModal === 'export' ? 'animate-fade-out' : 'animate-slide-up-sheet'}`}
-                        onClick={e => e.stopPropagation()}
-                        onAnimationEnd={() => {
-                            if (closingModal === 'export') {
-                                setExportModal(null);
-                                setClosingModal(null);
-                            }
-                        }}
-                    >
+            {exportModal && (
+                <Sheet onClose={() => setExportModal(null)} zIndex={200} className="sm:max-w-sm overflow-hidden">
                         {/* Header */}
                         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-700">
                             <div className="flex items-center gap-2.5">
@@ -1388,30 +1375,12 @@ const Reports: React.FC<ReportsProps> = ({
                                 {exportModal === 'pdf' ? '🖨️ Скачать PDF' : '📥 Скачать CSV'}
                             </button>
                         </div>
-                    </div>
-                </div>
+                    </Sheet>
             )}
 
             {/* Expense Detail Modal — Telegram style bottom sheet */}
-            {(activeModal || closingModal === 'active') && (
-                <div
-                    className="fixed inset-0 z-[200] flex items-end justify-center"
-                    onClick={closeActiveModal}
-                >
-                    {/* Backdrop */}
-                    <div className={`absolute inset-0 bg-black/50 backdrop-blur-sm ${closingModal === 'active' ? 'animate-fade-out' : ''}`} />
-
-                    {/* Sheet */}
-                    <div
-                        className={`relative w-full sm:max-w-lg bg-white dark:bg-slate-800 rounded-t-3xl shadow-2xl max-h-[85vh] flex flex-col overflow-hidden ${closingModal === 'active' ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
-                        onClick={e => e.stopPropagation()}
-                        onAnimationEnd={() => {
-                            if (closingModal === 'active') {
-                                setActiveModal(null);
-                                setClosingModal(null);
-                            }
-                        }}
-                    >
+            {activeModal && (
+                <Sheet onClose={() => setActiveModal(null)} zIndex={200} className="sm:max-w-lg max-h-[85vh] flex flex-col overflow-hidden">
                         {/* Drag handle (mobile) */}
                         <div className="flex justify-center pt-3 pb-1 sm:hidden">
                             <div className="w-10 h-1 bg-slate-200 dark:bg-slate-600 rounded-full" />
@@ -1535,8 +1504,7 @@ const Reports: React.FC<ReportsProps> = ({
                                 </span>
                             </div>
                         </div>
-                    </div>
-                </div>
+                    </Sheet>
             )}
         </div>
     );

@@ -1,4 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
+import Sheet from './Sheet';
 import type {
   Account, AppSettings, Customer, Expense, Product, RetailSale, Sale, StockLocation, StockMovement, Supplier, User,
 } from '../types';
@@ -9,7 +10,6 @@ import DocumentCard from './DocumentCard';
 import TopBarBack from './TopBarBack';
 import UnsyncedMark from './UnsyncedMark';
 import SubPage from './transitions/SubPage';
-import ModalPortal from './ModalPortal';
 import TabPill from './TabPill';
 
 interface JournalProps {
@@ -294,11 +294,7 @@ const Journal: React.FC<JournalProps> = ({
       </>)}
 
       {filtersOpen && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setFiltersOpen(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-5 space-y-4"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setFiltersOpen(false)} className="sm:max-w-sm p-5 space-y-4">
               <h3 className="font-bold text-slate-800 dark:text-white">Фильтры</h3>
 
               <div>
@@ -339,20 +335,14 @@ const Journal: React.FC<JournalProps> = ({
                   Показать
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
 
       {/* Что именно исчезнет — перечисляем до нажатия, а не после. Удаление
           чека трогает три вещи сразу: остаток склада, выручку и принятые по
           долгу деньги, и «Вы уверены?» об этом не говорит ничего. */}
       {deleting && deleting.sale && (
-        <ModalPortal onClose={() => !removing && setDeleting(null)}>
-          <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-               onClick={() => !removing && setDeleting(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up-sheet"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setDeleting(null)} dismissible={!removing} className="sm:max-w-sm">
               <div className="px-5 pt-5 pb-3">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">{deleting.kind === 'RETURN' ? 'Удалить возврат' : 'Удалить продажу'} №{deleting.number}?</h3>
                 <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
@@ -431,9 +421,7 @@ const Journal: React.FC<JournalProps> = ({
                   {removing ? 'Удаляем…' : 'Удалить'}
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
 
       {deletingDoc && docReversal && (() => {
@@ -442,11 +430,7 @@ const Journal: React.FC<JournalProps> = ({
         const blocked = docReversal.shortages.length > 0 && !allowNegativeStock;
         const paidLinked = linkedPayments.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
         return (
-        <ModalPortal onClose={() => !removing && setDeletingDoc(null)}>
-          <div className="fixed inset-0 z-modal-top flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-               onClick={() => !removing && setDeletingDoc(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl animate-slide-up-sheet max-h-[88vh] overflow-y-auto"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setDeletingDoc(null)} dismissible={!removing} className="sm:max-w-sm max-h-[88vh] overflow-y-auto overscroll-contain">
               <div className="px-5 pt-5 pb-3">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white">
                   {DELETE_LABEL[kind]} №{deletingDoc.number}?
@@ -533,18 +517,12 @@ const Journal: React.FC<JournalProps> = ({
                   {removing ? 'Удаляем…' : 'Удалить'}
                 </button>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
         );
       })()}
 
       {menuFor && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setMenuFor(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl p-2"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setMenuFor(null)} className="sm:max-w-sm p-2 pt-6">
               <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400">
                 {KIND_LABEL[menuFor.kind]} №{menuFor.number}
               </p>
@@ -587,9 +565,7 @@ const Journal: React.FC<JournalProps> = ({
                       className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
                 Отмена
               </button>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
     </div>
 

@@ -1,9 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import Sheet from './Sheet';
 import ManagementShareSheet from './ManagementShareSheet';
 import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
 import SelectSheet from './SelectSheet';
-import ModalPortal from './ModalPortal';
 import ModeSwitch from './ModeSwitch';
 import AccountCashTab from './AccountCashTab';
 import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
@@ -85,9 +85,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
     };
 
     return (
-        <ModalPortal onClose={onClose}>
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-sm p-6">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-indigo-500 to-indigo-600 flex items-center justify-center text-white shadow-lg">
                         {ICONS.Plus}
@@ -123,9 +121,7 @@ const CreateAccountModal = ({ onClose, onSubmit }: { onClose: () => void, onSubm
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
-        </ModalPortal>
+            </Sheet>
     )
 }
 
@@ -140,9 +136,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
     };
 
     return (
-        <ModalPortal onClose={onClose}>
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-sm p-6">
                 <div className="flex items-center gap-3 mb-6">
                     <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-amber-500 to-amber-600 flex items-center justify-center text-white shadow-lg">
                         {ICONS.Edit}
@@ -177,9 +171,7 @@ const EditAccountModal = ({ account, onClose, onUpdate }: { account: Account, on
                         </button>
                     </div>
                 </form>
-            </div>
-        </div>
-        </ModalPortal>
+            </Sheet>
     )
 }
 
@@ -229,9 +221,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
     const totalProfitGenerated = Math.max(0, totalAccountEquity - totalNetCapital);
 
     return (
-        <ModalPortal onClose={onClose}>
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-gradient-to-br from-slate-900/80 to-indigo-900/80 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm w-full max-w-md rounded-3xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] border border-white/20 dark:border-slate-700/50" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-md overflow-hidden flex flex-col max-h-[90vh]">
                 <div className="p-6 bg-gradient-to-r from-indigo-600 to-purple-600 text-white">
                     <div className="flex items-center gap-3 mb-2">
                         <div className="w-10 h-10 rounded-2xl bg-white/20 backdrop-blur-sm flex items-center justify-center">
@@ -320,9 +310,7 @@ const SharedAccountDetails = ({ account, sales, expenses, investors, onClose, ap
                         Закрыть
                     </button>
                 </div>
-            </div>
-        </div>
-        </ModalPortal>
+            </Sheet>
     );
 };
 
@@ -382,9 +370,7 @@ const AccountActionModal = ({
     };
 
     return (
-        <ModalPortal onClose={onClose}>
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-black/50 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-xs rounded-2xl shadow-2xl overflow-hidden animate-slide-up" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-xs overflow-hidden">
                 <div className={`h-2 bg-gradient-to-r ${getAccountTypeColor(realAccountType(account))}`}></div>
 
                 <div className="p-5">
@@ -523,9 +509,7 @@ const AccountActionModal = ({
                         <span>Закрыть</span>
                     </button>
                 </div>
-            </div>
-        </div>
-        </ModalPortal>
+            </Sheet>
     );
 };
 
@@ -1429,11 +1413,7 @@ const investorProfitPayouts = useMemo(() => {
       {/* Расшифровка вложенного: из чего сложилось и что уже вернули. Без неё
           цифре остаётся только верить — а речь о собственных деньгах. */}
       {showInvestment && detailsAccount && (
-        <ModalPortal onClose={() => setShowInvestment(false)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-               onClick={() => setShowInvestment(false)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-sm rounded-t-3xl sm:rounded-3xl shadow-2xl max-h-[75vh] flex flex-col animate-slide-up-sheet"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setShowInvestment(false)} className="sm:max-w-sm max-h-[75vh] flex flex-col">
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700">
                 <h3 className="font-bold text-slate-800 dark:text-white">Инвестировано</h3>
                 <p className="text-xs text-slate-500 dark:text-slate-400">
@@ -1496,9 +1476,7 @@ const investorProfitPayouts = useMemo(() => {
                   Из прибыли деньги берутся отдельной кнопкой и этой суммы не касаются.
                 </p>
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
 
       {activeMenuAccount && (
@@ -2032,15 +2010,7 @@ const investorProfitPayouts = useMemo(() => {
 {/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера — на мобильных выезжает снизу, как модалка
     "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
 {showProfitDetails && (
-    <ModalPortal onClose={() => setShowProfitDetails(false)}>
-    <div
-        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-        onClick={() => setShowProfitDetails(false)}
-    >
-        <div
-            className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col animate-slide-up-sheet"
-            onClick={e => e.stopPropagation()}
-        >
+    <Sheet onClose={() => setShowProfitDetails(false)} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
             {/* Header */}
             <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-emerald-500 to-emerald-600">
                 <div className="flex items-center gap-3">
@@ -2181,23 +2151,13 @@ const investorProfitPayouts = useMemo(() => {
                     )
                 )}
             </div>
-        </div>
-    </div>
-    </ModalPortal>
+        </Sheet>
 )}
 
 {/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора — на мобильных выезжает снизу, как модалка
     "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
 {showInvestorProfitDetails && investorProfitStats && (
-    <ModalPortal onClose={() => setShowInvestorProfitDetails(false)}>
-    <div
-        className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
-        onClick={() => setShowInvestorProfitDetails(false)}
-    >
-        <div
-            className="bg-white dark:bg-slate-800 w-full sm:max-w-lg rounded-t-3xl sm:rounded-3xl shadow-2xl overflow-hidden max-h-[85vh] flex flex-col animate-slide-up-sheet"
-            onClick={e => e.stopPropagation()}
-        >
+    <Sheet onClose={() => setShowInvestorProfitDetails(false)} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
             {/* Header */}
             <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-purple-500 to-purple-600">
                 <div className="flex items-center gap-3">
@@ -2331,9 +2291,7 @@ const investorProfitPayouts = useMemo(() => {
                     )
                 )}
             </div>
-        </div>
-    </div>
-    </ModalPortal>
+        </Sheet>
 )}
 
 

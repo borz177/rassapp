@@ -1,12 +1,13 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
+import { isPhoneWidth, playGhostExit, useSheetDrag } from '../src/sheetDrag';
 
 /**
  * Лист, как в системных окнах iOS, — общий для форм и списков приложения.
  *
  * На телефоне выезжает снизу и не заходит под чёлку (сверху видно затемнённый
  * экран — понятно, откуда пришли и куда вернёмся), уезжает обратно тем же
- * движением, смахивается вниз за верхнюю панель. Крупный заголовок уходит при
+ * движением, смахивается вниз за любое место (src/sheetDrag.ts). Крупный заголовок уходит при
  * прокрутке, а в панели проявляется короткое название; там же кнопки —
  * сверху их не закрывает клавиатура. На компьютере — окно по центру.
  *
@@ -49,11 +50,6 @@ interface GlassSheetProps {
 
 // Длительность ухода — совпадает с переходом листа ниже
 const OUT_MS = 300;
-const DISMISS_DISTANCE = 110;
-const DISMISS_VELOCITY = 0.6; // px/мс
-
-const isPhoneWidth = () =>
-  typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 
@@ -156,9 +152,6 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
   const phone = useRef(isPhoneWidth());
   const [closing, setClosing] = useState(false);
   const closingRef = useRef(false);
-  const [dragY, setDragY] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const drag = useRef<{ y0: number; t0: number; dy: number } | null>(null);
 
   // Уйти с анимацией — после действия (сохранили, выбрали) переспрашивать нечего
   const close = () => {
@@ -175,7 +168,6 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
     if (asking.current || closingRef.current) return;
     if (confirmClose) {
       asking.current = true;
-      setDragY(0); // пока спрашиваем — лист на месте, а не повисшим на полпути
       const ok = await confirmClose();
       asking.current = false;
       if (!ok) return;
@@ -191,31 +183,25 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
     return () => window.removeEventListener('keydown', onKey);
   }, []);
 
-  // Смахивание — за верхнюю панель: содержимое листается само, и тянуть за
-  // него значило бы спорить с прокруткой.
-  const onDragStart = (e: React.PointerEvent) => {
-    if (!phone.current || e.pointerType === 'mouse') return;
-    if ((e.target as HTMLElement).closest('button, input, textarea, select, a')) return;
-    drag.current = { y0: e.clientY, t0: performance.now(), dy: 0 };
-    setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-  };
-  const onDragMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const raw = e.clientY - drag.current.y0;
-    const dy = raw > 0 ? raw : raw / 6; // вверх — с сопротивлением, как в iOS
-    drag.current.dy = dy;
-    setDragY(dy);
-  };
-  const onDragEnd = () => {
-    const d = drag.current;
-    drag.current = null;
-    setDragging(false);
-    if (!d) return;
-    const velocity = d.dy / Math.max(1, performance.now() - d.t0);
-    if (d.dy > DISMISS_DISTANCE || (d.dy > 24 && velocity > DISMISS_VELOCITY)) requestClose();
-    else setDragY(0);
-  };
+  // Смахивание — за любое место листа. Уехавший пальцем лист уже за краем:
+  // анимацию ухода не повторяем, сразу снимаем.
+  const backdropRef = useRef<HTMLDivElement>(null);
+  const panelRef = useSheetDrag({
+    backdrop: () => backdropRef.current,
+    confirm: confirmClose,
+    onDismiss: () => {
+      if (closingRef.current) return;
+      closingRef.current = true;
+      onClose();
+    },
+  });
+
+  // Лист сняли из кода (родитель перестал его рисовать) — уход доигрывает копия.
+  // Закрытый кнопкой или смахнутый лист уже ушёл сам: closingRef.
+  const rootRef = useRef<HTMLDivElement>(null);
+  useLayoutEffect(() => () => {
+    if (!closingRef.current && rootRef.current) playGhostExit(rootRef.current, OUT_MS, phone.current);
+  }, []);
 
   // Крупный заголовок уходит при прокрутке — в панели проявляется короткий
   const scrollRef = useRef<HTMLDivElement>(null);
@@ -241,19 +227,18 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
 
   const isPhone = phone.current;
   const panelStyle: React.CSSProperties = isPhone
-    ? {
-        transform: `translateY(${closing ? '105%' : `${dragY}px`})`,
-        transition: dragging ? 'none' : `transform ${OUT_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
-      }
+    ? (closing ? {
+        transform: 'translateY(105%)',
+        transition: `transform ${OUT_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+      } : {})
     : {
         transform: closing ? 'scale(0.97)' : undefined,
         opacity: closing ? 0 : undefined,
         transition: 'transform 180ms ease, opacity 180ms ease',
       };
-  const backdropStyle: React.CSSProperties = {
-    opacity: closing ? 0 : isPhone ? Math.max(0.35, 1 - Math.max(0, dragY) / 500) : 1,
-    transition: dragging ? 'none' : `opacity ${OUT_MS}ms ease`,
-  };
+  const backdropStyle: React.CSSProperties = closing
+    ? { opacity: 0, transition: `opacity ${OUT_MS}ms ease` }
+    : {};
 
   const Panel = (onSubmit ? 'form' : 'div') as 'form';
   const content = typeof children === 'function' ? children(close) : children;
@@ -261,10 +246,11 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
 
   return (
     <ModalPortal onClose={requestClose}>
-      <div className="fixed inset-0 flex justify-center items-end sm:items-center sm:p-6" style={{ zIndex }}>
-        <div className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] search-backdrop-in" style={backdropStyle} onClick={requestClose} />
+      <div ref={rootRef} className="fixed inset-0 flex justify-center items-end sm:items-center sm:p-6" style={{ zIndex }}>
+        <div ref={backdropRef} className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] search-backdrop-in" style={backdropStyle} onClick={requestClose} />
 
         <Panel
+          ref={panelRef as React.Ref<HTMLFormElement>}
           role="dialog"
           aria-label={title}
           onSubmit={onSubmit ? (e: React.FormEvent) => { e.preventDefault(); onSubmit(close); } : undefined}
@@ -275,15 +261,11 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
                         ? 'h-[calc(100%-env(safe-area-inset-top,0px)-10px)] sm:h-auto'
                         : 'max-h-[calc(100%-env(safe-area-inset-top,0px)-10px)]'}`}
         >
-          {/* Панель: ручка, кнопка слева, короткое название, действие. За неё лист смахивается */}
+          {/* Панель: ручка, кнопка слева, короткое название, действие */}
           <div
-            className={`shrink-0 touch-none select-none transition-colors duration-200 ${
+            className={`shrink-0 select-none transition-colors duration-200 ${
               scrolled ? 'bg-slate-50/85 dark:bg-slate-900/85 backdrop-blur-xl' : ''
             }`}
-            onPointerDown={onDragStart}
-            onPointerMove={onDragMove}
-            onPointerUp={onDragEnd}
-            onPointerCancel={onDragEnd}
           >
             <div className="sm:hidden flex justify-center pt-2">
               <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />

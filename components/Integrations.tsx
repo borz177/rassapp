@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import Sheet from './Sheet';
 import ApiKeys from './ApiKeys';
 import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
@@ -730,8 +731,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
       {/* 🔹 МОДАЛЬНОЕ ОКНО ПРЕДПРОСМОТРА */}
       {showPreview && (
-        <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-sm animate-fade-in" onClick={() => setShowPreview(false)}>
-          <div className="bg-white dark:bg-slate-800 w-full max-w-md rounded-2xl shadow-2xl overflow-hidden animate-scale-in" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setShowPreview(false)} className="sm:max-w-md overflow-hidden">
             <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-700 bg-gradient-to-r from-indigo-50 to-emerald-50 dark:from-indigo-950/40 dark:to-emerald-950/40">
               <h3 className="font-bold text-slate-800 dark:text-white flex items-center gap-2"><span className="text-lg">👁️</span> Предпросмотр сообщения</h3>
               <button onClick={() => setShowPreview(false)} className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-lg transition-colors">
@@ -753,8 +753,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                 Копировать
               </button>
             </div>
-          </div>
-        </div>
+          </Sheet>
       )}
 
       {/* API-ключи стоят рядом с WhatsApp: это тоже способ связать FinUchet

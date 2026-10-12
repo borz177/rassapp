@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import Sheet from './Sheet';
 import { api } from '../services/api';
 import { ICONS } from '../constants';
 import { appConfirm } from '../src/dialogs';
@@ -181,8 +182,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
   };
 
   return (
-    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-end sm:items-center justify-center z-modal">
-      <div className="bg-white dark:bg-slate-800 w-full sm:w-[600px] h-[90vh] sm:h-[700px] rounded-t-2xl sm:rounded-2xl flex flex-col shadow-2xl">
+    <Sheet onClose={onClose} className="sm:w-[600px] sm:max-w-none h-[90vh] sm:h-[700px] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="p-4 border-b flex items-center justify-between bg-blue-500 text-white rounded-t-2xl">
           <div className="flex items-center gap-3">
@@ -398,8 +398,7 @@ const SupportChat: React.FC<SupportChatProps> = ({ user, onClose, onUnreadChange
             </div>
           </div>
         )}
-      </div>
-    </div>
+      </Sheet>
   );
 };
 

@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import ModalPortal from './ModalPortal';
+import Sheet from './Sheet';
 import {
   CONTRACT_TEMPLATES, PAID_CONTRACT_TEMPLATES, blankContractData, buildContractHtml, sampleContractData,
   type ContractTemplateId,
@@ -137,11 +137,7 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
       </div>
 
       {preview && (
-        <ModalPortal onClose={() => setPreview(null)}>
-          <div className="fixed inset-0 z-modal flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm"
-               onClick={() => setPreview(null)}>
-            <div className="bg-white dark:bg-slate-800 w-full sm:max-w-3xl rounded-t-3xl sm:rounded-3xl shadow-2xl h-[88vh] sm:h-[85vh] flex flex-col"
-                 onClick={e => e.stopPropagation()}>
+        <Sheet onClose={() => setPreview(null)} className="sm:max-w-3xl h-[88vh] sm:h-[85vh] flex flex-col overflow-hidden">
               <div className="px-5 pt-4 pb-3 border-b border-slate-100 dark:border-slate-700 shrink-0 flex items-center justify-between gap-3">
                 <div className="min-w-0">
                   <h3 className="font-bold text-slate-800 dark:text-white truncate">
@@ -178,9 +174,7 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
                   </button>
                 )}
               </div>
-            </div>
-          </div>
-        </ModalPortal>
+            </Sheet>
       )}
     </div>
   );

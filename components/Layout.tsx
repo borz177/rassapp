@@ -1,5 +1,6 @@
 
 import { haptics } from '../src/haptics';
+import Sheet from './Sheet';
 import { rootScroller, rootScrollTop } from '../src/rootScroll';
 import React, { useState, useMemo, useEffect, useRef, useLayoutEffect, useCallback } from 'react';
 import ModalPortal from './ModalPortal';
@@ -878,15 +879,15 @@ const counts = useMemo(() => {
       </aside>
 
       {/* Обновление потягиванием вниз. Индикатор — отдельный слой рядом с
-          контентом, а не обёртка вокруг него: обёртке пришлось бы двигаться
-          через transform, а он превращает элемент в точку отсчёта для
-          position: fixed внутри — ровно та ловушка, из-за которой в этом
-          приложении появился ModalPortal. */}
+          контентом, а сам контент (data-ptr-content) PullToRefresh сдвигает
+          через top, не transform: transform превратил бы его в точку отсчёта
+          для position: fixed внутри — та ловушка, из-за которой появился
+          ModalPortal. */}
       {onPullRefresh && <PullToRefresh onRefresh={onPullRefresh} />}
 
       {/* Main Content Area - Updated margins and centering */}
       <main className="shell-main flex-1 md:ml-64 p-4 md:p-10 mx-auto w-full mb-20 md:mb-0 mt-16 md:mt-0 flex flex-col h-full bg-slate-50 dark:bg-slate-900 mobile-main-offset">
-        <div className="shell-content relative w-full max-w-7xl mx-auto flex-1 min-h-0">
+        <div data-ptr-content className="shell-content relative w-full max-w-7xl mx-auto flex-1 min-h-0">
             {children}
         </div>
       </main>
@@ -1080,15 +1081,7 @@ const counts = useMemo(() => {
   // Порталом в body: остров теперь масштабируется при нажатии, а элемент с
   // transform становится точкой отсчёта для position: fixed внутри себя —
   // меню схлопнулось бы до размеров острова. См. ModalPortal.
-  <ModalPortal>
-  <div
-    className="fixed inset-0 z-modal flex items-end justify-center bg-slate-900/60 backdrop-blur-sm animate-fade-in md:hidden"
-    onClick={() => setShowInvestorMobileMenu(false)}
-  >
-    <div
-      className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-t-3xl p-5 pb-8 shadow-2xl animate-slide-up"
-      onClick={e => e.stopPropagation()}
-    >
+  <Sheet onClose={() => setShowInvestorMobileMenu(false)} className="max-w-sm p-5 pb-8">
       <div className="flex items-center justify-between mb-4 pb-3 border-b border-slate-100 dark:border-slate-700">
         <h3 className="font-bold text-slate-800 dark:text-white">Доступные разделы</h3>
         <button
@@ -1150,9 +1143,7 @@ const counts = useMemo(() => {
       >
         Закрыть
       </button>
-    </div>
-  </div>
-  </ModalPortal>
+    </Sheet>
 )}
 
         </div>

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react';
+import Sheet from './Sheet';
 import { Partnership, Investor, Account, Sale, Expense } from '../types';
 import { ICONS } from '../constants';
 
@@ -30,8 +31,7 @@ const CreatePartnershipModal = ({ onClose, onSubmit, investors }: { onClose: () 
     };
 
     return (
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-xl p-5" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-sm p-5">
                 <h3 className="text-lg font-bold text-slate-800 dark:text-white mb-4">Новое партнерство</h3>
                 <form onSubmit={handleSubmit} className="space-y-4">
                     <div>
@@ -58,8 +58,7 @@ const CreatePartnershipModal = ({ onClose, onSubmit, investors }: { onClose: () 
                         <button type="submit" className="flex-1 py-3 bg-indigo-600 text-white rounded-xl font-bold">Создать</button>
                     </div>
                 </form>
-            </div>
-        </div>
+            </Sheet>
     )
 }
 
@@ -128,8 +127,7 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
     if (!stats) return null;
 
     return (
-        <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={onClose}>
-            <div className="bg-white dark:bg-slate-800 w-full max-w-lg rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh]" onClick={e => e.stopPropagation()}>
+        <Sheet onClose={onClose} className="sm:max-w-lg overflow-hidden flex flex-col max-h-[90vh]">
                 <div className="p-5 border-b border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-700/50 flex justify-between items-center">
                     <div>
                         <h3 className="text-xl font-bold text-slate-800 dark:text-white">{partnership.name}</h3>
@@ -201,8 +199,7 @@ const PartnershipDetail = ({ partnership, accounts, sales, expenses, investors, 
                         </div>
                     </div>
                 </div>
-            </div>
-        </div>
+            </Sheet>
     );
 }
 
