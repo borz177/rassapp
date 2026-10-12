@@ -899,8 +899,9 @@ const counts = useMemo(() => {
           // backdrop-filter становится «корнем подложки», и вложенное стекло
           // страницу под собой уже не видит. Раз панель стала полупрозрачной,
           // размытие фона усилено с blur-sm — иначе сквозь меню читался бы текст
-          // карточек.
-          className={`fixed inset-0 bg-slate-900/60 backdrop-blur-xl z-40 md:hidden flex flex-col justify-end pb-32 px-4 ${isMenuClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
+          // карточек. В светлой теме меню белое (.quick-menu), и затемнение
+          // легче: тёмное под белой карточкой выглядело тяжело.
+          className={`fixed inset-0 bg-slate-900/35 dark:bg-slate-900/60 backdrop-blur-md dark:backdrop-blur-xl z-40 md:hidden flex flex-col justify-end pb-32 px-4 ${isMenuClosing ? 'animate-fade-out' : 'animate-modal-fade-in'}`}
           onClick={closeMenu}
         >
           <div
@@ -909,47 +910,47 @@ const counts = useMemo(() => {
             // просто уезжали за край без возможности до них добраться.
             // overscroll-contain — чтобы докрутив до конца, не тянуть за собой
             // страницу под меню.
-            className={`glass-surface rounded-2xl overflow-hidden flex flex-col max-h-[calc(100dvh-13rem)] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
+            className={`quick-menu rounded-[26px] overflow-hidden flex flex-col max-h-[calc(100dvh-13rem)] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}
             onClick={e => e.stopPropagation()}
           >
-            <div className="shrink-0 px-4 pt-4 pb-2 border-b border-slate-100 dark:border-slate-700">
-              <h3 className="text-slate-500 dark:text-slate-400 font-bold text-sm uppercase tracking-wide">Быстрые действия</h3>
+            <div className="shrink-0 px-5 pt-4 pb-2.5 border-b border-slate-100 dark:border-slate-700">
+              <h3 className="text-slate-400 dark:text-slate-400 font-semibold text-[12px] uppercase tracking-[0.08em]">Быстрые действия</h3>
             </div>
             <div className="p-2 overflow-y-auto overscroll-contain">
-              <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-violet-100 dark:bg-violet-900/30 p-2.5 rounded-full text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
+              <button onClick={() => handleActionClick('CALCULATOR')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                <div className="bg-violet-100 dark:bg-violet-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-violet-600 dark:text-violet-400">{ICONS.Calculator}</div>
                 <span className="font-semibold text-[15px]">Калькулятор</span>
               </button>
               {showTasks && (
-                <button onClick={() => handleActionClick('TASKS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-sky-100 dark:bg-sky-900/30 p-2.5 rounded-full text-sky-600 dark:text-sky-400">{ICONS.Tasks}</div>
+                <button onClick={() => handleActionClick('TASKS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                  <div className="bg-sky-100 dark:bg-sky-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-sky-600 dark:text-sky-400">{ICONS.Tasks}</div>
                   <span className="font-semibold text-[15px]">Задачи</span>
                 </button>
               )}
-              <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
+              <button onClick={() => handleActionClick('CREATE_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                <div className="bg-indigo-100 dark:bg-indigo-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-indigo-600 dark:text-indigo-400">{ICONS.Sales}</div>
                 <span className="font-semibold text-[15px]">Оформить продажу</span>
               </button>
-              <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Income}</div>
+              <button onClick={() => handleActionClick('INCOME')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                <div className="bg-emerald-100 dark:bg-emerald-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-emerald-600 dark:text-emerald-400">{ICONS.Income}</div>
                 <span className="font-semibold text-[15px]">Приход (Внести)</span>
               </button>
-              <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-red-100 dark:bg-red-900/30 p-2.5 rounded-full text-red-600 dark:text-red-400">{ICONS.Expense}</div>
+              <button onClick={() => handleActionClick('EXPENSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                <div className="bg-red-100 dark:bg-red-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-red-600 dark:text-red-400">{ICONS.Expense}</div>
                 <span className="font-semibold text-[15px]">Расход (Изъять)</span>
               </button>
               {/* Склад — одним переходом. Раньше пункт раскрывался в «Товары и
                   операции» плюс «Журнал», но склад и так открывается на товарах,
                   а журнал теперь живёт в истории операций — рядом с кассовой. */}
               {showShop && (
-                <button onClick={() => handleActionClick('WAREHOUSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-indigo-100 dark:bg-indigo-900/30 p-2.5 rounded-full text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
+                <button onClick={() => handleActionClick('WAREHOUSE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                  <div className="bg-indigo-100 dark:bg-indigo-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-indigo-600 dark:text-indigo-400">{ICONS.Archive}</div>
                   <span className="font-semibold text-[15px]">Склад</span>
                 </button>
               )}
               {/* Одна история на всё: с магазином в ней и деньги, и товар (History.tsx) */}
-              <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                <div className="bg-slate-100 dark:bg-slate-700 p-2.5 rounded-full text-slate-600 dark:text-slate-300">{ICONS.List}</div>
+              <button onClick={() => handleActionClick('OPERATIONS')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                <div className="bg-slate-100 dark:bg-slate-700 w-10 h-10 flex items-center justify-center rounded-xl text-slate-600 dark:text-slate-300">{ICONS.List}</div>
                 <span className="font-semibold text-[15px]">Все операции</span>
               </button>
               {/* Только у партнёров: остальным пункт не нужен и только путал бы.
@@ -958,14 +959,14 @@ const counts = useMemo(() => {
                   единственный быстрый путь к ней; когда вынесена, дублировать
                   её в меню незачем. */}
               {showShop && !showShopTab && (
-                <button onClick={() => handleActionClick('RETAIL_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Wallet}</div>
+                <button onClick={() => handleActionClick('RETAIL_SALE')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                  <div className="bg-emerald-100 dark:bg-emerald-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-emerald-600 dark:text-emerald-400">{ICONS.Wallet}</div>
                   <span className="font-semibold text-[15px]">Продажа за наличные</span>
                 </button>
               )}
               {!!user?.partnerPercent && (
-                <button onClick={() => handleActionClick('PARTNER')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-50 dark:active:bg-slate-700 rounded-xl text-slate-700 dark:text-slate-300">
-                  <div className="bg-emerald-100 dark:bg-emerald-900/30 p-2.5 rounded-full text-emerald-600 dark:text-emerald-400">{ICONS.Star}</div>
+                <button onClick={() => handleActionClick('PARTNER')} className="w-full flex items-center gap-3 p-3.5 active:bg-slate-100 dark:active:bg-slate-700 rounded-2xl text-slate-800 dark:text-slate-200 transition-colors">
+                  <div className="bg-emerald-100 dark:bg-emerald-900/30 w-10 h-10 flex items-center justify-center rounded-xl text-emerald-600 dark:text-emerald-400">{ICONS.Star}</div>
                   <span className="font-semibold text-[15px]">Бизнес-партнёр</span>
                 </button>
               )}

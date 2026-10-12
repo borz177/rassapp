@@ -12,6 +12,7 @@ import { api } from '../services/api';
 import { compressImageFile } from '../src/imageCompress';
 import TopBarBack from './TopBarBack';
 import Sheet from './Sheet';
+import { ICONS } from '../constants';
 import TabPill from './TabPill';
 import WarehouseOps from './WarehouseOps';
 import ProductDetails from './ProductDetails';
@@ -96,6 +97,35 @@ const num = (v: string) => {
 
 const money = (v: number) => v.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
 
+const PRINT_ICON = (
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
+    <path d="M6 9V3h12v6" /><rect x="3" y="9" width="18" height="8" rx="2" /><path d="M7 14h10v7H7z" />
+  </svg>
+);
+const ACTION_TONES = {
+  indigo: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
+  emerald: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
+  sky: 'bg-sky-50 text-sky-600 dark:bg-sky-500/15 dark:text-sky-300',
+  violet: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
+  amber: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
+  rose: 'bg-rose-50 text-rose-600 dark:bg-rose-500/15 dark:text-rose-300',
+};
+
+/** Строка меню действий: иконка в цветной плашке и подпись — как в настройках iOS */
+const ActionRow: React.FC<{ icon: React.ReactNode; label: string; tone: keyof typeof ACTION_TONES; onClick: () => void }> = ({ icon, label, tone, onClick }) => (
+  <button type="button" onClick={onClick}
+          className="w-full flex items-center gap-3 px-3 py-2.5 text-left active:bg-slate-100 dark:active:bg-slate-700/60 transition-colors">
+    <span className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 ${ACTION_TONES[tone]}`}>{icon}</span>
+    <span className={`text-[15px] font-semibold ${tone === 'rose' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-slate-100'}`}>{label}</span>
+  </button>
+);
+const ActionGroup: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="rounded-2xl bg-slate-50 dark:bg-slate-900/50 ring-1 ring-slate-100 dark:ring-slate-700/60 divide-y divide-slate-100 dark:divide-slate-700/60 overflow-hidden">
+    {children}
+  </div>
+);
+const CANCEL_CLS = 'w-full h-12 rounded-2xl bg-slate-100 dark:bg-slate-700/60 text-[15px] font-semibold text-slate-600 dark:text-slate-200 active:opacity-70 transition-opacity';
+
 const MOVEMENT_LABELS: Record<StockMovement['type'], string> = {
   IN: 'Приход',
   SALE: 'Продажа',
@@ -131,6 +161,8 @@ const Warehouse: React.FC<WarehouseProps> = ({
   // Карточка товара и меню его действий — два разных состояния: меню
   // открывается по троеточию и не должно уводить с экрана.
   const [openProductId, setOpenProductId] = useState<string | null>(null);
+  // Карточку товара из меню «История» открываем сразу на истории движений
+  const [openProductTab, setOpenProductTab] = useState<'INFO' | 'HISTORY'>('INFO');
   const [menuProduct, setMenuProduct] = useState<Product | null>(null);
   // 🔎 Из поиска — сразу в карточку товара, а не в начало каталога
   useEffect(() => {
@@ -1045,11 +1077,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
       )}
 
       {/* Сколько денег лежит на складе. Раньше в шапке была одна цифра закупа —
-          по ней не понять ни сколько склад принесёт, ни сколько в нём наценки. */}
+          по ней не понять ни сколько склад принесёт, ни сколько в нём наценки.
+          Остаток в штуках здесь не повторяем — он уже показан в шапке. */}
       {!selection && !reorder && totals.items > 0 && (
-        <div className="grid grid-cols-3 gap-2 sm:gap-3">
+        <div className="grid grid-cols-2 gap-2 sm:gap-3">
           {[
-            { label: 'Остаток', value: `${money(totals.units)} ед.`, hint: `${totals.items} позиций` },
             { label: 'Закуп', value: `${money(totals.cost)} ₽`, hint: 'вложено в товар' },
             { label: 'Продажа', value: `${money(totals.retail)} ₽`, hint: `наценка ${money(totals.margin)} ₽`,
               tone: 'text-emerald-600 dark:text-emerald-400' },
@@ -1212,103 +1244,99 @@ const Warehouse: React.FC<WarehouseProps> = ({
       </>)}
 
       {/* Действия с моделью целиком: варианты, этикетки, архив, удаление */}
-      <Sheet open={!!groupMenu} onClose={() => setGroupMenu(null)} className="sm:max-w-sm p-2">
+      <Sheet open={!!groupMenu} onClose={() => setGroupMenu(null)} className="sm:max-w-sm p-4 pt-7 space-y-3">
         {groupMenu && (
           <>
-            <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400 truncate">
-              {groupMenu.base} · {groupMenu.items.length} вар.
-            </p>
-            <button onClick={() => { const g = groupMenu; setGroupMenu(null); setVariantSheet({ groupId: g.groupId }); }}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              Изменить модель и варианты
-            </button>
-            <button onClick={() => { const g = groupMenu; setGroupMenu(null); setLabelIds(g.items.map(p2 => p2.id)); }}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              Печать этикеток для всех вариантов
-            </button>
-            <button
-              onClick={async () => {
-                const g = groupMenu;
-                setGroupMenu(null);
-                const archive = !g.items[0].isArchived;
-                for (const p2 of g.items) await onSaveProduct({ ...p2, isArchived: archive, updatedAt: new Date().toISOString() });
-              }}
-              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              {groupMenu.items[0].isArchived ? 'Вернуть модель из архива' : 'Модель в архив'}
-            </button>
-            <button
-              onClick={async () => {
-                const g = groupMenu;
-                if (!await appConfirm({
-                  title: `Удалить модель «${g.base}»?`,
-                  message: `Удалятся все ${g.items.length} вар. без возможности восстановления. Продажи и движения склада в журнале останутся.`,
-                  confirmLabel: 'Удалить', destructive: true,
-                })) return;
-                setGroupMenu(null);
-                for (const p2 of g.items) await onDeleteProduct(p2.id);
-              }}
-              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-slate-50 dark:active:bg-slate-700">
-              Удалить модель
-            </button>
-            <button onClick={() => setGroupMenu(null)}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
-              Отмена
-            </button>
+            <div className="flex items-center gap-3 px-1">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                <ProductImage src={groupMenu.items.find(p2 => p2.images?.[0])?.images?.[0]} className="w-full h-full object-cover" draggable={false}
+                              fallback={<span className="text-slate-400 text-lg">📦</span>} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-slate-900 dark:text-white truncate">{groupMenu.base}</p>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400">{groupMenu.items.length} вар. · {money(groupMenu.items.reduce((sum, p2) => sum + stockOf(p2), 0))} {unitOf(groupMenu.items[0].unit)}</p>
+              </div>
+            </div>
+            <ActionGroup>
+              <ActionRow icon={ICONS.Edit} label="Изменить модель и варианты" tone="indigo"
+                         onClick={() => { const g = groupMenu; setGroupMenu(null); setVariantSheet({ groupId: g.groupId }); }} />
+              <ActionRow icon={PRINT_ICON} label="Этикетки для всех вариантов" tone="sky"
+                         onClick={() => { const g = groupMenu; setGroupMenu(null); setLabelIds(g.items.map(p2 => p2.id)); }} />
+            </ActionGroup>
+            <ActionGroup>
+              <ActionRow icon={groupMenu.items[0].isArchived ? ICONS.Unarchive : ICONS.Archive}
+                         label={groupMenu.items[0].isArchived ? 'Вернуть модель из архива' : 'Модель в архив'} tone="amber"
+                         onClick={async () => {
+                           const g = groupMenu;
+                           setGroupMenu(null);
+                           const archive = !g.items[0].isArchived;
+                           for (const p2 of g.items) await onSaveProduct({ ...p2, isArchived: archive, updatedAt: new Date().toISOString() });
+                         }} />
+              <ActionRow icon={ICONS.Delete} label="Удалить модель" tone="rose"
+                         onClick={async () => {
+                           const g = groupMenu;
+                           if (!await appConfirm({
+                             title: `Удалить модель «${g.base}»?`,
+                             message: `Удалятся все ${g.items.length} вар. без возможности восстановления. Продажи и движения склада в журнале останутся.`,
+                             confirmLabel: 'Удалить', destructive: true,
+                           })) return;
+                           setGroupMenu(null);
+                           for (const p2 of g.items) await onDeleteProduct(p2.id);
+                         }} />
+            </ActionGroup>
+            <button onClick={() => setGroupMenu(null)} className={CANCEL_CLS}>Отмена</button>
           </>
         )}
       </Sheet>
 
       {/* Действия над товаром. Отдельным листом, а не рядом кнопок в строке:
           так строка остаётся про товар, а не про то, что с ним можно сделать. */}
-      <Sheet open={!!menuProduct} onClose={() => setMenuProduct(null)} className="sm:max-w-sm p-2">
+      <Sheet open={!!menuProduct} onClose={() => setMenuProduct(null)} className="sm:max-w-sm p-4 pt-7 space-y-3">
         {menuProduct && (
           <>
-            <p className="px-4 pt-3 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400 truncate">
-              {menuProduct.name}
-            </p>
-            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); openEdit(p2); }}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              Редактировать
-            </button>
-            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN');
-              setMovementWh(warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter); setError(null); }}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              Добавить в документ
-            </button>
-            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setLabelIds([p2.id]); }}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              Печать этикетки
-            </button>
-            <button onClick={() => { const p2 = menuProduct; setMenuProduct(null); setOpenProductId(p2.id); }}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              История
-            </button>
+            <div className="flex items-center gap-3 px-1">
+              <div className="w-12 h-12 rounded-xl bg-slate-100 dark:bg-slate-700 overflow-hidden shrink-0 flex items-center justify-center">
+                <ProductImage src={menuProduct.images?.[0]} className="w-full h-full object-cover" draggable={false}
+                              fallback={<span className="text-slate-400 text-lg">📦</span>} />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-slate-900 dark:text-white truncate">{menuProduct.name}</p>
+                <p className="text-[13px] text-slate-500 dark:text-slate-400 tabular-nums">
+                  {money(stockOf(menuProduct))} {unitOf(menuProduct.unit)} · {money(menuProduct.price || 0)} ₽
+                </p>
+              </div>
+            </div>
+            <ActionGroup>
+              <ActionRow icon={ICONS.Edit} label="Редактировать" tone="indigo"
+                         onClick={() => { const p2 = menuProduct; setMenuProduct(null); openEdit(p2); }} />
+              <ActionRow icon={ICONS.File} label="Добавить в документ" tone="emerald"
+                         onClick={() => { const p2 = menuProduct; setMenuProduct(null); setMovementFor(p2); setMovementType('IN');
+                           setMovementWh(warehouseFilter === 'ALL' ? defaultWarehouseId : warehouseFilter); setError(null); }} />
+              <ActionRow icon={PRINT_ICON} label="Печать этикетки" tone="sky"
+                         onClick={() => { const p2 = menuProduct; setMenuProduct(null); setLabelIds([p2.id]); }} />
+              <ActionRow icon={ICONS.History} label="История" tone="violet"
+                         onClick={() => { const p2 = menuProduct; setMenuProduct(null); setOpenProductTab('HISTORY'); setOpenProductId(p2.id); }} />
+            </ActionGroup>
             {/* Архив и удаление — соседи по смыслу: и то и другое убирает товар
                 из работы, разница лишь в том, можно ли вернуть. В форме правки
                 им было не место: там правят карточку, а не судьбу товара. */}
-            <button
-              onClick={async () => {
-                const p2 = menuProduct;
-                setMenuProduct(null);
-                await onSaveProduct({ ...p2, isArchived: !p2.isArchived, updatedAt: new Date().toISOString() });
-              }}
-              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-700 dark:text-slate-200 active:bg-slate-50 dark:active:bg-slate-700">
-              {menuProduct.isArchived ? 'Вернуть из архива' : 'В архив'}
-            </button>
-            <button
-              onClick={async () => {
-                const p2 = menuProduct;
-                if (!await appConfirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
-                setMenuProduct(null);
-                await onDeleteProduct(p2.id);
-              }}
-              className="w-full text-left px-4 py-3 rounded-xl font-semibold text-rose-600 dark:text-rose-400 active:bg-slate-50 dark:active:bg-slate-700">
-              Удалить
-            </button>
-            <button onClick={() => setMenuProduct(null)}
-                    className="w-full text-left px-4 py-3 rounded-xl font-semibold text-slate-400 active:bg-slate-50 dark:active:bg-slate-700">
-              Отмена
-            </button>
+            <ActionGroup>
+              <ActionRow icon={menuProduct.isArchived ? ICONS.Unarchive : ICONS.Archive}
+                         label={menuProduct.isArchived ? 'Вернуть из архива' : 'В архив'} tone="amber"
+                         onClick={async () => {
+                           const p2 = menuProduct;
+                           setMenuProduct(null);
+                           await onSaveProduct({ ...p2, isArchived: !p2.isArchived, updatedAt: new Date().toISOString() });
+                         }} />
+              <ActionRow icon={ICONS.Delete} label="Удалить" tone="rose"
+                         onClick={async () => {
+                           const p2 = menuProduct;
+                           if (!await appConfirm(`Удалить «${p2.name}» без возможности восстановления?`)) return;
+                           setMenuProduct(null);
+                           await onDeleteProduct(p2.id);
+                         }} />
+            </ActionGroup>
+            <button onClick={() => setMenuProduct(null)} className={CANCEL_CLS}>Отмена</button>
           </>
         )}
       </Sheet>
@@ -1775,10 +1803,11 @@ const Warehouse: React.FC<WarehouseProps> = ({
         список смонтированным под собой — при возврате каталог остаётся на том
         же месте прокрутки. */}
     {openProduct && appSettings && (
-      <SubPage onClose={() => setOpenProductId(null)}>
+      <SubPage onClose={() => { setOpenProductId(null); setOpenProductTab('INFO'); }}>
         {(close: () => void) => (
           <ProductDetails
             product={openProduct}
+            initialTab={openProductTab}
             movements={scopeStockMovements(movements, warehouseScope)}
             warehouseScope={warehouseScope}
             retailSales={retailSales}

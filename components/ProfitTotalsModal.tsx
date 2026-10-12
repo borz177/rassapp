@@ -64,19 +64,15 @@ const ProfitTotalsModal: React.FC<ProfitTotalsModalProps> = ({
   const amountLabel = isExpected ? 'Осталось получить' : 'Получено денег';
 
   return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
-        <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          isExpected
-            ? 'bg-gradient-to-r from-slate-600 to-blue-600'
-            : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-        }`}>
+        <div className="px-4 pt-6 pb-3 flex items-center justify-between shrink-0">
           <div className="min-w-0">
-            <h3 className="text-base font-bold text-white truncate">{title}</h3>
-            <p className="text-[11px] text-white/80">За всё время · по договорам</p>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white truncate">{title}</h3>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400">За всё время · по договорам</p>
           </div>
           <button
             onClick={handleClose}
             aria-label="Закрыть"
-            className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors shrink-0"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors shrink-0"
           >
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />

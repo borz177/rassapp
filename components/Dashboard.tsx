@@ -130,18 +130,17 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
 
    return (
         <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-md overflow-y-auto overscroll-contain">
-                <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
-                    <h3 className="text-xl font-bold mb-1">{sale.productName}</h3>
-                    <p className="text-indigo-100 text-sm flex items-center gap-1">
+                <div className="relative px-6 pt-7 pb-5 border-b border-slate-100 dark:border-slate-700">
+                    <h3 className="text-xl font-bold mb-1 pr-10 text-slate-900 dark:text-white">{sale.productName}</h3>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1">
                         <span className="opacity-70">👤</span> {customerName}
                     </p>
-                    <button onClick={handleClose} className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all">
+                    <button onClick={handleClose} className="absolute top-6 right-5 w-8 h-8 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full flex items-center justify-center transition-colors">
                         <span className="text-lg">✕</span>
                     </button>
                 </div>
 
-                <div className="p-6 space-y-4 bg-slate-50 dark:bg-slate-900">
+                <div className="p-6 space-y-4">
                     <div className="flex justify-between items-center">
                         <span className="text-sm font-medium text-slate-500 dark:text-slate-400">Статус договора</span>
                         <span className={`px-3 py-1.5 rounded-full text-xs font-bold border ${status.color}`}>
@@ -196,11 +195,6 @@ const SaleDetailsModal = ({ sale, customerName, onClose, appSettings }: { sale: 
                     )}
                 </div>
 
-               <div className="p-4 border-t border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800">
-                    <button onClick={handleClose} className="w-full py-3.5 bg-gradient-to-r from-slate-800 to-slate-700 text-white font-bold rounded-xl hover:from-slate-900 hover:to-slate-800 shadow-lg shadow-slate-200 dark:shadow-slate-900/30 transition-all">
-                        Закрыть
-                    </button>
-                </div>
             </Sheet>
     );
 };
@@ -245,15 +239,14 @@ const PaymentActionModal = ({
 
     return (
         <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-md overflow-y-auto overscroll-contain">
-                <div className="relative p-6 bg-gradient-to-r from-indigo-600 to-indigo-500 text-white">
-                    <div className="absolute top-0 right-0 w-32 h-32 bg-white/10 rounded-full -mr-8 -mt-8 blur-2xl"></div>
-                    <h3 className="text-xl font-bold mb-1">{customerName}</h3>
-                    <p className="text-indigo-100 text-sm flex items-center gap-1">
+                <div className="relative px-6 pt-7 pb-5 border-b border-slate-100 dark:border-slate-700">
+                    <h3 className="text-xl font-bold mb-1 pr-10 text-slate-900 dark:text-white">{customerName}</h3>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm flex items-center gap-1">
                         <span className="opacity-70">📦</span> {sale.productName}
                     </p>
                     <button
                         onClick={handleClose}
-                        className="absolute top-4 right-4 w-8 h-8 bg-white/20 hover:bg-white/30 rounded-full flex items-center justify-center backdrop-blur-sm transition-all"
+                        className="absolute top-6 right-5 w-8 h-8 bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-600 rounded-full flex items-center justify-center transition-colors"
                     >
                         <span className="text-lg">✕</span>
                     </button>
@@ -431,18 +424,16 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
     return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
         {/* Шапка */}
-        <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          type === 'expected'
-            ? 'bg-gradient-to-r from-amber-500 to-orange-500'
-            : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-        }`}>
+        <div className="px-4 pt-6 pb-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="text-white bg-white/20 p-2 rounded-xl">
+            <div className={`p-2 rounded-xl ${type === 'expected'
+              ? 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300'
+              : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'}`}>
               {type === 'expected' ? <CalendarIcon size={18} />  : <svg className="w-4.5 h-4.5" viewBox="0 0 24 24" fill="currentColor"><text x="4" y="17" fontSize="14">✓</text></svg>}
             </div>
-            <h3 className="text-base font-bold text-white">{title}</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
           </div>
-          <button onClick={handleClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+          <button onClick={handleClose} aria-label="Закрыть" className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
           </button>
         </div>
@@ -519,12 +510,6 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
           ))}
         </div>
 
-        <button
-          onClick={handleClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shrink-0 border-t border-slate-100 dark:border-slate-700"
-        >
-          Закрыть
-        </button>
       </Sheet>;
 };
 
@@ -723,13 +708,11 @@ const ProfitDetailsModal = ({
 
   return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
         {/* Шапка */}
-        <div className={`px-4 py-3 flex items-center justify-between shrink-0 ${
-          type === 'expected'
-            ? 'bg-gradient-to-r from-blue-500 to-indigo-500'
-            : 'bg-gradient-to-r from-emerald-500 to-teal-500'
-        }`}>
+        <div className="px-4 pt-6 pb-3 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="text-white bg-white/20 p-2 rounded-xl">
+            <div className={`p-2 rounded-xl ${type === 'expected'
+              ? 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300'
+              : 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300'}`}>
               {type === 'expected' ? (
                 <svg className="w-4.5 h-4.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2.5} d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -740,9 +723,9 @@ const ProfitDetailsModal = ({
                 </svg>
               )}
             </div>
-            <h3 className="text-base font-bold text-white">{title}</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-white">{title}</h3>
           </div>
-          <button onClick={handleClose} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
+          <button onClick={handleClose} aria-label="Закрыть" className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 rounded-xl transition-colors">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
               <line x1="18" y1="6" x2="6" y2="18"/>
               <line x1="6" y1="6" x2="18" y2="18"/>
@@ -857,12 +840,6 @@ const ProfitDetailsModal = ({
           })}
         </div>
 
-        <button
-          onClick={handleClose}
-          className="py-3 text-slate-400 text-sm hover:text-slate-600 dark:hover:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors shrink-0 border-t border-slate-100 dark:border-slate-700"
-        >
-          Закрыть
-        </button>
       </Sheet>;
 };
 

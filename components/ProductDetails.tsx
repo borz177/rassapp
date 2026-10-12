@@ -17,6 +17,8 @@ import ProductImage from './ProductImage';
 
 interface ProductDetailsProps {
   product: Product;
+  /** С какой вкладки открыть: из меню «История» — сразу с истории движений */
+  initialTab?: 'INFO' | 'HISTORY';
   movements: StockMovement[];
   retailSales: RetailSale[];
   products: Product[];
@@ -68,11 +70,11 @@ const dayTitle = (iso: string) => {
  * без ответа главный вопрос истории — откуда взялось то, что лежит сейчас.
  */
 const ProductDetails: React.FC<ProductDetailsProps> = ({
-  product, movements, retailSales, products, customers, warehouses, suppliers, accounts,
+  product, initialTab = 'INFO', movements, retailSales, products, customers, warehouses, suppliers, accounts,
   employees = [], contracts = [], appSettings, user, onBack, onEdit, onPrintLabels, warehouseScope = null, onSelectCustomer, onAcceptPayment,
   onUpdateSale, onUpdateStockDoc, onAddDocLines, onReturnSale,
 }) => {
-  const [tab, setTab] = useState<'INFO' | 'HISTORY'>('INFO');
+  const [tab, setTab] = useState<'INFO' | 'HISTORY'>(initialTab);
   const [openDocId, setOpenDocId] = useState<string | null>(null);
   // Какую фотографию раскрыли во весь экран. null — просмотр закрыт.
   const [viewerAt, setViewerAt] = useState<number | null>(null);
