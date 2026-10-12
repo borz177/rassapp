@@ -1,5 +1,6 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import ModalPortal from './ModalPortal';
+import { isPhoneWidth, useSheetDrag } from '../src/sheetDrag';
 import { search, groupHits, KIND_TITLES, SearchData, SearchHit, SearchKind } from '../src/search';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
@@ -40,9 +41,6 @@ type Filter = 'all' | SearchKind;
 
 // Длительность ухода — совпадает с переходом в стилях листа ниже
 const OUT_MS = 300;
-// Смахнули дальше или быстрее — лист закрывается, иначе возвращается на место
-const DISMISS_DISTANCE = 110;
-const DISMISS_VELOCITY = 0.6; // px/мс
 
 const RECENT_KEY = 'finuchet_recent_searches';
 const RECENT_MAX = 8;
@@ -56,9 +54,6 @@ const readRecent = (): string[] => {
 const writeRecent = (list: string[]) => {
   try { localStorage.setItem(RECENT_KEY, JSON.stringify(list)); } catch { /* приватный режим — без истории */ }
 };
-
-const isPhoneWidth = () =>
-  typeof window !== 'undefined' && window.matchMedia('(max-width: 639px)').matches;
 
 const reducedMotion = () =>
   typeof window !== 'undefined' && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -123,20 +118,17 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
   const [filter, setFilter] = useState<Filter>('all');
   const [active, setActive] = useState(0);
   const [recent, setRecent] = useState<string[]>([]);
-  const [dragY, setDragY] = useState(0);
-  const [dragging, setDragging] = useState(false);
   const [keyboardInset, setKeyboardInset] = useState(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const closingRef = useRef(false);
   const phone = useRef(false);
-  const drag = useRef<{ y0: number; t0: number; dy: number } | null>(null);
+  const backdropRef = useRef<HTMLDivElement>(null);
 
   const openSearch = () => {
     phone.current = isPhoneWidth();
     closingRef.current = false;
     setClosing(false);
-    setDragY(0);
     setRecent(readRecent());
     setOpen(true);
   };
@@ -151,7 +143,6 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     setTimeout(() => {
       setOpen(false);
       setClosing(false);
-      setDragY(0);
     }, reducedMotion() ? 0 : OUT_MS);
   };
 
@@ -260,33 +251,17 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     listRef.current?.querySelector('[data-active="true"]')?.scrollIntoView({ block: 'nearest' });
   }, [active]);
 
-  // Смахивание листа вниз — за шапку (ручка, поле, фильтры). Список под ней
-  // листается сам, и тянуть за него значило бы спорить с прокруткой.
-  const onDragStart = (e: React.PointerEvent) => {
-    if (!phone.current || e.pointerType === 'mouse') return;
-    // Нажатие на поле или кнопку — не начало смахивания
-    if ((e.target as HTMLElement).closest('input, button')) return;
-    drag.current = { y0: e.clientY, t0: performance.now(), dy: 0 };
-    setDragging(true);
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-  };
-  const onDragMove = (e: React.PointerEvent) => {
-    if (!drag.current) return;
-    const raw = e.clientY - drag.current.y0;
-    // Вверх лист не тянется: упирается с сопротивлением, как в iOS
-    const dy = raw > 0 ? raw : raw / 6;
-    drag.current.dy = dy;
-    setDragY(dy);
-  };
-  const onDragEnd = () => {
-    const d = drag.current;
-    drag.current = null;
-    setDragging(false);
-    if (!d) return;
-    const velocity = d.dy / Math.max(1, performance.now() - d.t0);
-    if (d.dy > DISMISS_DISTANCE || (d.dy > 24 && velocity > DISMISS_VELOCITY)) requestClose();
-    else setDragY(0);
-  };
+  // Смахивание листа вниз — за любое место, как у остальных листов
+  // (src/sheetDrag.ts): по списку — когда он у верхнего края. Уехавший пальцем
+  // лист уже за краем экрана — снимаем его без повторного ухода.
+  const panelRef = useSheetDrag({
+    backdrop: () => backdropRef.current,
+    onDismiss: () => {
+      closingRef.current = true;
+      setOpen(false);
+      setClosing(false);
+    },
+  });
 
   const button = variant === 'sidebar' ? (
     <button
@@ -316,19 +291,18 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
   // Затемнение гаснет вместе с ним. Окно на компьютере при уходе чуть
   // уменьшается и гаснет.
   const panelStyle: React.CSSProperties = isPhone
-    ? {
-        transform: `translateY(${closing ? '105%' : `${dragY}px`})`,
-        transition: dragging ? 'none' : `transform ${OUT_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
-      }
+    ? (closing ? {
+        transform: 'translateY(105%)',
+        transition: `transform ${OUT_MS}ms cubic-bezier(0.32, 0.72, 0, 1)`,
+      } : {})
     : {
         transform: closing ? 'scale(0.97)' : undefined,
         opacity: closing ? 0 : undefined,
         transition: 'transform 180ms ease, opacity 180ms ease',
       };
-  const backdropStyle: React.CSSProperties = {
-    opacity: closing ? 0 : isPhone ? Math.max(0.35, 1 - Math.max(0, dragY) / 500) : 1,
-    transition: dragging ? 'none' : `opacity ${OUT_MS}ms ease`,
-  };
+  const backdropStyle: React.CSSProperties = closing
+    ? { opacity: 0, transition: `opacity ${OUT_MS}ms ease` }
+    : {};
 
   let index = -1;
 
@@ -340,12 +314,14 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
         <ModalPortal onClose={requestClose}>
           <div className="fixed inset-0 z-modal flex justify-center sm:items-start sm:p-6 sm:pt-[12vh]">
             <div
+              ref={backdropRef}
               className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] search-backdrop-in"
               style={backdropStyle}
               onClick={requestClose}
             />
 
             <div
+              ref={panelRef}
               role="dialog"
               aria-label="Поиск"
               onKeyDown={onKeyDown}
@@ -356,14 +332,8 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
                          h-[calc(100%-env(safe-area-inset-top,0px)-10px)] sm:h-auto sm:max-h-[72vh]
                          sm:ring-1 sm:ring-slate-200 dark:sm:ring-slate-700"
             >
-              {/* Шапка: ручка, поле, фильтры. За неё лист смахивается вниз */}
-              <div
-                className="shrink-0 touch-none select-none"
-                onPointerDown={onDragStart}
-                onPointerMove={onDragMove}
-                onPointerUp={onDragEnd}
-                onPointerCancel={onDragEnd}
-              >
+              {/* Шапка: ручка, поле, фильтры */}
+              <div className="shrink-0 select-none">
                 <div className="sm:hidden flex justify-center pt-2 pb-1">
                   <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />
                 </div>
