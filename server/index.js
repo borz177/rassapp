@@ -2011,6 +2011,9 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
           expectedTotal += (p.amount || 0);
         }
       }
+      // Больше суммы договора ожидать нельзя: лишние строки старой сверки графика
+      // иначе давали «просрочку» при остатке 0 ₽ (как calculateSaleOverdue)
+      expectedTotal = Math.min(expectedTotal, sale.totalAmount || 0);
       const totalPaid = (sale.totalAmount || 0) - (sale.remainingAmount || 0);
       // Округляем до копеек: суммы вроде 48100/6 в double дают расхождение ~1e-12,
       // и без округления договор без долга проходил проверку «> 0». Клиенту при этом

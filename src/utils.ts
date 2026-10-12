@@ -251,6 +251,10 @@ export const calculateSaleOverdue = (sale: Sale, today?: Date): number => {
   (sale.paymentPlan || []).forEach(p => {
     if (!p.isRealPayment && new Date(p.date) < cutoff) expectedTotal += p.amount;
   });
+  // Больше суммы договора клиент быть должен не может. Старая сверка графика
+  // (pay_reconcile_*) местами достраивала лишние плановые строки, и полностью
+  // оплаченный договор с остатком 0 ₽ числился просроченным на их сумму.
+  expectedTotal = Math.min(expectedTotal, sale.totalAmount);
   const totalPaid = sale.totalAmount - sale.remainingAmount;
   const overdue = Math.round((expectedTotal - totalPaid) * 100) / 100;
   // Порог в 1 ₽, а не «больше нуля». Суммы платежей — это доли вроде 48 100 / 6, каждая
