@@ -5468,7 +5468,7 @@ app.post('/api/admin/users/:userId/reset-password', adminAuth, async (req, res) 
 const PLAN_PRICES = {
   START: 990,
   STANDARD: 1490,
-  BUSINESS: 1990,
+  BUSINESS: 2290,
   BUSINESS_PRO: 2990,
 };
 

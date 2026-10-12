@@ -379,7 +379,7 @@ export const PublicOffer: React.FC<LegalDocProps> = ({ onBack }) => (
                     <tbody className="align-top">
                         <tr className="border-b border-slate-100 dark:border-slate-700/50"><td className="py-2 pr-4">Старт</td><td className="py-2 pr-4">990</td><td className="py-2">до 100 договоров, 1 инвестор</td></tr>
                         <tr className="border-b border-slate-100 dark:border-slate-700/50"><td className="py-2 pr-4">Стандарт</td><td className="py-2 pr-4">1&nbsp;490</td><td className="py-2">до 500 договоров, 5 инвесторов, WhatsApp-уведомления</td></tr>
-                        <tr className="border-b border-slate-100 dark:border-slate-700/50"><td className="py-2 pr-4">Бизнес</td><td className="py-2 pr-4">1&nbsp;990</td><td className="py-2">без ограничения договоров, сотрудники, задачи</td></tr>
+                        <tr className="border-b border-slate-100 dark:border-slate-700/50"><td className="py-2 pr-4">Бизнес</td><td className="py-2 pr-4">2&nbsp;290</td><td className="py-2">без ограничения договоров, сотрудники, задачи</td></tr>
                         <tr><td className="py-2 pr-4">Бизнес Pro</td><td className="py-2 pr-4">2&nbsp;990</td><td className="py-2">дополнительно партнёры и общие инвестиционные пулы</td></tr>
                     </tbody>
                 </table>

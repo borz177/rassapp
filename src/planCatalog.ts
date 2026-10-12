@@ -55,7 +55,7 @@ export const PLAN_CATALOG: PlanCatalogItem[] = [
   {
     name: 'Бизнес',
     key: 'BUSINESS',
-    basePrice: 1990,
+    basePrice: 2290,
     tagline: 'Для команды с сотрудниками',
     includes: 'Стандарт',
     features: [
