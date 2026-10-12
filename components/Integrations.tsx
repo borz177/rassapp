@@ -7,6 +7,7 @@ import { checkGreenApiConnection } from '../services/whatsapp';
 import { api } from '../services/api';
 import { publicOrigin } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
+import WhatsAppConnectSheet from './WhatsAppConnectSheet';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -77,6 +78,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
 }) => {
   // 🔹 НОВАЯ ЛОГИКА: isConnected вместо waEnabled
   const [isConnected, setIsConnected] = useState(false);
+  // Встроенный способ: номер привязан прямо в приложении, ключи на сервере
+  const [connectOpen, setConnectOpen] = useState(false);
+  const [builtinPhone, setBuiltinPhone] = useState<string | null>(null);
+  const isBuiltin = appSettings.whatsapp?.provider === 'builtin';
   const [waSubscription, setWaSubscription] = useState<Awaited<ReturnType<typeof api.getWhatsAppSubscription>> | null>(null);
   const [showCredentials, setShowCredentials] = useState(false);
 
@@ -122,7 +127,15 @@ const Integrations: React.FC<IntegrationsProps> = ({
       setIsConnected(appSettings.whatsapp.enabled);
       setShowCredentials(!appSettings.whatsapp.enabled);
 
-      if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
+      if (appSettings.whatsapp.enabled && appSettings.whatsapp.provider === 'builtin') {
+        setShowCredentials(false);
+        api.waBuiltin.status()
+          .then(st => {
+            setBuiltinPhone(st.phone || null);
+            setConnectionStatus(st.loggedIn ? 'AUTHORIZED' : 'NOT_AUTHORIZED');
+          })
+          .catch(() => setConnectionStatus('ERROR'));
+      } else if (appSettings.whatsapp.enabled && appSettings.whatsapp.idInstance && appSettings.whatsapp.apiTokenInstance) {
         checkConnection(appSettings.whatsapp.idInstance, appSettings.whatsapp.apiTokenInstance).catch(console.error);
         // Срок подписки — справочная строка, поэтому ошибку глотаем: настройки
         // не должны ломаться из-за недоступности стороннего сервиса.
@@ -175,9 +188,10 @@ const Integrations: React.FC<IntegrationsProps> = ({
       }
 
       setConnectionStatus('AUTHORIZED');
+      if (isBuiltin) await api.waBuiltin.disconnect().catch(console.error);
       onUpdateSettings({
         ...appSettings,
-        whatsapp: { ...appSettings.whatsapp, enabled: true, idInstance, apiTokenInstance: apiToken }
+        whatsapp: { ...appSettings.whatsapp, enabled: true, provider: 'greenapi', idInstance, apiTokenInstance: apiToken }
       });
       setIsConnected(true);
       setShowCredentials(false);
@@ -196,10 +210,13 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const handleDisconnect = async () => {
     if (!await appConfirm("🔌 Отключить WhatsApp?\nРассылки и бот перестанут работать.")) return;
 
+    // Встроенный — отвязываем номер на сервере, чтобы сессия не висела
+    if (isBuiltin) await api.waBuiltin.disconnect().catch(console.error);
     onUpdateSettings({
       ...appSettings,
-      whatsapp: { ...appSettings.whatsapp, enabled: false }
+      whatsapp: { ...appSettings.whatsapp, enabled: false, provider: isBuiltin ? undefined : appSettings.whatsapp?.provider }
     });
+    setBuiltinPhone(null);
     setIsConnected(false);
     setConnectionStatus('IDLE');
     setShowCredentials(false);
@@ -233,6 +250,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
     const waSettings: WhatsAppSettings = {
       enabled: isConnected, // 🔹 Используем isConnected вместо waEnabled
+      provider: appSettings.whatsapp?.provider,
       idInstance,
       apiTokenInstance: apiToken,
       reminderTime,
@@ -258,7 +276,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
     }
 
     if (isConnected) {
-      await checkConnection(idInstance, apiToken).catch(console.error);
+      if (!isBuiltin) await checkConnection(idInstance, apiToken).catch(console.error);
       setIsTokenVisible(false);
       alert("✅ Настройки сохранены!");
     } else {
@@ -377,7 +395,11 @@ const Integrations: React.FC<IntegrationsProps> = ({
             </div>
             <div>
               <h3 className="font-bold text-slate-800 dark:text-white">WhatsApp</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400">Провайдер: Green API</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {!isConnected ? 'Не подключён'
+                  : isBuiltin ? `Подключён в приложении${builtinPhone ? ` · +${builtinPhone}` : ''}`
+                  : 'Через сторонний сервис (Green API)'}
+              </p>
             </div>
           </div>
           {/* 🔹 Переключатель убран — теперь только кнопки */}
@@ -386,7 +408,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
         {/* Срок подписки инстанса. Показываем, только если он вообще известен:
             инстанс, заведённый мимо нашего партнёрского аккаунта, партнёрский
             метод не отдаёт, и пустая строка «неизвестно» пользы не несёт. */}
-        {isConnected && (waSubscription?.available
+        {isConnected && !isBuiltin && (waSubscription?.available
           ? !!waSubscription.expirationDate
           : waSubscription?.reason === 'not_partner_instance'
             && (!!appSettings.whatsapp?.expiresAt || !!waSubscription.planIssue)) && (() => {
@@ -438,7 +460,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
         {/* Своим инстансам срок можно вписать руками: Green API отдаёт его только
             для инстансов партнёрского аккаунта, ни один метод уровня инстанса
             эту дату не возвращает. Без неё напомнить о продлении нечем. */}
-        {isConnected && waSubscription && !waSubscription.available
+        {isConnected && !isBuiltin && waSubscription && !waSubscription.available
           && waSubscription.reason === 'not_partner_instance' && (
           <div className="mx-5 mb-5 flex flex-wrap items-center gap-3">
             <label className="text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">
@@ -456,17 +478,25 @@ const Integrations: React.FC<IntegrationsProps> = ({
           </div>
         )}
 
-        {/* 🔹 Кнопка "Подключить" (если не подключен и не в режиме редактирования) */}
+        {/* Не подключён: главный способ — прямо в приложении (код или QR),
+            запасной — свой аккаунт Green API с ключами */}
         {!isConnected && !showCredentials && (
-          <div className="px-5 pb-5">
+          <div className="px-5 pb-5 space-y-2">
             <button
-              onClick={handleShowCredentials}
-              className="w-full py-3 bg-indigo-600 text-white font-bold rounded-xl hover:bg-indigo-700 transition-all shadow-lg shadow-indigo-200 flex items-center justify-center gap-2"
+              onClick={() => setConnectOpen(true)}
+              className="w-full py-3 bg-emerald-600 text-white font-bold rounded-xl hover:bg-emerald-700 active:opacity-90 transition-all flex items-center justify-center gap-2"
             >
               <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                 <path d="M15 7h3a5 5 0 015 5 5 5 0 01-5 5h-3m-6 0H6a5 5 0 01-5-5 5 5 0 015-5h3m6 0v6m0 0h-6m6 0V7"/>
               </svg>
               Подключить WhatsApp
+            </button>
+            <p className="text-center text-xs text-slate-400 dark:text-slate-500">По коду из WhatsApp или QR — за минуту, без регистраций</p>
+            <button
+              onClick={handleShowCredentials}
+              className="w-full py-2.5 text-sm font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+            >
+              Подключить через сторонний сервис (Green API)
             </button>
           </div>
         )}
@@ -521,25 +551,41 @@ const Integrations: React.FC<IntegrationsProps> = ({
         {isConnected && (
           <>
             {/* Статус-бар: всегда виден */}
+            {/* Встроенный WhatsApp отвалился (сменили телефон, удалили связанное
+                устройство) — без этого напоминания просто молча перестают уходить */}
+            {isBuiltin && connectionStatus === 'NOT_AUTHORIZED' ? (
+              <div className="px-5 py-3 bg-amber-50 dark:bg-amber-900/20 border-t border-amber-100 dark:border-amber-900/40 flex items-center justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm font-bold text-amber-800 dark:text-amber-300">WhatsApp отключился</p>
+                  <p className="text-xs text-amber-700/80 dark:text-amber-300/80">Напоминания не уходят, пока номер не привязан снова</p>
+                </div>
+                <button onClick={() => setConnectOpen(true)} className="shrink-0 h-9 px-3 rounded-xl bg-amber-600 text-white text-xs font-bold active:opacity-80">
+                  Подключить снова
+                </button>
+              </div>
+            ) : (
             <div className="px-5 py-3 bg-emerald-50 dark:bg-emerald-900/30 border-t border-emerald-100 dark:border-emerald-900/50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <div className="w-2.5 h-2.5 bg-emerald-500 rounded-full animate-pulse"></div>
                 <span className="text-sm font-bold text-emerald-800 dark:text-emerald-400">WhatsApp подключен</span>
               </div>
               <div className="flex items-center gap-2">
-                {/* 🔹 Кнопка "Изменить токены" — теперь всегда показывает поля */}
+                {/* Ключи есть только у способа через Green API */}
+                {!isBuiltin && (
                 <button
                   onClick={() => setShowCredentials(true)}
                   className="text-xs text-indigo-600 font-bold hover:underline flex items-center gap-1"
                 >
                   ✏️ Изменить токены
                 </button>
+                )}
                 <button onClick={handleDisconnect} className="text-xs text-red-600 font-bold hover:underline flex items-center gap-1">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M18 6L6 18M6 6l12 12"/></svg>
                   Отключить
                 </button>
               </div>
             </div>
+            )}
 
             {/* 🔹 Блок с токенами — показывается ТОЛЬКО при showCredentials */}
             {showCredentials && (
@@ -759,6 +805,31 @@ const Integrations: React.FC<IntegrationsProps> = ({
       {/* API-ключи стоят рядом с WhatsApp: это тоже способ связать FinUchet
           с чем-то снаружи, и искать его в другом разделе незачем. */}
       <ApiKeys allowed={apiAllowed} onUpgrade={onOpenTariffs} />
+
+      {connectOpen && (
+        <WhatsAppConnectSheet
+          onClose={() => setConnectOpen(false)}
+          onConnected={phone => {
+            // Сервер уже включил этот способ у себя; приводим к тому же и настройки приложения
+            setBuiltinPhone(phone);
+            setIsConnected(true);
+            setShowCredentials(false);
+            setConnectionStatus('AUTHORIZED');
+            onUpdateSettings({
+              ...appSettings,
+              whatsapp: {
+                ...appSettings.whatsapp,
+                enabled: true,
+                provider: 'builtin',
+                idInstance: appSettings.whatsapp?.idInstance || '',
+                apiTokenInstance: appSettings.whatsapp?.apiTokenInstance || '',
+                reminderTime: appSettings.whatsapp?.reminderTime || '10:00',
+                reminderDays: appSettings.whatsapp?.reminderDays || [0],
+              },
+            });
+          }}
+        />
+      )}
     </div>
   );
 };

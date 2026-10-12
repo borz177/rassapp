@@ -44,6 +44,12 @@ export interface WhatsAppTemplates {
 
 export interface WhatsAppSettings {
   enabled: boolean;
+  /**
+   * Способ отправки: builtin — номер подключён прямо в приложении (свой сервис
+   * на сервере, ключи в приложение не попадают); иначе — Green API по ключам,
+   * которые пользователь ввёл сам (idInstance / apiTokenInstance).
+   */
+  provider?: 'builtin' | 'greenapi';
   idInstance: string;
   apiTokenInstance: string;
   reminderTime: string; // "09:00"

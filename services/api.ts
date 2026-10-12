@@ -342,6 +342,20 @@ const fetchWithAuth = async (
   }
 };
 
+// Ответ встроенного WhatsApp: при ошибке — текст сервера, чтобы показать его человеку
+const waJson = async (res: Response) => {
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data?.msg || data?.error || 'WhatsApp-сервис не ответил');
+    return data;
+};
+
+const blobToBase64 = (blob: Blob): Promise<string> => new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(String(reader.result).split(',')[1] || '');
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(blob);
+});
+
 export const api = {
 
 
@@ -1334,6 +1348,27 @@ export const api = {
      * партнёрский метод Green API, а он требует партнёрский токен — секрет,
      * которому в браузере не место.
      */
+    // ── Встроенный WhatsApp: подключение номера прямо в приложении ──────────
+    // Ошибки сервера отдаём текстом — экран подключения показывает их как есть.
+    waBuiltin: {
+        start: async (): Promise<{ loggedIn: boolean }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/start`, { method: 'POST', timeout: 30000 })),
+        qr: async (): Promise<{ loggedIn: boolean; qr?: string | null }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/qr`, { timeout: 20000 })),
+        pair: async (phone: string): Promise<{ code: string }> => waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/pair`, {
+            method: 'POST', body: JSON.stringify({ phone }), timeout: 40000,
+        })),
+        status: async (): Promise<{ exists: boolean; loggedIn: boolean; connected?: boolean; phone?: string | null }> =>
+            waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/status`, { timeout: 15000 })),
+        disconnect: async (): Promise<void> => { await waJson(await fetchWithAuth(`${API_URL}/integrations/whatsapp/builtin/disconnect`, { method: 'POST', timeout: 20000 })); },
+        /** PDF клиенту через встроенный WhatsApp — файл уходит через наш сервер */
+        sendDocument: async (phone: string, fileName: string, blob: Blob): Promise<boolean> => {
+            const base64 = await blobToBase64(blob);
+            const res = await fetchWithAuth(`${API_URL}/integrations/whatsapp/send-document`, {
+                method: 'POST', body: JSON.stringify({ phone, fileName, base64 }), timeout: 90000,
+            });
+            return res.ok;
+        },
+    },
+
     getWhatsAppSubscription: async (): Promise<{
         connected: boolean;
         available?: boolean;

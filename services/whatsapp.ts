@@ -79,6 +79,29 @@ export const sendWhatsAppMessage = async (
     }
 };
 
+/**
+ * PDF клиенту тем способом, каким подключён WhatsApp: встроенный — через наш
+ * сервер (ключ сессии в приложении не хранится), Green API — напрямую по
+ * ключам пользователя, как раньше.
+ */
+export const sendWhatsAppDocument = async (
+    settings: WhatsAppSettings | undefined,
+    phone: string,
+    fileBlob: Blob,
+    fileName: string
+): Promise<boolean> => {
+    if (!settings?.enabled) return false;
+    if (settings.provider === 'builtin') {
+        try {
+            return await api.waBuiltin.sendDocument(phone, fileName, fileBlob);
+        } catch (error) {
+            console.error("WhatsApp builtin document error:", error);
+            return false;
+        }
+    }
+    return sendWhatsAppFile(settings.idInstance, settings.apiTokenInstance, phone, fileBlob, fileName);
+};
+
 export const sendWhatsAppFile = async (
     idInstance: string, 
     apiTokenInstance: string, 

@@ -8,7 +8,7 @@ import ProductPickerPage from './ProductPickerPage';
 import SubPage from './transitions/SubPage';
 import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
-import { sendWhatsAppFile } from '../services/whatsapp';
+import { sendWhatsAppDocument } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
 import { contractScheduleRows } from '../src/contractSchedule';
@@ -1003,13 +1003,7 @@ if (mode === 'CASH') {
           ? cleanPhone
           : '7' + cleanPhone;
 
-      const success = await sendWhatsAppFile(
-        appSettings.whatsapp.idInstance,
-        appSettings.whatsapp.apiTokenInstance,
-        whatsappPhone,
-        blob,
-        fileName
-      );
+      const success = await sendWhatsAppDocument(appSettings.whatsapp, whatsappPhone, blob, fileName);
 
       if (success) {
         // Показываем галочку прямо в окне отправки, даём ей доиграть и только потом закрываем —

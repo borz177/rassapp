@@ -4,7 +4,6 @@ require('dotenv').config({ path: '/var/www/env/rassapp.env' });
 const { Pool } = require('pg');
 const axios = require('axios');
 
-const GREEN_API_BASE_URL = 'https://api.green-api.com';
 const LOG_PREFIX = '[WHATSAPP REMINDERS]';
 
 // 🔔 Необязательная фича — если пакет ещё не установлен (npm install в server/ не выполнен
@@ -33,6 +32,11 @@ const DEFAULT_TEMPLATES = {
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
 });
+
+// Отправка встроенным WhatsApp (свой сервис) или через Green API — общий модуль
+// с ручными напоминаниями сервера
+const { createWaTransport } = require('./waTransport');
+const waTransport = createWaTransport(pool);
 
 // 🔹 Push всем подпискам пользователя (та же логика, что в server/index.js)
 async function sendPushToUser(userId, title, body) {
@@ -87,64 +91,8 @@ async function createWhatsAppSentNotification(userId, title, body, data) {
   }
 }
 
-const { normalizePhone } = require('./phone-utils');
 
 const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// { ok, skipped, reason } — skipped означает «не отправляли», а не «ошибка отправки»
-async function sendWhatsAppMessage(idInstance, apiTokenInstance, phone, message, logTag = '') {
-  if (!message) return { ok: false, skipped: true, reason: 'пустое сообщение' };
-
-  const { phone: formattedPhone, reason } = normalizePhone(phone);
-  if (!formattedPhone) {
-    console.warn(`${LOG_PREFIX}${logTag} ⚠️ Пропуск, некорректный номер "${phone}": ${reason}`);
-    return { ok: false, skipped: true, reason };
-  }
-
-  const chatId = `${formattedPhone}@c.us`;
-  const url = `${GREEN_API_BASE_URL}/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
-
-  for (let attempt = 1; attempt <= 2; attempt++) {
-    try {
-      const response = await axios.post(url, { chatId, message }, { timeout: 15000 });
-      if (response.data?.idMessage) return { ok: true, skipped: false, reason: null };
-      return { ok: false, skipped: false, reason: 'ответ без idMessage' };
-    } catch (err) {
-      const status = err.response?.status;
-      const body = err.response?.data ? JSON.stringify(err.response.data).slice(0, 300) : '';
-
-      // 4xx — запрос не примут и со второй попытки, повтор только для сети и 5xx
-      const retriable = !status || status >= 500;
-      if (retriable && attempt === 1) {
-        console.warn(`${LOG_PREFIX}${logTag} ↻ Повтор для ${formattedPhone} (${err.message})`);
-        await sleep(3000);
-        continue;
-      }
-
-      console.error(
-        `${LOG_PREFIX}${logTag} ❌ Ошибка WhatsApp на ${phone} → ${formattedPhone}: ` +
-        `${err.message}${status ? ` | HTTP ${status}` : ''}${body ? ` | ${body}` : ''}`
-      );
-      return { ok: false, skipped: false, reason: `HTTP ${status || 'network'}` };
-    }
-  }
-
-  return { ok: false, skipped: false, reason: 'исчерпаны попытки' };
-}
-
-// Состояние инстанса. null — проверить не удалось (тогда рассылку не блокируем).
-async function getInstanceState(idInstance, apiTokenInstance) {
-  try {
-    const response = await axios.get(
-      `${GREEN_API_BASE_URL}/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`,
-      { timeout: 10000 }
-    );
-    return response.data?.stateInstance || null;
-  } catch (err) {
-    console.warn(`${LOG_PREFIX} ⚠️ Не удалось проверить инстанс ${idInstance}: ${err.message}`);
-    return null;
-  }
-}
 
 // 🔹 Функция: рассчитывает остатки по ВСЕМ платежам договора (FIFO)
 function calculateSalePaymentStates(sale) {
@@ -317,7 +265,7 @@ function buildConsolidatedMessage(customerData, totalToPay, templates, templateT
 async function processRemindersForUser(user) {
   const { id, whatsapp_settings } = user;
 
-  if (!whatsapp_settings?.enabled || !whatsapp_settings.idInstance || !whatsapp_settings.apiTokenInstance) {
+  if (!(await waTransport.isConfigured(id, whatsapp_settings))) {
     return;
   }
 
@@ -337,7 +285,7 @@ async function processRemindersForUser(user) {
   const diffMinutes = Math.abs((now.getHours() * 60 + now.getMinutes()) - (targetHour * 60 + targetMin));
   if (diffMinutes > 5) return;
 
-  const state = await getInstanceState(settings.idInstance, settings.apiTokenInstance);
+  const state = await waTransport.getState(id, settings);
   if (state && state !== 'authorized') {
     console.warn(`${LOG_PREFIX} [${id}] ⛔ Инстанс не авторизован (${state}) — рассылка пропущена`);
     return;
@@ -472,13 +420,7 @@ async function processRemindersForUser(user) {
     if (!isFirstSend) await sleep(1500);
     isFirstSend = false;
 
-    const result = await sendWhatsAppMessage(
-      settings.idInstance,
-      settings.apiTokenInstance,
-      data.customer.phone,
-      message,
-      ` [${id}]`
-    );
+    const result = await waTransport.sendText(id, settings, data.customer.phone, message, ` [${id}]`);
 
     if (!result.ok) {
       if (result.skipped) badPhoneCount++;

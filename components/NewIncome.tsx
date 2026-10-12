@@ -5,7 +5,7 @@ import TopBarBack from './TopBarBack';
 import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
-import { sendWhatsAppMessage, sendWhatsAppFile } from '../services/whatsapp';
+import { sendWhatsAppMessage, sendWhatsAppDocument } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, saleProfitMargin } from '../src/utils';
 import { contractScheduleRows } from '../src/contractSchedule';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
@@ -429,13 +429,7 @@ const commonData = {
             setSendStage('upload');
             // «Оплата — Иванов Иван.pdf»: короткое имя целиком помещается в строку чата
             const fileName = pdfFileName(paymentDocumentTitle(selectedCustomer.name));
-            const success = await sendWhatsAppFile(
-              appSettings.whatsapp.idInstance,
-              appSettings.whatsapp.apiTokenInstance,
-              selectedCustomer.phone,
-              pdfBlob,
-              fileName
-            );
+            const success = await sendWhatsAppDocument(appSettings.whatsapp, selectedCustomer.phone, pdfBlob, fileName);
             if (success) {
               // Галочка отправки должна быть увидена, а не мелькнуть
               setSendStage('done');

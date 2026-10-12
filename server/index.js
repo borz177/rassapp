@@ -22,6 +22,7 @@ const jwt = require('jsonwebtoken');
 const nodemailer = require('nodemailer');
 const axios = require('axios');
 const { normalizePhone } = require('./phone-utils');
+const { createWaTransport } = require('./waTransport');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
@@ -1739,58 +1740,157 @@ app.get('/api/integrations/whatsapp/subscription', auth, async (req, res) => {
 // === 🔔 WHATSAPP: ОТПРАВКА НАПОМИНАНИЯ О ПРОСРОЧКЕ ===
 // =====================================================
 
-// Состояние инстанса. null — проверить не удалось (тогда отправку не блокируем).
-async function getGreenApiState(idInstance, apiTokenInstance) {
-  try {
-    const stateUrl = `https://api.green-api.com/waInstance${idInstance}/getStateInstance/${apiTokenInstance}`;
-    const stateResponse = await axios.get(stateUrl, { timeout: 5000 });
-    return stateResponse.data?.stateInstance || null;
-  } catch (e) {
-    console.warn(`⚠️ Не удалось проверить инстанс ${idInstance}: ${e.message}`);
-    return null;
-  }
-}
+// Отправка двумя способами — встроенный WhatsApp (свой сервис) или Green API.
+// Общий модуль с автоматической рассылкой: server/waTransport.js
+const waTransport = createWaTransport(pool);
+waTransport.ensureTable().catch(e => console.error('❌ wa_builtin table:', e.message));
 
-// skipStateCheck — для массовой рассылки, где состояние проверяется один раз до цикла.
-// Раньше проверка шла перед каждым сообщением и удваивала число запросов к Green API,
-// из-за чего рассылка упиралась в лимит частоты и получала 429.
-async function sendGreenApiMessage(idInstance, apiTokenInstance, phone, message, options = {}) {
-  const { phone: formattedPhone, reason } = normalizePhone(phone);
-  if (!formattedPhone) {
-    console.warn(`⚠️ Пропуск, некорректный номер "${phone}": ${reason}`);
+// ── Встроенный WhatsApp: подключение номера прямо в приложении ─────────────
+// Порядок: start (создать сессию и подключиться к серверам WhatsApp) → qr или
+// pair (код для привязки по номеру) → status, пока номер не привяжут.
+const readWaSettings = async (userId) => {
+  const r = await pool.query('SELECT whatsapp_settings, subscription FROM users WHERE id = $1', [userId]);
+  const row = r.rows[0] || {};
+  const parse = (v) => (typeof v === 'string' ? JSON.parse(v) : v);
+  return { settings: parse(row.whatsapp_settings) || null, subscription: parse(row.subscription) || null };
+};
+
+const waBuiltinGate = async (req, res) => {
+  if (!waTransport.builtinAvailable()) {
+    res.status(503).json({ error: 'Встроенный WhatsApp пока не настроен на сервере' });
     return false;
   }
+  if (req.user.role !== 'manager' && req.user.role !== 'admin') {
+    res.status(403).json({ error: 'WhatsApp подключает владелец аккаунта' });
+    return false;
+  }
+  if (req.user.role !== 'admin') {
+    const { subscription } = await readWaSettings(req.user.id);
+    const plan = getEffectivePlan(subscription) || 'TRIAL';
+    if (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].whatsapp) {
+      res.status(403).json({ error: 'Недоступно на вашем тарифе', msg: 'WhatsApp-напоминания входят в тарифы «Стандарт», «Бизнес» и «Бизнес Pro».' });
+      return false;
+    }
+  }
+  return true;
+};
 
+const waBuiltinError = (res, e, what) => {
+  console.error(`🔴 WA builtin ${what}:`, e.response?.status || '', e.message);
+  res.status(502).json({ error: 'WhatsApp-сервис не ответил. Попробуйте ещё раз через минуту.' });
+};
+
+app.post('/api/integrations/whatsapp/builtin/start', auth, async (req, res) => {
+  if (!(await waBuiltinGate(req, res))) return;
   try {
-    const chatId = `${formattedPhone}@c.us`;
+    const session = await waTransport.ensureBuiltinSession(req.user.id);
+    // «Уже подключено» — не ошибка: человек мог открыть экран второй раз
+    try { await waTransport.builtin.connect(session.token); } catch (e) { if (e.response?.status !== 500) throw e; }
+    const st = await waTransport.builtin.status(session.token);
+    res.json({ loggedIn: !!st?.LoggedIn });
+  } catch (e) { waBuiltinError(res, e, 'start'); }
+});
 
-    if (!options.skipStateCheck) {
-      const state = await getGreenApiState(idInstance, apiTokenInstance);
-      if (state && state !== 'authorized') {
-        console.warn(`⚠️ Инстанс ${idInstance} не авторизован (${state})`);
-        return false;
+app.get('/api/integrations/whatsapp/builtin/qr', auth, async (req, res) => {
+  if (!(await waBuiltinGate(req, res))) return;
+  try {
+    const session = await waTransport.getBuiltin(req.user.id);
+    if (!session) return res.status(409).json({ error: 'Сначала начните подключение' });
+    const st = await waTransport.builtin.status(session.token);
+    if (st?.LoggedIn) return res.json({ loggedIn: true });
+    const q = await waTransport.builtin.qr(session.token);
+    res.json({ loggedIn: false, qr: q?.QRCode || null });
+  } catch (e) { waBuiltinError(res, e, 'qr'); }
+});
+
+app.post('/api/integrations/whatsapp/builtin/pair', auth, async (req, res) => {
+  if (!(await waBuiltinGate(req, res))) return;
+  const { phone, reason } = normalizePhone(String(req.body?.phone || ''));
+  if (!phone) return res.status(400).json({ error: `Проверьте номер: ${reason}` });
+  try {
+    const session = await waTransport.getBuiltin(req.user.id);
+    if (!session) return res.status(409).json({ error: 'Сначала начните подключение' });
+    const r = await waTransport.builtin.pairPhone(session.token, phone);
+    if (!r?.LinkingCode) return res.status(502).json({ error: 'Не удалось получить код. Попробуйте ещё раз.' });
+    res.json({ code: r.LinkingCode });
+  } catch (e) { waBuiltinError(res, e, 'pair'); }
+});
+
+app.get('/api/integrations/whatsapp/builtin/status', auth, async (req, res) => {
+  try {
+    const session = await waTransport.getBuiltin(req.user.id);
+    if (!session || !waTransport.builtinAvailable()) return res.json({ exists: false, loggedIn: false });
+    const st = await waTransport.builtin.status(session.token);
+    const loggedIn = !!st?.LoggedIn;
+    let phone = session.phone || null;
+    if (loggedIn) {
+      // Номер из идентификатора сессии: 79001234567:12@s.whatsapp.net
+      const jid = String(st.Jid || st.jid || '');
+      const fromJid = jid.split(/[:@]/)[0];
+      if (/^\d{10,15}$/.test(fromJid) && fromJid !== phone) {
+        phone = fromJid;
+        await pool.query('UPDATE wa_builtin SET phone = $2, updated_at = NOW() WHERE user_id = $1', [req.user.id, phone]);
+      }
+      // Номер привязан — включаем отправку этим способом. Остальные настройки
+      // (время, дни, шаблоны) не трогаем; новым — разумные значения по умолчанию.
+      const { settings } = await readWaSettings(req.user.id);
+      if (!settings || settings.provider !== 'builtin' || !settings.enabled) {
+        const next = {
+          reminderTime: '10:00',
+          reminderDays: [0],
+          ...(settings || {}),
+          enabled: true,
+          provider: 'builtin',
+        };
+        await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(next), req.user.id]);
       }
     }
+    res.json({ exists: true, loggedIn, connected: !!st?.Connected, phone });
+  } catch (e) { waBuiltinError(res, e, 'status'); }
+});
 
-    const sendUrl = `https://api.green-api.com/waInstance${idInstance}/sendMessage/${apiTokenInstance}`;
-    const response = await axios.post(
-      sendUrl,
-      { chatId, message },
-      { timeout: 15000 }
-    );
+app.post('/api/integrations/whatsapp/builtin/disconnect', auth, async (req, res) => {
+  try {
+    await waTransport.removeBuiltinSession(req.user.id);
+    const { settings } = await readWaSettings(req.user.id);
+    if (settings?.provider === 'builtin') {
+      const next = { ...settings, enabled: false };
+      delete next.provider;
+      await pool.query('UPDATE users SET whatsapp_settings = $1, updated_at = NOW() WHERE id = $2', [JSON.stringify(next), req.user.id]);
+    }
+    res.json({ success: true });
+  } catch (e) { waBuiltinError(res, e, 'disconnect'); }
+});
 
-    console.log(`📱 Sent to ${formattedPhone}`);
-    return !!response.data?.idMessage;
+// PDF договора и истории платежей при встроенном WhatsApp — через сервер:
+// ключ сессии в приложение не отдаём. При Green API приложение шлёт само.
+// Документы уходят при каждом договоре и приходе — лимит щедрее, чем у напоминаний
+const waDocumentLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 60,
+  message: { error: 'Слишком много отправок, попробуйте позже' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
+app.post('/api/integrations/whatsapp/send-document', auth, waDocumentLimiter, async (req, res) => {
+  try {
+    const userId = getTargetUserId(req.user);
+    const { settings } = await readWaSettings(userId);
+    if (settings?.provider !== 'builtin' || !settings.enabled) {
+      return res.status(400).json({ error: 'Встроенный WhatsApp не подключён' });
+    }
+    const { phone, fileName, base64 } = req.body || {};
+    if (!phone || !base64) return res.status(400).json({ error: 'Нет номера или файла' });
+    const name = String(fileName || 'document.pdf').slice(0, 120);
+    const r = await waTransport.sendDocument(userId, phone, String(base64), name);
+    if (!r.ok) return res.status(502).json({ error: 'Не удалось отправить файл', reason: r.reason });
+    res.json({ success: true });
   } catch (e) {
-    const status = e.response?.status;
-    const body = e.response?.data ? JSON.stringify(e.response.data).slice(0, 300) : '';
-    console.error(
-      `🔴 Green API send error → ${formattedPhone}: ${e.message}` +
-      `${status ? ` | HTTP ${status}` : ''}${body ? ` | ${body}` : ''}`
-    );
-    return false;
+    console.error('🔴 send-document:', e.message);
+    res.status(500).json({ error: 'Server error' });
   }
-}
+});
 /**
  * POST /api/integrations/whatsapp/send-reminder
  * Отправка напоминания о просрочке одному клиенту
@@ -1873,7 +1973,7 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
       ? JSON.parse(user.whatsapp_settings)
       : user.whatsapp_settings;
 
-    if (!settings?.enabled || !settings.idInstance || !settings.apiTokenInstance) {
+    if (!(await waTransport.isConfigured(userId, settings))) {
       return res.status(400).json({ error: 'WhatsApp not configured for this user' });
     }
 
@@ -1926,13 +2026,10 @@ const message = rawTemplate
   .replace(/\n{3,}/g, '\n\n')
   .trim();
 
-// 🔹 5. Отправка через Green API
-const sent = await sendGreenApiMessage(
-  settings.idInstance,
-  settings.apiTokenInstance,
-  phone,
-  message
-);
+// 🔹 5. Отправка — встроенным WhatsApp или через Green API (waTransport)
+const waState = await waTransport.getState(userId, settings);
+const sent = (!waState || waState === 'authorized')
+  && (await waTransport.sendText(userId, settings, phone, message)).ok;
 
 if (sent) {
   console.log(`✅ Reminder sent to ${customerName} (${phone}) by user ${userId}`);
@@ -1978,7 +2075,7 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       ? JSON.parse(user.whatsapp_settings)
       : user.whatsapp_settings;
 
-    if (!settings?.enabled || !settings.idInstance || !settings.apiTokenInstance) {
+    if (!(await waTransport.isConfigured(userId, settings))) {
       return res.status(400).json({ error: 'WhatsApp not configured' });
     }
 
@@ -2056,11 +2153,11 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
     const rawTemplate = settings.templates?.[template] || defaultOverdueTemplate;
 
     // Состояние инстанса проверяем один раз на всю рассылку, а не перед каждым сообщением
-    const instanceState = await getGreenApiState(settings.idInstance, settings.apiTokenInstance);
+    const instanceState = await waTransport.getState(userId, settings);
     if (instanceState && instanceState !== 'authorized') {
       return res.status(400).json({
         error: 'WhatsApp не подключён',
-        msg: `Инстанс не авторизован (${instanceState}). Переподключите WhatsApp в настройках.`
+        msg: 'WhatsApp отключился. Подключите его заново в настройках.'
       });
     }
 
@@ -2100,13 +2197,7 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
       .replace(/\n{3,}/g, '\n\n')
       .trim();
 
-    const sent = await sendGreenApiMessage(
-      settings.idInstance,
-      settings.apiTokenInstance,
-      item.customer.phone,
-      message,
-      { skipStateCheck: true }
-    );
+    const sent = (await waTransport.sendText(userId, settings, item.customer.phone, message)).ok;
 
     if (sent) {
       results.sent++;
