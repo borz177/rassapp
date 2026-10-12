@@ -5,7 +5,7 @@ import { AppSettings, WhatsAppSettings } from '../types';
 import { ICONS } from '../constants';
 import { checkGreenApiConnection } from '../services/whatsapp';
 import { api } from '../services/api';
-import { publicOrigin } from '../src/platform';
+import { isIOSApp, publicOrigin } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
 import WhatsAppConnectSheet from './WhatsAppConnectSheet';
 import { SheetSection, SheetField, SheetToggle, SheetSegmented, sheetInputClass } from './GlassSheet';
@@ -20,6 +20,8 @@ interface IntegrationsProps {
   apiAllowed?: boolean;
   /** Открыть тарифы, если API закрыт тарифом */
   onOpenTariffs?: () => void;
+  /** Встроенный WhatsApp входит в тариф (Бизнес и выше). Green API — на любом, как раньше */
+  builtinAllowed?: boolean;
 }
 
 const DEFAULT_TEMPLATES = {
@@ -82,7 +84,8 @@ const Integrations: React.FC<IntegrationsProps> = ({
     whatsappRefreshKey,
     onSettingsChanged,
     apiAllowed = false,
-    onOpenTariffs
+    onOpenTariffs,
+    builtinAllowed = true
 }) => {
   // 🔹 НОВАЯ ЛОГИКА: isConnected вместо waEnabled
   const [isConnected, setIsConnected] = useState(false);
@@ -469,7 +472,21 @@ const Integrations: React.FC<IntegrationsProps> = ({
           )}
         </div>
 
-        {!isConnected && !showCredentials && (
+        {!isConnected && !builtinAllowed && !showCredentials && (
+          <div className="px-4 pb-4 space-y-3">
+            <p className="text-[14px] leading-snug text-slate-500 dark:text-slate-400">
+              Подключение прямо в приложении — в тарифах «Бизнес» и «Бизнес Pro». На вашем тарифе можно подключить через сторонний сервис.
+            </p>
+            {onOpenTariffs && !isIOSApp() && (
+              <button onClick={onOpenTariffs}
+                      className="w-full h-11 rounded-xl bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold active:opacity-85">
+                Посмотреть тарифы
+              </button>
+            )}
+          </div>
+        )}
+
+        {!isConnected && builtinAllowed && !showCredentials && (
           <div className="px-4 pb-4">
             <button onClick={() => setConnectOpen(true)}
                     className="w-full h-12 rounded-xl bg-emerald-600 text-white text-[16px] font-semibold active:opacity-85 transition-opacity">
@@ -632,8 +649,6 @@ const Integrations: React.FC<IntegrationsProps> = ({
               <ul className="divide-y divide-slate-100 dark:divide-slate-700/70">
                 {[
                   ['Отдельный номер', 'Лучше WhatsApp Business с названием, фото и описанием компании.'],
-                  ['Клиенты знают номер', 'Попросите сохранить его при оформлении договора — писать «чужим» рискованнее.'],
-                  ['Без рекламы и ссылок', 'Напоминания должны оставаться напоминаниями.'],
                   ['Отвечайте клиентам', 'Живая переписка снижает риск. Приложение само делает паузы и не превышает дневной лимит.'],
                 ].map(([t, d]) => (
                   <li key={t} className="px-4 py-3">

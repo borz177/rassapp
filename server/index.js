@@ -97,7 +97,8 @@ const PLAN_LIMITS = {
   // contractsCountAll — на «Старте» лимит на все договоры за всё время, а не только на
   // договоры в работе (как на «Стандарте»). Зеркало — src/contractLimit.ts.
   START:        { contracts: 100, contractsCountAll: true, investors: 1,  employees: 0,  whatsapp: false, ai: false, suppliers: false, investorPools: false, notifications: false, tasks: false , shop: false , contractTemplates: false, api: false },
-  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: true,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
+  // whatsapp — встроенный способ; Green API тарифом не ограничен
+  STANDARD:     { contracts: 500, investors: 5,  employees: 0,  whatsapp: false,  ai: false, suppliers: false, investorPools: false, notifications: true,  tasks: false , shop: false , contractTemplates: true , api: false },
   BUSINESS:     { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,   suppliers: false, investorPools: false, notifications: true,  tasks: true  , shop: false , contractTemplates: true , api: true  },
   BUSINESS_PRO: { contracts: -1,  investors: -1, employees: -1, whatsapp: true,  ai: true,   suppliers: true,  investorPools: true,  notifications: true,  tasks: true  , shop: true , contractTemplates: true , api: true  },
 };
@@ -1768,7 +1769,7 @@ const waBuiltinGate = async (req, res) => {
     const { subscription } = await readWaSettings(req.user.id);
     const plan = getEffectivePlan(subscription) || 'TRIAL';
     if (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].whatsapp) {
-      res.status(403).json({ error: 'Недоступно на вашем тарифе', msg: 'WhatsApp-напоминания входят в тарифы «Стандарт», «Бизнес» и «Бизнес Pro».' });
+      res.status(403).json({ error: 'Недоступно на вашем тарифе', msg: 'Подключение WhatsApp в приложении входит в тарифы «Бизнес» и «Бизнес Pro». На вашем тарифе можно подключить через Green API.' });
       return false;
     }
   }

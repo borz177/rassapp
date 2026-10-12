@@ -1416,7 +1416,9 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // 🔒 BUSINESS_PRO — надстройка над BUSINESS (см. server/index.js PLAN_LIMITS: у обоих
         // ai/whatsapp/employees одинаково включены), поэтому везде, где разрешён BUSINESS,
         // должен быть разрешён и BUSINESS_PRO — иначе BUSINESS_PRO ошибочно лишался этих функций.
-        case 'WHATSAPP': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
+        // Встроенный WhatsApp (как PLAN_LIMITS на сервере) — в «Бизнесе» и «Бизнес Pro».
+        // Green API этим не ограничен — подключается на любом тарифе, как раньше.
+        case 'WHATSAPP': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
         // период для того и нужен, чтобы увидеть, за что платят.
         case 'CONTRACT_TEMPLATES': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO' || plan === 'TRIAL';
@@ -5099,6 +5101,7 @@ if (!user && !showSplash) {
                                     // сервер их не даст, поэтому и раздел им не показываем.
                                     apiAllowed={checkAccess('API') && (user?.role === 'manager' || user?.role === 'admin')}
                                     onOpenTariffs={() => setCurrentView('TARIFFS')}
+                                    builtinAllowed={checkAccess('WHATSAPP') || user?.role === 'admin'}
                                     whatsappRefreshKey={whatsappRefreshKey}  // ← Обязательно!
                                     onSettingsChanged={() => {
 

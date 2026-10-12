@@ -29,7 +29,7 @@ interface TariffsProps {
 const FEATURE_LABELS: { key: keyof PlanLimits; label: string; note?: string }[] = [
   { key: 'investorPools', label: 'Общая касса — несколько инвесторов на одном счёте' },
   { key: 'suppliers', label: 'Модуль «Партнёры»: поставщики и долги по закупу' },
-  { key: 'whatsapp', label: 'Авто-напоминания клиентам в WhatsApp' },
+  { key: 'whatsapp', label: 'WhatsApp, подключённый прямо в приложении (Green API останется)' },
   { key: 'tasks', label: 'Поручения сотрудникам' },
   { key: 'ai', label: 'Заполнение клиента по фото паспорта' },
   { key: 'notifications', label: 'Уведомления о платежах и договорах' },
