@@ -111,6 +111,12 @@ function createWaTransport(pool) {
         last_error TEXT,
         PRIMARY KEY (user_id, day)
       )`);
+    // Состояние номера по последней проверке (waHealth.js) и когда владельца
+    // последний раз предупреждали — чтобы не слать «отключился» каждые 5 минут
+    await pool.query(`ALTER TABLE wa_builtin
+      ADD COLUMN IF NOT EXISTS health_state TEXT,
+      ADD COLUMN IF NOT EXISTS health_since TIMESTAMPTZ,
+      ADD COLUMN IF NOT EXISTS health_notified_at TIMESTAMPTZ`);
     // Ключи, сохранённые до шифрования, — шифруем на месте
     if (tokenKey) {
       const plain = await pool.query(`SELECT user_id, token FROM wa_builtin WHERE token NOT LIKE '${TOKEN_PREFIX}%'`);
@@ -321,6 +327,8 @@ function createWaTransport(pool) {
     getState, isConfigured, sendText, sendDocument, builtinQuota,
     // Сессия встроенного сервиса — для экрана подключения
     builtin: {
+      /** Все сессии сервиса с состоянием — для проверки здоровья (waHealth.js) */
+      sessions: () => wuzAdmin('get', '/admin/users'),
       connect: (token) => wuz('post', '/session/connect', token, { Subscribe: [], Immediate: true }),
       disconnect: (token) => wuz('post', '/session/disconnect', token),
       status: (token) => wuz('get', '/session/status', token, undefined, 10000),

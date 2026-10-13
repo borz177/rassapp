@@ -77,6 +77,15 @@ async function notifyWhatsAppDisconnected(userId) {
     );
     const notifSettings = settingsResult.rows[0]?.data?.notifications;
     if (notifSettings?.enabled === false) return;
+    // Проверка каждые 5 минут (waHealth.js) могла уже предупредить сегодня —
+    // одна и та же тревога дважды за день только раздражает
+    const recent = await pool.query(
+      `UPDATE wa_builtin SET health_notified_at = NOW()
+       WHERE user_id = $1 AND (health_notified_at IS NULL OR health_notified_at < NOW() - INTERVAL '20 hours')
+       RETURNING user_id`,
+      [userId]
+    );
+    if (!recent.rowCount) return;
     const title = 'WhatsApp отключился';
     const body = 'Напоминания клиентам сегодня не ушли. Подключите WhatsApp заново: Настройки → Интеграции.';
     const nid = `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`;

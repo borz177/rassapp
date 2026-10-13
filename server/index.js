@@ -23,6 +23,7 @@ const nodemailer = require('nodemailer');
 const axios = require('axios');
 const { normalizePhone } = require('./phone-utils');
 const { createWaTransport, waField } = require('./waTransport');
+const { startWaHealth } = require('./waHealth');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
@@ -1745,6 +1746,42 @@ app.get('/api/integrations/whatsapp/subscription', auth, async (req, res) => {
 // Общий модуль с автоматической рассылкой: server/waTransport.js
 const waTransport = createWaTransport(pool);
 waTransport.ensureTable().catch(e => console.error('❌ wa_builtin table:', e.message));
+
+// Присмотр за встроенным WhatsApp: сам переподключает номера после сбоя сервиса,
+// предупреждает владельца, если номер отвязан, и администраторов — о сбое сервиса.
+startWaHealth({
+  pool,
+  waTransport,
+  // Как в whatsapp-reminders.js: тревога не глушится тумблером «об отправленных»,
+  // только общим выключателем уведомлений
+  notifyUser: async (userId) => {
+    try {
+      const s = await pool.query(
+        `SELECT data->'notifications' AS n FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+        [`settings_${userId}`, userId]
+      );
+      const n = s.rows[0]?.n;
+      if (n?.enabled === false) return;
+      const title = 'WhatsApp отключился';
+      const body = 'Номер больше не связан с приложением — напоминания клиентам не уходят. Подключите заново: Настройки → Интеграции.';
+      await pool.query(
+        `INSERT INTO notifications (id, user_id, type, title, body, data) VALUES ($1, $2, 'WHATSAPP_SENT', $3, $4, $5)`,
+        [`notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`, userId, title, body, JSON.stringify({ reason: 'whatsapp_disconnected' })]
+      );
+      if (n?.pushEnabled !== false) await sendPushToUser(userId, title, body);
+    } catch (e) {
+      console.error('❌ WA health notifyUser:', e.message);
+    }
+  },
+  notifyAdmins: async (title, body) => {
+    try {
+      const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
+      for (const a of admins.rows) await createNotification(a.id, 'ADMIN_BROADCAST', title, body, { reason: 'wa_health' });
+    } catch (e) {
+      console.error('❌ WA health notifyAdmins:', e.message);
+    }
+  },
+});
 
 // ── Встроенный WhatsApp: подключение номера прямо в приложении ─────────────
 // Порядок: start (создать сессию и подключиться к серверам WhatsApp) → qr или
