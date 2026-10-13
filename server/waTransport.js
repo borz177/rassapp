@@ -13,6 +13,34 @@ const GREEN_API = 'https://api.green-api.com';
 const WA_URL = (process.env.WA_BUILTIN_URL || '').replace(/\/+$/, '');
 const WA_ADMIN = process.env.WA_BUILTIN_ADMIN_TOKEN || '';
 
+// Ключ сессии в wa_builtin хранится зашифрованным (AES-256-GCM): по нему можно
+// писать от имени номера, а база попадает в резервные копии и дампы. Ключ
+// шифрования — WA_TOKEN_KEY, а если его нет — выводится из JWT_SECRET. Сменили
+// секрет — старые ключи не расшифруются, и номера придётся подключить заново.
+const TOKEN_PREFIX = 'enc1:';
+const TOKEN_SECRET = process.env.WA_TOKEN_KEY || process.env.JWT_SECRET || '';
+const tokenKey = TOKEN_SECRET
+  ? Buffer.from(crypto.hkdfSync('sha256', TOKEN_SECRET, 'finuchet-wa-builtin', 'session-token', 32))
+  : null;
+
+const sealToken = (plain) => {
+  if (!tokenKey || !plain) return plain;
+  const iv = crypto.randomBytes(12);
+  const cipher = crypto.createCipheriv('aes-256-gcm', tokenKey, iv);
+  const enc = Buffer.concat([cipher.update(plain, 'utf8'), cipher.final()]);
+  return TOKEN_PREFIX + Buffer.concat([iv, cipher.getAuthTag(), enc]).toString('base64');
+};
+
+/** Старые записи без префикса — открытый текст (до шифрования) */
+const openToken = (stored) => {
+  if (!stored || !stored.startsWith(TOKEN_PREFIX)) return stored;
+  if (!tokenKey) throw new Error('WA token key is not configured');
+  const raw = Buffer.from(stored.slice(TOKEN_PREFIX.length), 'base64');
+  const decipher = crypto.createDecipheriv('aes-256-gcm', tokenKey, raw.subarray(0, 12));
+  decipher.setAuthTag(raw.subarray(12, 28));
+  return Buffer.concat([decipher.update(raw.subarray(28)), decipher.final()]).toString('utf8');
+};
+
 const isBuiltin = (settings) => settings?.provider === 'builtin';
 const builtinAvailable = () => !!(WA_URL && WA_ADMIN);
 
@@ -83,6 +111,15 @@ function createWaTransport(pool) {
         last_error TEXT,
         PRIMARY KEY (user_id, day)
       )`);
+    // Ключи, сохранённые до шифрования, — шифруем на месте
+    if (tokenKey) {
+      const plain = await pool.query(`SELECT user_id, token FROM wa_builtin WHERE token NOT LIKE '${TOKEN_PREFIX}%'`);
+      for (const r of plain.rows) {
+        await pool.query('UPDATE wa_builtin SET token = $2 WHERE user_id = $1 AND token = $3',
+          [r.user_id, sealToken(r.token), r.token]);
+      }
+      if (plain.rows.length) console.log(`🔐 wa_builtin: зашифровано ключей сессий: ${plain.rows.length}`);
+    }
   };
 
   /** Учёт отправки: sent | failed | skipped */
@@ -138,8 +175,10 @@ function createWaTransport(pool) {
     } catch { /* без «печатает…» тоже отправим */ }
   };
 
-  const getBuiltin = async (userId) =>
-    (await pool.query('SELECT token, wuz_id, phone, created_at FROM wa_builtin WHERE user_id = $1', [userId])).rows[0] || null;
+  const getBuiltin = async (userId) => {
+    const row = (await pool.query('SELECT token, wuz_id, phone, created_at FROM wa_builtin WHERE user_id = $1', [userId])).rows[0];
+    return row ? { ...row, token: openToken(row.token) } : null;
+  };
 
   /** Сессия пользователя во встроенном сервисе — создаём при первом подключении */
   const ensureBuiltinSession = async (userId) => {
@@ -151,7 +190,7 @@ function createWaTransport(pool) {
     await pool.query(
       `INSERT INTO wa_builtin (user_id, token, wuz_id) VALUES ($1, $2, $3)
        ON CONFLICT (user_id) DO NOTHING`,
-      [userId, token, wuzId == null ? null : String(wuzId)]
+      [userId, sealToken(token), wuzId == null ? null : String(wuzId)]
     );
     return getBuiltin(userId);
   };
