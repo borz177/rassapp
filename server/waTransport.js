@@ -329,6 +329,8 @@ function createWaTransport(pool) {
     builtin: {
       /** Все сессии сервиса с состоянием — для проверки здоровья (waHealth.js) */
       sessions: () => wuzAdmin('get', '/admin/users'),
+      /** Итог последнего обновления сервиса: { ok, message, commit, at } */
+      updateStatus: async () => (await axios.get(WA_URL + '/_update-status', { timeout: 10000 })).data,
       connect: (token) => wuz('post', '/session/connect', token, { Subscribe: [], Immediate: true }),
       disconnect: (token) => wuz('post', '/session/disconnect', token),
       status: (token) => wuz('get', '/session/status', token, undefined, 10000),

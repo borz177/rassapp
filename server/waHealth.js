@@ -17,6 +17,8 @@ const SERVICE_FAILS_TO_ALERT = 2;
 const OWNER_NOTIFY_EVERY_MS = 20 * 60 * 60 * 1000;
 const RETRY_LOST_EVERY_MS = 60 * 60 * 1000;
 const MASS_LOSS = 3;
+// Обновление запускается раз в неделю — две пропущенные недели уже тревога
+const UPDATE_STALE_DAYS = 16;
 
 function startWaHealth({ pool, waTransport, notifyUser, notifyAdmins }) {
   if (!waTransport.builtinAvailable()) return;
@@ -108,10 +110,29 @@ function startWaHealth({ pool, waTransport, notifyUser, notifyAdmins }) {
     }
   };
 
+  // Еженедельное обновление сервиса (/opt/wuzapi/update.sh на его сервере) само
+  // откатывается при неудаче — но тогда сервис тихо стареет, пока WhatsApp не
+  // перестанет его пускать. Поэтому о сбое обновления (или если оно давно не
+  // запускалось) сообщаем администраторам, не чаще раза в сутки.
+  let updateAlertAt = 0;
+  const checkUpdates = async () => {
+    if (Date.now() - updateAlertAt < OWNER_NOTIFY_EVERY_MS) return;
+    let st;
+    try { st = await waTransport.builtin.updateStatus(); } catch { return; /* старый сервис без отчёта */ }
+    if (!st || typeof st !== 'object') return;
+    const ageDays = st.at ? (Date.now() - new Date(st.at).getTime()) / 86400000 : Infinity;
+    let problem = null;
+    if (st.ok === false) problem = st.message || 'обновление не прошло';
+    else if (ageDays > UPDATE_STALE_DAYS) problem = `обновление не запускалось ${Math.floor(ageDays)} дн.`;
+    if (!problem) return;
+    updateAlertAt = Date.now();
+    await notifyAdmins('Обновление WhatsApp-сервиса', `${problem}. Журнал: /var/log/wuzapi-update.log на wa.rassrochka.pro.`);
+  };
+
   const tick = async () => {
     if (running) return;
     running = true;
-    try { await check(); } catch (e) { console.error('❌ WA health:', e.message); }
+    try { await check(); await checkUpdates(); } catch (e) { console.error('❌ WA health:', e.message); }
     finally { running = false; }
   };
 
