@@ -25,4 +25,7 @@ const load = (p: Promise<unknown>) => p.catch((e) => {
   }
 });
 
-load(isPublicCalc ? import('./publicCalcEntry') : import('./appEntry'));
+// /help — открытые инструкции, тоже без приложения
+const isHelp = /^\/help\/?$/.test(path);
+
+load(isPublicCalc ? import('./publicCalcEntry') : isHelp ? import('./helpEntry') : import('./appEntry'));

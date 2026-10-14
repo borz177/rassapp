@@ -32,6 +32,7 @@ import Tasks from './components/Tasks';
 import SupplierDetails from './components/SupplierDetails';
 import InvestorDashboard from './components/InvestorDashboard';
 import Tariffs from './components/Tariffs';
+import Help from './components/Help';
 import Auth from './components/Auth';
 import PagePush from './components/transitions/PagePush';
 // 🔹 Редко открываемые/тяжёлые экраны — грузим отдельными чанками по требованию,
@@ -104,7 +105,7 @@ async function enablePersistentStorage() {
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
   'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
-  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE', 'RETAIL_SALE',
+  'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE', 'RETAIL_SALE', 'HELP',
 ]);
 
 // 🎁 Код приглашения из адреса сохраняем СРАЗУ при загрузке любой страницы.
@@ -5001,6 +5002,12 @@ if (!user && !showSplash) {
                       </PagePush>
                   ) : null;
               })()}
+              {currentView === 'HELP' && (
+                <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+                  <Help onSupport={user?.role === 'manager' ? () => { loadSupportUnreadCount(user); setShowSupportChat(true); } : undefined} />
+                </PagePush>
+              )}
+
               {currentView === 'TARIFFS' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   {/* Счётчики нужны, чтобы при понижении тарифа показать не абстрактное
@@ -5555,6 +5562,20 @@ if (!user && !showSplash) {
       </div>
   </button>
 )}
+{/* Обучение: короткие инструкции со снимками экрана */}
+<button onClick={() => { setPreviousView('MORE'); setCurrentView('HELP'); }}
+        className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
+  <div className="flex items-center gap-3">
+    <div className="bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 p-2 rounded-lg">{ICONS.Help}</div>
+    <span className="font-semibold text-slate-800 dark:text-white">Обучение</span>
+  </div>
+  <span className="text-slate-400 dark:text-slate-500">
+    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="9 18 15 12 9 6"/>
+    </svg>
+  </span>
+</button>
+
 {/* Кнопка Техподдержка */}
 {user.role === 'manager' && (
 <button

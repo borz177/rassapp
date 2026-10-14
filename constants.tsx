@@ -44,11 +44,13 @@ import {
   Star,
   ListTodo,
   AlignLeft,
-  CalendarClock
+  CalendarClock,
+  GraduationCap
 } from 'lucide-react';
 
 export const ICONS: Record<string, ReactNode> = {
   Dashboard: <LayoutDashboard size={20} />,
+  Help: <GraduationCap size={20} />,
   Customers: <Users size={20} />,
   Users: <Users size={20} />,
   Products: <Package size={20} />,
