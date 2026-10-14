@@ -4,7 +4,7 @@ import { friendlyError } from '../src/friendlyError';
 import { toast } from '../src/toast';
 import { ICONS } from '../constants';
 import { api } from '../services/api';
-import ModalPortal from './ModalPortal';
+import Sheet from './Sheet';
 import { isIOSApp } from '../src/platform';
 import { PLAN_CATALOG } from '../src/planCatalog';
 import { termAfterPayment } from '../shared/subscriptionTerm.js';
@@ -585,13 +585,17 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
         Оплата через защищённый шлюз ЮKassa. Тариф включается автоматически после оплаты.
       </p>
 
-      {/* Confirmation Modal */}
-      {confirmData && (
-        <ModalPortal>
-          <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
-              {/* Окно прокручивается само, а кнопки оплаты прилипают к низу: длинный
-                  список потерь при понижении тарифа уводил их за край экрана */}
-              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700 px-6 pt-6 relative overflow-y-auto overscroll-contain max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]" onClick={e => e.stopPropagation()}>
+      {/* Окно подтверждения — общий лист, как остальные окна: на телефоне выезжает
+          снизу, смахивается вниз и плавно уезжает; на компьютере — по центру.
+          Содержимое прокручивается внутри, кнопки оплаты прилипают к низу. */}
+      <Sheet
+        open={!!confirmData}
+        onClose={() => setConfirmData(null)}
+        dismissible={!loading}
+        className="sm:max-w-sm overflow-hidden ring-1 ring-slate-200 dark:ring-slate-700"
+      >
+        {confirmData && (
+              <div className="px-6 pt-7 sm:pt-6 overflow-y-auto overscroll-contain max-h-[inherit] sm:max-h-[calc(100dvh-2rem)]">
 
                   <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Подтверждение заказа</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Проверьте детали перед оплатой</p>
@@ -703,7 +707,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                   </div>
 
                   {/* Кнопки поверх прокрутки: содержимое уходит под них и просвечивает размытым */}
-                  <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
+                  <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-[calc(1rem+env(safe-area-inset-bottom,0px))] sm:pb-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
                   <div className="space-y-2.5">
                       {/* Кнопки неактивны, пока человек не подтвердил, что видел список потерь */}
                       <PayMethodButton
@@ -738,9 +742,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                   </div>
                   </div>
               </div>
-          </div>
-        </ModalPortal>
-      )}
+        )}
+      </Sheet>
     </div>
   );
 };
