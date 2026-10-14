@@ -1160,6 +1160,12 @@ if (mode === 'CASH') {
                 </div>
             )}
           </div>
+          {/* Что такое «Первый платеж», спрашивали чаще всего: путали с первым взносом */}
+          {mode === 'INSTALLMENT' && !formData.id && (
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-snug">
+                Первый платеж — когда клиент внесёт первый ежемесячный платёж. Дальше — в тот же день каждого месяца. Первый взнос при покупке указывается ниже.
+              </p>
+          )}
         </div>
 
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">

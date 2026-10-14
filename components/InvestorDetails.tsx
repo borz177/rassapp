@@ -673,14 +673,16 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                 <div key={m.id} className={`flex items-center gap-3 py-1 rounded-xl transition-colors ${m.id === investor.id ? 'bg-slate-50 dark:bg-slate-700/50 -mx-2 px-2' : ''}`}>
                   <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${palette.bg} ${palette.text}`}>{m.name.charAt(0)}</div>
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center justify-between mb-1">
+                    {/* Перенос, а не сжатие: у владельца справа длинное «% кап. + % упр.»,
+                        и значок «владелец» налезал на цифры */}
+                    <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 mb-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className={`text-sm truncate ${m.id === investor.id ? 'font-bold text-slate-900 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-300'}`}>{m.name}</span>
                         {m.id === poolOwnerId && <span className="text-xs bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full shrink-0">владелец</span>}
                         {m.id === investor.id && m.id !== poolOwnerId && <span className="text-xs bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full shrink-0">вы</span>}
                         {!isActive && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full shrink-0">вышел</span>}
                       </div>
-                      <div className="flex items-center gap-3 ml-2 shrink-0">
+                      <div className="flex items-center gap-3 ml-auto shrink-0">
                         <span className="text-xs text-slate-400">{Math.round(capitalShare * 10) / 10}% кап.</span>
                         <span className={`text-sm font-bold ${palette.text}`}>
                           {Math.round(profitShare * 10) / 10}%{m.id === poolOwnerId ? ` + ${Math.round(poolComposition.mgrPercent * 10) / 10}% упр.` : ' приб.'}

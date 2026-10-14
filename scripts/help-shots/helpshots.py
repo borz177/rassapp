@@ -65,6 +65,17 @@ ARTICLES = {
   'investors': [
     more, {"click": "Инвесторы", "sel": "button,a", "wait": 1500, "hl": "Добавить", "shot": "investors-1"},
     {"click": "Добавить", "wait": 1500, "shot": "investors-2"},
+    {"click": "Отмена", "wait": 900}, {"click": "Закрыть", "sel": "button", "wait": 900},
+    {"js": "(()=>{const c=[...document.querySelectorAll('[class*=cursor-pointer],button')].find(e=>/Руслан Алиев/.test(e.textContent) && e.offsetHeight>40 && e.offsetHeight<200); c.click(); return 'open'})()", "wait": 1700},
+    {"scroll": 700, "wait": 900}, {"hl": "К выплате", "sel": "div", "wait": 300, "shot": "investors-3"},
+    {"click": "Главная", "sel": "button,a", "wait": 1300},
+    {"click": "Расход", "sel": "button", "wait": 1500}, {"click": "Выплата инвестору", "sel": "button", "wait": 1200},
+    {"js": "(()=>{const s=[...document.querySelectorAll('select')].find(x=>x.getClientRects().length && [...x.options].some(o=>/Руслан/.test(o.text))); if(!s) return 'nosel'; const o=[...s.options].find(o=>/Руслан/.test(o.text)); const set=Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set; set.call(s,o.value); s.dispatchEvent(new Event('change',{bubbles:true})); return 'sel'})()", "wait": 1000},
+    {"click": "Из Прибыли", "wait": 800},
+    scroll_to('Источник списания', 'start'), {"js": "window.scrollBy(0,-120);[...document.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+20 && /auto|scroll/.test(getComputedStyle(e).overflowY) && e.getClientRects().length).forEach(e=>e.scrollTop-=140);1", "wait": 600},
+    {"hl": "Из Прибыли", "sel": "button", "wait": 300, "shot": "investors-4"},
+    {"click": "Главная", "sel": "button,a", "wait": 1300},
+    {"click": "Приход", "sel": "button", "wait": 1500}, {"hl": "Инвестор", "sel": "button", "wait": 300, "shot": "investors-5"},
   ],
   'employees': [
     more, {"click": "Сотрудники", "sel": "button,a", "wait": 1500},
