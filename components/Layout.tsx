@@ -606,7 +606,6 @@ const counts = useMemo(() => {
     { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor && user?.role !== 'employee' },
     { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'admin' || (user?.role === 'manager' && showEmployees)) },
     { id: 'SUPPLIERS' as const, label: 'Партнеры', icon: ICONS.Suppliers, visible: !isInvestor && (user?.role === 'admin' || (user?.role === 'manager' && showSuppliers)) },
-    { id: 'HELP' as const, label: 'Обучение', icon: ICONS.Help, visible: !isInvestor },
     { id: 'TARIFFS' as const, label: 'Тарифы', icon: ICONS.Tariffs, visible: !isInvestor },
     { id: 'SETTINGS' as const, label: 'Настройки', icon: ICONS.Settings, visible: !isInvestor },
     { id: 'ADMIN_PANEL' as const, label: 'Админ панель', icon: ICONS.Crown, visible: user?.role === 'admin' },
