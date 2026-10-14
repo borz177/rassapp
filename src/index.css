@@ -1538,7 +1538,20 @@ input, textarea, [contenteditable] {
   .shell-floating .dash-stat:has(.dash-stat-icon[class*="indigo"]) { --dot: #6366f1; }
 
   .shell-floating .dash-stat-icon { display: none !important; }
-  .shell-floating .dash-stat > .z-10:not(.dash-stat-icon) {
+  /* Стрелка «подробнее»: суммы на Mac крупные, почти во всю плитку, и стрелка
+     прижималась к цифрам — здесь она мельче, в самом углу и видна при наведении */
+  .shell-floating .dash-stat-chevron {
+    top: 10px !important;
+    right: 10px !important;
+    width: 16px !important;
+    height: 16px !important;
+    opacity: 0;
+    transition: opacity 0.2s ease, transform 0.3s ease;
+  }
+  .shell-floating .dash-stat:hover .dash-stat-chevron,
+  .shell-floating .dash-stat:focus-visible .dash-stat-chevron { opacity: 1; }
+  /* Стрелка — тоже z-10, но не растягивается на всю плитку поверх суммы */
+  .shell-floating .dash-stat > .z-10:not(.dash-stat-icon):not(.dash-stat-chevron) {
     display: flex;
     flex-direction: column;
     align-items: center;

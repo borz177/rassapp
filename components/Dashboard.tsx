@@ -862,7 +862,7 @@ const ProfitDetailsModal = ({
  * «Нажмите для деталей», занимавшая строку в каждой карточке.
  */
 const CardChevron: React.FC = () => (
-  <svg aria-hidden className="absolute top-4 right-4 sm:top-5 sm:right-5 z-10 w-5 h-5 text-slate-300 dark:text-slate-600 transition-transform duration-300 group-hover:translate-x-0.5"
+  <svg aria-hidden className="dash-stat-chevron absolute top-4 right-4 sm:top-5 sm:right-5 z-10 w-5 h-5 text-slate-300 dark:text-slate-600 transition-transform duration-300 group-hover:translate-x-0.5"
        viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
     <polyline points="9 18 15 12 9 6"/>
   </svg>
