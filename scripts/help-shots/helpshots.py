@@ -90,6 +90,62 @@ ARTICLES = {
     more, {"click": "Отчеты", "sel": "button,a", "wait": 1800, "hl": "Месяц", "shot": "reports-1"},
     {"hl": "📥 CSV", "wait": 300, "shot": "reports-2"},
   ],
+  # ── Снимки для «Частых вопросов» ──
+  'faq-start': [
+    more, {"click": "Настройки", "sel": "button,a", "wait": 1500},
+    {"click": "Оформление", "wait": 900}, {"hl": "Оформление", "wait": 300, "shot": "faq-start-theme"},
+  ],
+  'faq-customer': [
+    {"click": "Клиенты", "sel": "button,a", "wait": 1300}, open_customer,
+    {"js": "(()=>{const card=[...document.querySelectorAll('div')].filter(d=>d.getClientRects().length && /Телефон/i.test(d.textContent) && /Адрес/i.test(d.textContent) && d.offsetHeight<760).pop(); const b=card && [...card.querySelectorAll('button')].find(x=>!x.textContent.trim()); if(!b) return 'no'; b.click(); return 'menu'})()", "wait": 900},
+    {"hl": "Редактировать", "sel": "button", "wait": 300, "shot": "faq-customer-edit"},
+    {"js": "document.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape'})); document.body.click(); 1", "wait": 700},
+    scroll_to('Документы', 'center'), {"hl": "Документы", "sel": "button", "wait": 300, "shot": "faq-customer-docs"},
+  ],
+  'faq-sale': [
+    more, {"hl": "Договоры", "sel": "button", "wait": 300, "shot": "faq-sale-contracts"},
+    {"click": "Договоры", "sel": "button", "wait": 1700},
+    {"js": "(()=>{const b=[...document.querySelectorAll('button[aria-label=\"Меню\"]')].filter(x=>x.getClientRects().length)[0]; if(!b) return 'no'; b.click(); return 'menu'})()", "wait": 1000},
+    {"hl": "Редактировать", "sel": "button", "wait": 300, "shot": "faq-sale-menu"},
+    {"click": "Главная", "sel": "button,a", "wait": 1200}, FAB, {"click": "Оформить продажу", "wait": 1500},
+    {"js": "(()=>{const b=document.querySelector('button[title=\"Выбрать со склада\"]'); if(!b) return 'no'; b.scrollIntoView({block:'center'}); return 1})()", "wait": 700},
+    {"hlsel": "button[title=\"Выбрать со склада\"]", "wait": 300, "shot": "faq-sale-stock"},
+  ],
+  'faq-payment': [
+    {"click": "Клиенты", "sel": "button,a", "wait": 1300}, open_customer, {"click": "Рассрочки", "wait": 1200}, open_first_sale,
+    scroll_to('История поступлений', 'start'),
+    {"hlsel": "tbody tr td:last-child", "wait": 300, "shot": "faq-payment-edit"},
+    {"click": "Главная", "sel": "button,a", "wait": 1300},
+    {"click": "Приход", "sel": "button", "wait": 1500}, {"click": "Нажмите для выбора", "wait": 1200}, pick_client('Ахмадов Тимур'), select_debt,
+    scroll_to('Сумма прихода', 'start'),
+    {"hl": "Скидка при полном погашении", "sel": "div", "wait": 300, "shot": "faq-payment-discount"},
+  ],
+  'faq-whatsapp': [
+    more, {"click": "Договоры", "sel": "button", "wait": 1700},
+    {"hl": "Напомнить", "sel": "button", "wait": 300, "shot": "faq-whatsapp-all"},
+  ],
+  'faq-investors': [
+    more, {"click": "Инвесторы", "sel": "button,a", "wait": 1500},
+    {"js": "(()=>{const c=[...document.querySelectorAll('[class*=cursor-pointer],button')].find(e=>/Руслан Алиев/.test(e.textContent) && e.offsetHeight>40 && e.offsetHeight<200); c.click(); return 'open'})()", "wait": 1700},
+    {"scroll": 330, "wait": 800}, {"hl": "Состав пула", "sel": "div", "wait": 300, "shot": "faq-investors-pool"},
+    {"scroll": 700, "wait": 800}, {"hl": "Расчёт выхода", "sel": "button", "wait": 300, "shot": "faq-investors-exit"},
+    {"scroll": 0, "wait": 600}, {"click": "Все операции", "sel": "button", "wait": 1300}, {"hl": "Выплаты", "sel": "button", "wait": 300, "shot": "faq-investors-ops"},
+  ],
+  'faq-employees': [
+    more, {"click": "Сотрудники", "sel": "button,a", "wait": 1500}, {"click": "Добавить", "wait": 1500},
+    {"scroll": 99999, "wait": 900}, {"hl": "Процент", "sel": "label,div", "wait": 300, "shot": "faq-employees-percent"},
+  ],
+  'faq-warehouse': [
+    FAB, {"click": "Склад", "wait": 1700},
+    {"hlsel": "button[title*=\"Прайс-лист\"]", "wait": 300, "shot": "faq-warehouse-price"},
+    {"click": "Операции", "sel": "button", "wait": 1300, "shot": "faq-warehouse-ops"},
+  ],
+  'faq-reports': [
+    more, {"click": "Отчеты", "sel": "button,a", "wait": 1700},
+    scroll_to('Поступления', 'center'), {"hl": "Поступления", "sel": "button,div", "wait": 300, "shot": "faq-reports-details"},
+    more, {"click": "Настройки", "sel": "button,a", "wait": 1500}, {"click": "Работа с данными", "wait": 1000},
+    scroll_to('Экспорт в Excel', 'center'), {"hl": "Экспорт в Excel", "sel": "button,div", "wait": 300, "shot": "faq-reports-excel"},
+  ],
 }
 
 only = sys.argv[1:] or list(ARTICLES)
