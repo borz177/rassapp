@@ -1,4 +1,4 @@
-"""Снимки экранов для раздела «Обучение» (src/helpArticles.ts → public/help/*.webp).
+"""Снимки экранов для раздела «Обучение» (src/helpArticles.ts → public/guide/*.webp).
 
 По проходу на статью: скрипт tour.cjs открывает приложение (Electron, экран
 телефона 390×844), выполняет шаги — нажатия по тексту, ввод в поля, прокрутку —
@@ -113,5 +113,5 @@ const [src, dst] = process.argv.slice(1);
 (async () => { for (const f of fs.readdirSync(src).filter(f => f.endsWith('.png')))
   await sharp(src + '/' + f).resize(540).webp({ quality: 74 }).toFile(dst + '/' + f.replace('.png', '.webp')); })();
 """
-subprocess.run(['node', '-e', CONVERT, OUT, os.path.join(APP, 'public', 'help')], cwd=os.path.join(APP, 'server'), check=True)
-print('webp ->', os.path.join(APP, 'public', 'help'))
+subprocess.run(['node', '-e', CONVERT, OUT, os.path.join(APP, 'public', 'guide')], cwd=os.path.join(APP, 'server'), check=True)
+print('webp ->', os.path.join(APP, 'public', 'guide'))
