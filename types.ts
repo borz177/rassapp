@@ -1086,8 +1086,31 @@ export interface AdminPayment {
   receipt_number: string | null;
   receipt_url: string | null;
   refunded_at: string | null;
+  /** Чек «Мой налог»: issuing | issued | error | unknown (проверить вручную) | canceled */
+  receipt_status?: string | null;
+  receipt_error?: string | null;
+  receipt_auto?: boolean | null;
   user_name: string | null;
   user_email: string | null;
+}
+
+/** Подключение «Мой налог» для автоматических чеков (админка) */
+export interface NpdStatus {
+  connected: boolean;
+  needsLogin: boolean;
+  inn: string | null;
+  phone: string | null;
+  displayName: string | null;
+  enabled: boolean;
+  enabledSince: string | null;
+  connectedAt: string | null;
+  lastError: string | null;
+  lastErrorAt: string | null;
+  /** Код уже отправлен на этот номер и ещё действует */
+  codeSentTo: string | null;
+  pendingSinceEnabled: number;
+  yearIncome: number;
+  yearLimit: number;
 }
 
 

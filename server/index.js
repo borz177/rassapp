@@ -24,6 +24,7 @@ const axios = require('axios');
 const { normalizePhone } = require('./phone-utils');
 const { createWaTransport, waField } = require('./waTransport');
 const { startWaHealth } = require('./waHealth');
+const { createMoyNalog } = require('./moyNalog');
 const { v4: uuidv4 } = require('uuid');
 const rateLimit = require('express-rate-limit');
 const fs = require('fs');
@@ -5049,6 +5050,57 @@ const sendPaymentReceiptEmail = async (paymentId) => {
 // Приложить чек НПД к оплате и отправить его человеку.
 // Ссылку берут в «Мой налог» после выписки чека — автоматически её не получить
 // без партнёрского API ФНС.
+// 🧾 Чеки самозанятого в «Мой налог» (server/moyNalog.js): вход по СМС из
+// админки, чек после каждой оплаты, повторы, аннулирование при возврате.
+const notifyAllAdmins = async (title, body) => {
+  try {
+    const admins = await pool.query(`SELECT id FROM users WHERE role = 'admin'`);
+    for (const a of admins.rows) await createNotification(a.id, 'ADMIN_BROADCAST', title, body, { reason: 'npd' });
+  } catch (e) {
+    console.error('❌ notifyAllAdmins:', e.message);
+  }
+};
+const npd = createMoyNalog({ pool, notifyAdmins: notifyAllAdmins, sendPaymentEmail: sendPaymentReceiptEmail });
+npd.start();
+
+const npdRoute = (fn) => async (req, res) => {
+  try { res.json(await fn(req)); }
+  catch (e) {
+    console.error('NPD:', e.message);
+    res.status(e.status || (e.response ? 502 : 500)).json({ msg: e.response ? npd.errText(e) : e.message });
+  }
+};
+app.get('/api/admin/npd', adminAuth, npdRoute(() => npd.status()));
+app.post('/api/admin/npd/sms/start', adminAuth, npdRoute(req => npd.startSms(req.body?.phone)));
+app.post('/api/admin/npd/sms/verify', adminAuth, npdRoute(async req => {
+  const r = await npd.verifySms(req.body?.code);
+  logAdminAction(req.user.id, 'NPD_CONNECT', null, { inn: r.inn });
+  return r;
+}));
+app.post('/api/admin/npd/enabled', adminAuth, npdRoute(async req => {
+  await npd.setEnabled(!!req.body?.enabled);
+  logAdminAction(req.user.id, req.body?.enabled ? 'NPD_ENABLE' : 'NPD_DISABLE', null, null);
+  return npd.status();
+}));
+app.post('/api/admin/npd/disconnect', adminAuth, npdRoute(async req => {
+  await npd.disconnect();
+  logAdminAction(req.user.id, 'NPD_DISCONNECT', null, null);
+  return npd.status();
+}));
+// Выбить чек вручную (в том числе по оплате до включения автоматики) — и отправить письмо
+app.post('/api/admin/payments/:paymentId/npd-issue', adminAuth, npdRoute(async req => {
+  const r = await npd.issueReceipt(req.params.paymentId, { manual: true });
+  if (r.skipped) throw Object.assign(new Error('У оплаты уже есть чек или идёт его выпуск'), { status: 409 });
+  const sent = await sendPaymentReceiptEmail(req.params.paymentId);
+  logAdminAction(req.user.id, 'NPD_ISSUE', null, { paymentId: req.params.paymentId, uuid: r.uuid });
+  return { ...r, sent };
+}));
+app.post('/api/admin/payments/:paymentId/npd-cancel', adminAuth, npdRoute(async req => {
+  await npd.cancelReceipt(req.params.paymentId, req.body?.reason);
+  logAdminAction(req.user.id, 'NPD_CANCEL', null, { paymentId: req.params.paymentId, reason: req.body?.reason });
+  return { success: true };
+}));
+
 app.post('/api/admin/payments/:paymentId/receipt', adminAuth, async (req, res) => {
   try {
     const { paymentId } = req.params;
@@ -5058,7 +5110,8 @@ app.post('/api/admin/payments/:paymentId/receipt', adminAuth, async (req, res) =
     }
     const upd = await pool.query(
       `UPDATE subscription_payments
-          SET receipt_number = $1, receipt_url = $2
+          SET receipt_number = $1, receipt_url = $2,
+              receipt_status = 'issued', receipt_error = NULL, receipt_at = NOW(), receipt_auto = FALSE
         WHERE id = $3
         RETURNING id`,
       [number || null, url || null, paymentId]
@@ -5082,6 +5135,7 @@ app.get('/api/admin/payments', adminAuth, async (req, res) => {
     const { rows } = await pool.query(`
       SELECT p.id, p.amount, p.plan, p.months, p.paid_at,
              p.receipt_number, p.receipt_url, p.refunded_at,
+             p.receipt_status, p.receipt_error, p.receipt_auto,
              u.name AS user_name, u.email AS user_email
         FROM subscription_payments p
         LEFT JOIN users u ON u.id = p.user_id
@@ -5927,6 +5981,43 @@ app.get('/api/admin/referrals', adminAuth, async (req, res) => {
  * у ЮKassa (тело вебхука — не источник истины) и шлём одно уведомление на платёж:
  * ЮKassa может прислать событие повторно.
  */
+/**
+ * Возврат по оплате подписки (вебхук refund.succeeded). Данные переспрашиваем у
+ * ЮKassa. Полный возврат — чек аннулируется сам («Возврат средств»); частичный —
+ * чек целиком аннулировать нельзя, это решает администратор (уведомление).
+ */
+const handleSubscriptionRefund = async (refundId) => {
+    try {
+        const auth = 'Basic ' + Buffer.from(`${process.env.YOOKASSA_SHOP_ID}:${process.env.YOOKASSA_SECRET_KEY}`).toString('base64');
+        const { data } = await axios.get(`https://api.yookassa.ru/v3/refunds/${refundId}`, { headers: { Authorization: auth } });
+        if (data?.status !== 'succeeded' || !data.payment_id) return;
+        const pay = (await pool.query(
+            'SELECT id, amount, receipt_number, receipt_status, refunded_at FROM subscription_payments WHERE id = $1',
+            [data.payment_id])).rows[0];
+        if (!pay) return;
+        const refunded = Number(data.amount?.value || 0);
+        const full = refunded >= Number(pay.amount) - 0.009;
+        console.warn(`↩️ Возврат ${refunded} ₽ по оплате ${pay.id} (${full ? 'полный' : 'частичный'})`);
+        if (full && !pay.refunded_at) {
+            await pool.query('UPDATE subscription_payments SET refunded_at = NOW() WHERE id = $1', [pay.id]);
+        }
+        if (pay.receipt_number && pay.receipt_status !== 'canceled') {
+            if (full) {
+                try { await npd.cancelReceipt(pay.id, 'Возврат средств'); }
+                catch (e) {
+                    await notifyAllAdmins('Чек не аннулирован после возврата',
+                        `Возврат ${refunded} ₽: аннулируйте чек в «Мой налог» вручную. Ошибка: ${e.message}`);
+                }
+            } else {
+                await notifyAllAdmins('Частичный возврат — проверьте чек',
+                    `По оплате ${pay.amount} ₽ возвращено ${refunded} ₽. Чек целиком не аннулирован — решите в «Мой налог» вручную.`);
+            }
+        }
+    } catch (e) {
+        console.error('⚠️ Не удалось обработать возврат:', e.message);
+    }
+};
+
 const notifyPaymentCanceled = async (paymentId) => {
     try {
         const auth = 'Basic ' + Buffer.from(`${process.env.YOOKASSA_SHOP_ID}:${process.env.YOOKASSA_SECRET_KEY}`).toString('base64');
@@ -6031,7 +6122,8 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                         await accruePartnerCommission({ paymentId: object.id, clientId: userId, amount: paid });
                         // Письмо об оплате. Отправляем после записи платежа: письмо
                         // собирается из журнала, а не из переменных вебхука.
-                        sendPaymentReceiptEmail(object.id);
+                        // Включена автоматика «Мой налог» — сначала чек, письмо уже с ним
+                        npd.afterPayment(object.id);
                     } catch (e) {
                         // Как и с реферальной наградой: подписка уже продлена, и ошибка в
                         // ответе заставила бы ЮKassa слать вебхук снова.
@@ -6062,6 +6154,11 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
         // вернётся), а подписка не продлевалась, и оставалось писать в поддержку.
         if (event === 'payment.canceled' && object?.id) {
             await notifyPaymentCanceled(object.id);
+        }
+
+        // Возврат денег: отмечаем в журнале и аннулируем чек «Мой налог»
+        if (event === 'refund.succeeded' && object?.id) {
+            await handleSubscriptionRefund(object.id);
         }
 
         // Всегда отвечаем 200 OK, чтобы ЮKassa не повторяла запрос

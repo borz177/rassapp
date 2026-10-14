@@ -1494,6 +1494,24 @@ export const api = {
         return data;
     },
 
+    // --- 🧾 «МОЙ НАЛОГ»: автоматические чеки самозанятого ---
+    adminNpd: async (path: string = '', body?: any): Promise<any> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/npd${path}`, body === undefined
+            ? { timeout: 20000 }
+            : { method: 'POST', body: JSON.stringify(body), timeout: 30000 });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Ошибка «Мой налог»');
+        return data;
+    },
+    adminNpdPayment: async (paymentId: string, action: 'npd-issue' | 'npd-cancel', body: any = {}): Promise<any> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/payments/${encodeURIComponent(paymentId)}/${action}`, {
+            method: 'POST', body: JSON.stringify(body), timeout: 30000,
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Ошибка «Мой налог»');
+        return data;
+    },
+
     // --- 🤝 БИЗНЕС-ПАРТНЁРЫ ---
     // Условия партнёрства. termMonths: null — бессрочно.
     adminSetPartner: async (
