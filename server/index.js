@@ -1538,6 +1538,16 @@ const addMonthsClamped = (date, months) => {
   return target;
 };
 
+// Срок подписки после оплаты — общий с окном оплаты, тоже ESM
+let subscriptionTermPromise = null;
+const getSubscriptionTermModule = () => {
+  if (!subscriptionTermPromise) {
+    const url = require('url').pathToFileURL(require('path').join(__dirname, '..', 'shared', 'subscriptionTerm.js')).href;
+    subscriptionTermPromise = import(url);
+  }
+  return subscriptionTermPromise;
+};
+
 // Колонка типа DATE приходит из pg объектом Date в ЛОКАЛЬНОЙ полуночи. toISOString()
 // переводит её в UTC и в поясах восточнее Гринвича сдвигает дату на сутки назад:
 // 2026-06-01 превращалось в 2026-05-31. Собираем строку по локальным компонентам.
@@ -5933,10 +5943,15 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                     }
 
                     const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
-                    let currentSub = userResult.rows[0]?.subscription || { plan: 'TRIAL', expiresAt: new Date().toISOString() };
-                    let newExpiresAt = new Date(currentSub.expiresAt);
-                    if (newExpiresAt < new Date()) newExpiresAt = new Date();
-                    newExpiresAt = addMonthsClamped(newExpiresAt, Number(months));
+                    // Остаток другого тарифа пересчитывается в дни нового по цене —
+                    // тот же расчёт показывает окно оплаты (shared/subscriptionTerm.js)
+                    const { termAfterPayment } = await getSubscriptionTermModule();
+                    const { expiresAt: newExpiresAt, credit } = termAfterPayment({
+                        current: userResult.rows[0]?.subscription, plan, months: Number(months), prices: PLAN_PRICES,
+                    });
+                    if (credit) {
+                        console.log(`🔁 Остаток ${credit.fromPlan} ${credit.fromDays.toFixed(1)} дн. зачтён как ${credit.toDays.toFixed(1)} дн. ${plan} (${userId})`);
+                    }
 
                     await pool.query(
                         'UPDATE users SET subscription = $1, updated_at = NOW() WHERE id = $2',

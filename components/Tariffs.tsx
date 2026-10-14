@@ -6,6 +6,7 @@ import { api } from '../services/api';
 import ModalPortal from './ModalPortal';
 import { isIOSApp } from '../src/platform';
 import { PLAN_CATALOG } from '../src/planCatalog';
+import { termAfterPayment } from '../shared/subscriptionTerm.js';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
 const PLAN_NAMES: Record<string, string> = {
@@ -82,6 +83,18 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
     const monthlyPrice = basePrice * (1 - discount);
     return Math.ceil(monthlyPrice);
   };
+
+  /**
+   * До какого числа будет действовать подписка после оплаты — тем же расчётом,
+   * что и сервер. При смене тарифа остаток старого пересчитывается в дни нового
+   * по цене; показываем это заранее, а не сюрпризом после оплаты.
+   */
+  const term = useMemo(() => {
+    if (!confirmData) return null;
+    const prices: Record<string, number> = {};
+    for (const p of PLAN_CATALOG) prices[p.key] = getBasePrice(p.key, p.basePrice);
+    return termAfterPayment({ current: user?.subscription, plan: confirmData.key, months: duration, prices });
+  }, [confirmData, duration, user, pricing]);
 
   const handleSelectPlan = (name: string, key: string, monthlyPrice: number, basePrice: number) => {
       setDowngradeAccepted(false);
@@ -569,6 +582,20 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                           <span className="text-slate-500 dark:text-slate-400 text-sm">Период</span>
                           <span className="font-medium text-slate-800 dark:text-white">{duration} мес.</span>
                       </div>
+                      {term && (
+                          <div className="flex justify-between items-center">
+                              <span className="text-slate-500 dark:text-slate-400 text-sm">Действует до</span>
+                              <span className="font-medium text-slate-800 dark:text-white tabular-nums">
+                                  {term.expiresAt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                              </span>
+                          </div>
+                      )}
+                      {term?.credit && (
+                          <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">
+                              Оставшиеся {Math.round(term.credit.fromDays)} дн. тарифа «{PLAN_NAMES[term.credit.fromPlan] || term.credit.fromPlan}» зачтены
+                              как {Math.round(term.credit.toDays)} дн. тарифа «{confirmData.name}» — по разнице в цене.
+                          </p>
+                      )}
                       <div className="border-t border-slate-200 dark:border-slate-700 my-2"></div>
                       <div className="flex justify-between items-center text-xs text-slate-400 dark:text-slate-500">
                           <span>Цена за месяц</span>
