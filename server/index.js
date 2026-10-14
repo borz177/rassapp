@@ -5887,6 +5887,34 @@ app.get('/api/admin/referrals', adminAuth, async (req, res) => {
   }
 });
 
+/**
+ * Уведомить человека, что оплата подписки не завершилась. Статус переспрашиваем
+ * у ЮKassa (тело вебхука — не источник истины) и шлём одно уведомление на платёж:
+ * ЮKassa может прислать событие повторно.
+ */
+const notifyPaymentCanceled = async (paymentId) => {
+    try {
+        const auth = 'Basic ' + Buffer.from(`${process.env.YOOKASSA_SHOP_ID}:${process.env.YOOKASSA_SECRET_KEY}`).toString('base64');
+        const { data } = await axios.get(`https://api.yookassa.ru/v3/payments/${paymentId}`, { headers: { Authorization: auth } });
+        if (data?.status !== 'canceled') return;
+        const { userId, plan, months } = data.metadata || {};
+        const reason = data.cancellation_details?.reason || 'unknown';
+        console.warn(`💳 Оплата отменена: ${paymentId}, ${userId || '—'}, ${plan || '—'}/${months || '—'} мес., ${data.amount?.value} ₽, причина: ${reason}`);
+        if (!userId) return;
+
+        const already = await pool.query(
+            `SELECT 1 FROM notifications WHERE user_id = $1 AND type = 'SUBSCRIPTION' AND data->>'paymentId' = $2 LIMIT 1`,
+            [userId, paymentId]
+        );
+        if (already.rowCount) return;
+        await createNotification(userId, 'SUBSCRIPTION', 'Оплата не завершена',
+            'Подписка не продлена — попробуйте оплатить ещё раз.',
+            { paymentId, reason });
+    } catch (e) {
+        console.error('⚠️ Не удалось обработать отмену оплаты:', e.message);
+    }
+};
+
 app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), async (req, res) => {
     try {
         // 🔒 ЮKassa НЕ подписывает вебхуки заголовком "signature" в формате
@@ -5991,6 +6019,14 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
             } else {
                 console.warn(`⚠️ Webhook сообщил payment.succeeded, но проверка статуса в ЮKassa вернула: ${verifyResp.data?.status}`);
             }
+        }
+
+        // Платёж отменён: не подтвердили вовремя (expired_on_confirmation), отказ
+        // банка, недостаточно средств. Раньше такое уведомление молча пропускалось —
+        // человек видел в банке «платёж выполнен» (сумма лишь заблокирована и потом
+        // вернётся), а подписка не продлевалась, и оставалось писать в поддержку.
+        if (event === 'payment.canceled' && object?.id) {
+            await notifyPaymentCanceled(object.id);
         }
 
         // Всегда отвечаем 200 OK, чтобы ЮKassa не повторяла запрос

@@ -915,7 +915,8 @@ export type NotificationType =
   | 'TASK_ASSIGNED'
   | 'TASK_DONE'
   | 'TASK_DUE'
-  | 'REFERRAL_BONUS';
+  | 'REFERRAL_BONUS'
+  | 'SUBSCRIPTION';
 
 export interface AppNotification {
   id: string;
