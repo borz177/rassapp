@@ -86,6 +86,7 @@ import { PushNotifications } from '@capacitor/push-notifications';
 import { appConfirm } from './src/dialogs';
 import { triggerPagePushBack } from './components/transitions/PagePush';
 import { useTheme } from './src/theme/ThemeContext';
+import { getPendingPayment, clearPendingPayment, PAYMENT_RESOLVED_EVENT } from './src/pendingPayment';
 
 async function enablePersistentStorage() {
   if (navigator.storage && navigator.storage.persist) {
@@ -665,6 +666,41 @@ const handleSync = async () => {
 // Активно опрашиваем /api/auth/me, пока не увидим изменение, вместо того чтобы ждать
 // фоновую синхронизацию (которая может сработать через несколько минут).
 // Вынесено на уровень компонента, т.к. вызывается и при старте, и кнопкой "Проверить снова".
+// Платёж, ушедший в ЮKassa, когда вернулись мимо «Вернуться в магазин»
+// (src/pendingPayment.ts): оплатили — та же проверка подписки, что после
+// возврата по ссылке; отменён — так и говорим; ещё не оплачен — молчим,
+// человек может оплатить позже или выбрать другой способ.
+const resolvingPaymentRef = useRef(false);
+const resolvePendingPayment = async () => {
+  const id = getPendingPayment();
+  if (!id || resolvingPaymentRef.current || !localStorage.getItem('token')) return;
+  resolvingPaymentRef.current = true;
+  try {
+    const { status } = await api.getPaymentStatus(id);
+    if (status === 'succeeded' || status === 'canceled') {
+      clearPendingPayment();
+      window.dispatchEvent(new CustomEvent(PAYMENT_RESOLVED_EVENT, { detail: status }));
+    }
+    if (status === 'succeeded') checkPaymentReturn();
+    else if (status === 'canceled') showNotificationModal('Оплата не завершена', 'Попробуйте ещё раз.', 'warning');
+  } catch (e) {
+    // Нет сети или платёж не найден — проверим при следующем возвращении
+    console.warn('⚠️ Проверка платежа после возврата:', e);
+  } finally {
+    resolvingPaymentRef.current = false;
+  }
+};
+
+useEffect(() => {
+  const onReturn = () => { if (document.visibilityState === 'visible') resolvePendingPayment(); };
+  window.addEventListener('pageshow', onReturn);
+  document.addEventListener('visibilitychange', onReturn);
+  return () => {
+    window.removeEventListener('pageshow', onReturn);
+    document.removeEventListener('visibilitychange', onReturn);
+  };
+}, []);
+
 const checkPaymentReturn = async () => {
   setPaymentReturnStatus('checking');
 
@@ -773,7 +809,11 @@ useEffect(() => {
     if (searchParams.get('payment') === 'success') {
         // Убираем маркер из URL сразу, чтобы обновление страницы не запускало проверку повторно
         window.history.replaceState({}, '', window.location.pathname);
+        clearPendingPayment();
         checkPaymentReturn();
+    } else {
+        // Вернулись не по ссылке ЮKassa, а открыли приложение заново
+        resolvePendingPayment();
     }
 
     // 2. Читаем локального пользователя
@@ -5711,7 +5751,7 @@ if (!user && !showSplash) {
             <h3 className="text-xl font-bold text-slate-800 dark:text-white">Оплата прошла успешно!</h3>
             <p className="text-slate-500 dark:text-slate-400 text-sm">
               {user?.subscription
-                ? `Тариф "${{ TRIAL: 'Пробный', START: 'Старт', STANDARD: 'Стандарт', BUSINESS: 'Бизнес' }[user.subscription.plan] || user.subscription.plan}" активирован до ${new Date(user.subscription.expiresAt).toLocaleDateString('ru-RU')}.`
+                ? `Тариф "${{ TRIAL: 'Пробный', START: 'Старт', STANDARD: 'Стандарт', BUSINESS: 'Бизнес', BUSINESS_PRO: 'Бизнес Pro' }[user.subscription.plan] || user.subscription.plan}" активирован до ${new Date(user.subscription.expiresAt).toLocaleDateString('ru-RU')}.`
                 : 'Ваш тариф обновлён.'}
             </p>
           </div>

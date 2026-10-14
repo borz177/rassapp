@@ -758,6 +758,14 @@ export const api = {
         return data;
     },
 
+    /** Статус своего платежа ЮKassa: pending | waiting_for_capture | succeeded | canceled */
+    getPaymentStatus: async (paymentId: string): Promise<{ status: string; paid: boolean; reason: string | null }> => {
+        const res = await fetchWithAuth(`${API_URL}/payment/status/${encodeURIComponent(paymentId)}`, { timeout: 20000 });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.msg || 'Не удалось проверить оплату');
+        return data;
+    },
+
     // Data Sync
      fetchAllData: async (): Promise<any> => {
     let data: any = null;

@@ -8,6 +8,7 @@ import ModalPortal from './ModalPortal';
 import { isIOSApp } from '../src/platform';
 import { PLAN_CATALOG } from '../src/planCatalog';
 import { termAfterPayment } from '../shared/subscriptionTerm.js';
+import { PAYMENT_RESOLVED_EVENT, rememberPendingPayment } from '../src/pendingPayment';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
 const PLAN_NAMES: Record<string, string> = {
@@ -225,6 +226,26 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
     return { lostFeatures, limitWarnings, hasCritical: limitWarnings.some(w => w.critical) };
   }, [confirmData, pricing, user, subStatus.expired, investorsCount, contractsCount, employeesCount]);
 
+  // Вернулись со страницы оплаты не через «Вернуться в магазин» (закрыли вкладку,
+  // переключились из приложения банка) — страница та же, и кнопка висела в
+  // «Переходе к оплате…». Снимаем загрузку; оплатили — окно закрываем (App.tsx
+  // покажет «Оплата прошла»), не оплатили — можно выбрать способ заново.
+  useEffect(() => {
+    const onReturn = () => { if (document.visibilityState === 'visible') setLoading(null); };
+    const onResolved = (e: Event) => {
+      setLoading(null);
+      if ((e as CustomEvent<string>).detail === 'succeeded') setConfirmData(null);
+    };
+    window.addEventListener('pageshow', onReturn);
+    document.addEventListener('visibilitychange', onReturn);
+    window.addEventListener(PAYMENT_RESOLVED_EVENT, onResolved);
+    return () => {
+      window.removeEventListener('pageshow', onReturn);
+      document.removeEventListener('visibilitychange', onReturn);
+      window.removeEventListener(PAYMENT_RESOLVED_EVENT, onResolved);
+    };
+  }, []);
+
   // Способ выбирают здесь, а не на странице ЮKassa: там порядок способов не
   // настраивается и СБП прятался в «Других способах». С выбранным способом
   // ЮKassa открывает свою страницу сразу на нём.
@@ -248,6 +269,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
       });
 
       if (data.confirmationUrl) {
+        // Чем кончилась оплата, приложение узнает и без кнопки «Вернуться в магазин»
+        if (data.id) rememberPendingPayment(data.id);
         window.location.href = data.confirmationUrl;
       } else {
         // Пользователю «настройки сервера» ни о чём не говорят — он их не видит

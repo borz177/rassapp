@@ -5621,6 +5621,31 @@ app.post('/api/payment/create', auth, async (req, res) => {
   }
 });
 
+// Статус своего платежа — для возврата в приложение мимо кнопки «Вернуться в
+// магазин» (закрыли вкладку ЮKassa, переключились из приложения банка): без
+// этого окно оплаты так и висело в «Переходе к оплате…». Подписку здесь не
+// продлеваем — это делает только вебхук; приложение по статусу решает, ждать
+// его или сказать «Оплата не завершена».
+app.get('/api/payment/status/:id', auth, async (req, res) => {
+  const shopId = process.env.YOOKASSA_SHOP_ID;
+  const secretKey = process.env.YOOKASSA_SECRET_KEY;
+  if (!shopId || !secretKey) return res.status(503).json({ msg: 'Оплата не настроена' });
+  if (!/^[0-9a-f-]{20,64}$/i.test(req.params.id)) return res.status(400).json({ msg: 'Неверный платёж' });
+  try {
+    const { data } = await axios.get(`https://api.yookassa.ru/v3/payments/${req.params.id}`, {
+      headers: { Authorization: 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64') },
+      timeout: 15000,
+    });
+    // Чужой платёж не показываем — даже его статус
+    if (data?.metadata?.userId !== req.user.id) return res.status(404).json({ msg: 'Платёж не найден' });
+    res.json({ status: data.status, paid: !!data.paid, reason: data.cancellation_details?.reason || null });
+  } catch (e) {
+    if (e.response?.status === 404) return res.status(404).json({ msg: 'Платёж не найден' });
+    console.error('YooKassa status error:', e.response?.data || e.message);
+    res.status(502).json({ msg: 'Не удалось проверить оплату' });
+  }
+});
+
 // --- WEBHOOK HANDLER ---
 // --- WEBHOOK HANDLER ---
 // 🔥 ВАЖНО: express.raw читает исходные байты запроса до любого парсинга.
