@@ -566,7 +566,9 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
       {confirmData && (
         <ModalPortal>
           <div className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in" onClick={() => !loading && setConfirmData(null)}>
-              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700 p-6 relative overflow-hidden" onClick={e => e.stopPropagation()}>
+              {/* Окно прокручивается само, а кнопки оплаты прилипают к низу: длинный
+                  список потерь при понижении тарифа уводил их за край экрана */}
+              <div className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-3xl shadow-2xl ring-1 ring-slate-200 dark:ring-slate-700 px-6 pt-6 relative overflow-y-auto overscroll-contain max-h-[calc(100dvh-2rem-env(safe-area-inset-top,0px)-env(safe-area-inset-bottom,0px))]" onClick={e => e.stopPropagation()}>
 
                   <h3 className="text-xl font-bold text-slate-800 dark:text-white mb-1">Подтверждение заказа</h3>
                   <p className="text-sm text-slate-500 dark:text-slate-400 mb-6">Проверьте детали перед оплатой</p>
@@ -677,6 +679,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                       </div>
                   </div>
 
+                  {/* Кнопки поверх прокрутки: содержимое уходит под них и просвечивает размытым */}
+                  <div className="sticky bottom-0 -mx-6 px-6 pt-3 pb-4 bg-white/80 dark:bg-slate-800/80 backdrop-blur-xl">
                   <div className="space-y-2.5">
                       {/* Кнопки неактивны, пока человек не подтвердил, что видел список потерь */}
                       <PayMethodButton
@@ -706,8 +710,9 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                       </button>
                   </div>
 
-                  <div className="mt-4 flex justify-center opacity-50">
+                  <div className="mt-1 flex justify-center opacity-50">
                       <span className="text-[10px] text-slate-400 dark:text-slate-500">Защищённый платёж · ЮKassa</span>
+                  </div>
                   </div>
               </div>
           </div>
