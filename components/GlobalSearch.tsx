@@ -328,7 +328,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
               style={panelStyle}
               className="search-panel-in relative flex flex-col w-full sm:max-w-xl overflow-hidden
                          bg-white dark:bg-slate-900 shadow-2xl
-                         mt-[calc(env(safe-area-inset-top,0px)+10px)] sm:mt-0 rounded-t-[28px] sm:rounded-2xl
+                         mt-[calc(env(safe-area-inset-top,0px)+10px)] sm:mt-0 rounded-t-[38px] sm:rounded-2xl
                          h-[calc(100%-env(safe-area-inset-top,0px)-10px)] sm:h-auto sm:max-h-[72vh]
                          sm:ring-1 sm:ring-slate-200 dark:sm:ring-slate-700"
             >

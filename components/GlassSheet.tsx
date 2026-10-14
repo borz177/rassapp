@@ -7,9 +7,10 @@ import { isPhoneWidth, playGhostExit, useSheetDrag } from '../src/sheetDrag';
  *
  * На телефоне выезжает снизу и не заходит под чёлку (сверху видно затемнённый
  * экран — понятно, откуда пришли и куда вернёмся), уезжает обратно тем же
- * движением, смахивается вниз за любое место (src/sheetDrag.ts). Крупный заголовок уходит при
- * прокрутке, а в панели проявляется короткое название; там же кнопки —
- * сверху их не закрывает клавиатура. На компьютере — окно по центру.
+ * движением, смахивается вниз за любое место (src/sheetDrag.ts). Шапка — как в
+ * Instagram: ручка и заголовок по центру над полупрозрачной размытой панелью,
+ * под которую уходит прокручиваемое содержимое; там же кнопки — сверху их не
+ * закрывает клавиатура. На компьютере — окно по центру.
  *
  * Закрыть «мимо» действия (кнопкой слева, смахиванием, жестом «назад», Esc)
  * можно запретить через confirmClose — так формы переспрашивают, если есть
@@ -26,7 +27,7 @@ export interface GlassSheetAction {
 }
 
 interface GlassSheetProps {
-  /** Крупный заголовок; он же — короткое название в панели при прокрутке */
+  /** Заголовок по центру шапки */
   title: string;
   subtitle?: React.ReactNode;
   /** Вызывается, когда лист уже уехал */
@@ -203,15 +204,18 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
     if (!closingRef.current && rootRef.current) playGhostExit(rootRef.current, OUT_MS, phone.current);
   }, []);
 
-  // Крупный заголовок уходит при прокрутке — в панели проявляется короткий
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const [scrolled, setScrolled] = useState(false);
+  // Шапка лежит поверх содержимого (оно прокручивается под ней и просвечивает
+  // размытым) — поэтому сверху у содержимого отступ ровно на её высоту
+  const headerRef = useRef<HTMLDivElement>(null);
+  const [headerHeight, setHeaderHeight] = useState(64);
   useLayoutEffect(() => {
-    const el = scrollRef.current;
+    const el = headerRef.current;
     if (!el) return;
-    const onScroll = () => setScrolled(el.scrollTop > 44);
-    el.addEventListener('scroll', onScroll, { passive: true });
-    return () => el.removeEventListener('scroll', onScroll);
+    const sync = () => setHeaderHeight(el.offsetHeight);
+    sync();
+    const ro = new ResizeObserver(sync);
+    ro.observe(el);
+    return () => ro.disconnect();
   }, []);
 
   // Клавиатура перекрывает низ листа — оставляем под содержимым место
@@ -256,30 +260,31 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
           onSubmit={onSubmit ? (e: React.FormEvent) => { e.preventDefault(); onSubmit(close); } : undefined}
           style={panelStyle}
           className={`search-panel-in relative flex flex-col w-full sm:max-w-md overflow-hidden
-                      bg-slate-50 dark:bg-slate-900 shadow-2xl rounded-t-[28px] sm:rounded-3xl sm:max-h-[88vh]
+                      bg-slate-50 dark:bg-slate-900 shadow-2xl rounded-t-[38px] sm:rounded-3xl sm:max-h-[88vh]
                       ${fit === 'full'
                         ? 'h-[calc(100%-env(safe-area-inset-top,0px)-10px)] sm:h-auto'
                         : 'max-h-[calc(100%-env(safe-area-inset-top,0px)-10px)]'}`}
         >
-          {/* Панель: ручка, кнопка слева, короткое название, действие */}
+          {/* Шапка: ручка, заголовок по центру, кнопки по краям. Поверх
+              содержимого, полупрозрачная с размытием — как в Instagram */}
           <div
-            className={`shrink-0 select-none transition-colors duration-200 ${
-              scrolled ? 'bg-slate-50/85 dark:bg-slate-900/85 backdrop-blur-xl' : ''
-            }`}
+            ref={headerRef}
+            className="absolute inset-x-0 top-0 z-10 select-none bg-slate-50/75 dark:bg-slate-900/75 backdrop-blur-2xl backdrop-saturate-150"
           >
-            <div className="sm:hidden flex justify-center pt-2">
-              <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />
+            <div className="sm:hidden flex justify-center pt-2.5">
+              <span className="h-[5px] w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
             </div>
-            <div className="grid grid-cols-[1fr_auto_1fr] items-center h-12 px-4">
+            <div className="grid grid-cols-[1fr_auto_1fr] items-center gap-2 min-h-[52px] px-4 py-1.5">
               {cancelLabel ? (
                 <button type="button" onClick={requestClose}
                         className="justify-self-start text-[16px] text-indigo-600 dark:text-indigo-400 active:opacity-60">
                   {cancelLabel}
                 </button>
               ) : <span />}
-              <span className={`max-w-[50vw] truncate text-[16px] font-semibold text-slate-900 dark:text-white transition-opacity duration-200 ${scrolled ? 'opacity-100' : 'opacity-0'}`}>
-                {title}
-              </span>
+              <div className="max-w-[56vw] sm:max-w-[260px] text-center min-w-0">
+                <h2 className="truncate text-[18px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
+                {subtitle && <div className="mt-0.5 truncate text-[13px] text-slate-500 dark:text-slate-400">{subtitle}</div>}
+              </div>
               {action ? (
                 <button
                   type={action.submit ? 'submit' : 'button'}
@@ -291,19 +296,15 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
                 </button>
               ) : <span />}
             </div>
-            <div className={`h-px transition-colors duration-200 ${scrolled ? 'bg-slate-200 dark:bg-slate-800' : 'bg-transparent'}`} />
           </div>
 
           <div
-            ref={scrollRef}
             className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-4"
-            style={{ paddingBottom: footerContent ? 16 : `calc(${keyboardInset}px + env(safe-area-inset-bottom, 0px) + 24px)` }}
+            style={{
+              paddingTop: headerHeight + 8,
+              paddingBottom: footerContent ? 16 : `calc(${keyboardInset}px + env(safe-area-inset-bottom, 0px) + 24px)`,
+            }}
           >
-            {/* Крупный заголовок — уезжает вместе с содержимым */}
-            <header className="pt-1 pb-5">
-              <h2 className="text-[28px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">{title}</h2>
-              {subtitle && <div className="mt-0.5 text-[15px] text-slate-500 dark:text-slate-400 truncate">{subtitle}</div>}
-            </header>
             {content}
           </div>
 

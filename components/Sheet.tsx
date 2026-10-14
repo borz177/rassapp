@@ -173,7 +173,7 @@ const Sheet: React.FC<SheetProps> = ({
             ...(keyboard > 0 ? { marginBottom: keyboard, borderBottomWidth: 0, transition: 'margin-bottom 0.18s ease-out' } : null),
           } : undefined}
           className={`relative bg-white dark:bg-slate-800 shadow-2xl ${
-            isSheet ? 'w-full rounded-t-[28px] sm:rounded-3xl' : 'w-full max-w-xs rounded-3xl'
+            isSheet ? 'w-full rounded-t-[38px] sm:rounded-3xl' : 'w-full max-w-xs rounded-3xl'
           } ${
             leaving
               ? (isSheet ? 'animate-slide-down-sheet' : 'animate-dialog-out')
@@ -183,8 +183,8 @@ const Sheet: React.FC<SheetProps> = ({
           {/* Ручка — подсказка, что лист смахивается. Поверх содержимого, чтобы
               не сдвигать вёрстку листов, которые её не ждали. */}
           {swipeable && (
-            <div aria-hidden className="absolute inset-x-0 top-0 h-6 z-20 flex justify-center pt-2 pointer-events-none">
-              <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />
+            <div aria-hidden className="absolute inset-x-0 top-0 h-6 z-20 flex justify-center pt-2.5 pointer-events-none">
+              <span className="h-[5px] w-10 rounded-full bg-slate-300 dark:bg-slate-600" />
             </div>
           )}
           {typeof shown.current === 'function' ? shown.current(requestClose) : shown.current}

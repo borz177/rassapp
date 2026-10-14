@@ -953,7 +953,7 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
 
         {isMobile ? (
           <div className={`fixed left-0 right-0 bottom-0 z-[9999] ${isMenuClosing ? 'animate-slide-down-sheet' : 'animate-slide-up-sheet'}`}>
-            <div ref={menuSheetRef} className="bg-white dark:bg-slate-800 rounded-t-[28px] shadow-2xl w-full mx-auto overflow-hidden relative">
+            <div ref={menuSheetRef} className="bg-white dark:bg-slate-800 rounded-t-[38px] shadow-2xl w-full mx-auto overflow-hidden relative">
               <div aria-hidden className="absolute inset-x-0 top-0 flex justify-center pt-2 pointer-events-none">
                 <span className="h-[5px] w-9 rounded-full bg-slate-300 dark:bg-slate-600" />
               </div>
