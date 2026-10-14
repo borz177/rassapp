@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { ChevronRight, CreditCard } from 'lucide-react';
 import { friendlyError } from '../src/friendlyError';
 import { toast } from '../src/toast';
 import { ICONS } from '../constants';
@@ -35,6 +36,55 @@ const FEATURE_LABELS: { key: keyof PlanLimits; label: string; note?: string }[] 
   { key: 'ai', label: 'Заполнение клиента по фото паспорта' },
   { key: 'notifications', label: 'Уведомления о платежах и договорах' },
 ];
+
+/** Знак СБП: надпись в цветах системы — точная копия логотипа здесь не нужна */
+const SbpMark: React.FC = () => (
+  <span className="text-[15px] font-black tracking-tight bg-gradient-to-br from-[#5B57A2] via-[#D90751] to-[#FAB718] bg-clip-text text-transparent">
+    СБП
+  </span>
+);
+
+/** Кнопка способа оплаты: плитка со знаком, название и подсказка, стрелка */
+const PayMethodButton: React.FC<{
+  primary?: boolean;
+  onClick: () => void;
+  disabled: boolean;
+  loading: boolean;
+  icon: React.ReactNode;
+  title: string;
+  hint: string;
+}> = ({ primary, onClick, disabled, loading, icon, title, hint }) => (
+  <button
+    type="button"
+    onClick={onClick}
+    disabled={disabled}
+    className={`w-full flex items-center gap-3.5 pl-2.5 pr-4 py-2.5 rounded-2xl text-left transition-all active:scale-[0.99] disabled:opacity-60 disabled:cursor-not-allowed ${
+      primary
+        ? 'bg-slate-900 text-white hover:bg-slate-800 dark:bg-white dark:text-slate-900 dark:hover:bg-slate-100 shadow-lg shadow-slate-900/15 dark:shadow-none'
+        : 'bg-white text-slate-900 ring-1 ring-slate-200 hover:bg-slate-50 dark:bg-slate-800 dark:text-white dark:ring-slate-700 dark:hover:bg-slate-700/70'
+    }`}
+  >
+    <span className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${
+      primary ? 'bg-white ring-1 ring-black/5 dark:bg-slate-50 dark:ring-slate-200' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
+    }`}>
+      {icon}
+    </span>
+    <span className="flex-1 min-w-0">
+      <span className="block text-[15px] font-semibold leading-tight">{title}</span>
+      <span className={`block mt-0.5 text-xs ${primary ? 'text-white/60 dark:text-slate-500' : 'text-slate-500 dark:text-slate-400'}`}>
+        {loading ? 'Переход к оплате…' : hint}
+      </span>
+    </span>
+    {loading ? (
+      <svg className="animate-spin h-5 w-5 shrink-0 opacity-70" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" aria-hidden="true">
+        <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+        <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+      </svg>
+    ) : (
+      <ChevronRight size={18} className="shrink-0 opacity-40" aria-hidden="true" />
+    )}
+  </button>
+);
 
 const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCount = 0, employeesCount = 0 }) => {
   const [duration, setDuration] = useState<1 | 3 | 6 | 12>(1);
@@ -168,11 +218,14 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
     return { lostFeatures, limitWarnings, hasCritical: limitWarnings.some(w => w.critical) };
   }, [confirmData, pricing, user, subStatus.expired, investorsCount, contractsCount, employeesCount]);
 
-  const proceedToPayment = async () => {
+  // Способ выбирают здесь, а не на странице ЮKassa: там порядок способов не
+  // настраивается и СБП прятался в «Других способах». С выбранным способом
+  // ЮKassa открывает свою страницу сразу на нём.
+  const proceedToPayment = async (method: 'sbp' | 'card') => {
     if (!confirmData) return;
 
     const { name } = confirmData;
-    setLoading(name);
+    setLoading(method);
 
     const planKey: SubscriptionPlan = name === 'Старт' ? 'START' : name === 'Стандарт' ? 'STANDARD' : name === 'Бизнес Pro' ? 'BUSINESS_PRO' : 'BUSINESS';
 
@@ -183,7 +236,8 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
           // проверить подписку на сервере, не дожидаясь фоновой синхронизации.
           returnUrl: 'https://rassrochka.pro/?payment=success',
           plan: planKey,
-          months: duration
+          months: duration,
+          method,
       });
 
       if (data.confirmationUrl) {
@@ -616,30 +670,30 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                       </div>
                   </div>
 
-                  <div className="space-y-3">
-                      <button
-                          onClick={proceedToPayment}
-                          // Кнопка неактивна, пока человек не подтвердил, что видел список потерь.
+                  <div className="space-y-2.5">
+                      {/* Кнопки неактивны, пока человек не подтвердил, что видел список потерь */}
+                      <PayMethodButton
+                          primary
+                          onClick={() => proceedToPayment('sbp')}
                           disabled={!!loading || (!!downgrade && !downgradeAccepted)}
-                          className="w-full py-3.5 bg-slate-900 text-white dark:bg-white dark:text-slate-900 rounded-xl font-semibold hover:bg-slate-800 dark:hover:bg-slate-200 transition-colors flex justify-center items-center gap-2 disabled:opacity-60 disabled:cursor-not-allowed"
-                      >
-                          {loading ? (
-                              <>
-                                  <svg className="animate-spin h-5 w-5 text-current" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                                  </svg>
-                                  Переход к оплате...
-                              </>
-                          ) : (
-                              'Оплатить'
-                          )}
-                      </button>
+                          loading={loading === 'sbp'}
+                          icon={<SbpMark />}
+                          title="Оплатить через СБП"
+                          hint="В приложении вашего банка"
+                      />
+                      <PayMethodButton
+                          onClick={() => proceedToPayment('card')}
+                          disabled={!!loading || (!!downgrade && !downgradeAccepted)}
+                          loading={loading === 'card'}
+                          icon={<CreditCard size={22} strokeWidth={1.8} />}
+                          title="Оплатить картой"
+                          hint="Мир, Visa, Mastercard"
+                      />
 
                       <button
                           onClick={() => setConfirmData(null)}
                           disabled={!!loading}
-                          className="w-full py-3 bg-white dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-xl font-medium hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors"
+                          className="w-full py-2.5 text-slate-500 dark:text-slate-400 rounded-xl font-medium hover:text-slate-700 dark:hover:text-slate-200 transition-colors disabled:opacity-50"
                       >
                           Отмена
                       </button>

@@ -746,7 +746,7 @@ export const api = {
     // Сумма здесь намеренно не передаётся: её считает сервер по plan + months.
     // Раньше amount приходил с клиента и не проверялся — можно было оплатить рубль
     // и получить год максимального тарифа.
-    createPayment: async (paymentData: { returnUrl: string, plan: SubscriptionPlan, months: number }): Promise<any> => {
+    createPayment: async (paymentData: { returnUrl: string, plan: SubscriptionPlan, months: number, method?: 'sbp' | 'card' }): Promise<any> => {
         // Сервер сам обращается к платёжной системе — на слабом интернете 8 секунд мало
         const res = await fetchWithAuth(`${API_URL}/payment/create`, {
             method: 'POST',

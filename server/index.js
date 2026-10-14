@@ -5547,8 +5547,17 @@ app.get('/api/payment/pricing', (req, res) => {
   res.json({ prices: PLAN_PRICES, discounts: DURATION_DISCOUNTS, limits: PLAN_LIMITS });
 });
 
+// Способ оплаты, выбранный в нашем окне: ЮKassa открывает свою страницу сразу
+// на нём. Порядок способов на её общей странице не настраивается, и СБП там
+// прятался в «Других способах». Без method — общая страница, как раньше
+// (старые сборки приложения на iPhone и компьютере его не передают).
+const PAYMENT_METHODS = { sbp: 'sbp', card: 'bank_card' };
+
 app.post('/api/payment/create', auth, async (req, res) => {
-  const { description, returnUrl, plan, months } = req.body;
+  const { description, returnUrl, plan, months, method } = req.body;
+  if (method !== undefined && !PAYMENT_METHODS[method]) {
+    return res.status(400).json({ msg: 'Недопустимый способ оплаты' });
+  }
   const shopId = process.env.YOOKASSA_SHOP_ID;
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
@@ -5580,6 +5589,7 @@ app.post('/api/payment/create', auth, async (req, res) => {
         currency: 'RUB'
       },
       capture: true,
+      ...(method ? { payment_method_data: { type: PAYMENT_METHODS[method] } } : {}),
       confirmation: {
         type: 'redirect',
         return_url: returnUrl
