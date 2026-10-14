@@ -37,11 +37,18 @@ const FEATURE_LABELS: { key: keyof PlanLimits; label: string; note?: string }[] 
   { key: 'notifications', label: 'Уведомления о платежах и договорах' },
 ];
 
-/** Знак СБП: надпись в цветах системы — точная копия логотипа здесь не нужна */
+/** Знак Системы быстрых платежей — официальный, векторно, чтобы был чётким на любом экране */
 const SbpMark: React.FC = () => (
-  <span className="text-[15px] font-black tracking-tight bg-gradient-to-br from-[#5B57A2] via-[#D90751] to-[#FAB718] bg-clip-text text-transparent">
-    СБП
-  </span>
+  <svg viewBox="58 48 170 190" className="w-7 h-7" aria-label="СБП" role="img">
+    <polygon fill="#5B57A2" points="64,92 84,128 84,166 64,192" />
+    <polygon fill="#984995" points="64,192 132,152 132,126 84,166" />
+    <polygon fill="#FAB718" points="132,54 152,90 152,148 132,152" />
+    <polygon fill="#ED6F26" points="132,54 222,104 178,104 152,90" />
+    <polygon fill="#D90751" points="222,104 152,142 152,120 178,104" />
+    <polygon fill="#63B22F" points="132,150 152,168 152,206 132,232" />
+    <polygon fill="#017F36" points="132,232 222,182 178,182 152,206" />
+    <polygon fill="#1A9BD7" points="64,92 222,182 178,182 84,128" />
+  </svg>
 );
 
 /** Кнопка способа оплаты: плитка со знаком, название и подсказка, стрелка */
@@ -65,7 +72,7 @@ const PayMethodButton: React.FC<{
     }`}
   >
     <span className={`w-11 h-11 shrink-0 rounded-xl flex items-center justify-center ${
-      primary ? 'bg-white ring-1 ring-black/5 dark:bg-slate-50 dark:ring-slate-200' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
+      primary ? 'bg-[#1F1446] ring-1 ring-white/10 dark:ring-0' : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-200'
     }`}>
       {icon}
     </span>
