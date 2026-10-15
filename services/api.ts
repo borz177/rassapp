@@ -2072,6 +2072,28 @@ export const api = {
       return res.json();
     },
 
+    /** Вкладка «Удержание»: по каждому владельцу аккаунта — путь, оплаты, посещения */
+    adminGetRetention: async (): Promise<{ generatedAt: string; trackingSince: string | null; users: any[] }> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/retention`);
+      if (!res.ok) throw new Error('Не удалось загрузить данные удержания');
+      return res.json();
+    },
+
+    adminGetUserTimeline: async (userId: string): Promise<any> => {
+      const res = await fetchWithAuth(`${API_URL}/admin/users/${encodeURIComponent(userId)}/timeline`);
+      if (!res.ok) throw new Error('Не удалось загрузить историю');
+      return res.json();
+    },
+
+    /** Ответ на опрос «Почему не продолжили?» */
+    sendChurnFeedback: async (reason: string, details?: string): Promise<void> => {
+      const res = await fetchWithAuth(`${API_URL}/feedback/churn`, {
+        method: 'POST',
+        body: JSON.stringify({ reason, details }),
+      });
+      if (!res.ok) throw new Error('Не удалось отправить ответ');
+    },
+
     adminGetAuditLog: async (limit = 100): Promise<Array<{
       id: string;
       action: string;

@@ -2,6 +2,8 @@ import React, { useState, useEffect } from 'react';
 import { User } from '../types';
 import { ICONS } from '../constants';
 import { isIOSApp } from '../src/platform';
+import { api } from '../services/api';
+import { CHURN_REASON_LABELS } from '../src/churnReasons';
 
 interface SubscriptionExpiryBannerProps {
   user?: User | null;
@@ -13,6 +15,64 @@ interface SubscriptionExpiryBannerProps {
 const WARN_WITHIN_HOURS = 24;
 
 const HIDDEN_UNTIL_KEY = 'finuchet_subscription_banner_hidden_until';
+// Ответ на опрос — по окончанию конкретной подписки: продлил и снова не продлил —
+// спросим ещё раз.
+const SURVEY_KEY = (expiresAt: number) => `finuchet_churn_answered_${expiresAt}`;
+
+/**
+ * «Почему не продлеваете?» — один вопрос на плашке истёкшей подписки. Варианты —
+ * в одно касание, пояснение — по желанию. Ответы видны в админке («Удержание»).
+ */
+const ChurnSurvey: React.FC<{ expiresAt: number }> = ({ expiresAt }) => {
+  const [done, setDone] = useState(() => { try { return !!localStorage.getItem(SURVEY_KEY(expiresAt)); } catch { return false; } });
+  const [reason, setReason] = useState<string | null>(null);
+  const [details, setDetails] = useState('');
+  const [sending, setSending] = useState(false);
+  const [thanks, setThanks] = useState(false);
+  if (done && !thanks) return null;
+  if (thanks) return <p className="mt-3 text-xs font-semibold text-rose-800 dark:text-rose-300">Спасибо! Ответ поможет сделать программу лучше.</p>;
+
+  const send = async () => {
+    if (!reason) return;
+    setSending(true);
+    try {
+      await api.sendChurnFeedback(reason, details.trim() || undefined);
+      try { localStorage.setItem(SURVEY_KEY(expiresAt), reason); } catch { /* приватный режим */ }
+      setDone(true);
+      setThanks(true);
+    } catch {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="mt-3 pt-3 border-t border-rose-200/70 dark:border-rose-900/50">
+      <p className="text-xs font-semibold text-rose-900 dark:text-rose-300">Не планируете продлевать? Подскажите почему — это займёт 5 секунд</p>
+      <div className="flex flex-wrap gap-1.5 mt-2">
+        {Object.entries(CHURN_REASON_LABELS).map(([k, label]) => (
+          <button key={k} type="button" onClick={() => setReason(k)}
+                  className={`px-2.5 py-1 rounded-full text-xs font-medium border transition ${
+                    reason === k
+                      ? 'bg-rose-600 border-rose-600 text-white'
+                      : 'bg-white/70 dark:bg-slate-900/40 border-rose-200 dark:border-rose-900/60 text-rose-800 dark:text-rose-300'}`}>
+            {label}
+          </button>
+        ))}
+      </div>
+      {reason && (
+        <div className="mt-2 flex flex-col sm:flex-row gap-2">
+          <input value={details} onChange={e => setDetails(e.target.value)} maxLength={1000}
+                 placeholder={reason === 'missing_feature' ? 'Какой функции не хватило?' : 'Пару слов, если хотите (необязательно)'}
+                 className="flex-1 px-3 py-2 rounded-xl text-sm bg-white dark:bg-slate-900 border border-rose-200 dark:border-rose-900/60 text-slate-900 dark:text-white outline-none focus:border-rose-400" />
+          <button type="button" onClick={send} disabled={sending}
+                  className="px-4 py-2 rounded-xl text-sm font-bold bg-rose-600 text-white disabled:opacity-60">
+            {sending ? 'Отправляем…' : 'Отправить'}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
 
 const plural = (n: number, one: string, few: string, many: string) => {
   const mod10 = n % 10, mod100 = n % 100;
@@ -125,6 +185,7 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
             </button>
           )}
         </div>}
+        {isExpired && user?.role === 'manager' && <ChurnSurvey expiresAt={expiresAt} />}
       </div>
     </div>
   );

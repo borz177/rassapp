@@ -6,6 +6,7 @@ import AdminOAuthClients from './AdminOAuthClients';
 import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
 import AdminWhatsApp from './AdminWhatsApp';
+import AdminRetention from './AdminRetention';
 import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
@@ -72,7 +73,7 @@ const AdminPanel: React.FC = () => {
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
     const [subscriptionFilter, setSubscriptionFilter] = useState<SubscriptionFilter>('all'); // 🔹 Новый фильтр
-    const [activeTab, setActiveTab] = useState<'users' | 'stats' | 'referrals' | 'partners' | 'payments' | 'whatsapp' | 'logs' | 'apps'>('users');
+    const [activeTab, setActiveTab] = useState<'users' | 'retention' | 'stats' | 'referrals' | 'partners' | 'payments' | 'whatsapp' | 'logs' | 'apps'>('retention');
     // 🎁 Реферальная программа
     const [referrals, setReferrals] = useState<any>(null);
     const [referralsLoading, setReferralsLoading] = useState(false);
@@ -396,67 +397,65 @@ const getContractUsage = (user: User): {
 };
     return (
         <div className="space-y-6 animate-fade-in pb-20">
-            {/* Header */}
-            <header className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+            {/* Шапка */}
+            <header className="flex items-center justify-between gap-4">
                 <div>
-                    <h2 className="text-2xl font-bold text-slate-800 dark:text-white">🛡️ Панель Администратора</h2>
-                    <p className="text-slate-500 dark:text-slate-400 text-sm">Управление пользователями и тарифами</p>
+                    <h2 className="text-2xl font-bold text-slate-900 dark:text-white">Администратор</h2>
+                    <p className="text-slate-500 dark:text-slate-400 text-sm">Пользователи, удержание, оплаты</p>
                 </div>
-                <div className="flex gap-2">
-                    <button onClick={loadUsers} className="p-2 bg-slate-100 dark:bg-slate-700 rounded-lg hover:bg-slate-200 dark:hover:bg-slate-600 transition" title="Обновить">
-                        {ICONS.Refresh}
-                    </button>
-                    <button onClick={loadSystemStats} className="p-2 bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg hover:bg-indigo-200 dark:hover:bg-indigo-900/50 transition" title="Статистика">
-                        {ICONS.Dashboard}
-                    </button>
-                </div>
+                <button onClick={() => { loadUsers(); loadSystemStats(); }}
+                        className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-sm font-semibold text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 transition" title="Обновить">
+                    {ICONS.Refresh} <span className="hidden sm:inline">Обновить</span>
+                </button>
             </header>
 
-            {/* System Stats Cards */}
-            <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Всего пользователей</div>
-                    <div className="text-2xl font-bold text-slate-800 dark:text-white">{systemStats.totalUsers}</div>
-                </div>
-              <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Активные подписки</div>
-                    <div className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">{systemStats.activeSubscriptions}</div>
-                </div>
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Всего договоров</div>
-                    <div className="text-2xl font-bold text-indigo-600 dark:text-indigo-400">{systemStats.totalContracts}</div>
-                </div>
-                <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-                    <div className="text-sm text-slate-500 dark:text-slate-400">Истекают ≤3 дн.</div>
-                    <div className={`text-2xl font-bold ${systemStats.expiringSoon > 0 ? 'text-amber-600 dark:text-amber-400' : 'text-slate-800 dark:text-white'}`}>{systemStats.expiringSoon}</div>
-                </div>
+            {/* Главные цифры */}
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
+                {[
+                    { l: 'Пользователей', v: systemStats.totalUsers, s: `+${systemStats.newUsersLast7Days} за 7 дней`, c: 'from-indigo-500 to-violet-500' },
+                    { l: 'Активные подписки', v: systemStats.activeSubscriptions, s: 'оплачены или выданы', c: 'from-emerald-500 to-teal-500' },
+                    { l: 'Договоров у всех', v: systemStats.totalContracts, s: 'в базе', c: 'from-sky-500 to-blue-500' },
+                    { l: 'Истекают за 3 дня', v: systemStats.expiringSoon, s: systemStats.expiringSoon ? 'напомните о продлении' : 'никого', c: 'from-amber-500 to-orange-500', warn: systemStats.expiringSoon > 0 },
+                ].map(k => (
+                    <div key={k.l} className="relative overflow-hidden bg-white dark:bg-slate-800 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700 shadow-sm">
+                        <span className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${k.c}`} />
+                        <div className="text-xs text-slate-500 dark:text-slate-400">{k.l}</div>
+                        <div className={`text-2xl font-bold tabular-nums mt-0.5 ${k.warn ? 'text-amber-600 dark:text-amber-400' : 'text-slate-900 dark:text-white'}`}>{k.v.toLocaleString('ru-RU')}</div>
+                        <div className="text-[11px] text-slate-400 dark:text-slate-500 mt-0.5">{k.s}</div>
+                    </div>
+                ))}
             </div>
 
-            {/* Tabs */}
-            <div className="flex gap-2 border-b border-slate-200 dark:border-slate-700">
+            {/* Разделы */}
+            <div className="flex gap-1.5 overflow-x-auto no-scrollbar -mx-1 px-1 py-0.5">
                 {([
-                    { id: 'users', label: '👥 Пользователи' },
-                    { id: 'stats', label: '📊 Статистика' },
-                    { id: 'referrals', label: '🎁 Рефералы' },
-                    { id: 'partners', label: '🤝 Партнёры' },
-                    { id: 'payments', label: '🧾 Оплаты' },
-                    { id: 'whatsapp', label: '💬 WhatsApp' },
-                    { id: 'logs', label: '📜 Логи' },
-                    { id: 'apps', label: '🔌 Помощники' },
+                    { id: 'retention', label: 'Удержание' },
+                    { id: 'users', label: 'Пользователи' },
+                    { id: 'payments', label: 'Оплаты' },
+                    { id: 'stats', label: 'Тарифы' },
+                    { id: 'referrals', label: 'Рефералы' },
+                    { id: 'partners', label: 'Партнёры' },
+                    { id: 'whatsapp', label: 'WhatsApp' },
+                    { id: 'logs', label: 'Журнал' },
+                    { id: 'apps', label: 'Помощники' },
                 ] as const).map(tab => (
                     <button
                         key={tab.id}
                         onClick={() => setActiveTab(tab.id)}
-                        className={`px-4 py-2.5 text-sm font-bold border-b-2 -mb-px transition ${
+                        className={`shrink-0 px-4 py-2 rounded-xl text-sm font-semibold transition ${
                             activeTab === tab.id
-                                ? 'border-indigo-600 text-indigo-600 dark:text-indigo-400'
-                                : 'border-transparent text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-300'
+                                ? 'bg-slate-900 text-white dark:bg-white dark:text-slate-900 shadow-sm'
+                                : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
                         }`}
                     >
                         {tab.label}
                     </button>
                 ))}
             </div>
+
+            {activeTab === 'retention' && (
+                <AdminRetention onExtend={(id) => { const u = users.find(x => x.id === id); if (u) handleOpenModal(u); }} />
+            )}
 
             {activeTab === 'users' && (
             <>
@@ -553,6 +552,11 @@ const getContractUsage = (user: User): {
                                         <h3 className="font-bold text-slate-800 dark:text-white text-lg truncate">{user.name}</h3>
                                         <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
                                         {user.phone && <p className="text-xs text-slate-400">{user.phone}</p>}
+                                        <p className="text-[11px] text-slate-400 mt-0.5">
+                                            {(user as any).lastSeenAt
+                                                ? `Заходил ${new Date((user as any).lastSeenAt).toLocaleDateString('ru-RU')}${(user as any).lastPlatform ? ` · ${({ ios: 'iPhone', android: 'Android', mac: 'Mac', windows: 'Windows', web: 'сайт', 'mobile-web': 'сайт с телефона' } as Record<string, string>)[(user as any).lastPlatform] || (user as any).lastPlatform}` : ''}`
+                                                : `С ${new Date(user.createdAt as any).toLocaleDateString('ru-RU')}`}
+                                        </p>
                                     </div>
                                 </div>
 

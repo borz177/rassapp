@@ -1430,6 +1430,28 @@ await pool.query(`
   ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_url TEXT;
 `);
 
+// 📈 Удержание: когда человек заходил, сколько дней в месяц работал, почему ушёл.
+// Отдельным запросом и со своим catch: ошибка здесь не должна оборвать запуск.
+await pool.query(`
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS last_seen_at TIMESTAMPTZ;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS last_platform TEXT;
+  CREATE TABLE IF NOT EXISTS user_activity_days (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    day DATE NOT NULL,
+    platform TEXT,
+    PRIMARY KEY (user_id, day)
+  );
+  CREATE TABLE IF NOT EXISTS churn_feedback (
+    id SERIAL PRIMARY KEY,
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    reason TEXT NOT NULL,
+    details TEXT,
+    plan TEXT,
+    created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+  );
+  CREATE INDEX IF NOT EXISTS idx_churn_feedback_user ON churn_feedback(user_id, created_at DESC);
+`).catch(err => console.error('❌ Retention tables:', err.message));
+
     initSuperAdmin();
 
   } catch (err) {
@@ -1478,6 +1500,7 @@ const auth = (req, res, next) => {
   try {
     decoded = jwt.verify(token, JWT_SECRET);
     req.user = decoded;
+    trackActivity(req, decoded.id);
   } catch (e) {
     // В middleware auth на сервере:
 if (e.name === 'TokenExpiredError') {
@@ -1507,6 +1530,33 @@ if (e.name === 'TokenExpiredError') {
     .finally(() => next());
 };
 const TOKEN_RENEW_AFTER_SEC = 7 * 24 * 3600;
+
+// 📈 Посещения — для вкладки «Удержание» в админке. Пишем не чаще раза в 10 минут
+// на человека (кэш в памяти), и запись не задерживает сам запрос. Устройство —
+// по заголовкам: так учёт работает и в старых сборках iPhone и компьютера.
+const ACTIVITY_WRITE_EVERY_MS = 10 * 60 * 1000;
+const activitySeen = new Map();
+const clientPlatform = (req) => {
+  const ua = req.get('user-agent') || '';
+  if ((req.get('origin') || '').startsWith('capacitor://')) return 'ios';
+  if (/Electron\//.test(ua)) return /Windows/.test(ua) ? 'windows' : 'mac';
+  if (/Android/.test(ua) && /; wv\)/.test(ua)) return 'android';
+  if (/iPhone|iPad|Android|Mobile/.test(ua)) return 'mobile-web';
+  return 'web';
+};
+const trackActivity = (req, userId) => {
+  if (!userId) return;
+  const now = Date.now();
+  if (now - (activitySeen.get(userId) || 0) < ACTIVITY_WRITE_EVERY_MS) return;
+  activitySeen.set(userId, now);
+  if (activitySeen.size > 50000) activitySeen.clear();
+  const platform = clientPlatform(req);
+  pool.query('UPDATE users SET last_seen_at = NOW(), last_platform = $2 WHERE id = $1', [userId, platform])
+    .then(() => pool.query(
+      `INSERT INTO user_activity_days (user_id, day, platform)
+       VALUES ($1, (NOW() AT TIME ZONE 'Europe/Moscow')::date, $2) ON CONFLICT DO NOTHING`, [userId, platform]))
+    .catch(() => {});
+};
 
 const adminAuth = (req, res, next) => {
   auth(req, res, () => {
@@ -4827,7 +4877,7 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
   try {
     const query = `
       SELECT
-        u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at, u.api_key, u.blocked,
+        u.id, u.name, u.email, u.role, u.phone, u.subscription, u.created_at, u.api_key, u.blocked, u.last_seen_at, u.last_platform,
         (SELECT COUNT(*) FROM data_items WHERE user_id = u.id AND type = 'sales') as sales_count
       FROM users u
       ORDER BY u.created_at DESC
@@ -4844,7 +4894,9 @@ app.get('/api/admin/users', adminAuth, async (req, res) => {
       salesCount: parseInt(r.sales_count || '0'),
       createdAt: r.created_at,
       apiKey: r.api_key,
-      blocked: !!r.blocked
+      blocked: !!r.blocked,
+      lastSeenAt: r.last_seen_at,
+      lastPlatform: r.last_platform
     }));
 
     res.json(users);
@@ -4968,6 +5020,159 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
   } catch (err) {
     console.error('Admin stats error:', err);
     res.status(500).json({ msg: 'Server error' });
+  }
+});
+
+// === АДМИН: УДЕРЖАНИЕ ===
+// По каждому владельцу аккаунта — всё, что нужно, чтобы понять, где он сейчас:
+// дошёл ли до договоров и платежей, платил ли, когда заходил (он сам или его
+// сотрудники и инвесторы), писал ли в поддержку и что ответил на опрос. Группы
+// («не начал», «бросил на пробном»…) считает админка — правила видны там же.
+app.get('/api/admin/retention', adminAuth, async (req, res) => {
+  try {
+    const { rows } = await pool.query(`
+      WITH data_counts AS (
+        SELECT user_id,
+          COUNT(*) FILTER (WHERE type = 'customers') AS customers,
+          COUNT(*) FILTER (WHERE type = 'sales') AS sales,
+          COUNT(*) FILTER (WHERE type = 'investors') AS investors,
+          MIN(created_at) FILTER (WHERE type = 'customers') AS first_customer_at,
+          MIN(created_at) FILTER (WHERE type = 'sales') AS first_sale_at,
+          MAX(updated_at) FILTER (WHERE type <> 'settings') AS last_write_at,
+          COUNT(*) FILTER (WHERE type = 'sales' AND created_at > NOW() - INTERVAL '30 days') AS sales_30d
+        FROM data_items GROUP BY user_id
+      ),
+      real_payments AS (
+        SELECT d.user_id, COUNT(*) AS payments, MAX(left(e->>'date', 10)) FILTER (WHERE e->>'date' ~ '^\\d{4}-\\d{2}-\\d{2}') AS last_payment_at
+        FROM data_items d, jsonb_array_elements(COALESCE(d.data->'paymentPlan', '[]'::jsonb)) e
+        WHERE d.type = 'sales' AND e->>'isRealPayment' = 'true'
+        GROUP BY d.user_id
+      ),
+      subs AS (
+        SELECT user_id, COUNT(*) AS paid_count, SUM(amount) AS paid_total, MIN(paid_at) AS first_paid_at, MAX(paid_at) AS last_paid_at
+        FROM subscription_payments WHERE refunded_at IS NULL GROUP BY user_id
+      ),
+      team AS (
+        SELECT manager_id, COUNT(*) AS members, MAX(last_seen_at) AS team_seen_at
+        FROM users WHERE manager_id IS NOT NULL GROUP BY manager_id
+      ),
+      days AS (
+        SELECT COALESCE(u.manager_id, u.id) AS account_id,
+          COUNT(DISTINCT a.day) FILTER (WHERE a.day > CURRENT_DATE - 30) AS days_30,
+          COUNT(DISTINCT a.day) AS days_total
+        FROM user_activity_days a JOIN users u ON u.id = a.user_id
+        GROUP BY 1
+      ),
+      tickets AS (
+        SELECT user_id, COUNT(*) AS tickets, MAX(created_at) AS last_ticket_at FROM support_tickets GROUP BY user_id
+      ),
+      fb AS (
+        SELECT DISTINCT ON (user_id) user_id, reason, details, created_at
+        FROM churn_feedback ORDER BY user_id, created_at DESC
+      )
+      SELECT u.id, u.name, u.email, u.phone, u.created_at, u.subscription, u.blocked,
+        u.last_seen_at, u.last_platform, u.referred_by,
+        COALESCE(dc.customers, 0) AS customers, COALESCE(dc.sales, 0) AS sales, COALESCE(dc.investors, 0) AS investors,
+        COALESCE(dc.sales_30d, 0) AS sales_30d,
+        dc.first_customer_at, dc.first_sale_at, dc.last_write_at,
+        COALESCE(rp.payments, 0) AS payments, rp.last_payment_at,
+        COALESCE(s.paid_count, 0) AS paid_count, COALESCE(s.paid_total, 0) AS paid_total, s.first_paid_at, s.last_paid_at,
+        COALESCE(t.members, 0) AS team, t.team_seen_at,
+        COALESCE(dy.days_30, 0) AS days_30, COALESCE(dy.days_total, 0) AS days_total,
+        COALESCE(tk.tickets, 0) AS tickets, tk.last_ticket_at,
+        fb.reason AS feedback_reason, fb.details AS feedback_details, fb.created_at AS feedback_at
+      FROM users u
+      LEFT JOIN data_counts dc ON dc.user_id = u.id
+      LEFT JOIN real_payments rp ON rp.user_id = u.id
+      LEFT JOIN subs s ON s.user_id = u.id
+      LEFT JOIN team t ON t.manager_id = u.id
+      LEFT JOIN days dy ON dy.account_id = u.id
+      LEFT JOIN tickets tk ON tk.user_id = u.id
+      LEFT JOIN fb ON fb.user_id = u.id
+      WHERE u.role = 'manager'
+      ORDER BY u.created_at DESC
+    `);
+    const num = (v) => Number(v) || 0;
+    res.json({
+      generatedAt: new Date().toISOString(),
+      trackingSince: (await pool.query(`SELECT to_char(MIN(day), 'YYYY-MM-DD') AS d FROM user_activity_days`)).rows[0]?.d || null,
+      users: rows.map(r => ({
+        id: r.id, name: r.name, email: r.email, phone: r.phone, createdAt: r.created_at,
+        subscription: r.subscription, blocked: !!r.blocked, referred: !!r.referred_by,
+        lastSeenAt: r.last_seen_at, lastPlatform: r.last_platform, teamSeenAt: r.team_seen_at, team: num(r.team),
+        customers: num(r.customers), sales: num(r.sales), investors: num(r.investors), sales30d: num(r.sales_30d),
+        firstCustomerAt: r.first_customer_at, firstSaleAt: r.first_sale_at, lastWriteAt: r.last_write_at,
+        payments: num(r.payments), lastPaymentAt: r.last_payment_at,
+        paidCount: num(r.paid_count), paidTotal: num(r.paid_total), firstPaidAt: r.first_paid_at, lastPaidAt: r.last_paid_at,
+        days30: num(r.days_30), daysTotal: num(r.days_total),
+        tickets: num(r.tickets), lastTicketAt: r.last_ticket_at,
+        feedback: r.feedback_reason ? { reason: r.feedback_reason, details: r.feedback_details, at: r.feedback_at } : null,
+      })),
+    });
+  } catch (err) {
+    console.error('Admin retention error:', err);
+    res.status(500).json({ msg: 'Не удалось собрать данные' });
+  }
+});
+
+// История одного пользователя — для карточки в «Удержании»
+app.get('/api/admin/users/:userId/timeline', adminAuth, async (req, res) => {
+  const { userId } = req.params;
+  try {
+    const [months, payments, tickets, days, feedback, team] = await Promise.all([
+      pool.query(`
+        SELECT to_char(created_at, 'YYYY-MM') AS month,
+          COUNT(*) FILTER (WHERE type = 'customers') AS customers,
+          COUNT(*) FILTER (WHERE type = 'sales') AS sales
+        FROM data_items WHERE user_id = $1 AND type IN ('customers', 'sales')
+        GROUP BY 1 ORDER BY 1`, [userId]),
+      pool.query(`SELECT plan, months, amount, paid_at, refunded_at FROM subscription_payments WHERE user_id = $1 ORDER BY paid_at DESC`, [userId]),
+      pool.query(`SELECT id, subject, status, created_at FROM support_tickets WHERE user_id = $1 ORDER BY created_at DESC LIMIT 20`, [userId]),
+      pool.query(`
+        SELECT to_char(a.day, 'YYYY-MM-DD') AS day, a.platform FROM user_activity_days a JOIN users u ON u.id = a.user_id
+        WHERE (u.id = $1 OR u.manager_id = $1) AND a.day > CURRENT_DATE - 90 ORDER BY a.day`, [userId]),
+      pool.query(`SELECT reason, details, plan, created_at FROM churn_feedback WHERE user_id = $1 ORDER BY created_at DESC`, [userId]),
+      pool.query(`SELECT id, name, role, last_seen_at, last_platform FROM users WHERE manager_id = $1 ORDER BY role, name`, [userId]),
+    ]);
+    res.json({
+      months: months.rows.map(r => ({ month: r.month, customers: Number(r.customers), sales: Number(r.sales) })),
+      payments: payments.rows,
+      tickets: tickets.rows,
+      days: days.rows.map(r => ({ day: r.day, platform: r.platform })),
+      feedback: feedback.rows,
+      team: team.rows,
+    });
+  } catch (err) {
+    console.error('Admin timeline error:', err);
+    res.status(500).json({ msg: 'Не удалось загрузить историю' });
+  }
+});
+
+// Ответ на опрос «Почему не продолжили?» (показывается после окончания подписки).
+// Повторный ответ в течение месяца заменяет прежний, а не копится.
+const CHURN_REASONS = ['price', 'not_understood', 'missing_feature', 'other_app', 'no_business', 'temporary', 'bugs', 'other'];
+app.post('/api/feedback/churn', auth, async (req, res) => {
+  try {
+    if (req.user.role !== 'manager') return res.status(403).json({ msg: 'Опрос — для владельца аккаунта' });
+    const reason = String(req.body?.reason || '');
+    if (!CHURN_REASONS.includes(reason)) return res.status(400).json({ msg: 'Неизвестная причина' });
+    const details = String(req.body?.details || '').trim().slice(0, 1000) || null;
+    const u = await pool.query('SELECT subscription FROM users WHERE id = $1', [req.user.id]);
+    const plan = u.rows[0]?.subscription?.plan || null;
+    const recent = await pool.query(
+      `SELECT id FROM churn_feedback WHERE user_id = $1 AND created_at > NOW() - INTERVAL '30 days' ORDER BY created_at DESC LIMIT 1`,
+      [req.user.id]);
+    if (recent.rows[0]) {
+      await pool.query('UPDATE churn_feedback SET reason = $2, details = $3, plan = $4, created_at = NOW() WHERE id = $1',
+        [recent.rows[0].id, reason, details, plan]);
+    } else {
+      await pool.query('INSERT INTO churn_feedback (user_id, reason, details, plan) VALUES ($1, $2, $3, $4)',
+        [req.user.id, reason, details, plan]);
+    }
+    res.json({ success: true });
+  } catch (err) {
+    console.error('Churn feedback error:', err);
+    res.status(500).json({ msg: 'Не удалось сохранить ответ' });
   }
 });
 
