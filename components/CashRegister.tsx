@@ -2072,7 +2072,9 @@ const investorProfitPayouts = useMemo(() => {
                         managerProfitAccruals.map(p => (
                             <div
                                 key={p.id}
-                                onClick={() => { if (onSelectCustomer) { onSelectCustomer(p.customerId); setShowProfitDetails(false); } }}
+                                // Окно не закрываем: касса остаётся под карточкой клиента, и «назад»
+                                // возвращает в это окно на то же место
+                                onClick={() => { if (onSelectCustomer) onSelectCustomer(p.customerId); }}
                                 className={`bg-white dark:bg-slate-800 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50 transition-all ${onSelectCustomer ? 'cursor-pointer hover:shadow-md' : ''}`}
                             >
                                 <div className="flex justify-between items-start">
@@ -2219,7 +2221,7 @@ const investorProfitPayouts = useMemo(() => {
                         investorProfitAccruals.map(p => (
                             <div
                                 key={p.id}
-                                onClick={() => { if (onSelectCustomer) { onSelectCustomer(p.customerId); setShowInvestorProfitDetails(false); } }}
+                                onClick={() => { if (onSelectCustomer) onSelectCustomer(p.customerId); }}
                                 className={`bg-white dark:bg-slate-800 p-3 rounded-xl border border-purple-100 dark:border-purple-900/50 transition-all ${onSelectCustomer ? 'cursor-pointer hover:shadow-md' : ''}`}
                             >
                                 <div className="flex justify-between items-start">

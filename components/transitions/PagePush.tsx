@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import TopBarBack from '../TopBarBack';
 import { useScrollRestoration } from '../../src/hooks/useScrollRestoration';
+import { ModalParkContext, PARKED_Z } from './park';
 
 interface PagePushProps {
   /** Called once the close animation has finished — this is where currentView should actually change. */
@@ -48,25 +49,35 @@ const openPages: Array<() => void> = [];
  * глубокий, поэтому спрашиваем с конца.
  */
 type BackInterceptor = () => boolean;
-const backInterceptors: BackInterceptor[] = [];
+/**
+ * live — перехватчик сейчас в деле. Отложенный (его страница лежит под
+ * другой, см. park.ts) из стопки не снимается, а только пропускает ход: если
+ * снять и поставить заново, при возврате вложенные шаги вставали бы в обратном
+ * порядке (сначала документ, потом карточка, в которой он открыт), и «назад»
+ * закрывал бы карточку целиком вместе с документом.
+ */
+type Entry = { run: BackInterceptor; live: () => boolean };
+const backInterceptors: Entry[] = [];
 
-export function registerBackInterceptor(fn: BackInterceptor): () => void {
-  backInterceptors.push(fn);
+export function registerBackInterceptor(fn: BackInterceptor, live: () => boolean = () => true): () => void {
+  const entry: Entry = { run: fn, live };
+  backInterceptors.push(entry);
   return () => {
-    const i = backInterceptors.indexOf(fn);
+    const i = backInterceptors.indexOf(entry);
     if (i >= 0) backInterceptors.splice(i, 1);
   };
 }
 
 /** Есть ли кому перехватить шаг назад — нужно ещё до начала жеста. */
 export function hasBackInterceptor(): boolean {
-  return backInterceptors.length > 0;
+  return backInterceptors.some(e => e.live());
 }
 
 /** Отдаёт шаг назад самому глубокому перехватчику. true — шаг съеден. */
 function consumeBack(): boolean {
   for (let i = backInterceptors.length - 1; i >= 0; i--) {
-    if (backInterceptors[i]()) return true;
+    const e = backInterceptors[i];
+    if (e.live() && e.run()) return true;
   }
   return false;
 }
@@ -79,9 +90,14 @@ function consumeBack(): boolean {
 export function useBackInterceptor(active: boolean, handler: () => void): void {
   const ref = useRef(handler);
   ref.current = handler;
+  // Отложенное (под открытой сверху страницей) шаг «назад» не забирает, но
+  // своё место в стопке держит (см. Entry.live)
+  const parked = React.useContext(ModalParkContext);
+  const parkedRef = useRef(parked);
+  parkedRef.current = parked;
   useEffect(() => {
     if (!active) return;
-    return registerBackInterceptor(() => { ref.current(); return true; });
+    return registerBackInterceptor(() => { ref.current(); return true; }, () => !parkedRef.current);
   }, [active]);
 }
 
@@ -142,6 +158,11 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   const [entered, setEntered] = useState(false);
   const [closing, setClosing] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+  // Под открытой сверху страницей (см. park.ts): слоем ниже, без своей стрелки,
+  // и жесты «назад» принадлежат верхней странице
+  const parked = React.useContext(ModalParkContext);
+  const parkedRef = useRef(parked);
+  parkedRef.current = parked;
 
   useScrollRestoration(scrollKey, rootRef);
   // Synchronous guard (unlike the `closing` state, which only updates on the next render) so a
@@ -265,7 +286,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   };
 
   const onTouchStart = (e: React.TouchEvent) => {
-    if (closingRef.current) return;
+    if (closingRef.current || parkedRef.current) return;
     if (drag.current.active) return; // a gesture is already being tracked — ignore stray extra touchstarts
     if (e.touches.length !== 1) return; // ignore multi-touch (pinch etc.)
     const t = e.touches[0];
@@ -391,7 +412,7 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
       }
     };
     const onWheel = (e: WheelEvent) => {
-      if (closingRef.current || e.ctrlKey) return; // ctrl — это щипок (масштаб)
+      if (closingRef.current || parkedRef.current || e.ctrlKey) return; // ctrl — это щипок (масштаб)
       const dx = e.deltaX * (e.deltaMode === 1 ? 16 : 1);
       if (!w.active) {
         if (performance.now() < w.cooldownUntil) return;
@@ -433,9 +454,10 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
       onTouchEnd={onTouchEnd}
       onTouchCancel={onTouchCancel}
       className={`page-push-layer bg-slate-50 dark:bg-slate-900 ${className}`}
-      style={idle ? undefined : { transform: 'translateX(100%)', willChange: 'transform' }}
+      style={{ ...(idle ? null : { transform: 'translateX(100%)', willChange: 'transform' }), ...(parked ? { zIndex: PARKED_Z } : null) }}
+      aria-hidden={parked || undefined}
     >
-      {showBackButton && <TopBarBack onClick={requestClose} hideOnDesktop={!backOnDesktop} standalone />}
+      {showBackButton && !parked && <TopBarBack onClick={requestClose} hideOnDesktop={!backOnDesktop} standalone />}
       <div className={`page-push-scroll max-w-7xl mx-auto p-4 md:p-10${showBackButton ? ' page-push-scroll--tight' : ''}`}>{typeof children === 'function' ? children(requestClose) : children}</div>
     </div>
   );

@@ -1138,9 +1138,42 @@ useEffect(() => {
 // Возврат с толкнутой страницы сюда не относится: она скроллится внутри своего
 // слоя, вкладка под ней с места не двигалась — сбрасывать там нечего, да и
 // потерять найденное место в списке было бы обиднее всего.
-// Откуда открыли «Договоры». previousView для этого не годится: после возврата с
-// карточки клиента он сам равен 'CONTRACTS', и «назад» из раздела никуда не вёл.
-const contractsBackRef = useRef<ViewState>('DASHBOARD');
+// ── Стопка экранов: «назад» возвращает туда, откуда пришли, и на то же место ──
+// Разделы, из которых переходят дальше (в карточку клиента, график, форму
+// платежа), остаются смонтированными под открытой страницей — с поиском,
+// вкладками, прокруткой, открытыми окнами и документами — и при возврате всё на
+// месте (см. components/transitions/park.ts).
+//
+// Каждый такой раздел помнит, откуда его открыли: previousView для этого не
+// годится — после возврата с карточки клиента он сам равен разделу, и «назад»
+// из раздела никуда не вёл.
+const BACK_TRACKED_VIEWS: ViewState[] = ['CONTRACTS', 'WAREHOUSE', 'JOURNAL', 'OPERATIONS'];
+const backOfView = useRef<Partial<Record<ViewState, ViewState>>>({});
+// Вход в раздел не «снизу» (не возврат с открытой из него страницы) — запоминаем,
+// откуда пришли. Прямо при отрисовке: цепочка ниже нужна уже в этом кадре.
+if (BACK_TRACKED_VIEWS.includes(currentView) && previousView !== currentView) {
+  backOfView.current[currentView] = previousView;
+}
+const backOf = (view: ViewState): ViewState => backOfView.current[view] || 'DASHBOARD';
+// Цепочка «что лежит под текущим экраном»: карточка клиента — над previousView,
+// форма платежа — над тем, откуда её открыли, раздел — над тем, откуда пришли в
+// него. Главная и Касса — корни вкладок: под ними ничего не держим.
+const viewChain: ViewState[] = (() => {
+  const chain: ViewState[] = [currentView];
+  let view = currentView;
+  for (let i = 0; i < 5; i++) {
+    const next = view === 'CUSTOMER_DETAILS' ? previousView
+      : view === 'CREATE_INCOME' ? formReturnView
+      : BACK_TRACKED_VIEWS.includes(view) ? backOfView.current[view]
+      : undefined;
+    if (!next || chain.includes(next)) break;
+    chain.push(next);
+    view = next;
+  }
+  return chain;
+})();
+/** Раздел смонтирован: открыт сам или лежит под открытой из него страницей */
+const inViewChain = (view: ViewState) => viewChain.includes(view);
 
 // Откуда открыли глобальный поиск, отложенный под найденное (см. globalSearchProps).
 // Ушли из найденного не «назад», а в другой раздел — поиск больше не ждём.
@@ -1150,9 +1183,7 @@ useEffect(() => {
   if (searchOrigin && currentView !== searchOrigin && !SEARCH_FLOW_VIEWS.includes(currentView)) setSearchOrigin(null);
   // eslint-disable-next-line react-hooks/exhaustive-deps
 }, [currentView, searchOrigin]);
-useEffect(() => {
-  if (currentView === 'CONTRACTS' && previousView !== 'CONTRACTS') contractsBackRef.current = previousView;
-}, [currentView, previousView]);
+
 
 const TAB_ROOTS: ViewState[] = ['DASHBOARD', 'CASH_REGISTER', 'CUSTOMERS', 'MORE'];
 const lastTabRootRef = useRef<ViewState | null>(null);
@@ -2513,7 +2544,8 @@ const handleIncomeSubmit = async (data: any) => {
             accountId: data.accountId, note: data.note,
         });
         setSelectedCustomerId(data.customerId || null);
-        setPreviousView(currentView);
+        // «Назад» — туда, откуда открыли форму (склад, журнал, история), а не в неё
+        if (formReturnView !== 'CUSTOMER_DETAILS') setPreviousView(formReturnView);
         setCurrentView(data.customerId ? 'CUSTOMER_DETAILS' : 'OPERATIONS');
         return;
     }
@@ -4726,9 +4758,7 @@ if (!user && !showSplash) {
               {/* Под карточкой клиента и формой платежа, открытыми с Главной, Главная
                   остаётся: открытое на ней окно (платежи, прибыль), вкладка «Платежи» и
                   прокрутка при возврате на месте */}
-              {(currentView === 'DASHBOARD'
-                || (currentView === 'CUSTOMER_DETAILS' && previousView === 'DASHBOARD')
-                || (currentView === 'CREATE_INCOME' && formReturnView === 'DASHBOARD')) && !isInvestor &&
+              {inViewChain('DASHBOARD') && !isInvestor &&
                   <Dashboard parked={currentView !== 'DASHBOARD'} sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
@@ -4794,7 +4824,8 @@ if (!user && !showSplash) {
 )}
               {/* Под журналом, открытым со страницы счёта, касса остаётся смонтированной:
                   иначе «назад» из чека вернул бы к списку счетов, а не на сам счёт. */}
-              {(currentView === 'CASH_REGISTER' || (currentView === 'JOURNAL' && previousView === 'CASH_REGISTER')) && (
+              {inViewChain('CASH_REGISTER') && (
+  <ModalParkContext.Provider value={currentView !== 'CASH_REGISTER'}>
   <CashRegister
     accountUsage={accountUsage}
     onDeleteAccount={handleDeleteAccount}
@@ -4841,13 +4872,14 @@ if (!user && !showSplash) {
     suppliers={suppliers}
     onOpenJournalDoc={handleOpenJournalDoc}
   />
+  </ModalParkContext.Provider>
 )}
               {/* Под карточкой клиента, открытой из «Договоров» (график), раздел
                   остаётся: поиск, фильтры, прокрутка и открытые окна при возврате на
                   месте, а «назад» из него ведёт туда, откуда его открыли */}
-              {(currentView === 'CONTRACTS' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'CONTRACTS')) && (
-                  <PagePush onClose={() => setCurrentView(contractsBackRef.current)} showBackButton scrollKey="CONTRACTS">
+              {inViewChain('CONTRACTS') && (
                   <ModalParkContext.Provider value={currentView !== 'CONTRACTS'}>
+                  <PagePush onClose={() => setCurrentView(backOf('CONTRACTS'))} showBackButton scrollKey="CONTRACTS">
                   <Contracts
                       sales={isInvestor ? sales.filter(s => saleTouchesAccount(s, accounts.find(a => a.ownerId === user.id)?.id || '')) : sales}
                       customers={customers}
@@ -4864,8 +4896,8 @@ if (!user && !showSplash) {
                       onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}
                    contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
                              />
-                  </ModalParkContext.Provider>
                   </PagePush>
+                  </ModalParkContext.Provider>
               )}
               {(currentView === 'INVESTORS' || currentView === 'INVESTOR_DETAILS') && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="INVESTORS">
@@ -4998,7 +5030,7 @@ if (!user && !showSplash) {
                   <Products products={products} onAddProduct={handleAddProduct} onUpdateProduct={handleUpdateProduct}
                             onDeleteProduct={handleDeleteProduct} appSettings={appSettings}
                             focusProductId={productsFocusId} onFocusHandled={() => setProductsFocusId(null)}/>}
-              {currentView === 'OPERATIONS' && (() => {
+              {inViewChain('OPERATIONS') && (() => {
                   // Свойства истории денег — одни для отдельного экрана и для общей истории
                   const moneyProps = {
                     retailSales,
@@ -5018,7 +5050,8 @@ if (!user && !showSplash) {
                     appSettings,
                   };
                   return (
-                  <PagePush onClose={() => setCurrentView(previousView)} scrollKey="OPERATIONS">
+                  <ModalParkContext.Provider value={currentView !== 'OPERATIONS'}>
+                  <PagePush onClose={() => setCurrentView(backOf('OPERATIONS'))} scrollKey="OPERATIONS">
                     {/* С магазином деньги и товар — один экран (History.tsx): раньше это были
                         «История операций» в Кассе и «Журнал» в Складе, и за картиной дня ходили в оба. */}
                     {shopAvailable && !isInvestor ? (
@@ -5036,7 +5069,7 @@ if (!user && !showSplash) {
                           contracts: sales,
                           appSettings,
                           user,
-                          onBack: () => setCurrentView(previousView),
+                          onBack: () => setCurrentView(backOf('OPERATIONS')),
                           onSelectCustomer: handleSelectCustomer,
                           onAcceptPayment: handleInitiateRetailPayment,
                           onUpdateSale: handleUpdateRetailSale,
@@ -5053,6 +5086,7 @@ if (!user && !showSplash) {
                       <Operations {...moneyProps} />
                     )}
                   </PagePush>
+                  </ModalParkContext.Provider>
                   );
               })()}
               {currentView === 'REPORTS' && reportData && (
@@ -5180,8 +5214,9 @@ if (!user && !showSplash) {
                 </PagePush>
               )}
 
-              {currentView === 'JOURNAL' && (
-                <PagePush onClose={() => { setCurrentView(previousView); setJournalDocId(null); }} scrollKey="JOURNAL">
+              {inViewChain('JOURNAL') && (
+                <ModalParkContext.Provider value={currentView !== 'JOURNAL'}>
+                <PagePush onClose={() => { setCurrentView(backOf('JOURNAL')); setJournalDocId(null); }} scrollKey="JOURNAL">
                   {(requestClose: () => void) => (
                     <Journal
                       initialDocId={journalDocId}
@@ -5210,10 +5245,12 @@ if (!user && !showSplash) {
                     />
                   )}
                 </PagePush>
+                </ModalParkContext.Provider>
               )}
 
-              {currentView === 'WAREHOUSE' && (
-                <PagePush onClose={() => setCurrentView(previousView)} scrollKey="WAREHOUSE">
+              {inViewChain('WAREHOUSE') && (
+                <ModalParkContext.Provider value={currentView !== 'WAREHOUSE'}>
+                <PagePush onClose={() => setCurrentView(backOf('WAREHOUSE'))} scrollKey="WAREHOUSE">
                   {(requestClose: () => void) => (
                     <Warehouse
                       products={products}
@@ -5248,6 +5285,7 @@ if (!user && !showSplash) {
                     />
                   )}
                 </PagePush>
+                </ModalParkContext.Provider>
               )}
 
               {currentView === 'PARTNER' && (
