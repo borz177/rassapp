@@ -223,6 +223,10 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   // договоров, хотя ничего не менялось и вернуться надо было туда же.
   const [formReturnView, setFormReturnView] = useState<ViewState>('DASHBOARD');
   const [initialSaleIdForDetails, setInitialSaleIdForDetails] = useState<string | null>(null);
+  // Договор открыт сам по себе (график с Главной, из «Договоров», поиска) — «назад» с него
+  // уводит туда, откуда пришли. После платежа, начатого внутри карточки клиента, —
+  // нет: возвращаемся к карточке, как было до платежа.
+  const [initialSaleDirect, setInitialSaleDirect] = useState(true);
 
   const [moreExpandedSection, setMoreExpandedSection] = useState<string | null>(null);
 
@@ -2490,7 +2494,7 @@ const handleDeleteSale = async (saleId: string) => {
 };
 // Возврат — туда, откуда открыли: из «Договоров» в «Договоры», с Главной на Главную
 // (раньше всегда в «Договоры», и свайп с графика уводил с Главной в чужой раздел)
-const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
+const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setInitialSaleDirect(true); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
 const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
 
@@ -2558,7 +2562,11 @@ const handleIncomeSubmit = async (data: any) => {
             // ✅ МГНОВЕННЫЙ ПЕРЕХОД к деталям договора
             setSelectedCustomerId(sale.customerId);
             setInitialSaleIdForDetails(saleId);
-            setPreviousView(currentView);
+            setInitialSaleDirect(formReturnView !== 'CUSTOMER_DETAILS');
+            // «Назад» с договора — туда, откуда открыли форму (окно на Главной, раздел),
+            // а не в саму форму. Форму открыли с карточки клиента — previousView и так
+            // указывает, откуда пришли на неё.
+            if (formReturnView !== 'CUSTOMER_DETAILS') setPreviousView(formReturnView);
             setCurrentView('CUSTOMER_DETAILS');
 
             // 🔹 Сохраняем на сервер (или в офлайн-очередь — api.saveItem сам это делает
@@ -4197,6 +4205,7 @@ const handleQuickAddCustomer = async (data: {
     onOpenContract: (saleId: string, customerId: string) => {
       setSelectedCustomerId(customerId);
       setInitialSaleIdForDetails(saleId);
+      setInitialSaleDirect(true);
       setPreviousView(currentView);
       setCurrentView('CUSTOMER_DETAILS');
     },
@@ -4244,7 +4253,7 @@ const handleQuickAddCustomer = async (data: {
   const handleSelectEmployeeActivity = (id: string) => { setSelectedEmployeeId(id); setCurrentView('EMPLOYEE_ACTIVITY'); };
   const handleAddPartnership = async (name: string, members: string[]) => { if (!user) return; const newAccountId = `acc_part_${Date.now()}`; const newAccount: Account = { id: newAccountId, userId: user.id, name: `Счет: ${name}`, type: 'CUSTOM' }; const newPartnership: Partnership = { id: `part_${Date.now()}`, userId: user.id, name, accountId: newAccountId, partnerIds: members, createdAt: new Date().toISOString() }; const savedAcc = await api.saveItem('accounts', newAccount); updateList(setAccounts, savedAcc); const savedPart = await api.saveItem('partnerships', newPartnership); updateList(setPartnerships, savedPart); };
   const handleSelectSupplier = (supplier: Supplier) => { setSelectedSupplierId(supplier.id); setCurrentView('SUPPLIER_DETAILS'); };
-  const handleViewSupplierContract = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('SUPPLIER_DETAILS'); setCurrentView('CUSTOMER_DETAILS'); };
+  const handleViewSupplierContract = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setInitialSaleDirect(true); setPreviousView('SUPPLIER_DETAILS'); setCurrentView('CUSTOMER_DETAILS'); };
   const handleAddSupplier = async (data: { name: string; phone?: string; email?: string; notes?: string }) => {
     if (!user) return;
     if (!checkAccess('SUPPLIERS')) { showUpgradeAlert("Модуль «Партнеры» доступен только на тарифе Бизнес Pro."); return; }
@@ -4692,9 +4701,12 @@ if (!user && !showSplash) {
 
 
               {/* ... (Layout Children remain exactly the same) ... */}
-              {/* Под карточкой клиента, открытой с Главной, Главная остаётся: открытое на
-                  ней окно (платежи, прибыль) и прокрутка при возврате на месте */}
-              {(currentView === 'DASHBOARD' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'DASHBOARD')) && !isInvestor &&
+              {/* Под карточкой клиента и формой платежа, открытыми с Главной, Главная
+                  остаётся: открытое на ней окно (платежи, прибыль), вкладка «Платежи» и
+                  прокрутка при возврате на месте */}
+              {(currentView === 'DASHBOARD'
+                || (currentView === 'CUSTOMER_DETAILS' && previousView === 'DASHBOARD')
+                || (currentView === 'CREATE_INCOME' && formReturnView === 'DASHBOARD')) && !isInvestor &&
                   <Dashboard parked={currentView !== 'DASHBOARD'} sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
@@ -4953,7 +4965,7 @@ if (!user && !showSplash) {
                                        onEditPayment={handleEditPayment} onUpdateCustomer={handleUpdateCustomer}
                                        onDeleteCustomer={handleDeleteCustomer}
                                        suppliers={suppliers} onPaySupplier={handlePaySupplier}
-                                       initialSaleId={initialSaleIdForDetails} appSettings={appSettings} user={user}
+                                       initialSaleId={initialSaleIdForDetails} initialSaleDirect={initialSaleDirect} appSettings={appSettings} user={user}
                                        onDeleteSale={handleDeleteSale}
                                        contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
                                        retailSales={retailSales} onInitiateRetailPayment={handleInitiateRetailPayment}

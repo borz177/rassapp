@@ -310,7 +310,7 @@ const PaymentActionModal = ({
                     </button>
 
                     <button
-                        onClick={() => { onInitiatePayment(sale, totalDue); handleClose(); }}
+                        onClick={() => onInitiatePayment(sale, totalDue)}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/40 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 dark:border-slate-700 pt-3.5 mt-1"
                     >
                         <span className="text-emerald-500">💰</span>
@@ -506,7 +506,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
                 <div className="flex gap-1">
                   {type === 'expected' && onInitiatePayment && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); handleClose(); }}
+                      onClick={(e) => { e.stopPropagation(); onInitiatePayment(item.sale, item.amount); }}
                       className="px-2 py-1 bg-emerald-50 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 rounded-lg font-medium hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
                     >
                       + Платёж

@@ -24,6 +24,8 @@ interface CustomerDetailsProps {
   onEditPayment?: (saleId: string, paymentId: string, newDate: string) => void;
   onUpdateCustomer?: (customer: Customer) => void;
   initialSaleId?: string | null;
+  /** Договор initialSaleId открыт сам по себе: «назад» с него закрывает карточку (по умолчанию да) */
+  initialSaleDirect?: boolean;
   onDeleteCustomer?: (customerId: string) => void;
   user?: User | null;
   suppliers?: Supplier[];
@@ -45,7 +47,7 @@ interface CustomerDetailsProps {
 const CustomerDetails: React.FC<CustomerDetailsProps> = ({
     customer, sales, accounts, investors, appSettings, onBack,
     onInitiatePayment, onUndoPayment, onEditPayment, onUpdateCustomer,
-    initialSaleId, onDeleteCustomer, user, suppliers, onPaySupplier, onCreateTask,
+    initialSaleId, initialSaleDirect = true, onDeleteCustomer, user, suppliers, onPaySupplier, onCreateTask,
     onDeleteSale, contractTemplatesAllowed,
     retailSales = [], onInitiateRetailPayment
 }) => {
@@ -1050,8 +1052,8 @@ ${customer.name}!
             // Договор, открытый сразу (initialSaleId), — сам по себе страница:
             // «назад» с него возвращает туда, откуда пришли (окно на Главной,
             // «Договоры»), а не в список рассрочек клиента
-            <SubPage onClose={() => setSelectedSaleId(null)} direct={!!initialSaleId && selectedSale.id === initialSaleId}>
-                {(close: () => void) => renderSale(selectedSale, !!initialSaleId && selectedSale.id === initialSaleId ? onBack : close)}
+            <SubPage onClose={() => setSelectedSaleId(null)} direct={initialSaleDirect && !!initialSaleId && selectedSale.id === initialSaleId}>
+                {(close: () => void) => renderSale(selectedSale, initialSaleDirect && !!initialSaleId && selectedSale.id === initialSaleId ? onBack : close)}
             </SubPage>
         )}
         </>
