@@ -316,7 +316,9 @@ export function buildReportRows(data, options = {}) {
         const sum = (key) => investorData.reduce((s, r) => s + (Number(r[key]) || 0), 0);
         investorData.push({
             'Инвестор': 'ИТОГО:',
-            'Продаж': sum('Продаж'),
+            // Совместный договор есть в строке каждого своего инвестора, но в итоге —
+            // один договор
+            'Продаж': filteredSalesCount,
             'Сумма договоров': totalContractsAmount,
             'Закуп': totalBuyPrice,
             'Прибыль': totalProfit,
