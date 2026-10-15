@@ -12,4 +12,6 @@ contextBridge.exposeInMainWorld('electronAPI', {
 contextBridge.exposeInMainWorld('finuchetShell', {
   platform: process.platform,
   floating: process.platform === 'darwin' || process.platform === 'win32',
+  // Светлая/тёмная/как в системе — для стекла под окном (см. electron.cjs)
+  setTheme: (mode) => ipcRenderer.send('shell-theme', mode),
 })

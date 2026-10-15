@@ -111,6 +111,23 @@ ARTICLES = {
     {"js": "(()=>{const b=document.querySelector('button[title=\"Выбрать со склада\"]'); if(!b) return 'no'; b.scrollIntoView({block:'center'}); return 1})()", "wait": 700},
     {"hlsel": "button[title=\"Выбрать со склада\"]", "wait": 300, "shot": "faq-sale-stock"},
   ],
+  # Закуп с двух счетов (тариф «Бизнес»): нужен демо-аккаунт с инвесторами Руслан и Марат
+  'faq-cofund': [
+    {"tap": [195, 770], "wait": 1100},
+    {"click": "Оформить продажу", "wait": 1500},
+    {"click": "Выбрать клиента", "wait": 1300},
+    {"js": "(()=>{const c=[...document.querySelectorAll('button,[class*=cursor-pointer],li')].filter(e=>e.getClientRects().length && /Ахмадов Тимур/.test(e.textContent) && e.offsetHeight<160); if(!c.length) return 'no'; c[c.length-1].click(); return 'picked'})()", "wait": 1300},
+    {"type": "iPhone 15 128 ГБ", "into": "Введите название товара", "wait": 500},
+    {"type": "80000", "into": "Закуп"},
+    {"type": "30", "into": "Наценка"},
+    {"type": "10000", "into": "Первый взнос"},
+    {"js": "(()=>{const ss=[...document.querySelectorAll('select')].filter(x=>x.getClientRects().length && [...x.options].some(o=>/Руслан/.test(o.text))); const s=ss[0]; if(!s) return 'nosel'; const o=[...s.options].find(o=>/Руслан/.test(o.text)); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value); s.dispatchEvent(new Event('change',{bubbles:true})); return o.text})()", "wait": 700},
+    {"click": "+ Добавить счёт", "sel": "button", "wait": 800},
+    {"js": "(()=>{const ss=[...document.querySelectorAll('select')].filter(x=>x.getClientRects().length && [...x.options].some(o=>/Марат/.test(o.text))); const s=ss[1]; if(!s) return 'nosel'; const o=[...s.options].find(o=>/Марат/.test(o.text)); Object.getOwnPropertyDescriptor(HTMLSelectElement.prototype,'value').set.call(s,o.value); s.dispatchEvent(new Event('change',{bubbles:true})); return o.text})()", "wait": 700},
+    {"js": "(()=>{const b=[...document.querySelectorAll('button')].find(b=>/Ещё счёт/.test(b.textContent)); if(!b) return 'nobtn'; let box=b.parentElement; while(box && !box.querySelector('input')) box=box.parentElement; const inp=[...box.querySelectorAll('input')].filter(i=>i.getClientRects().length).pop(); Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set.call(inp,'20000'); inp.dispatchEvent(new Event('input',{bubbles:true})); return inp.value})()", "wait": 700},
+    {"js": "(()=>{const e=[...document.querySelectorAll('label')].find(x=>x.textContent.trim()==='Касса (Приход)'); e.scrollIntoView({block:'start'}); [...document.querySelectorAll('*')].filter(e=>e.scrollHeight>e.clientHeight+20 && /auto|scroll/.test(getComputedStyle(e).overflowY) && e.getClientRects().length).forEach(e=>e.scrollTop-=120); return 1})()", "wait": 800},
+    {"hl": "+ Ещё счёт", "sel": "button", "wait": 300, "shot": "faq-sale-cofund"},
+  ],
   'faq-payment': [
     {"click": "Клиенты", "sel": "button,a", "wait": 1300}, open_customer, {"click": "Рассрочки", "wait": 1200}, open_first_sale,
     scroll_to('История поступлений', 'start'),

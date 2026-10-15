@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, shell, protocol, net, session } = require("electron")
+const { app, BrowserWindow, Menu, shell, protocol, net, session, ipcMain, nativeTheme } = require("electron")
 const path = require("path")
 const fs = require("fs")
 const { pathToFileURL } = require("url")
@@ -45,6 +45,19 @@ function serveBundle() {
 
 let win = null
 
+// Тема окна — как в приложении, а не как в системе. Размытое стекло под окном
+// (vibrancy на Mac, acrylic на Windows) красится по теме окна: без этого при
+// тёмной теме приложения и светлой системе фон за панелями оставался светлым.
+ipcMain.on("shell-theme", (_e, mode) => {
+  if (mode === "light" || mode === "dark" || mode === "system") nativeTheme.themeSource = mode
+})
+// Кнопки окна на Windows рисует система — их цвет тоже по теме
+nativeTheme.on("updated", () => {
+  if (isWin && win && !win.isDestroyed()) {
+    win.setTitleBarOverlay({ color: "#00000000", symbolColor: nativeTheme.shouldUseDarkColors ? "#e2e8f0" : "#334155", height: 40 })
+  }
+})
+
 function createWindow() {
   win = new BrowserWindow({
   width: 1300,
@@ -72,7 +85,7 @@ function createWindow() {
     minWidth: 960,
     minHeight: 600,
     titleBarStyle: "hidden",
-    titleBarOverlay: { color: "#00000000", symbolColor: "#e2e8f0", height: 40 },
+    titleBarOverlay: { color: "#00000000", symbolColor: nativeTheme.shouldUseDarkColors ? "#e2e8f0" : "#334155", height: 40 },
     ...(winAcrylic
       ? { backgroundMaterial: "acrylic", backgroundColor: "#00000000" }
       : { backgroundColor: "#1e293b" }),

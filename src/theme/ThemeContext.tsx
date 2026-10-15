@@ -51,6 +51,12 @@ export const ThemeProvider: React.FC<{ children: ReactNode }> = ({ children }) =
     document.documentElement.classList.toggle('dark', resolvedTheme === 'dark');
   }, [resolvedTheme]);
 
+  // Настольная оболочка: стекло под окном берёт тему у окна, а не у страницы —
+  // передаём ей выбранный режим. В режиме «как в системе» окно снова следует системе.
+  useEffect(() => {
+    (window as any).finuchetShell?.setTheme?.(mode);
+  }, [mode]);
+
   const setMode = (newMode: ThemeMode) => {
     localStorage.setItem(STORAGE_KEY, newMode);
     setModeState(newMode);
