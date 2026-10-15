@@ -47,7 +47,7 @@ const ChurnSurvey: React.FC<{ expiresAt: number }> = ({ expiresAt }) => {
 
   return (
     <div className="mt-3 pt-3 border-t border-rose-200/70 dark:border-rose-900/50">
-      <p className="text-xs font-semibold text-rose-900 dark:text-rose-300">Не планируете продлевать? Подскажите почему — это займёт 5 секунд</p>
+      <p className="text-xs font-semibold text-rose-900 dark:text-rose-300">Подскажите, почему не продлеваете сейчас? Это займёт 5 секунд</p>
       <div className="flex flex-wrap gap-1.5 mt-2">
         {Object.entries(CHURN_REASON_LABELS).map(([k, label]) => (
           <button key={k} type="button" onClick={() => setReason(k)}
@@ -98,6 +98,9 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
     return () => clearInterval(id);
   }, []);
 
+  // Опрос «Почему не продлеваете?» раскрывается по кнопке «Позже», сам не выскакивает
+  const [surveyOpen, setSurveyOpen] = useState(false);
+
   const [hiddenUntil, setHiddenUntil] = useState<number>(() => {
     const raw = localStorage.getItem(HIDDEN_UNTIL_KEY);
     return raw ? Number(raw) || 0 : 0;
@@ -127,6 +130,9 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
 
   // В iOS-сборке звать к оплате нельзя (см. src/platform.ts): плашка только сообщает.
   const canRenew = !isIOSApp();
+  // Опрос — владельцу аккаунта и один раз на каждое окончание подписки
+  const surveyAnswered = (() => { try { return !!localStorage.getItem(SURVEY_KEY(expiresAt)); } catch { return false; } })();
+  const canAskWhy = isExpired && user?.role === 'manager' && !surveyAnswered;
 
   const snooze = () => {
     // Прячем на 4 часа, а не до конца дня: при остатке в сутки более долгая пауза
@@ -167,7 +173,7 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
             : `Действует до ${expiryClock}. После этого нельзя будет оформлять договоры и проводить платежи — данные при этом сохранятся.`}
         </p>
 
-        {(canRenew || !isExpired) && <div className="flex items-center gap-3 mt-3">
+        {(canRenew || !isExpired || (canAskWhy && !surveyOpen)) && <div className="flex items-center gap-3 mt-3">
           {canRenew && <button
             onClick={onRenew}
             className={`px-4 py-2 rounded-xl text-sm font-bold text-white transition-colors ${
@@ -176,6 +182,14 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
           >
             Продлить
           </button>}
+          {canAskWhy && !surveyOpen && (
+            <button
+              onClick={() => setSurveyOpen(true)}
+              className="px-4 py-2 rounded-xl text-sm font-semibold text-rose-700 dark:text-rose-300 bg-white/70 dark:bg-slate-900/40 border border-rose-200 dark:border-rose-900/60 hover:bg-white dark:hover:bg-slate-900/60 transition-colors"
+            >
+              Позже
+            </button>
+          )}
           {!isExpired && (
             <button
               onClick={snooze}
@@ -185,7 +199,7 @@ const SubscriptionExpiryBanner: React.FC<SubscriptionExpiryBannerProps> = ({ use
             </button>
           )}
         </div>}
-        {isExpired && user?.role === 'manager' && <ChurnSurvey expiresAt={expiresAt} />}
+        {isExpired && user?.role === 'manager' && surveyOpen && <ChurnSurvey expiresAt={expiresAt} />}
       </div>
     </div>
   );
