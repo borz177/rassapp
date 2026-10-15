@@ -95,3 +95,52 @@ export const expandFundedSales = (sales) => {
   for (const s of sales) out.push(...fundingPieces(s));
   return out;
 };
+
+/**
+ * Что в долях задаёт человек: вторые счета с суммами. Сумма основного выводится
+ * из закупа, а сам основной — поле договора, поэтому в ключ не входят: правка
+ * закупа или счёта в старой версии приложения — не «изменение долей» (её доли
+ * снимет или пересчитает normalizeFunding). null — договор на одном счёте.
+ */
+export const fundingKey = (sale) => {
+  const f = sale && Array.isArray(sale.funding) && sale.funding.length > 1 ? sale.funding : null;
+  if (!f) return null;
+  return JSON.stringify(f.slice(1).map(x => [x && x.accountId, round2(Number(x && x.amount) || 0)]));
+};
+
+/**
+ * Приводит funding договора к правилам — сервер делает это перед каждым
+ * сохранением. Возвращает { funding, reason }: funding — исправленный список
+ * или null (договор на одном счёте), reason — почему доли сняты.
+ *
+ * Правила: только закуп за свои деньги (без поставщика и склада); первый —
+ * основной счёт договора; счета не повторяются; суммы вторых счетов > 0;
+ * сумма основного = закуп − вторые и тоже > 0.
+ *
+ * Старая версия приложения (iPhone, компьютер — обновляются не сразу) о funding
+ * не знает, но сохраняет договор целиком, вместе с ним. Сменила закуп — сумма
+ * основного пересчитается; сменила счёт, поставила поставщика или закуп стал
+ * меньше вторых счетов — доли снимаются, и договор целиком на основном счёте,
+ * ровно как его видит и считает старая версия.
+ */
+export const normalizeFunding = (sale) => {
+  const f = sale && Array.isArray(sale.funding) ? sale.funding : null;
+  if (!f || f.length < 2) return { funding: null, reason: f && f.length ? 'single' : null };
+  if (sale.supplierId || (Array.isArray(sale.stockItems) && sale.stockItems.length) || sale.productId) {
+    return { funding: null, reason: 'not_own_purchase' };
+  }
+  const buy = round2(Number(sale.buyPrice) || 0);
+  if (!(buy > 0)) return { funding: null, reason: 'no_purchase' };
+  if (!f[0] || f[0].accountId !== sale.accountId) return { funding: null, reason: 'primary_changed' };
+  const rest = f.slice(1).map(x => ({
+    accountId: x && typeof x.accountId === 'string' ? x.accountId : '',
+    amount: round2(Number(x && x.amount) || 0),
+  }));
+  const ids = [sale.accountId, ...rest.map(x => x.accountId)];
+  if (rest.some(x => !x.accountId || !(x.amount > 0)) || new Set(ids).size !== ids.length) {
+    return { funding: null, reason: 'invalid' };
+  }
+  const primary = round2(buy - rest.reduce((n, x) => n + x.amount, 0));
+  if (!(primary > 0)) return { funding: null, reason: 'exceeds_purchase' };
+  return { funding: [{ accountId: sale.accountId, amount: primary }, ...rest], reason: null };
+};

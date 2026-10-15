@@ -464,6 +464,12 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
         { payments: paid, downPayment: num(existing.downPayment) });
     }
     await remove(userId, 'sales', req.params.id);
+    // Закуп по договору уходит вместе с ним — и основного счёта, и вторых
+    // (совместное финансирование): иначе счета остались бы с тратой без договора
+    await pool.query(
+      `DELETE FROM data_items WHERE user_id = $1 AND type = 'expenses'
+         AND (id = $2 OR left(id, length($3)) = $3)`,
+      [userId, `exp_sale_${req.params.id}`, `exp_sale_${req.params.id}__`]);
     noContent(res);
   }));
 

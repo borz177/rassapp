@@ -1545,6 +1545,21 @@ const addMonthsClamped = (date, months) => {
 
 // Совместное финансирование договоров (shared/funding.js) — тоже ESM
 let fundingModulePromise = null;
+/**
+ * Удаляет расходы закупа вторых счетов договора (exp_sale_<id>__<счёт>), кроме
+ * тех, чьи счета есть в funding. funding = null — удалить все (договор удалён
+ * или стал договором на одном счёте).
+ */
+const removeStaleCoFundExpenses = async (userId, saleId, funding) => {
+  const prefix = `exp_sale_${saleId}__`;
+  const keep = (Array.isArray(funding) ? funding.slice(1) : []).map(f => prefix + f.accountId);
+  await pool.query(
+    `DELETE FROM data_items WHERE user_id = $1 AND type = 'expenses'
+       AND left(id, length($2)) = $2 AND NOT (id = ANY($3))`,
+    [userId, prefix, keep]
+  );
+};
+
 const getFundingModule = () => {
   if (!fundingModulePromise) {
     const url = require('url').pathToFileURL(require('path').join(__dirname, '..', 'shared', 'funding.js')).href;
@@ -3622,16 +3637,51 @@ app.post('/api/data/:type', auth, async (req, res) => {
       }
 
       // Совместное финансирование (Sale.funding) — «Бизнес» и «Бизнес Pro».
-      // Запрещаем только новые или изменённые доли: платёж по договору сохраняется
+      // Проверяем только новые или изменённые доли: платёж по договору сохраняется
       // всем договором, и после понижения тарифа уже совместные договоры должны
-      // принимать платежи как раньше.
-      const fundingOf = (d) => JSON.stringify(Array.isArray(d?.funding) && d.funding.length > 1 ? d.funding : null);
-      if (fundingOf(itemData) !== 'null' && fundingOf(itemData) !== fundingOf(exists.rows[0]?.data)) {
+      // принимать платежи как раньше. Сумма основного счёта в «изменение» не
+      // входит — она выводится из закупа (fundingKey в shared/funding.js).
+      const F = await getFundingModule();
+      const prevSaleData = exists.rows[0]?.data || null;
+      const newKey = F.fundingKey(itemData);
+      if (newKey !== null && newKey !== F.fundingKey(prevSaleData)) {
         const owner = await pool.query('SELECT subscription FROM users WHERE id = $1', [targetUserId]);
         const plan = getEffectivePlan(owner.rows[0]?.subscription);
         if (plan !== 'BUSINESS' && plan !== 'BUSINESS_PRO') {
           return res.status(403).json({ msg: 'Закуп с нескольких счетов доступен на тарифах «Бизнес» и «Бизнес Pro».' });
         }
+        const norm = F.normalizeFunding(itemData);
+        if (!norm.funding) {
+          const why = {
+            exceeds_purchase: 'С основного счёта должна остаться часть закупа.',
+            invalid: 'Проверьте счета закупа: у каждого — сумма больше нуля, счета не повторяются.',
+            primary_changed: 'Первым в финансировании должен быть основной счёт договора.',
+          }[norm.reason] || 'Закуп с нескольких счетов — только для товара, купленного за свои деньги.';
+          return res.status(400).json({ msg: why });
+        }
+        // Счета — только свои: чужой id не должен попасть в договор
+        const ids = norm.funding.map(x => x.accountId);
+        const own = await pool.query(
+          `SELECT data->>'id' AS id FROM data_items WHERE type = 'accounts' AND user_id = $1 AND data->>'id' = ANY($2)`,
+          [targetUserId, ids]
+        );
+        if (new Set(own.rows.map(r => r.id)).size !== new Set(ids).size) {
+          return res.status(400).json({ msg: 'Счёт закупа не найден.' });
+        }
+        // Сотрудник тратит деньги только тех счетов, к которым у него доступ
+        for (const accId of ids.slice(1)) {
+          const accCheck = await checkEmployeeWriteAccess({
+            user: req.user, type, itemId: itemData.id, accountId: accId, isDelete: false, item: itemData
+          });
+          if (!accCheck.ok) return res.status(accCheck.status).json(accCheck.body);
+        }
+      }
+      // Доли — всегда по правилам: старая версия приложения могла сменить закуп,
+      // счёт или поставщика, ничего не зная о funding
+      if (itemData.funding !== undefined) {
+        const norm = F.normalizeFunding(itemData);
+        if (norm.funding) itemData.funding = norm.funding;
+        else delete itemData.funding;
       }
 
       // 🔥 Проверка на дубликат платежа
@@ -3680,6 +3730,21 @@ app.post('/api/data/:type', auth, async (req, res) => {
       }
     }
 
+    // Расход закупа совместного договора — ровно его доля закупа. Старая версия
+    // приложения о долях не знает и пишет в exp_sale_<id> весь закуп: основной
+    // счёт оплатил бы и часть второго счёта, и закуп ушёл бы дважды.
+    if (type === 'expenses' && typeof itemData.id === 'string' && itemData.id.startsWith('exp_sale_') && itemData.isRefund !== true) {
+      const rest = itemData.id.slice('exp_sale_'.length);
+      const cut = rest.indexOf('__');
+      const saleId = cut === -1 ? rest : rest.slice(0, cut);
+      const saleRow = await pool.query(
+        `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales'`, [saleId, targetUserId]
+      );
+      const funding = saleRow.rows[0] ? (await getFundingModule()).normalizeFunding(saleRow.rows[0].data).funding : null;
+      const part = funding && funding.find(f => f.accountId === (cut === -1 ? saleRow.rows[0].data.accountId : rest.slice(cut + 2)));
+      if (part && part.accountId === itemData.accountId) itemData.amount = part.amount;
+    }
+
     const id = storageIdFor(type, itemData.id, targetUserId);
 
     // Основной склад, сохранённый до этой правки, лежит под голым «main». Переносим
@@ -3716,6 +3781,13 @@ app.post('/api/data/:type', auth, async (req, res) => {
         code: 'ID_TAKEN',
         msg: 'Запись не сохранена: такой идентификатор уже занят. Обновите приложение и повторите.'
       });
+    }
+
+    // Расходы закупа вторых счетов, которых больше нет в долях (счёт убрали, доли
+    // сняты), — удаляем: иначе со счёта осталась бы трата за чужой договор.
+    // Старая версия приложения сама их не тронет — она о них не знает.
+    if (type === 'sales' && itemData.status !== 'DELETED' && (itemData.funding || saleNotifyContext?.existingSale?.funding)) {
+      await removeStaleCoFundExpenses(targetUserId, itemData.id, itemData.funding);
     }
 
     // 🔔 Уведомления о событиях (ошибки внутри createNotification не пробрасываются наружу)
@@ -3868,6 +3940,9 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
     // Вместе со строкой под id с владельцем уходит и старая строка «main» этого
     // аккаунта, если перенести её ещё не успели.
     await pool.query('DELETE FROM data_items WHERE id = ANY($1) AND user_id = $2', [[storageId, id], targetUserId]);
+    // Договор удалён — закуп вторых счетов возвращается на них (старая версия
+    // приложения удаляет только расход основного счёта)
+    if (type === 'sales') await removeStaleCoFundExpenses(targetUserId, id, null);
     res.json({ success: true, id });
   } catch (err) {
     console.error(err);

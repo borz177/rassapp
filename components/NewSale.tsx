@@ -252,7 +252,11 @@ type FundRow = { accountId: string; amount: string };
 const fundingExtra: FundRow[] = formData.fundingExtra
   ?? (Array.isArray(formData.funding) ? formData.funding.slice(1).map((f: any) => ({ accountId: f.accountId, amount: String(f.amount) })) : []);
 const setFundingExtra = (rows: FundRow[]) => setFormData((prev: any) => ({ ...prev, fundingExtra: rows }));
-const coFundPossible = coFundingAllowed && mode === 'INSTALLMENT' && !formData.supplierId
+// Уже совместный договор после перехода на тариф ниже: доли сохраняются как есть
+// (иначе любая правка — дата, клиент — молча сняла бы их), но менять их нельзя.
+const hadFunding = !!initialData?.id && Array.isArray(initialData.funding) && initialData.funding.length > 1;
+const fundingLocked = isFinancialLocked || !coFundingAllowed;
+const coFundPossible = (coFundingAllowed || hadFunding) && mode === 'INSTALLMENT' && !formData.supplierId
   && !(formData.stockItems && formData.stockItems.length) && !formData.productId;
 const buyTotal = Number(formData.buyPrice) || 0;
 const extraSum = fundingExtra.reduce((n, r) => n + (Number(r.amount) || 0), 0);
@@ -692,7 +696,9 @@ const regeneratePaymentPlan = (
     // Исключение — редактирование договора, по которому уже есть платежи: там поле
     // закупа заблокировано, и требование его заполнить сделало бы договор
     // нередактируемым навсегда.
-    if (!isFinancialLocked && fundingError) {
+    // Доли проверяем и при заблокированных суммах: сменили основной счёт на один из
+    // вторых — без этой проверки доли молча пропали бы
+    if (fundingError) {
       onShowNotification?.('Финансирование', fundingError, 'warning');
       return;
     }
@@ -1387,34 +1393,34 @@ if (mode === 'CASH') {
               </div>
               {fundingExtra.map((r, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <select disabled={isFinancialLocked} value={r.accountId}
+                  <select disabled={fundingLocked} value={r.accountId}
                           onChange={e => setFundingExtra(fundingExtra.map((x, j) => j === i ? { ...x, accountId: e.target.value } : x))}
                           className="flex-1 min-w-0 p-2.5 bg-white dark:bg-slate-900 border rounded-lg text-sm text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 disabled:opacity-60">
                     <option value="">Счёт…</option>
-                    {accounts.filter(a => !a.isArchived && a.id !== formData.accountId).map(a => (
+                    {accounts.filter(a => (!a.isArchived || a.id === r.accountId) && a.id !== formData.accountId).map(a => (
                       <option key={a.id} value={a.id}>{a.name}{accountBalances[a.id] != null ? ` · ${formatCurrency(accountBalances[a.id])} ₽` : ''}</option>
                     ))}
                   </select>
-                  <input type="number" inputMode="decimal" disabled={isFinancialLocked} value={r.amount} placeholder="Сумма"
+                  <input type="number" inputMode="decimal" disabled={fundingLocked} value={r.amount} placeholder="Сумма"
                          onChange={e => setFundingExtra(fundingExtra.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
                          className="w-28 p-2.5 bg-white dark:bg-slate-900 border rounded-lg text-sm text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 disabled:opacity-60" />
                   <span className="w-10 text-right text-xs tabular-nums text-slate-500">{sharePct(Number(r.amount) || 0)}%</span>
-                  {!isFinancialLocked && (
+                  {!fundingLocked && (
                     <button type="button" aria-label="Убрать счёт" onClick={() => setFundingExtra(fundingExtra.filter((_, j) => j !== i))}
                             className="p-1.5 text-slate-400 hover:text-rose-500">✕</button>
                   )}
                 </div>
               ))}
               {fundingError && <p className="text-xs text-rose-600 dark:text-rose-400">{fundingError}</p>}
-              {!isFinancialLocked && (
+              {!fundingLocked && (
                 <button type="button" onClick={() => setFundingExtra([...fundingExtra, { accountId: '', amount: '' }])}
                         className="text-xs font-bold text-indigo-600 dark:text-indigo-400">+ Ещё счёт</button>
               )}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
-                Платежи клиента и прибыль делятся между счетами в этих долях.{isFinancialLocked ? ' По договору уже есть платежи — доли не меняются.' : ''}
+                Платежи клиента и прибыль делятся между счетами в этих долях.{isFinancialLocked ? ' По договору уже есть платежи — доли не меняются.' : !coFundingAllowed ? ' Изменить доли можно на тарифах «Бизнес» и «Бизнес Pro».' : ''}
               </p>
             </div>
-          ) : !isFinancialLocked && (
+          ) : !fundingLocked && (
             <button type="button" onClick={() => setFundingExtra([{ accountId: '', amount: '' }])}
                     className="mt-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
               + Добавить счёт — закуп с нескольких счетов
