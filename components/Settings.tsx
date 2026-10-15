@@ -25,6 +25,8 @@ interface SettingsProps {
   shopAllowed?: boolean;
   /** Вторая печатная форма договора — со «Стандарта» и выше */
   contractTemplatesAllowed?: boolean;
+  /** Тариф позволяет закуп с нескольких счетов («Бизнес» и выше) */
+  coFundingAllowed?: boolean;
   onUpdateSettings: (settings: AppSettings) => void;
   onNavigate: (view: ViewState) => void;
   onSettingsChanged?: () => void;
@@ -173,7 +175,7 @@ function urlBase64ToUint8Array(base64String: string): Uint8Array {
   return outputArray;
 }
 
-const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, contractTemplatesAllowed = true, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
+const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, contractTemplatesAllowed = true, coFundingAllowed = false, onUpdateSettings, onNavigate, onSettingsChanged, currentUserId, user }) => {
   const isEmployee = user?.role === 'employee';
   const hasNotificationsAccess = user?.role === 'admin' || user?.role === 'employee' || user?.role === 'investor'
     || user?.subscription?.plan !== 'START';
@@ -637,6 +639,31 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
                       className="sr-only peer"
                       checked={appSettings.markupFromNetBuyPrice ?? false}
                       onChange={(e) => onUpdateSettings({ ...appSettings, markupFromNetBuyPrice: e.target.checked })}
+                  />
+                  <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
+              </label>
+          </div>
+          {/* Совместное финансирование: блок в форме договора появляется только по
+              этой настройке. Без тарифа — заблокирован, как «Магазин». */}
+          <div className="flex items-center justify-between gap-3 mt-5 pt-5 border-t border-slate-100 dark:border-slate-700">
+              <div>
+                  <p className="font-medium text-slate-700 dark:text-slate-300">
+                      Закуп с нескольких счетов
+                      {!coFundingAllowed && (
+                          <span className="ml-2 text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 align-middle">
+                              Бизнес
+                          </span>
+                      )}
+                  </p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">Если на одном счёте не хватает денег на закуп — добавить в договор второй счёт. Платежи и прибыль делятся между счетами по долям</p>
+              </div>
+              <label className={`relative inline-flex items-center ${coFundingAllowed ? 'cursor-pointer' : 'cursor-not-allowed opacity-50'}`}>
+                  <input
+                      type="checkbox"
+                      className="sr-only peer"
+                      disabled={!coFundingAllowed}
+                      checked={coFundingAllowed && (appSettings.coFundingEnabled ?? false)}
+                      onChange={(e) => onUpdateSettings({ ...appSettings, coFundingEnabled: e.target.checked })}
                   />
                   <div className="w-11 h-6 bg-slate-200 dark:bg-slate-600 peer-focus:outline-none peer-focus:ring-4 peer-focus:ring-indigo-300 rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-indigo-600"></div>
               </label>

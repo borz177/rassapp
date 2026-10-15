@@ -58,6 +58,8 @@ interface NewSaleProps {
   accountBalances?: Record<string, number>;
   /** Совместное финансирование с нескольких счетов — тарифы «Бизнес» и «Бизнес Pro» */
   coFundingAllowed?: boolean;
+  /** Тариф позволяет, но «Закуп с нескольких счетов» выключен в настройках */
+  coFundingPlanAllowed?: boolean;
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -120,7 +122,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, appSettings: propAppSettings,
   onOpenRetail, contractTemplatesAllowed = true, showShop = false, warehouseId = DEFAULT_WAREHOUSE_ID,
-  warehouses = [], accountBalances = {}, coFundingAllowed = false,
+  warehouses = [], accountBalances = {}, coFundingAllowed = false, coFundingPlanAllowed = false,
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   // Порядок вкладок — общий; менять его здесь незачем, это делают на Главной и в Отчётах
@@ -1417,7 +1419,7 @@ if (mode === 'CASH') {
                         className="text-xs font-bold text-indigo-600 dark:text-indigo-400">+ Ещё счёт</button>
               )}
               <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
-                Платежи клиента и прибыль делятся между счетами в этих долях.{isFinancialLocked ? ' По договору уже есть платежи — доли не меняются.' : !coFundingAllowed ? ' Изменить доли можно на тарифах «Бизнес» и «Бизнес Pro».' : ''}
+                Платежи клиента и прибыль делятся между счетами в этих долях.{isFinancialLocked ? ' По договору уже есть платежи — доли не меняются.' : !coFundingAllowed ? (coFundingPlanAllowed ? ' Чтобы изменить доли, включите «Закуп с нескольких счетов» в настройках.' : ' Изменить доли можно на тарифах «Бизнес» и «Бизнес Pro».') : ''}
               </p>
             </div>
           ) : !fundingLocked && (

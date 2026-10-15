@@ -5043,7 +5043,8 @@ if (!user && !showSplash) {
                            showShop={shopAvailable} warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
                            warehouses={scopedWarehouses}
                            sales={sales} user={user} contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
-                           accountBalances={accountBalances} coFundingAllowed={checkAccess('COFUND')}
+                           accountBalances={accountBalances} coFundingAllowed={checkAccess('COFUND') && !!appSettings.coFundingEnabled}
+                           coFundingPlanAllowed={checkAccess('COFUND')}
                            appSettings={appSettings} />
                     )}
                   </PagePush>
@@ -5098,7 +5099,7 @@ if (!user && !showSplash) {
               {currentView === 'SETTINGS' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Settings appSettings={appSettings} shopAllowed={checkAccess('SHOP')}
-                            contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')} onUpdateSettings={handleUpdateSettings}
+                            contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')} coFundingAllowed={checkAccess('COFUND')} onUpdateSettings={handleUpdateSettings}
                                                        onNavigate={(v: ViewState) => { setPreviousView('SETTINGS'); setCurrentView(v); }} onImportData={handleImportData} currentUserId={user.id} user={user}/>
                 </PagePush>
               )}
