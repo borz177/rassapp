@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
-import ModalPortal from './ModalPortal';
+import ModalPortal, { ModalParkContext, parkedSheetStyle } from './ModalPortal';
 import { isPhoneWidth, useSheetDrag } from '../src/sheetDrag';
 import { search, groupHits, KIND_TITLES, SearchData, SearchHit, SearchKind } from '../src/search';
 
@@ -35,6 +35,18 @@ interface GlobalSearchProps {
   includeOperations?: boolean;
   /** Вид кнопки: в тёмной боковой панели и в светлой шапке она разная */
   variant?: 'sidebar' | 'topbar';
+  /**
+   * Перед переходом к найденному: true — поиск не закрывать, а отложить под
+   * открытую страницу (App запомнил, откуда искали). «Назад» со страницы вернёт
+   * в поиск с тем же запросом и прокруткой. false — закрыть как обычно.
+   */
+  onLeave?: (kind: SearchKind) => boolean;
+  /** Отложен: сверху страница, открытая из поиска (см. ModalParkContext) */
+  parked?: boolean;
+  /** Отложенный поиск больше не нужен (ушли в другой раздел) — снять без анимации */
+  keepAlive?: boolean;
+  /** Поиск закрыли — App забывает, откуда искали */
+  onClosed?: () => void;
 }
 
 type Filter = 'all' | SearchKind;
@@ -110,9 +122,11 @@ const Highlight: React.FC<{ text: string; query: string }> = ({ text, query }) =
 
 const GlobalSearch: React.FC<GlobalSearchProps> = ({
   data, onOpenCustomer, onOpenContract, onOpenProducts, onOpenOperations,
-  includeOperations = true, variant = 'topbar',
+  includeOperations = true, variant = 'topbar', onLeave, parked = false, keepAlive = false, onClosed,
 }) => {
   const [open, setOpen] = useState(false);
+  // Этот экземпляр отложен (копий поиска две — в шапке и в боковом меню)
+  const keptRef = useRef(false);
   const [closing, setClosing] = useState(false);
   const [query, setQuery] = useState('');
   const [filter, setFilter] = useState<Filter>('all');
@@ -140,11 +154,22 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     closingRef.current = true;
     inputRef.current?.blur();
     setClosing(true);
+    if (keptRef.current) { keptRef.current = false; onClosed?.(); }
     setTimeout(() => {
       setOpen(false);
       setClosing(false);
     }, reducedMotion() ? 0 : OUT_MS);
   };
+
+  // Отложенный поиск больше не ждут (ушли в другой раздел) — снимаем молча:
+  // он скрыт, играть уход некому.
+  useEffect(() => {
+    if (keepAlive || !keptRef.current) return;
+    keptRef.current = false;
+    closingRef.current = true;
+    setOpen(false);
+    setClosing(false);
+  }, [keepAlive]);
 
   // Ctrl+K — привычное сочетание для поиска; на Маке ⌘K.
   //
@@ -222,9 +247,15 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
 
   const go = (hit: SearchHit) => {
     remember(query);
-    // Переходим сразу, а лист уезжает поверх уже открытого экрана — так это
-    // выглядит в нативных приложениях, без паузы «сначала закрыть, потом открыть».
-    requestClose();
+    // Поиск откладываем под открытую страницу — «назад» вернёт в него, как в
+    // родных приложениях. Если отложить нельзя (страница та же, что под поиском),
+    // переходим сразу, а лист уезжает поверх уже открытого экрана.
+    if (onLeave?.(hit.kind)) {
+      keptRef.current = true;
+      inputRef.current?.blur();
+    } else {
+      requestClose();
+    }
     if (hit.kind === 'customer' && hit.customerId) return onOpenCustomer(hit.customerId);
     // Договор открываем сразу развёрнутым — с графиком и историей платежей:
     // именно за ними его и искали. Если открыть просто карточку клиента, нужный
@@ -258,6 +289,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
     backdrop: () => backdropRef.current,
     onDismiss: () => {
       closingRef.current = true;
+      if (keptRef.current) { keptRef.current = false; onClosed?.(); }
       setOpen(false);
       setClosing(false);
     },
@@ -311,8 +343,10 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
       {button}
 
       {open && (
+        <ModalParkContext.Provider value={parked && keptRef.current}>
         <ModalPortal onClose={requestClose}>
-          <div className="fixed inset-0 z-modal flex justify-center sm:items-start sm:p-6 sm:pt-[12vh]">
+          <div className="fixed inset-0 z-modal flex justify-center sm:items-start sm:p-6 sm:pt-[12vh]"
+               style={parked && keptRef.current ? parkedSheetStyle() : undefined}>
             <div
               ref={backdropRef}
               className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] search-backdrop-in"
@@ -517,6 +551,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
             </div>
           </div>
         </ModalPortal>
+        </ModalParkContext.Provider>
       )}
     </>
   );

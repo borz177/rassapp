@@ -1141,6 +1141,15 @@ useEffect(() => {
 // Откуда открыли «Договоры». previousView для этого не годится: после возврата с
 // карточки клиента он сам равен 'CONTRACTS', и «назад» из раздела никуда не вёл.
 const contractsBackRef = useRef<ViewState>('DASHBOARD');
+
+// Откуда открыли глобальный поиск, отложенный под найденное (см. globalSearchProps).
+// Ушли из найденного не «назад», а в другой раздел — поиск больше не ждём.
+const [searchOrigin, setSearchOrigin] = useState<ViewState | null>(null);
+const SEARCH_FLOW_VIEWS: ViewState[] = ['CUSTOMER_DETAILS', 'WAREHOUSE', 'MANAGE_PRODUCTS', 'OPERATIONS', 'CREATE_INCOME', 'SELECT_CUSTOMER'];
+useEffect(() => {
+  if (searchOrigin && currentView !== searchOrigin && !SEARCH_FLOW_VIEWS.includes(currentView)) setSearchOrigin(null);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [currentView, searchOrigin]);
 useEffect(() => {
   if (currentView === 'CONTRACTS' && previousView !== 'CONTRACTS') contractsBackRef.current = previousView;
 }, [currentView, previousView]);
@@ -4199,6 +4208,19 @@ const handleQuickAddCustomer = async (data: {
   // пользователя: у сотрудника они урезаны по его правам, значит и поиск урезан.
   const globalSearchProps = {
     data: { customers, sales, products, expenses },
+    // Поиск откладывается под найденное: «назад» с клиента, договора, товара или
+    // операции возвращает в него (searchOrigin — экран, откуда искали). Если
+    // найденное открывается на том же экране, откладывать нечего.
+    onLeave: (kind: string) => {
+      const target: ViewState = kind === 'customer' || kind === 'contract' ? 'CUSTOMER_DETAILS'
+        : kind === 'product' ? (shopAvailable ? 'WAREHOUSE' : 'MANAGE_PRODUCTS') : 'OPERATIONS';
+      if (target === currentView) return false;
+      setSearchOrigin(currentView);
+      return true;
+    },
+    parked: searchOrigin !== null && currentView !== searchOrigin,
+    keepAlive: searchOrigin !== null,
+    onClosed: () => setSearchOrigin(null),
     onOpenCustomer: handleSelectCustomer,
     // Договор открываем сразу его карточкой у клиента — тем же путём, что и
     // «График платежей» с экрана договоров.
