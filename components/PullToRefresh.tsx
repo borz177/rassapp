@@ -131,6 +131,11 @@ const PullToRefresh: React.FC<PullToRefreshProps> = ({ onRefresh }) => {
       // Открытая модалка или подстраница забирают жест себе — там свои списки
       // и свои шаги «назад».
       if (hasBackInterceptor()) return;
+      // Касание внутри всплывающего окна (окна выносятся порталом в body, мимо
+      // корня приложения): тянут лист вниз, чтобы закрыть, а не обновить страницу
+      // под ним. Ловит и окна, которые не регистрируют шаг «назад».
+      const appRoot = document.getElementById('root');
+      if (appRoot && e.target instanceof Node && !appRoot.contains(e.target)) return;
       if (e.touches.length !== 1) return;
       if (window.scrollY > 0) return;
       if (insideScrolledArea(e.target)) return;

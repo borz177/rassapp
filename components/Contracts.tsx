@@ -12,6 +12,7 @@ import { printContract as printContractDocument } from './contractPrint';
 import UnsyncedMark from './UnsyncedMark';
 import SwipeRow from './SwipeRow';
 import { createPortal } from 'react-dom';
+import { useBackInterceptor } from './transitions/PagePush';
 import { api } from '../services/api';
 import GlassSheet, { SheetSection, SheetChoice, sheetInputClass } from './GlassSheet';
 import { FilterChip, ChipGroup } from './FilterChips';
@@ -979,6 +980,10 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
     document.body
   );
 };
+
+// Открытое меню — верхний шаг: свайп назад и кнопка «Назад» Android закрывают его,
+// а не весь раздел под ним. Заодно «потянуть для обновления» не срабатывает под ним.
+useBackInterceptor(!!activeMenuId, () => closeActionMenu());
 
 useEffect(() => {
   const handleEscape = (e: KeyboardEvent) => {
