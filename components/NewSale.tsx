@@ -106,6 +106,12 @@ const checkDuplicateSale = (
 };
 
 
+// Оплаченная плановая строка старого формата — до отдельных записей о поступлениях
+// деньги лежали прямо в строке графика (isRealPayment не задан). Строка с
+// isRealPayment === false — только пометка «закрыта»: в кассе и в долге её не считают
+// (computeAccountBalances), не считаем и здесь.
+const isLegacyPaidSlot = (p: Payment) => !!p.isPaid && p.isRealPayment == null;
+
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, appSettings: propAppSettings,
@@ -211,9 +217,7 @@ const NewSale: React.FC<NewSaleProps> = ({
 const preservedPaymentsInfo = useMemo(() => {
   const existing: Payment[] = initialData.paymentPlan || [];
   const real = existing.filter((p: Payment) => p.isRealPayment === true);
-  const legacyPaid = existing.filter(
-    (p: Payment) => p.isPaid && p.isRealPayment !== true && !real.some((rp: Payment) => rp.id === p.id)
-  );
+  const legacyPaid = existing.filter(isLegacyPaidSlot);
   const preserved = [...real, ...legacyPaid];
   return {
     count: preserved.length,
@@ -254,10 +258,35 @@ const regeneratePaymentPlan = (
   // Это платежи с isRealPayment === true (фактически полученные деньги)
   const realPayments = existingPayments.filter(p => p.isRealPayment === true);
 
-  // 🔹 2. Также сохраняем оплаченные плановые платежи (для совместимости со старыми данными)
-  const legacyPaidPayments = existingPayments.filter(
-    p => p.isPaid && p.isRealPayment !== true && !realPayments.some(rp => rp.id === p.id)
-  );
+  // 🔹 2. Также сохраняем оплаченные плановые платежи старого формата — те, что сами
+  // несли деньги (isRealPayment не задан). Плановая строка с isRealPayment === false,
+  // отмеченная оплаченной, — лишь пометка «закрыта реальным платежом»: деньги уже в
+  // realPayments. Раньше её тоже считали оплатой, и правка даты первого платежа
+  // вычитала один и тот же платёж дважды — будущие платежи получались меньше долга
+  // (долг 43 200 ₽, а график 27 900 ₽).
+  const legacyPaidPayments = existingPayments.filter(isLegacyPaidSlot);
+
+  // 🔹 2.1 Нынешний формат (деньги — только в realPayments): график строим заново
+  // целиком от новой даты — installments строк на весь долг после первого взноса,
+  // как у нового договора. Какие строки уже закрыты, решает распределение реальных
+  // платежей при показе; месяцы с поступлениями не пропускаем — платёж не привязан
+  // к месяцу графика.
+  if (legacyPaidPayments.length === 0) {
+    const totalDue = Math.max(0, saleData.totalAmount - saleData.downPayment);
+    const n = Math.max(1, Number(saleData.installments) || 1);
+    const base = Math.floor(totalDue / n);
+    const last = Math.round((totalDue - base * (n - 1)) * 100) / 100;
+    const firstDate = new Date(newFirstPaymentDate);
+    const rows: Payment[] = Array.from({ length: n }, (_, i) => ({
+      id: `pay_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 6)}`,
+      saleId: saleData.id,
+      amount: i === n - 1 ? last : base,
+      date: addMonthsClamped(firstDate, i).toISOString(),
+      isPaid: false,
+      isRealPayment: false
+    }));
+    return [...realPayments, ...rows].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+  }
 
   // 🔹 3. Объединяем сохранённые платежи
   const preservedPayments = [...realPayments, ...legacyPaidPayments];
