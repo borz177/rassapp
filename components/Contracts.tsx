@@ -6,6 +6,7 @@ import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../ty
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { contractNumbers, formatCurrency, formatDate, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu } from '../src/utils';
+import { saleTouchesAccount } from '../src/funding';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { printContract as printContractDocument } from './contractPrint';
 import UnsyncedMark from './UnsyncedMark';
@@ -547,7 +548,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
       });
     }
     const f = filters;
-    if (f.accountId) list = list.filter(sale => sale.accountId === f.accountId);
+    if (f.accountId) list = list.filter(sale => saleTouchesAccount(sale, f.accountId));
     if (f.employeeId) list = list.filter(sale => sale.createdByUserId === f.employeeId);
     const from = Number(f.amountFrom) || 0, to = Number(f.amountTo) || 0;
     if (from) list = list.filter(sale => sale.totalAmount >= from);

@@ -3,6 +3,7 @@ import TopBarBack from './TopBarBack';
 import { User, Sale, Expense, Customer, Account, Investor } from '../types';
 import { ICONS } from '../constants';
 import { formatCurrency, formatDate, addMonthsClamped, getEmployeeProfitAccrued, getEmployeeSalaryPaid } from '../src/utils';
+import { expandFundedSales } from '../src/funding';
 
 interface EmployeeActivityProps {
   employee: User;
@@ -103,7 +104,8 @@ const EmployeeActivity: React.FC<EmployeeActivityProps> = ({ employee, sales, ex
       expensesCount: myExpenses.length,
       expensesSum: myExpenses.reduce((s, e) => s + e.amount, 0),
       // 💰 Премия: начислено по проценту от прибыли и сколько уже выплачено зарплатой
-      profitAccrued: getEmployeeProfitAccrued(employee, sales, accounts, investors, { start: from || undefined }),
+      // Премия — по долям совместных договоров: доля инвесторов у каждого счёта своя
+      profitAccrued: getEmployeeProfitAccrued(employee, expandFundedSales(sales), accounts, investors, { start: from || undefined }),
       salaryPaid: getEmployeeSalaryPaid(employee.id, expenses, { start: from || undefined }),
     };
 

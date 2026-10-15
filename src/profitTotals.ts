@@ -64,6 +64,15 @@ export const profitTotals = (
   const received: ProfitTotalRow[] = [];
   const expected: ProfitTotalRow[] = [];
 
+  // Доли совместного договора (shared/funding.js) — в одну строку договора:
+  // по всем счетам он один, и строка с его суммами одна
+  const addRow = (list: ProfitTotalRow[], row: ProfitTotalRow) => {
+    const same = list.find(r => r.saleId === row.saleId);
+    if (!same) { list.push(row); return; }
+    same.amount = kopeks(same.amount + row.amount);
+    same.profit = kopeks(same.profit + row.profit);
+  };
+
   filteredSales.forEach(sale => {
     // Служебные договоры — это движения капитала инвесторов, а не продажи
     if (sale.customerId.startsWith('system_')) return;
@@ -93,7 +102,7 @@ export const profitTotals = (
     // убыточный договор с отрицательной прибылью. Пропустить их значило бы
     // показать список, который не складывается в сумму на карточке.
     if (profitBearing !== 0) {
-      received.push({
+      addRow(received, {
         saleId: sale.id,
         customerId: sale.customerId,
         customerName: nameOf(sale.customerId),
@@ -113,7 +122,7 @@ export const profitTotals = (
       expectedProfit += waitingProfit;
 
       if (expectedRemaining !== 0) {
-        expected.push({
+        addRow(expected, {
           saleId: sale.id,
           customerId: sale.customerId,
           customerName: nameOf(sale.customerId),

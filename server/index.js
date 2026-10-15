@@ -207,9 +207,13 @@ const filterDataForEmployee = (dataByType, allowedInvestorIds, fullAccessInvesto
     // 3. Продажи и расходы: СТРОГО по разрешенным счетам,
     //    и только свои — если по счёту не выдан полный доступ
     const allowedAccountIds = new Set(filtered.accounts.map(acc => acc.id));
+    // Совместный договор (Sale.funding) относится ко всем своим счетам
+    const recordAccounts = (record) =>
+        [record.accountId, ...((record.funding || []).map(f => f && f.accountId))].filter(Boolean);
     const canSeeRecord = (record) => {
-        if (!record.accountId || !allowedAccountIds.has(record.accountId)) return false;
-        if (fullAccessAccountIds.has(record.accountId)) return true;
+        const ids = recordAccounts(record);
+        if (!ids.some(id => allowedAccountIds.has(id))) return false;
+        if (ids.some(id => fullAccessAccountIds.has(id))) return true;
         return record.createdByUserId === employeeId;
     };
     filtered.sales = (filtered.sales || []).filter(canSeeRecord);
@@ -1537,6 +1541,16 @@ const addMonthsClamped = (date, months) => {
   const daysInTarget = new Date(target.getFullYear(), target.getMonth() + 1, 0).getDate();
   target.setDate(Math.min(date.getDate(), daysInTarget));
   return target;
+};
+
+// Совместное финансирование договоров (shared/funding.js) — тоже ESM
+let fundingModulePromise = null;
+const getFundingModule = () => {
+  if (!fundingModulePromise) {
+    const url = require('url').pathToFileURL(require('path').join(__dirname, '..', 'shared', 'funding.js')).href;
+    fundingModulePromise = import(url);
+  }
+  return fundingModulePromise;
 };
 
 // Срок подписки после оплаты — общий с окном оплаты, тоже ESM
@@ -3239,6 +3253,13 @@ app.get('/api/data', auth, async (req, res) => {
         INNER JOIN data_items acc ON d.data->>'accountId' = acc.data->>'id' AND acc.user_id = d.user_id
         WHERE d.type IN ('sales', 'expenses') AND acc.type = 'accounts'
           AND acc.data->>'type' = 'POOL' AND acc.data->'poolMemberIds' ? $1
+        UNION
+        -- Совместный договор (Sale.funding): счёт инвестора — один из финансирующих
+        SELECT d.* FROM data_items d
+        INNER JOIN data_items acc ON acc.user_id = d.user_id AND acc.type = 'accounts'
+          AND d.data->'funding' @> jsonb_build_array(jsonb_build_object('accountId', acc.data->>'id'))
+        WHERE d.type = 'sales'
+          AND (acc.data->>'ownerId' = $1 OR (acc.data->>'type' = 'POOL' AND acc.data->'poolMemberIds' ? $1))
       `;
       params = [targetUserId];
     } else {
@@ -3598,6 +3619,19 @@ app.post('/api/data/:type', auth, async (req, res) => {
           details: limitCheck.details,
           hint: limitCheck.hint
         });
+      }
+
+      // Совместное финансирование (Sale.funding) — «Бизнес» и «Бизнес Pro».
+      // Запрещаем только новые или изменённые доли: платёж по договору сохраняется
+      // всем договором, и после понижения тарифа уже совместные договоры должны
+      // принимать платежи как раньше.
+      const fundingOf = (d) => JSON.stringify(Array.isArray(d?.funding) && d.funding.length > 1 ? d.funding : null);
+      if (fundingOf(itemData) !== 'null' && fundingOf(itemData) !== fundingOf(exists.rows[0]?.data)) {
+        const owner = await pool.query('SELECT subscription FROM users WHERE id = $1', [targetUserId]);
+        const plan = getEffectivePlan(owner.rows[0]?.subscription);
+        if (plan !== 'BUSINESS' && plan !== 'BUSINESS_PRO') {
+          return res.status(403).json({ msg: 'Закуп с нескольких счетов доступен на тарифах «Бизнес» и «Бизнес Pro».' });
+        }
       }
 
       // 🔥 Проверка на дубликат платежа
@@ -4542,6 +4576,19 @@ app.post('/api/users/manage', auth, async (req, res) => {
     if (action === 'delete') {
   const investorId = userData.id;
   const managerId = req.user.id;
+
+  // Счёт инвестора участвует в совместном договоре (Sale.funding) — удаление
+  // унесло бы часть денег чужого договора. Сначала уберите счёт из договора.
+  const coFunded = await pool.query(`
+    SELECT 1 FROM data_items d
+    INNER JOIN data_items acc ON acc.type = 'accounts' AND acc.data->>'ownerId' = $1
+      AND (acc.user_id = $2 OR acc.user_id = $1)
+    WHERE d.type = 'sales' AND (d.user_id = $2 OR d.user_id = $1)
+      AND d.data->'funding' @> jsonb_build_array(jsonb_build_object('accountId', acc.data->>'id'))
+    LIMIT 1`, [investorId, managerId]);
+  if (coFunded.rowCount) {
+    return res.status(409).json({ msg: 'Счёт инвестора участвует в совместных договорах. Сначала уберите его из этих договоров.' });
+  }
 
   // 1. Удаляем из users (всегда под manager_id)
   await pool.query('DELETE FROM users WHERE id = $1 AND manager_id = $2', [investorId, managerId]);
@@ -7428,7 +7475,9 @@ app.get('/api/my-bonus', auth, async (req, res) => {
       profitSource: me.profit_source || 'MANAGER',
       profitSince: toDateString(me.profit_since),
     };
-    const accrued = getEmployeeProfitAccrued(employee, byType.sales, byType.accounts, byType.investors, undefined, paymentsOnly);
+    // Совместные договоры — по долям счетов: доля инвесторов у каждого счёта своя
+    const { expandFundedSales } = await getFundingModule();
+    const accrued = getEmployeeProfitAccrued(employee, expandFundedSales(byType.sales), byType.accounts, byType.investors, undefined, paymentsOnly);
     const paid = getEmployeeSalaryPaid(req.user.id, byType.expenses);
 
     res.json({

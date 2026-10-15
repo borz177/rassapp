@@ -390,7 +390,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     items = items.filter(s => !String(s.customerId || '').startsWith('system_'));
     if (status) items = items.filter(s => s.status === status);
     if (customerId) items = items.filter(s => s.customerId === customerId);
-    if (accountId) items = items.filter(s => s.accountId === accountId);
+    if (accountId) items = items.filter(s => domain.saleTouchesAccount(s, accountId));
     if (from || to) items = items.filter(s => inRange(s.startDate, from, to));
     if (String(req.query.overdue) === 'true') items = items.filter(s => domain.overdueAmount(s) > 0);
     items.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
@@ -749,13 +749,16 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
       loadAll(userId, 'expenses'), loadAll(userId, 'retailSales'),
     ]);
 
-    const sales = salesAll.filter(s => !accountId || s.accountId === accountId);
-    const contracts = sales.filter(s => !String(s.customerId || '').startsWith('system_'));
+    // Счёт и договоры: количество — по договорам с участием счёта, деньги — по
+    // долям счетов в совместных договорах (shared/funding.js)
+    const isContract = s => !String(s.customerId || '').startsWith('system_');
+    const contracts = salesAll.filter(s => (!accountId || domain.saleTouchesAccount(s, accountId)) && isContract(s));
+    const moneyContracts = domain.expandFundedSales(salesAll).filter(s => (!accountId || s.accountId === accountId) && isContract(s));
     const inPeriod = contracts.filter(s => inRange(s.startDate, from, to));
 
     let collectedInPeriod = 0;
     let profitInPeriod = 0;
-    contracts.forEach(s => {
+    moneyContracts.forEach(s => {
       domain.moneyIn(s).forEach(m => {
         if (!inRange(m.date, from, to)) return;
         collectedInPeriod += m.amount;
@@ -782,8 +785,8 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
         collected: num(collectedInPeriod),
         profit: num(profitInPeriod),
         expenses: num(expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)),
-        outstandingDebt: num(contracts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0)),
-        overdueDebt: num(contracts.reduce((sum, s) => sum + domain.overdueAmount(s), 0)),
+        outstandingDebt: num(moneyContracts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0)),
+        overdueDebt: num(moneyContracts.reduce((sum, s) => sum + domain.overdueAmount(s), 0)),
         cashOnAccounts: num(Object.entries(balances)
           .filter(([id]) => !accountId || id === accountId)
           .reduce((sum, [, v]) => sum + v, 0)),

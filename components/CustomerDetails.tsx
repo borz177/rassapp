@@ -8,6 +8,7 @@ import CustomerFormSheet from './CustomerFormSheet';
 import CustomerDocumentsSheet from './CustomerDocumentsSheet';
 import SubPage from './transitions/SubPage';
 import { formatCurrency, formatDate, normalizePhoneForWhatsApp, retailCashIn, retailPaidAmount, retailRemaining } from '../src/utils';
+import { fundingShares } from '../src/funding';
 import { offlineStorage } from '../services/offlineStorage';
 import { api, API_URL } from '../services/api';
 
@@ -369,12 +370,17 @@ ${customer.name}!
 
     const getInvestorInfo = (sale: Sale) => {
         if (!accounts || !investors) return null;
-        const account = accounts.find(a => a.id === sale.accountId);
-        if (account?.ownerId) {
-            const investor = investors.find(i => i.id === account.ownerId);
-            return investor ? investor.name : null;
+        const nameOf = (accountId: string) => {
+            const account = accounts.find(a => a.id === accountId);
+            return account?.ownerId ? investors.find(i => i.id === account.ownerId)?.name || null : null;
+        };
+        // Совместный договор — все инвесторы, чьи счета дали на закуп
+        const shares = fundingShares(sale);
+        if (shares) {
+            const names = shares.map(s => nameOf(s.accountId)).filter(Boolean);
+            return names.length ? names.join(' + ') : null;
         }
-        return null;
+        return nameOf(sale.accountId);
     };
 
     /**
@@ -522,6 +528,30 @@ ${customer.name}!
                         </div>
                     </div>
                 </div>
+
+                {/* Совместное финансирование: кто сколько дал на закуп и в какой доле
+                    делятся платежи и прибыль (shared/funding.js) */}
+                {(() => {
+                    const shares = fundingShares(selectedSale);
+                    if (!shares) return null;
+                    const accName = (id: string) => accounts?.find(a => a.id === id)?.name || 'Счёт';
+                    return (
+                        <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 p-4">
+                            <h3 className="font-bold text-slate-800 dark:text-white mb-2">Финансирование</h3>
+                            <div className="space-y-1.5">
+                                {(selectedSale.funding || []).map(f => (
+                                    <div key={f.accountId} className="flex items-center justify-between gap-3 text-sm">
+                                        <span className="truncate text-slate-600 dark:text-slate-300">{accName(f.accountId)}</span>
+                                        <span className="shrink-0 tabular-nums font-semibold text-slate-800 dark:text-white">
+                                            {formatCurrency(f.amount, appSettings.showCents)} ₽ · {Math.round((shares.find(x => x.accountId === f.accountId)?.share || 0) * 100)}%
+                                        </span>
+                                    </div>
+                                ))}
+                            </div>
+                            <p className="mt-2 text-xs text-slate-400 dark:text-slate-500">Платежи клиента и прибыль делятся между счетами в этих долях.</p>
+                        </div>
+                    );
+                })()}
 
                 <div className="bg-white dark:bg-slate-800 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-700 overflow-hidden">
                     <div className="p-4 border-b border-slate-100 dark:border-slate-700 bg-emerald-50/50 dark:bg-emerald-900/20 flex justify-between items-center">

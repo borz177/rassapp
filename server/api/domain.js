@@ -5,6 +5,17 @@
 // бы хуже отсутствия цифры вовсе, поэтому перенос дословный, а тест
 // api_domain_parity сверяет обе реализации на боевых данных.
 
+// Совместное финансирование (shared/funding.js — ESM, общий с приложением):
+// договор раскладывается на доли счетов. Модуль подгружается при старте; до
+// загрузки (доли секунды) и при сбое — договоры как есть, без долей.
+let expandFundedSalesImpl = (sales) => sales;
+import(require('url').pathToFileURL(require('path').join(__dirname, '..', '..', 'shared', 'funding.js')).href)
+  .then(m => { expandFundedSalesImpl = m.expandFundedSales; })
+  .catch(e => console.error('❌ shared/funding.js:', e.message));
+const expandFundedSales = (sales) => expandFundedSalesImpl(sales);
+const saleTouchesAccount = (sale, accountId) =>
+  sale.accountId === accountId || (sale.funding || []).some(f => f && f.accountId === accountId);
+
 // Все поступления денег по договору: первый взнос + оплаченные строки графика.
 // isRealPayment === false — плановая строка, денег по ней ещё нет.
 const moneyIn = sale => [
@@ -55,7 +66,7 @@ const accountBalances = (accounts, sales, expenses, retailSales = []) => {
   accounts.forEach(acc => {
     let total = Number(acc.initialBalance) || 0;
 
-    sales.filter(s => s.accountId === acc.id).forEach(s => {
+    expandFundedSales(sales).filter(s => s.accountId === acc.id).forEach(s => {
       total += Number(s.downPayment) || 0;
       (s.paymentPlan || [])
         .filter(p => p.isPaid && p.isRealPayment !== false)
@@ -80,4 +91,4 @@ const accountBalances = (accounts, sales, expenses, retailSales = []) => {
   return balances;
 };
 
-module.exports = { moneyIn, collected, profitMargin, moneyInProfit, receivedProfit, overdueAmount, accountBalances };
+module.exports = { expandFundedSales, saleTouchesAccount, moneyIn, collected, profitMargin, moneyInProfit, receivedProfit, overdueAmount, accountBalances };

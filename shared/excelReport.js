@@ -14,6 +14,8 @@
  * и одинаково работает в обеих средах.
  */
 
+import { fundingPieces } from './funding.js';
+
 const MONEY_FORMAT = '#,##0';
 
 /** Колонки листа «Обзор клиентов», которые показываем с разделителем тысяч. */
@@ -183,18 +185,30 @@ export function buildReportRows(data, options = {}) {
             overdueDays = Math.max(0, Math.floor((nowTs - new Date(firstUnpaidDate).getTime()) / 86400000));
         }
 
-        const investorName = investor?.name || 'Без инвестора';
-        const agg = investorTotals.get(investorName)
-            || { sales: 0, contracts: 0, buyPrice: 0, profit: 0, paid: 0, debt: 0 };
-        agg.sales += 1;
-        if (sale.type === 'INSTALLMENT') agg.contracts += revenue;
-        if (hasBuyPrice) {
-            agg.buyPrice += buyPrice;
-            agg.profit += profit;
+        // Совместный договор (shared/funding.js): в итогах каждого инвестора — его доля
+        const pieces = fundingPieces(sale);
+        const investorOf = (accId) => {
+            const acc = accounts.find(a => a.id === accId);
+            return acc?.ownerId ? investors.find(i => i.id === acc.ownerId) : undefined;
+        };
+        for (const piece of pieces) {
+            const k = pieces.length > 1 ? piece.fundingShare : 1;
+            const investorName = (pieces.length > 1 ? investorOf(piece.accountId) : investor)?.name || 'Без инвестора';
+            const agg = investorTotals.get(investorName)
+                || { sales: 0, contracts: 0, buyPrice: 0, profit: 0, paid: 0, debt: 0 };
+            agg.sales += 1;
+            if (sale.type === 'INSTALLMENT') agg.contracts += revenue * k;
+            if (hasBuyPrice) {
+                agg.buyPrice += buyPrice * k;
+                agg.profit += profit * k;
+            }
+            agg.paid += totalRealPaid * k;
+            agg.debt += currentDebt * k;
+            investorTotals.set(investorName, agg);
         }
-        agg.paid += totalRealPaid;
-        agg.debt += currentDebt;
-        investorTotals.set(investorName, agg);
+        const investorLabel = pieces.length > 1
+            ? pieces.map(pc => `${investorOf(pc.accountId)?.name || 'Основной счёт'} ${Math.round(pc.fundingShare * 100)}%`).join(' · ')
+            : investor?.name || '-';
 
         // Порядок колонок: сначала кто и что, затем деньги одним блоком
         // (закуп → цена → прибыль → взнос → долг → просрочка), потом сроки и статус,
@@ -215,7 +229,7 @@ export function buildReportRows(data, options = {}) {
                 ? new Date(paymentPlan[0].date).toLocaleDateString('ru-RU')
                 : '',
             'Статус': statusStr,
-            'Инвестор': investor?.name || '-',
+            'Инвестор': investorLabel,
             // Имя и телефон поручителя в одной ячейке — минус целая колонка.
             'Поручитель': [sale.guarantorName, sale.guarantorPhone].filter(Boolean).join(', '),
             'Адрес': customer?.address || ''

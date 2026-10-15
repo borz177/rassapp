@@ -7,6 +7,7 @@ import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppDocument } from '../services/whatsapp';
 import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, saleProfitMargin } from '../src/utils';
+import { fundingShares } from '../src/funding';
 import { contractScheduleRows } from '../src/contractSchedule';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
 import { withHtml2canvasTextFix, paymentDocumentTitle, pdfFileName, setContractPdfProperties } from '../src/contractPdf';
@@ -624,7 +625,12 @@ const commonData = {
             )}
             {(selectedSale || selectedRetail) && <div className="bg-slate-50 dark:bg-slate-700/50 p-3 rounded-lg border border-slate-100 dark:border-slate-700 text-sm flex gap-2 items-center">
               <span className="text-slate-500 dark:text-slate-400">Зачисление на счет:</span>
-              <span className="font-bold text-slate-800 dark:text-white">{getAccountName((selectedSale || selectedRetail)!.accountId)}</span>
+              <span className="font-bold text-slate-800 dark:text-white">
+                {/* Совместный договор — платёж делится между счетами по долям */}
+                {selectedSale && fundingShares(selectedSale)
+                  ? fundingShares(selectedSale)!.map(f => `${getAccountName(f.accountId)} ${Math.round(f.share * 100)}%`).join(' · ')
+                  : getAccountName((selectedSale || selectedRetail)!.accountId)}
+              </span>
             </div>}
           </div>
         )}

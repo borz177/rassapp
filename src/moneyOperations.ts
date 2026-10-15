@@ -129,10 +129,13 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
               raw: s
           });
       } else { // INSTALLMENT
+          // Доля совместного договора (shared/funding.js): у частей одного договора
+          // одинаковые id платежей — строки разных счетов различаем по счёту
+          const pieceKey = (s as any).fundingShare != null ? `__${s.accountId}` : '';
           // 1. Down payment
           if (s.downPayment > 0) {
               incomeOps.push({
-                  id: `${s.id}_dp`,
+                  id: `${s.id}_dp${pieceKey}`,
                   date: s.startDate,
                   amount: s.downPayment,
                   title: customerName,
@@ -149,7 +152,7 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
                   // 🆕 Приводим к any, чтобы TS не ругался на новые поля скидки
                   const paymentAny = p as any; 
                   incomeOps.push({
-                      id: p.id,
+                      id: p.id + pieceKey,
                       date: p.date,
                       amount: p.amount,
                       title: customerName,

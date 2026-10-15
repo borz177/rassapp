@@ -63,6 +63,8 @@ interface InvestorDetailsProps {
   investor: Investor;
   investors: Investor[];
   account?: Account;
+  /** Баланс счёта из «Кассы» (computeAccountBalances) — с розницей; без него считаем сами */
+  accountBalance?: number;
   sales: Sale[];
   expenses: Expense[];
   customers: Customer[];
@@ -115,7 +117,7 @@ const weekAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 7); ret
 const monthStartStr = () => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; };
 
 const InvestorDetails: React.FC<InvestorDetailsProps> = ({
-  investor, investors, account, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry, onPoolLoss, onDeletePoolLoss
+  investor, investors, account, accountBalance, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry, onPoolLoss, onDeletePoolLoss
 }) => {
   // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
   const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
@@ -330,6 +332,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
   const balance = useMemo(() => {
     if (!account) return 0;
+    if (accountBalance !== undefined) return accountBalance;
     let total = account.initialBalance || 0;
     sales.filter(s => s.accountId === account.id).forEach(s => {
       total += s.downPayment;
@@ -337,7 +340,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     });
     expenses.filter(e => e.accountId === account.id && e.isRefund !== true).forEach(e => total -= e.amount);
     return total;
-  }, [sales, expenses, account]);
+  }, [sales, expenses, account, accountBalance]);
 
   const expectedTotalProfit = useMemo(() => {
     if (!account) return 0;

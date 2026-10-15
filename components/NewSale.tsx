@@ -54,6 +54,10 @@ interface NewSaleProps {
   warehouseId?: string;
   /** Склады магазина: остаток основного включает товар, заведённый до складов */
   warehouses?: StockLocation[];
+  /** Остатки на счетах — подсказать, хватает ли денег на закуп */
+  accountBalances?: Record<string, number>;
+  /** Совместное финансирование с нескольких счетов — тарифы «Бизнес» и «Бизнес Pro» */
+  coFundingAllowed?: boolean;
 }
 
 // Форматирует любой российский номер в вид +7 (XXX) XXX-XX-XX
@@ -116,7 +120,7 @@ const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, appSettings: propAppSettings,
   onOpenRetail, contractTemplatesAllowed = true, showShop = false, warehouseId = DEFAULT_WAREHOUSE_ID,
-  warehouses = [],
+  warehouses = [], accountBalances = {}, coFundingAllowed = false,
 }) => {
   const supplierList: Supplier[] = suppliers || [];
   // Порядок вкладок — общий; менять его здесь незачем, это делают на Главной и в Отчётах
@@ -229,6 +233,35 @@ const preservedPaymentsInfo = useMemo(() => {
 // от которых зависит расчёт суммы/графика (закуп, наценка, цена, срок, первый взнос).
 // Остальное (товар, касса, поручитель, клиент, даты) остаётся редактируемым всегда.
 const isFinancialLocked = !!formData.id && (preservedPaymentsInfo.count > 0 || (formData.partnerDebtPaidAmount || 0) > 0);
+
+// ── Совместное финансирование (Sale.funding, shared/funding.js) ────────────
+// Закуп оплачивают несколько счетов: основной (выбран выше) и добавленные.
+// Только для товара, купленного за свои деньги: со склада он уже оплачен, у
+// поставщика — это долг. После первых платежей доли не меняются — иначе деньги
+// задним числом перетекли бы между счетами.
+type FundRow = { accountId: string; amount: string };
+const fundingExtra: FundRow[] = formData.fundingExtra
+  ?? (Array.isArray(formData.funding) ? formData.funding.slice(1).map((f: any) => ({ accountId: f.accountId, amount: String(f.amount) })) : []);
+const setFundingExtra = (rows: FundRow[]) => setFormData((prev: any) => ({ ...prev, fundingExtra: rows }));
+const coFundPossible = coFundingAllowed && mode === 'INSTALLMENT' && !formData.supplierId
+  && !(formData.stockItems && formData.stockItems.length) && !formData.productId;
+const buyTotal = Number(formData.buyPrice) || 0;
+const extraSum = fundingExtra.reduce((n, r) => n + (Number(r.amount) || 0), 0);
+const primaryPart = Math.round((buyTotal - extraSum) * 100) / 100;
+const fundingError = !coFundPossible || fundingExtra.length === 0 ? null
+  : fundingExtra.some(r => !r.accountId) ? 'Выберите счёт'
+  : fundingExtra.some(r => !(Number(r.amount) > 0)) ? 'Укажите сумму с каждого счёта'
+  : new Set([formData.accountId, ...fundingExtra.map(r => r.accountId)]).size !== fundingExtra.length + 1 ? 'Счета не должны повторяться'
+  : !(primaryPart > 0) ? 'С основного счёта должна остаться часть закупа'
+  : null;
+const buildFunding = () => {
+  if (!coFundPossible || fundingExtra.length === 0 || fundingError) return undefined;
+  return [
+    { accountId: formData.accountId, amount: primaryPart },
+    ...fundingExtra.map(r => ({ accountId: r.accountId, amount: Math.round((Number(r.amount) || 0) * 100) / 100 })),
+  ];
+};
+const sharePct = (amount: number) => buyTotal > 0 ? Math.round(amount / buyTotal * 100) : 0;
 
 // 🔹 Sale не хранит paymentDate как поле — только paymentDay. Чтобы понять, действительно
 // ли пользователь поменял дату первого платежа (а не просто открыл форму редактирования),
@@ -650,6 +683,10 @@ const regeneratePaymentPlan = (
     // Исключение — редактирование договора, по которому уже есть платежи: там поле
     // закупа заблокировано, и требование его заполнить сделало бы договор
     // нередактируемым навсегда.
+    if (!isFinancialLocked && fundingError) {
+      onShowNotification?.('Финансирование', fundingError, 'warning');
+      return;
+    }
     if (!isFinancialLocked && !(Number(formData.buyPrice) > 0)) {
       alert("Укажите цену закупа.\n\nБез неё договор не будет учитываться в прибыли — ни в вашей, ни в доле инвесторов.");
       return;
@@ -728,6 +765,9 @@ const regeneratePaymentPlan = (
 
       const submissionData = {
         ...formData,
+        // Совместное финансирование: основному счёту — остаток закупа
+        funding: buildFunding(),
+        fundingExtra: undefined,
         id: saleId,
         startDate: finalStartDate,
         paymentDay: pDay,
@@ -1321,6 +1361,55 @@ if (mode === 'CASH') {
             {accounts.filter(a => !a.isArchived || a.id === formData.accountId)
                      .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
+
+          {coFundPossible && !formData.id && fundingExtra.length === 0 && buyTotal > 0 && (accountBalances[formData.accountId] ?? Infinity) < buyTotal && (
+            <p className="text-xs text-amber-700 dark:text-amber-400 mt-2">
+              На счёте {formatCurrency(Math.max(0, accountBalances[formData.accountId] || 0))} ₽ — не хватает {formatCurrency(buyTotal - Math.max(0, accountBalances[formData.accountId] || 0))} ₽ на закуп. Добавьте ещё счёт.
+            </p>
+          )}
+
+          {coFundPossible && (fundingExtra.length > 0 ? (
+            <div className="mt-3 space-y-2">
+              <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wide">Финансирование закупа</p>
+              <div className="flex items-center justify-between gap-2 text-sm px-3 py-2 rounded-lg bg-slate-50 dark:bg-slate-900/50">
+                <span className="truncate text-slate-700 dark:text-slate-200">{accounts.find(a => a.id === formData.accountId)?.name || 'Основной счёт'}</span>
+                <span className="shrink-0 tabular-nums font-semibold text-slate-800 dark:text-white">{formatCurrency(Math.max(0, primaryPart))} ₽ · {sharePct(primaryPart)}%</span>
+              </div>
+              {fundingExtra.map((r, i) => (
+                <div key={i} className="flex items-center gap-2">
+                  <select disabled={isFinancialLocked} value={r.accountId}
+                          onChange={e => setFundingExtra(fundingExtra.map((x, j) => j === i ? { ...x, accountId: e.target.value } : x))}
+                          className="flex-1 min-w-0 p-2.5 bg-white dark:bg-slate-900 border rounded-lg text-sm text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 disabled:opacity-60">
+                    <option value="">Счёт…</option>
+                    {accounts.filter(a => !a.isArchived && a.id !== formData.accountId).map(a => (
+                      <option key={a.id} value={a.id}>{a.name}{accountBalances[a.id] != null ? ` · ${formatCurrency(accountBalances[a.id])} ₽` : ''}</option>
+                    ))}
+                  </select>
+                  <input type="number" inputMode="decimal" disabled={isFinancialLocked} value={r.amount} placeholder="Сумма"
+                         onChange={e => setFundingExtra(fundingExtra.map((x, j) => j === i ? { ...x, amount: e.target.value } : x))}
+                         className="w-28 p-2.5 bg-white dark:bg-slate-900 border rounded-lg text-sm text-slate-900 dark:text-white border-slate-300 dark:border-slate-600 disabled:opacity-60" />
+                  <span className="w-10 text-right text-xs tabular-nums text-slate-500">{sharePct(Number(r.amount) || 0)}%</span>
+                  {!isFinancialLocked && (
+                    <button type="button" aria-label="Убрать счёт" onClick={() => setFundingExtra(fundingExtra.filter((_, j) => j !== i))}
+                            className="p-1.5 text-slate-400 hover:text-rose-500">✕</button>
+                  )}
+                </div>
+              ))}
+              {fundingError && <p className="text-xs text-rose-600 dark:text-rose-400">{fundingError}</p>}
+              {!isFinancialLocked && (
+                <button type="button" onClick={() => setFundingExtra([...fundingExtra, { accountId: '', amount: '' }])}
+                        className="text-xs font-bold text-indigo-600 dark:text-indigo-400">+ Ещё счёт</button>
+              )}
+              <p className="text-[11px] text-slate-400 dark:text-slate-500 leading-snug">
+                Платежи клиента и прибыль делятся между счетами в этих долях.{isFinancialLocked ? ' По договору уже есть платежи — доли не меняются.' : ''}
+              </p>
+            </div>
+          ) : !isFinancialLocked && (
+            <button type="button" onClick={() => setFundingExtra([{ accountId: '', amount: '' }])}
+                    className="mt-2 text-xs font-bold text-indigo-600 dark:text-indigo-400">
+              + Добавить счёт — закуп с нескольких счетов
+            </button>
+          ))}
         </div>
 
         {showSupplierField && (

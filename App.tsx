@@ -64,6 +64,7 @@ import SupportButton from './components/SupportButton';
 import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
+import { expandFundedSales, saleTouchesAccount, primaryPurchaseView, coFundExpenses, isCoFundExpenseOf, fundingPieces } from './src/funding';
 import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
@@ -1194,9 +1195,13 @@ useEffect(() => {
                 })
                 .map(acc => acc.id)
         );
-        const canSeeRecord = (record: { accountId?: string; createdByUserId?: string }) => {
-            if (!record.accountId || !allowedAccountIds.has(record.accountId)) return false;
-            if (fullAccessAccountIds.has(record.accountId)) return true;
+        // Совместный договор относится ко всем своим счетам (Sale.funding)
+        const recordAccounts = (record: { accountId?: string; funding?: { accountId: string }[] }) =>
+            [record.accountId, ...(record.funding || []).map(f => f.accountId)].filter(Boolean) as string[];
+        const canSeeRecord = (record: { accountId?: string; createdByUserId?: string; funding?: { accountId: string }[] }) => {
+            const ids = recordAccounts(record);
+            if (!ids.some(id => allowedAccountIds.has(id))) return false;
+            if (ids.some(id => fullAccessAccountIds.has(id))) return true;
             return record.createdByUserId === user.id;
         };
 
@@ -1426,7 +1431,7 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'WHATSAPP_GREEN' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'WHATSAPP_GREEN' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API' | 'COFUND'): boolean => {
     if (!user) return false;
 
     // 🔒 ИИ (распознавание паспорта) решается до общего пропуска: строкой ниже
@@ -1460,6 +1465,8 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
         // Встроенный WhatsApp (как PLAN_LIMITS на сервере) — в «Бизнесе» и «Бизнес Pro».
         // Green API этим не ограничен — подключается на любом тарифе, как раньше.
         case 'WHATSAPP': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
+        // Совместное финансирование договора с нескольких счетов — «Бизнес» и «Бизнес Pro»
+        case 'COFUND': return plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         // Green API — со «Стандарта» (кто подключил раньше, работает и дальше)
         case 'WHATSAPP_GREEN': return plan === 'STANDARD' || plan === 'BUSINESS' || plan === 'BUSINESS_PRO';
         // Вторая печатная форма — со «Стандарта». На пробном тоже открыта: пробный
@@ -1547,9 +1554,15 @@ const dashboardStats = useMemo(() => {
     }
   });
   return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal };
-}, [sales]);  const accountBalances = useMemo(
-    () => computeAccountBalances(accounts, sales, expenses, retailSales),
-    [accounts, sales, expenses, retailSales]
+}, [sales]);
+  // Договоры, разложенные по счетам (shared/funding.js): совместный договор — по
+  // части на каждый счёт с пропорциональными суммами. Всё, что считает деньги ПО
+  // СЧЁТУ, берёт эти части; списки и счётчики — сами договоры. Без совместных
+  // договоров это тот же массив sales.
+  const moneySales = useMemo(() => expandFundedSales(sales), [sales]);
+  const accountBalances = useMemo(
+    () => computeAccountBalances(accounts, moneySales, expenses, retailSales),
+    [accounts, moneySales, expenses, retailSales]
   );
   const workingCapital = useMemo(() => { const cashInAccounts = Object.values(accountBalances).reduce((sum: number, bal: number) => sum + bal, 0); return cashInAccounts + dashboardStats.totalOutstanding; }, [accountBalances, dashboardStats.totalOutstanding]);
   const totalExpectedProfit = useMemo(() => {
@@ -1557,7 +1570,7 @@ const dashboardStats = useMemo(() => {
     let totalProfit = 0;
 
     // Only consider active or completed sales that have a buy price
-    const salesWithProfit = sales.filter(s => (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
+    const salesWithProfit = moneySales.filter(s => (s.status === 'ACTIVE' || s.status === 'COMPLETED') && s.buyPrice > 0);
 
     salesWithProfit.forEach(sale => {
         const saleProfit = sale.totalAmount - sale.buyPrice;
@@ -1574,7 +1587,7 @@ const dashboardStats = useMemo(() => {
     });
 
     return totalProfit;
-  }, [sales, accounts, investors, isManager, profitFromPaymentsOnly]);
+  }, [moneySales, accounts, investors, isManager, profitFromPaymentsOnly]);
   const realizedPeriodProfit = useMemo(() => {
     if (!isManager) return 0;
     let periodProfit = 0;
@@ -1582,7 +1595,7 @@ const dashboardStats = useMemo(() => {
     const endDate = new Date(myProfitPeriod.end);
     endDate.setHours(23, 59, 59, 999);
 
-    const salesWithProfit = sales.filter(s => s.buyPrice > 0);
+    const salesWithProfit = moneySales.filter(s => s.buyPrice > 0);
 
     salesWithProfit.forEach(sale => {
         const totalSaleProfit = sale.totalAmount - sale.buyPrice;
@@ -1603,7 +1616,7 @@ const dashboardStats = useMemo(() => {
         });
     });
     return periodProfit;
-  }, [sales, accounts, investors, myProfitPeriod, isManager, profitFromPaymentsOnly]);
+  }, [moneySales, accounts, investors, myProfitPeriod, isManager, profitFromPaymentsOnly]);
   const reportData = useMemo(() => {
     if (!isManager) return null;
     const { accountId, period } = reportFilters;
@@ -1612,8 +1625,8 @@ const dashboardStats = useMemo(() => {
     endDate.setHours(23, 59, 59, 999);
 
     const filteredSales = accountId === 'ALL'
-        ? sales
-        : sales.filter(s => s.accountId === accountId);
+        ? moneySales
+        : moneySales.filter(s => s.accountId === accountId);
 
     let customerPaymentsInPeriod = 0;
     filteredSales.forEach(sale => {
@@ -1687,7 +1700,7 @@ const dashboardStats = useMemo(() => {
     employees
       .filter(emp => Number(emp.profitPercentage) > 0 && emp.profitReducesManager !== false)
       .forEach(emp => {
-        const scopedSales = accountId === 'ALL' ? sales : sales.filter(s => s.accountId === accountId);
+        const scopedSales = accountId === 'ALL' ? moneySales : moneySales.filter(s => s.accountId === accountId);
         const range = { start: startDate, end: endDate };
         const total = getEmployeeProfitAccrued(emp, scopedSales, accounts, investors, range, profitFromPaymentsOnly);
         if (emp.profitSource === 'SHARED') {
@@ -1704,7 +1717,7 @@ const dashboardStats = useMemo(() => {
       });
 
     return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
-  }, [reportFilters, sales, accounts, investors, expenses, employees, isManager, profitFromPaymentsOnly]);
+  }, [reportFilters, moneySales, accounts, investors, expenses, employees, isManager, profitFromPaymentsOnly]);
 
   // 📱 Выход из аккаунта на iPhone: сначала отвязать телефон от его уведомлений —
   // пока жив токен входа, без него сервер запрос не примет. Без сети выход не ждёт
@@ -1749,7 +1762,7 @@ const dashboardStats = useMemo(() => {
   const accountUsage = useMemo(() => {
     const map: Record<string, number> = {};
     const bump = (id?: string) => { if (id) map[id] = (map[id] || 0) + 1; };
-    sales.forEach(x => bump(x.accountId));
+    moneySales.forEach(x => bump(x.accountId));
     expenses.forEach(x => bump(x.accountId));
     retailSales.forEach(r => {
       bump(r.accountId);
@@ -1921,7 +1934,8 @@ const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {
     const allowedAccountIds = new Set(filteredAccounts.map((acc: Account) => acc.id));
 
     // 3. Продажи и расходы только по разрешенным счетам
-    const filteredSales = (data.sales || []).filter((s: Sale) => s.accountId && allowedAccountIds.has(s.accountId));
+    const filteredSales = (data.sales || []).filter((s: Sale) =>
+        [s.accountId, ...(s.funding || []).map(f => f.accountId)].some(id => id && allowedAccountIds.has(id)));
     const filteredExpenses = (data.expenses || []).filter((e: Expense) => e.accountId && allowedAccountIds.has(e.accountId));
 
     return {
@@ -1934,6 +1948,43 @@ const filterDataForEmployeeClient = (data: any, allowedIds: string[]) => {
 };
 
 // ✅ ОБНОВЛЁННЫЙ handleSaveSale — проверка лимита + правильная обработка ошибок
+/**
+ * Расходы закупа совместных счетов договора (Sale.funding): у каждого счёта,
+ * давшего часть закупа, — свой расход на эту часть. Лишние (счёт убрали из
+ * договора, договор перестал быть совместным) удаляются, изменившиеся —
+ * пересохраняются. Основной счёт ведёт обычный расход exp_sale_<id>.
+ * Ошибка не прерывает сохранение договора: запись уйдёт с очередью.
+ */
+const syncCoFundExpenses = async (saleId: string, data: Partial<Sale>, ownerId: string) => {
+  if (!user) return;
+  const want = coFundExpenses(saleId, data);
+  const have = expenses.filter(e => isCoFundExpenseOf(e.id, saleId));
+  for (const e of have) {
+    if (want.some(w => w.id === e.id)) continue;
+    try { await api.deleteItem('expenses', e.id); removeFromList(setExpenses, e.id); }
+    catch (err: any) { console.warn('⚠️ Расход совместного счёта не удалён:', err?.message); }
+  }
+  for (const w of want) {
+    const cur = have.find(e => e.id === w.id);
+    const title = `Закуп: ${data.productName}`;
+    if (cur && cur.amount === w.amount && cur.accountId === w.accountId && cur.title === title) continue;
+    const exp: Expense = {
+      ...cur,
+      id: w.id,
+      userId: ownerId,
+      createdByUserId: cur?.createdByUserId || user.id,
+      accountId: w.accountId,
+      title,
+      amount: w.amount,
+      category: 'Себестоимость',
+      date: cur?.date || (data.startDate as string),
+      isRefund: false,
+    };
+    try { const saved = await api.saveItem('expenses', exp); updateList(setExpenses, saved || exp); }
+    catch (err: any) { console.warn('⚠️ Расход совместного счёта не сохранён:', err?.message); updateList(setExpenses, exp); }
+  }
+};
+
 const handleSaveSale = async (data: any): Promise<any> => {
   if (!user) return;
 
@@ -2032,11 +2083,13 @@ const handleSaveSale = async (data: any): Promise<any> => {
     {
       const buyPriceExpenseId = `exp_sale_${saleId}`;
       const linkedExpense = expenses.find(e => e.id === buyPriceExpenseId);
-      const newBuyPrice = Number(data.buyPrice);
+      // Совместное финансирование: основной счёт тратит только свою часть закупа,
+      // остальное — расходы совместных счетов (syncCoFundExpenses ниже)
+      const newBuyPrice = Number(primaryPurchaseView(data).buyPrice);
       // 🔒 Правка, не затрагивающая закуп, не заводит расход заново. У части договоров
       // расхода нет вовсе (оформлен офлайн и запись не дошла, сохранение упало, договор
       // старше связки) — и раньше смена даты или клиента списывала закуп второй раз.
-      const buyAction = buyPriceExpenseAction(prevSale, data, linkedExpense);
+      const buyAction = buyPriceExpenseAction(prevSale && primaryPurchaseView(prevSale), primaryPurchaseView(data), linkedExpense);
 
       try {
         if (buyAction === 'delete') {
@@ -2066,6 +2119,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
         console.warn('⚠️ Расход закупа не синхронизирован (будет учтён при синхронизации):', e.message);
         // 🔹 НЕ прерываем выполнение — договор уже сохранён
       }
+      await syncCoFundExpenses(saleId, data, ownerId);
     }
 
     // 🔹 🔑 🔑 5.5 ОТГРУЗКА СО СКЛАДА ПО ДОГОВОРУ
@@ -2217,7 +2271,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
       const offlineLinked = expenses.find(e => e.id === offlineBuyExpenseId);
       const prevSaleOffline = data.id ? sales.find((s: any) => s.id === data.id) : null;
       // Та же защита, что и в онлайн-ветке: правка, не касающаяся закупа, расход не заводит.
-      if (buyPriceExpenseAction(prevSaleOffline, data, offlineLinked) === 'save') {
+      if (buyPriceExpenseAction(prevSaleOffline && primaryPurchaseView(prevSaleOffline), primaryPurchaseView(data), offlineLinked) === 'save') {
         const buyPriceExpense: Expense = {
           ...offlineLinked,
           id: offlineBuyExpenseId,
@@ -2225,7 +2279,7 @@ const handleSaveSale = async (data: any): Promise<any> => {
           createdByUserId: offlineLinked?.createdByUserId || user.id,
           accountId: data.accountId,
           title: `Закуп: ${data.productName}`,
-          amount: Number(data.buyPrice),
+          amount: Number(primaryPurchaseView(data).buyPrice),
           category: 'Себестоимость',
           date: offlineLinked?.date || data.startDate,
           isRefund: false
@@ -2243,6 +2297,8 @@ const handleSaveSale = async (data: any): Promise<any> => {
         }
       }
       
+      await syncCoFundExpenses(tempSale.id, data, isEmployee && user.managerId ? user.managerId : user.id);
+
       // 🔹 🔑 ОБНОВЛЯЕМ ОСТАТОК ТОВАРА ЛОКАЛЬНО (только для новых договоров)
       const isOfflineEdit = data.id && sales.some((s: any) => s.id === data.id);
       if (!isOfflineEdit && data.productId) {
@@ -2305,13 +2361,15 @@ const handleDeleteSale = async (saleId: string) => {
   try {
     // 🔹 1. ВОЗВРАТ ПЕРВОГО ВЗНОСА (изолированно)
     try {
-      if (sale.downPayment > 0 && sale.accountId) {
+      // Совместный договор: взнос возвращается с каждого счёта в его доле
+      for (const piece of fundingPieces(sale)) {
+        if (!(piece.downPayment > 0) || !piece.accountId) continue;
         const refundExpense: Expense = {
-          id: `refund_${saleId}_${Date.now()}`,
+          id: piece.accountId === sale.accountId ? `refund_${saleId}_${Date.now()}` : `refund_${saleId}_${Date.now()}__${piece.accountId}`,
           userId: sale.userId,
-          accountId: sale.accountId,
+          accountId: piece.accountId,
           title: `Возврат: ${sale.productName}`,
-          amount: sale.downPayment,
+          amount: piece.downPayment,
           category: 'Возврат клиенту',
           date: new Date().toISOString(),
           isRefund: true
@@ -2351,6 +2409,16 @@ const handleDeleteSale = async (saleId: string) => {
           await api.deleteItem('expenses', `exp_sale_${saleId}`);
           removeFromList(setExpenses, `exp_sale_${saleId}`);
         }
+      }
+      // Расходы закупа совместных счетов: id известны из самого договора — удаляем
+      // и те, что сотруднику не видны (чужой счёт)
+      const coIds = new Set([
+        ...coFundExpenses(saleId, sale).map(x => x.id),
+        ...expenses.filter(x => isCoFundExpenseOf(x.id, saleId)).map(x => x.id),
+      ]);
+      for (const id of coIds) {
+        await api.deleteItem('expenses', id);
+        removeFromList(setExpenses, id);
       }
     } catch (e) {
       console.warn('⚠️ Buy expense delete failed:', e);
@@ -4372,6 +4440,10 @@ const contractCounts = useMemo(() => {
                // Also delete associated expense if any
                await api.deleteItem('expenses', `exp_sale_${sale.id}`);
                removeFromList(setExpenses, `exp_sale_${sale.id}`);
+               for (const e of expenses.filter(x => isCoFundExpenseOf(x.id, sale.id))) {
+                   await api.deleteItem('expenses', e.id);
+                   removeFromList(setExpenses, e.id);
+               }
                // Restore stock
                if (sale.productId) {
                    const prod = products.find(p => p.id === sale.productId);
@@ -4650,7 +4722,7 @@ if (!user && !showSplash) {
 
     return (
       <InvestorDashboard
-        sales={sales.filter(s => {
+        sales={moneySales.filter(s => {
           const acc = accounts.find(a => a.id === s.accountId);
           return !!acc && isAccountForInvestor(acc, activeInvestor.id);
         })}
@@ -4684,11 +4756,11 @@ if (!user && !showSplash) {
       ? accounts.filter(a => isAccountForInvestor(a, user.id))
       : accounts}
     sales={isInvestor && user
-      ? sales.filter(s => {
+      ? moneySales.filter(s => {
           const acc = accounts.find(a => a.id === s.accountId);
           return !!acc && isAccountForInvestor(acc, user.id);
         })
-      : sales}
+      : moneySales}
     expenses={isInvestor && user
       ? expenses.filter(e => {
           const acc = accounts.find(a => a.id === e.accountId);
@@ -4727,7 +4799,7 @@ if (!user && !showSplash) {
               {currentView === 'CONTRACTS' && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="CONTRACTS">
                   <Contracts
-                      sales={isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales}
+                      sales={isInvestor ? sales.filter(s => saleTouchesAccount(s, accounts.find(a => a.ownerId === user.id)?.id || '')) : sales}
                       customers={customers}
                       accounts={accounts}
                       activeTab={activeContractTab}
@@ -4769,7 +4841,8 @@ if (!user && !showSplash) {
                       return (
                         <InvestorDetails investor={selectedInvestor}
                                      investors={investors}
-                                     account={getInvestorAccount(selectedInvestorId, accounts)} sales={sales}
+                                     account={getInvestorAccount(selectedInvestorId, accounts)} sales={moneySales}
+                                     accountBalance={accountBalances[getInvestorAccount(selectedInvestorId, accounts)?.id || '']}
                                      expenses={expenses} customers={customers} onBack={requestClose}
                                      appSettings={appSettings}
                                      onUpdateInvestor={handleUpdateInvestor}
@@ -4787,7 +4860,7 @@ if (!user && !showSplash) {
                       partnerships={partnerships}
                       investors={investors}
                       accounts={accounts}
-                      sales={sales}
+                      sales={moneySales}
                       expenses={expenses}
                       onAddPartnership={handleAddPartnership}
                       onSelectAccount={handleSelectAccountForOperations}
@@ -4878,7 +4951,7 @@ if (!user && !showSplash) {
                   // Свойства истории денег — одни для отдельного экрана и для общей истории
                   const moneyProps = {
                     retailSales,
-                    sales: isInvestor ? sales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : sales,
+                    sales: isInvestor ? moneySales.filter(s => s.accountId === accounts.find(a => a.ownerId === user.id)?.id) : moneySales,
                     expenses: isInvestor ? expenses.filter(e => e.accountId === accounts.find(a => a.ownerId === user.id)?.id) : expenses,
                     accounts,
                     customers,
@@ -4934,7 +5007,7 @@ if (!user && !showSplash) {
               {currentView === 'REPORTS' && reportData && (
                   <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                     <Reports investors={investors} filters={reportFilters} onFiltersChange={setReportFilters}
-                           data={reportData} appSettings={appSettings} sales={sales} expenses={expenses} accounts={accounts} customers={customers}
+                           data={reportData} appSettings={appSettings} sales={moneySales} expenses={expenses} accounts={accounts} customers={customers}
                            retailSales={scopedRetailSales} products={products} stockMovements={scopedMovements} showShop={shopAvailable}/>
                   </PagePush>
               )}
@@ -4953,7 +5026,7 @@ if (!user && !showSplash) {
               {currentView === 'CREATE_EXPENSE' && (
                   <PagePush onClose={() => { setCurrentView(formReturnView); setDraftExpenseData(null); }}>
                     {(requestClose: () => void) => (
-                      <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={sales}
+                      <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={moneySales}
                               movements={stockMovements} products={products}
                               showSupplierCategory={checkAccess('SUPPLIERS')} categories={appSettings.customCategories || []} initialData={draftExpenseData} onClose={requestClose}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />
@@ -4970,6 +5043,7 @@ if (!user && !showSplash) {
                            showShop={shopAvailable} warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}
                            warehouses={scopedWarehouses}
                            sales={sales} user={user} contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
+                           accountBalances={accountBalances} coFundingAllowed={checkAccess('COFUND')}
                            appSettings={appSettings} />
                     )}
                   </PagePush>
@@ -5183,7 +5257,7 @@ if (!user && !showSplash) {
               investor={activeInvestor}
               investors={investors}
               account={getInvestorAccount(user.id, accounts)}
-              sales={sales.filter((s: Sale) => s.accountId === getInvestorAccount(user.id, accounts)?.id)}
+              sales={moneySales.filter((s: Sale) => s.accountId === getInvestorAccount(user.id, accounts)?.id)}
               expenses={expenses.filter((e: Expense) => e.accountId === getInvestorAccount(user.id, accounts)?.id)}
               customers={customers}
               onBack={requestClose}

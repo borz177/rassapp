@@ -19,6 +19,7 @@ import GlassSheet, { SheetSection } from './GlassSheet';
 import Sheet from './Sheet';
 import ZakatSheet from './ZakatSheet';
 import { moneyInProfit, saleProfitMargin, expectedPaymentsInPeriod, formatCurrency, formatDate, getManagerSharePercent, calculateSaleOverdue, normalizePhoneForWhatsApp, getInvestorAccount } from '../src/utils';
+import { expandFundedSales, saleTouchesAccount } from '../src/funding';
 import { Calendar as CalendarIcon, ChevronLeft, ChevronRight } from 'lucide-react';
 
 // Календарный день платежа в виде «YYYY-MM-DD» по московскому времени.
@@ -1108,6 +1109,20 @@ const Dashboard: React.FC<DashboardProps> = ({
       !sale.accountId || !archived.has(sale.accountId) || sale.accountId === selectedAccountId
     );
   }, [allSales, accounts, selectedAccountId]);
+
+  // Договоры, разложенные по счетам (shared/funding.js): суммы ПО СЧЁТУ
+  // (карточки, оборот, прибыль) считаются по ним, списки и кнопки — по самим
+  // договорам. Без совместных договоров — тот же массив.
+  const moneySales = useMemo(() => {
+    const pieces = expandFundedSales(allSales);
+    const archived = new Set(accounts.filter(a => a.isArchived).map(a => a.id));
+    if (archived.size === 0) return pieces;
+    return pieces.filter(sale =>
+      !sale.accountId || !archived.has(sale.accountId) || sale.accountId === selectedAccountId
+    );
+  }, [allSales, accounts, selectedAccountId]);
+  // Настоящий договор по id части — для кнопок «оплатить», «график»
+  const originalSale = (sale: Sale) => (sale as any).fundingOf ? (allSales.find(x => x.id === sale.id) || sale) : sale;
   // Неделя, а не «сегодня и завтра»: у менеджера ближайший платёж часто через 2–3 дня,
   // и двухдневное окно показывало пустой экран, хотя на неделе ждут поступления.
   const [paymentDateFilter, setPaymentDateFilter] = useState<'WEEK' | 'TODAY' | 'TOMORROW'>('WEEK');
@@ -1132,8 +1147,8 @@ const currentMonthName = useMemo(() => {
 
  const calculatedStats = useMemo(() => {
     const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
+        ? moneySales.filter(s => s.accountId === selectedAccountId)
+        : moneySales;
 
     let totalRevenue = 0;
     let totalOutstanding = 0;
@@ -1170,7 +1185,7 @@ const currentMonthName = useMemo(() => {
   // 🔹 Общая сумма просрочки по всем клиентам
   const totalOverdue = useMemo(() => {
     const today = new Date(); today.setHours(0,0,0,0);
-    const filteredSales = selectedAccountId ? sales.filter(s => s.accountId === selectedAccountId) : sales;
+    const filteredSales = selectedAccountId ? moneySales.filter(s => s.accountId === selectedAccountId) : moneySales;
     const investorIds = new Set(investors.map(i => i.id));
     let overdue = 0;
     filteredSales.forEach(sale => {
@@ -1183,7 +1198,7 @@ const currentMonthName = useMemo(() => {
 
   // 🔹 Общая стоимость закупок (buyPrice) по активным договорам
   const totalBuyCost = useMemo(() => {
-    const filteredSales = selectedAccountId ? sales.filter(s => s.accountId === selectedAccountId) : sales;
+    const filteredSales = selectedAccountId ? moneySales.filter(s => s.accountId === selectedAccountId) : moneySales;
     const investorIds = new Set(investors.map(i => i.id));
     let cost = 0;
     filteredSales.forEach(sale => {
@@ -1200,8 +1215,8 @@ const currentMonthName = useMemo(() => {
   // сумму, окно деталей — строки, из которых она сложена. Держать два счёта
   // значило бы однажды показать в деталях не то, что на карточке.
   const profitStats = useMemo(
-    () => profitTotals(sales, customers, { selectedAccountId, profitFromPaymentsOnly }),
-    [sales, customers, selectedAccountId, profitFromPaymentsOnly]
+    () => profitTotals(moneySales, customers, { selectedAccountId, profitFromPaymentsOnly }),
+    [moneySales, customers, selectedAccountId, profitFromPaymentsOnly]
   );
 
   const currentWorkingCapital = useMemo(() => {
@@ -1250,14 +1265,14 @@ const currentMonthName = useMemo(() => {
     if (!showTurnover) return null;
     const accountIds = turnoverAccountIds;
     return turnoverBreakdown({
-      accounts, accountIds, accountBalances, sales, expenses, investors,
+      accounts, accountIds, accountBalances, sales: moneySales, expenses, investors,
       profitFromPaymentsOnly,
     });
-  }, [showTurnover, turnoverAccountIds, accounts, accountBalances, sales, expenses, investors, profitFromPaymentsOnly]);
+  }, [showTurnover, turnoverAccountIds, accounts, accountBalances, moneySales, expenses, investors, profitFromPaymentsOnly]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
-      if (selectedAccountId) filtered = filtered.filter(s => s.accountId === selectedAccountId);
+      if (selectedAccountId) filtered = filtered.filter(s => saleTouchesAccount(s, selectedAccountId));
       filtered = filtered.filter(s => !s.customerId.startsWith('system_'));
       return [...filtered]
           .sort((a, b) => new Date(b.startDate).getTime() - new Date(a.startDate).getTime())
@@ -1275,7 +1290,7 @@ const currentMonthName = useMemo(() => {
     // Выбор счёта в «Обзоре» распространяется и на «Платежи»: список, календарь
     // и счётчик на вкладке растут из этого массива, поэтому фильтруем в корне —
     // иначе пришлось бы повторять условие в трёх местах и однажды забыть.
-    const scopedSales = selectedAccountId ? sales.filter(x => x.accountId === selectedAccountId) : sales;
+    const scopedSales = selectedAccountId ? sales.filter(x => saleTouchesAccount(x, selectedAccountId)) : sales;
     return scopedSales.map(sale => {
       if (sale.status !== 'ACTIVE' && sale.status !== 'DRAFT') return null;
 
@@ -1400,8 +1415,8 @@ const expectedPaymentsThisMonth = useMemo(() => {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
+        ? moneySales.filter(s => s.accountId === selectedAccountId)
+        : moneySales;
 
     let expected = 0;
 
@@ -1429,8 +1444,8 @@ const receivedPaymentsThisMonth = useMemo(() => {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
+        ? moneySales.filter(s => s.accountId === selectedAccountId)
+        : moneySales;
 
     let received = 0;
 
@@ -1462,8 +1477,8 @@ const receivedProfitThisMonth = useMemo(() => {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
+        ? moneySales.filter(s => s.accountId === selectedAccountId)
+        : moneySales;
 
     let receivedProfit = 0;
 
@@ -1514,8 +1529,8 @@ const expectedProfitThisMonth = useMemo(() => {
     const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
 
     const filteredSales = selectedAccountId
-        ? sales.filter(s => s.accountId === selectedAccountId)
-        : sales;
+        ? moneySales.filter(s => s.accountId === selectedAccountId)
+        : moneySales;
 
     let expectedProfit = 0;
 
@@ -1623,7 +1638,7 @@ useEffect(() => {
           <MacDashboardHero
             part="greeting"
             userName={user?.name}
-            sales={selectedAccountId ? sales.filter(s => s.accountId === selectedAccountId) : sales}
+            sales={selectedAccountId ? moneySales.filter(s => s.accountId === selectedAccountId) : moneySales}
             showCents={appSettings.showCents}
           />
         )}
@@ -1742,7 +1757,7 @@ useEffect(() => {
                 {macShell && (
                   <MacDashboardHero
                     part="chart"
-                    sales={selectedAccountId ? sales.filter(s => s.accountId === selectedAccountId) : sales}
+                    sales={selectedAccountId ? moneySales.filter(s => s.accountId === selectedAccountId) : moneySales}
                     showCents={appSettings.showCents}
                   />
                 )}
@@ -2460,13 +2475,18 @@ useEffect(() => {
           {selectedPaymentType && (
   <PaymentDetailsModal
     type={selectedPaymentType}
-    sales={sales}
+    // По одному счёту — его доли; по всем — сами договоры, без половинок
+    sales={selectedAccountId ? moneySales : sales}
     customers={customers}
     investors={investors}
     selectedAccountId={selectedAccountId} // ← Добавили
     onClose={() => setSelectedPaymentType(null)}
-    onInitiatePayment={onInitiatePayment}
-    onViewSchedule={onViewSchedule}
+    // Строка может быть долей совместного договора — платят по всему договору
+    onInitiatePayment={(sale: Sale, amount: number) => {
+      const share = (sale as any).fundingShare;
+      onInitiatePayment(originalSale(sale), share ? Math.round(amount / share * 100) / 100 : amount);
+    }}
+    onViewSchedule={(sale: Sale) => onViewSchedule(originalSale(sale))}
     appSettings={appSettings}
   />
 )}
@@ -2493,7 +2513,7 @@ useEffect(() => {
 {selectedProfitType && (
     <ProfitDetailsModal
         type={selectedProfitType}
-        sales={sales}
+        sales={selectedAccountId ? moneySales : sales}
         customers={customers}
         investors={investors}
         selectedAccountId={selectedAccountId}
