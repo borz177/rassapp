@@ -28,6 +28,34 @@ import { restoreWindowFocus } from '../src/windowFocus';
  * свайп назад и аппаратная кнопка Android закроют СТРАНИЦУ ПОД окном,
  * а само окно останется висеть над чужим экраном.
  */
+/**
+ * Окно «отложено»: из него открыли страницу (карточку клиента, график), и она
+ * лежит сверху. Окно не закрывается — живо со своей прокруткой и состоянием, —
+ * а при возврате оказывается ровно там, где было, как в родных приложениях.
+ * Пока отложено, оно не принимает касаний и не забирает шаг «назад» (иначе
+ * свайп со страницы закрывал бы его, а не страницу).
+ *
+ * Листы (Sheet, GlassSheet) в это время опускаются прямо под страницу — при
+ * свайпе назад из-под неё видно экран вместе с окном. Остальные окна просто
+ * скрыты. Включает тот, кто держит окна под страницей (Dashboard).
+ */
+export const ModalParkContext = React.createContext(false);
+
+/** z-index отложенного листа: под толкнутой страницей (.page-push-layer, 30) */
+export const PARKED_Z = 29;
+
+/**
+ * Стиль отложенного листа. Под страницей его видно только на телефоне: там
+ * страница — слой во весь экран, и при свайпе назад из-под неё выглядывает
+ * экран с окном. На компьютере и в программе для Mac страница лежит внутри
+ * карточки содержимого, лист поверх неё не опустить — там он просто скрыт.
+ */
+export const parkedSheetStyle = (): React.CSSProperties => {
+  const underPage = typeof window !== 'undefined' && window.innerWidth < 768
+    && !document.documentElement.classList.contains('shell-floating');
+  return underPage ? { zIndex: PARKED_Z, visibility: 'visible' } : { visibility: 'hidden' };
+};
+
 interface ModalPortalProps {
   children: React.ReactNode;
   /** Закрытие по шагу «назад»: свайп от края и кнопка Android */
@@ -41,11 +69,22 @@ const ModalPortal: React.FC<ModalPortalProps> = ({ children, onClose }) => {
   React.useEffect(() => { restoreWindowFocus(); }, []);
   // Открытое окно — верхний шаг в стеке, и «назад» принадлежит ему: иначе
   // жест закрывал бы страницу под окном и окно оставалось бы над чужим экраном.
-  useBackInterceptor(!!onClose, () => onClose?.());
+  const parked = React.useContext(ModalParkContext);
+  useBackInterceptor(!!onClose && !parked, () => onClose?.());
   // document.body существует к моменту рендера в браузере; на всякий случай
   // (SSR/тесты) возвращаем содержимое как есть, а не падаем.
   if (typeof document === 'undefined') return <>{children}</>;
-  return createPortal(children, document.body);
+  // Обёртка постоянная (display: contents — без своей коробки): если бы она
+  // появлялась только у отложенного окна, React пересоздал бы содержимое, и
+  // прокрутка со всем состоянием пропали бы. Листы поверх visibility: hidden
+  // ставят себе visible — им положено быть видными под страницей.
+  return createPortal(
+    <div style={{ display: 'contents', pointerEvents: parked ? 'none' : undefined, visibility: parked ? 'hidden' : undefined }}
+         aria-hidden={parked || undefined} inert={parked || undefined}>
+      {children}
+    </div>,
+    document.body,
+  );
 };
 
 export default ModalPortal;

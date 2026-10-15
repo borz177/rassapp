@@ -4,6 +4,7 @@ import SwapModesButton from './SwapModesButton';
 import MacDashboardHero from './MacDashboardHero';
 import { isMacShell } from '../src/platform';
 import ProfitTotalsModal from './ProfitTotalsModal';
+import { ModalParkContext } from './ModalPortal';
 import { profitTotals } from '../src/profitTotals';
 import { Sale, Customer, Account, AppSettings, Investor, User, Product, RetailSale, Supplier, StockMovement, Expense } from '../types';
 import DashboardCash from './DashboardCash';
@@ -108,6 +109,12 @@ interface DashboardProps {
   investors: Investor[];
   /** Нужен только для плашки об истекающей подписке */
   user?: User | null;
+  /**
+   * Сверху открыта страница, перешли на неё с Главной (карточка клиента,
+   * график). Главная остаётся под ней, открытые окна — отложены и при
+   * возврате на месте (см. ModalParkContext).
+   */
+  parked?: boolean;
   retailSales?: RetailSale[];
   products?: Product[];
   /** Магазин включён и вынесен на главный экран отдельной вкладкой */
@@ -295,7 +302,7 @@ const PaymentActionModal = ({
 
                 <div className="px-6 pb-6 space-y-2">
                     <button
-                        onClick={() => { onSelectCustomer(sale.customerId); handleClose(); }}
+                        onClick={() => onSelectCustomer(sale.customerId)}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-3 transition-colors rounded-xl"
                     >
                         <span className="text-indigo-500">👤</span>
@@ -311,7 +318,7 @@ const PaymentActionModal = ({
                     </button>
 
                     <button
-                        onClick={() => { onViewSchedule(sale); handleClose(); }}
+                        onClick={() => onViewSchedule(sale)}
                         className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 flex items-center gap-3 transition-colors rounded-xl border-t border-slate-100 dark:border-slate-700 pt-3.5 mt-1"
                     >
                         <span className="text-indigo-500"><CalendarIcon size={18}/></span>
@@ -507,7 +514,7 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
                   )}
                   {onViewSchedule && (
                     <button
-                      onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); handleClose(); }}
+                      onClick={(e) => { e.stopPropagation(); onViewSchedule(item.sale); }}
                       className="px-2 py-1 bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 rounded-lg font-medium hover:bg-indigo-100 dark:hover:bg-indigo-900/50 transition-colors"
                     >
                       График
@@ -777,10 +784,7 @@ const ProfitDetailsModal = ({
             return (
               <div
                 key={`${item.sale.id}-${item.date}-${idx}`}
-                onClick={() => {
-                  onSelectCustomer(item.customerId);
-                  handleClose();
-                }}
+                onClick={() => onSelectCustomer(item.customerId)}
                 className={`bg-white dark:bg-slate-800 p-3 rounded-xl border transition-all ${
                   item.isPaid || item.paymentPercent > 0
                     ? 'border-emerald-100 dark:border-emerald-900/50'
@@ -969,6 +973,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     expenses = [],
     onUpdateSettings,
     onRecordZakat,
+    parked = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
   const macShell = isMacShell();
@@ -1619,6 +1624,7 @@ useEffect(() => {
 
 
   return (
+    <ModalParkContext.Provider value={parked}>
     <div className="dash-root min-h-screen bg-gradient-to-br from-slate-50 to-indigo-50/30 dark:from-slate-900 dark:to-indigo-950/20 pb-24 w-full">
       {/* Сверху на телефоне отступ задавался дважды: p-4 у main плюс py-4
           здесь. Под плавающей шапкой это давало две трети лишнего воздуха.
@@ -2518,10 +2524,9 @@ useEffect(() => {
         investors={investors}
         selectedAccountId={selectedAccountId}
         onClose={() => setSelectedProfitType(null)}
-        onSelectCustomer={(customerId) => {
-            setSelectedProfitType(null);
-            onSelectCustomer(customerId); 
-        }}
+        // Окно не закрываем: Главная остаётся под карточкой клиента, и при
+        // возврате окно на том же месте (см. parked)
+        onSelectCustomer={onSelectCustomer}
         appSettings={appSettings}
     />
 )}
@@ -2529,6 +2534,7 @@ useEffect(() => {
 
       </div>
     </div>
+    </ModalParkContext.Provider>
   );
 };
 

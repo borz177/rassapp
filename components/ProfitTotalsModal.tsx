@@ -127,8 +127,9 @@ const ProfitTotalsModal: React.FC<ProfitTotalsModalProps> = ({
               <div
                 key={row.saleId}
                 onClick={() => {
-                  if (onOpenContract) { onOpenContract(row.saleId, row.customerId); handleClose(); }
-                  else if (onSelectCustomer) { onSelectCustomer(row.customerId); handleClose(); }
+                  // Окно не закрываем: при возврате со страницы договора оно на месте
+                  if (onOpenContract) onOpenContract(row.saleId, row.customerId);
+                  else if (onSelectCustomer) onSelectCustomer(row.customerId);
                 }}
                 className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-slate-100 dark:border-slate-700 hover:border-indigo-200 dark:hover:border-indigo-800 hover:shadow-sm transition-all cursor-pointer active:scale-[0.99]"
               >

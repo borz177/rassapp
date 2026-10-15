@@ -5,6 +5,13 @@ interface SubPageProps {
   /** Вызывается после того, как анимация ухода доиграла — здесь и снимают состояние. */
   onClose: () => void;
   className?: string;
+  /**
+   * Подстраницу открыли сразу, а не из списка под ней (договор кнопкой
+   * «График» с Главной или из «Договоров»): она уже на месте — без второго
+   * выезда, — и «назад» уводит туда, откуда пришли, закрывая всю страницу,
+   * а не в список, которого человек не видел.
+   */
+  direct?: boolean;
   children: React.ReactNode | ((requestClose: () => void) => React.ReactNode);
 }
 
@@ -29,14 +36,15 @@ const CLOSE_DURATION = 260;
  * заново и сохраняет позицию прокрутки — при возврате человек оказывается там
  * же, откуда ушёл.
  */
-const SubPage: React.FC<SubPageProps> = ({ onClose, className = '', children }) => {
-  const [entered, setEntered] = useState(false);
+const SubPage: React.FC<SubPageProps> = ({ onClose, className = '', direct = false, children }) => {
+  const [entered, setEntered] = useState(direct);
   const [closing, setClosing] = useState(false);
   // Синхронный замок: `closing` обновится только к следующей отрисовке, а
   // второй жест может прийти раньше и перезапустить уход с середины.
   const closingRef = useRef(false);
 
   useEffect(() => {
+    if (direct) return;
     // Два кадра: браузер обязан сначала отрисовать страницу за правым краем и
     // только потом получить новое положение — иначе он схлопнет оба состояния в
     // один кадр и переход не проиграется.
@@ -65,7 +73,7 @@ const SubPage: React.FC<SubPageProps> = ({ onClose, className = '', children }) 
 
   // Пока подстраница открыта, шаг «назад» принадлежит ей: и свайп, и стрелка,
   // и аппаратная кнопка возвращают к списку, а не закрывают весь раздел.
-  useBackInterceptor(true, requestClose);
+  useBackInterceptor(!direct, requestClose);
 
   const idle = entered && !closing;
 

@@ -1,5 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import ModalPortal from './ModalPortal';
+import ModalPortal, { ModalParkContext, parkedSheetStyle } from './ModalPortal';
 import { isPhoneWidth, playGhostExit, useSheetDrag } from '../src/sheetDrag';
 
 /**
@@ -151,6 +151,10 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
   footer, fit = 'full', zIndex = 200, children,
 }) => {
   const phone = useRef(isPhoneWidth());
+  // Отложен под страницей, открытой из него (см. ModalParkContext)
+  const parked = React.useContext(ModalParkContext);
+  const parkedRef = useRef(parked);
+  parkedRef.current = parked;
   const [closing, setClosing] = useState(false);
   const closingRef = useRef(false);
 
@@ -179,7 +183,7 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
   const requestRef = useRef(requestClose);
   requestRef.current = requestClose;
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') requestRef.current(); };
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !parkedRef.current) requestRef.current(); };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
   }, []);
@@ -201,7 +205,7 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
   // Закрытый кнопкой или смахнутый лист уже ушёл сам: closingRef.
   const rootRef = useRef<HTMLDivElement>(null);
   useLayoutEffect(() => () => {
-    if (!closingRef.current && rootRef.current) playGhostExit(rootRef.current, OUT_MS, phone.current);
+    if (!closingRef.current && !parkedRef.current && rootRef.current) playGhostExit(rootRef.current, OUT_MS, phone.current);
   }, []);
 
   // Шапка лежит поверх содержимого (оно прокручивается под ней и просвечивает
@@ -250,7 +254,7 @@ const GlassSheet: React.FC<GlassSheetProps> = ({
 
   return (
     <ModalPortal onClose={requestClose}>
-      <div ref={rootRef} className="fixed inset-0 flex justify-center items-end sm:items-center sm:p-6" style={{ zIndex }}>
+      <div ref={rootRef} className="fixed inset-0 flex justify-center items-end sm:items-center sm:p-6" style={parked ? parkedSheetStyle() : { zIndex }}>
         <div ref={backdropRef} className="absolute inset-0 bg-slate-900/50 backdrop-blur-[2px] search-backdrop-in" style={backdropStyle} onClick={requestClose} />
 
         <Panel

@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
-import ModalPortal from './ModalPortal';
+import ModalPortal, { ModalParkContext, parkedSheetStyle } from './ModalPortal';
 import { isPhoneWidth, playGhostExit, useSheetDrag } from '../src/sheetDrag';
 
 interface SheetProps {
@@ -56,6 +56,8 @@ const Sheet: React.FC<SheetProps> = ({
   onClose, open, variant = 'sheet', className = '', dismissible = true, zIndex, closeRef, children,
 }) => {
   const controlled = open !== undefined;
+  // Отложен под страницей, открытой из него (см. ModalParkContext)
+  const parked = React.useContext(ModalParkContext);
   const [closing, setClosing] = useState(false);
   const closingRef = useRef(false);
 
@@ -140,7 +142,8 @@ const Sheet: React.FC<SheetProps> = ({
 
   const leaving = controlled ? !open : closing;
   const isSheet = variant === 'sheet';
-  visibleRef.current = !leaving;
+  // Отложенный лист снимают вместе со страницей под ним — копия для ухода не нужна
+  visibleRef.current = !leaving && !parked;
   isSheetRef.current = isSheet;
 
   return (
@@ -154,7 +157,7 @@ const Sheet: React.FC<SheetProps> = ({
         // Рамку сверху под статус-бар (.z-modal-top) убираем: внутри неё не
         // доставало затемнение, и над листом оставалась светлая полоса. Под
         // статус-бар лист не заходит и так — его высота ограничена ниже.
-        style={{ borderTopWidth: 0, ...(zIndex ? { zIndex } : null) }}
+        style={{ borderTopWidth: 0, ...(zIndex ? { zIndex } : null), ...(parked ? parkedSheetStyle() : null) }}
         // Портал не отменяет всплытия по дереву React: без этого нажатие в листе
         // доходило бы до карточки, из которой его открыли, и открывало её
         onClick={e => e.stopPropagation()}

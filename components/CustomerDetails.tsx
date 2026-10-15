@@ -1047,8 +1047,11 @@ ${customer.name}!
             остальные страницы. Держится до конца анимации ухода: состояние
             снимается в onClose, когда играть уже нечего. */}
         {selectedSale && (
-            <SubPage onClose={() => setSelectedSaleId(null)}>
-                {(close: () => void) => renderSale(selectedSale, close)}
+            // Договор, открытый сразу (initialSaleId), — сам по себе страница:
+            // «назад» с него возвращает туда, откуда пришли (окно на Главной,
+            // «Договоры»), а не в список рассрочек клиента
+            <SubPage onClose={() => setSelectedSaleId(null)} direct={!!initialSaleId && selectedSale.id === initialSaleId}>
+                {(close: () => void) => renderSale(selectedSale, !!initialSaleId && selectedSale.id === initialSaleId ? onBack : close)}
             </SubPage>
         )}
         </>

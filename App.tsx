@@ -2480,7 +2480,9 @@ const handleDeleteSale = async (saleId: string) => {
     // 🔹 НЕ откатываем удаление из UI — оно уже произошло
   }
 };
-const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView('CONTRACTS'); setCurrentView('CUSTOMER_DETAILS'); };
+// Возврат — туда, откуда открыли: из «Договоров» в «Договоры», с Главной на Главную
+// (раньше всегда в «Договоры», и свайп с графика уводил с Главной в чужой раздел)
+const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
 const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
 
@@ -4682,8 +4684,10 @@ if (!user && !showSplash) {
 
 
               {/* ... (Layout Children remain exactly the same) ... */}
-              {currentView === 'DASHBOARD' && !isInvestor &&
-                  <Dashboard sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
+              {/* Под карточкой клиента, открытой с Главной, Главная остаётся: открытое на
+                  ней окно (платежи, прибыль) и прокрутка при возврате на месте */}
+              {(currentView === 'DASHBOARD' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'DASHBOARD')) && !isInvestor &&
+                  <Dashboard parked={currentView !== 'DASHBOARD'} sales={sales} customers={customers} stats={dashboardStats} workingCapital={workingCapital}
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={scopedRetailSales} products={products} suppliers={suppliers}
