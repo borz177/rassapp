@@ -56,6 +56,7 @@ import { watchWindowFocus } from './src/windowFocus';
 import { investorRelinkPlan } from './src/investorRelink';
 import { manualIncomeKind, investorAfterIncomeCancel } from './src/incomeCancel';
 import { rootScrollTo } from './src/rootScroll';
+import { ModalParkContext } from './components/ModalPortal';
 import { api, loseSession, lostSessionUser, SESSION_USER_KEY } from './services/api';
 import { ICONS } from './constants';
 import SplashScreen from "./components/SplashScreen"
@@ -1133,6 +1134,13 @@ useEffect(() => {
 // Возврат с толкнутой страницы сюда не относится: она скроллится внутри своего
 // слоя, вкладка под ней с места не двигалась — сбрасывать там нечего, да и
 // потерять найденное место в списке было бы обиднее всего.
+// Откуда открыли «Договоры». previousView для этого не годится: после возврата с
+// карточки клиента он сам равен 'CONTRACTS', и «назад» из раздела никуда не вёл.
+const contractsBackRef = useRef<ViewState>('DASHBOARD');
+useEffect(() => {
+  if (currentView === 'CONTRACTS' && previousView !== 'CONTRACTS') contractsBackRef.current = previousView;
+}, [currentView, previousView]);
+
 const TAB_ROOTS: ViewState[] = ['DASHBOARD', 'CASH_REGISTER', 'CUSTOMERS', 'MORE'];
 const lastTabRootRef = useRef<ViewState | null>(null);
 useEffect(() => {
@@ -4800,8 +4808,12 @@ if (!user && !showSplash) {
     onOpenJournalDoc={handleOpenJournalDoc}
   />
 )}
-              {currentView === 'CONTRACTS' && (
-                  <PagePush onClose={() => setCurrentView(previousView)} showBackButton scrollKey="CONTRACTS">
+              {/* Под карточкой клиента, открытой из «Договоров» (график), раздел
+                  остаётся: поиск, фильтры, прокрутка и открытые окна при возврате на
+                  месте, а «назад» из него ведёт туда, откуда его открыли */}
+              {(currentView === 'CONTRACTS' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'CONTRACTS')) && (
+                  <PagePush onClose={() => setCurrentView(contractsBackRef.current)} showBackButton scrollKey="CONTRACTS">
+                  <ModalParkContext.Provider value={currentView !== 'CONTRACTS'}>
                   <Contracts
                       sales={isInvestor ? sales.filter(s => saleTouchesAccount(s, accounts.find(a => a.ownerId === user.id)?.id || '')) : sales}
                       customers={customers}
@@ -4818,6 +4830,7 @@ if (!user && !showSplash) {
                       onCreateTask={checkAccess("TASKS") ? handleCreateTaskFor : undefined}
                    contractTemplatesAllowed={checkAccess('CONTRACT_TEMPLATES')}
                              />
+                  </ModalParkContext.Provider>
                   </PagePush>
               )}
               {(currentView === 'INVESTORS' || currentView === 'INVESTOR_DETAILS') && (

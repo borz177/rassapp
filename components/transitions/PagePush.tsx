@@ -27,7 +27,13 @@ interface PagePushProps {
 // слота, а не полноценного стека. Используется хендлером аппаратной кнопки/жеста "Назад" на
 // Android (см. App.tsx), чтобы он закрывал текущую выехавшую страницу тем же способом, что и
 // свайп/кнопка "Назад" на экране, а не сразу выходил из приложения.
-let activeRequestClose: (() => void) | null = null;
+/**
+ * Открытые толкнутые страницы, верхняя — последняя. Стопка, а не одно место:
+ * страница может остаться под другой («Договоры» под карточкой клиента), и
+ * когда верхняя закрылась, аппаратная кнопка «Назад» должна снова закрывать
+ * нижнюю, а не ничего.
+ */
+const openPages: Array<() => void> = [];
 
 /**
  * Перехватчики шага «назад».
@@ -82,8 +88,9 @@ export function useBackInterceptor(active: boolean, handler: () => void): void {
 export function triggerPagePushBack(): boolean {
   // Аппаратная кнопка «Назад» ведёт себя как жест: сначала внутренний шаг.
   if (consumeBack()) return true;
-  if (activeRequestClose) {
-    activeRequestClose();
+  const top = openPages[openPages.length - 1];
+  if (top) {
+    top();
     return true;
   }
   return false;
@@ -175,9 +182,10 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
   };
 
   useEffect(() => {
-    activeRequestClose = requestClose;
+    openPages.push(requestClose);
     return () => {
-      if (activeRequestClose === requestClose) activeRequestClose = null;
+      const i = openPages.indexOf(requestClose);
+      if (i >= 0) openPages.splice(i, 1);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
