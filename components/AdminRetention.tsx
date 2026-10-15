@@ -399,9 +399,9 @@ const AdminRetention: React.FC<Props> = ({ onExtend }) => {
 };
 
 // ── Карточка пользователя ───────────────────────────────────────────────────
-const UserTimeline: React.FC<{ user: RUser; segment: typeof SEGMENTS[number]; onClose: () => void; onExtend?: (id: string) => void }> = ({ user: u, segment, onClose, onExtend }) => {
-  const [t, setT] = useState<any>(null);
-  useEffect(() => { api.adminGetUserTimeline(u.id).then(setT).catch(() => setT({ error: true })); }, [u.id]);
+const UserTimeline: React.FC<{ user: RUser; segment: typeof SEGMENTS[number]; onClose: () => void; onExtend?: (id: string) => void; preloaded?: any }> = ({ user: u, segment, onClose, onExtend, preloaded }) => {
+  const [t, setT] = useState<any>(preloaded || null);
+  useEffect(() => { if (!preloaded) api.adminGetUserTimeline(u.id).then(setT).catch(() => setT({ error: true })); }, [u.id, preloaded]);
 
   const daysAfter = (d?: string | null) => (d ? Math.max(0, Math.round((ts(d) - ts(u.createdAt)) / DAY)) : null);
   const steps = [
@@ -528,6 +528,23 @@ const UserTimeline: React.FC<{ user: RUser; segment: typeof SEGMENTS[number]; on
       </div>
     </Sheet>
   );
+};
+
+/**
+ * «История» пользователя из любого места админки (вкладка «Пользователи»):
+ * по одному id грузит сводку и историю и показывает ту же карточку.
+ */
+export const UserHistory: React.FC<{ userId: string; onClose: () => void; onExtend?: (id: string) => void }> = ({ userId, onClose, onExtend }) => {
+  const [t, setT] = useState<any>(null);
+  useEffect(() => { api.adminGetUserTimeline(userId).then(setT).catch(() => setT({ error: true })); }, [userId]);
+  if (!t || t.error || !t.summary) {
+    return (
+      <Sheet onClose={onClose} className="sm:max-w-md p-6">
+        <p className="text-sm text-center text-slate-500 dark:text-slate-400 py-6">{t?.error || (t && !t.summary) ? 'Историю загрузить не удалось' : 'Загружаем историю…'}</p>
+      </Sheet>
+    );
+  }
+  return <UserTimeline user={t.summary} segment={SEGMENTS.find(s => s.id === segmentOf(t.summary))!} onClose={onClose} onExtend={onExtend} preloaded={t} />;
 };
 
 export default AdminRetention;

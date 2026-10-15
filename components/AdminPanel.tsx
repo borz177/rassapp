@@ -6,7 +6,7 @@ import AdminOAuthClients from './AdminOAuthClients';
 import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
 import AdminWhatsApp from './AdminWhatsApp';
-import AdminRetention from './AdminRetention';
+import AdminRetention, { UserHistory } from './AdminRetention';
 import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
@@ -88,6 +88,9 @@ const AdminPanel: React.FC = () => {
     const [inputValue, setInputValue] = useState('');
     const [isCustom, setIsCustom] = useState(false);
     const [validationError, setValidationError] = useState<string | null>(null);
+
+    // Карточка «История» пользователя
+    const [historyUserId, setHistoryUserId] = useState<string | null>(null);
 
     // API Key Modal
     const [apiModalUser, setApiModalUser] = useState<User | null>(null);
@@ -631,10 +634,17 @@ const getContractUsage = (user: User): {
                                     </button>
                                 </div>
 
-                                {/* Block/Unblock */}
+                                {/* История и блокировка */}
+                                <div className="flex gap-2 mt-2">
+                                <button
+                                    onClick={() => setHistoryUserId(user.id)}
+                                    className="flex-1 py-1.5 text-xs font-medium rounded-lg border border-indigo-200 dark:border-indigo-900/60 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-300 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition"
+                                >
+                                    История
+                                </button>
                                 <button
                                     onClick={() => handleBlockUser(user, !user.blocked)}
-                                    className={`mt-2 w-full py-1.5 text-xs font-medium rounded-lg border transition ${
+                                    className={`flex-1 py-1.5 text-xs font-medium rounded-lg border transition ${
                                         user.blocked 
                                             ? 'bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100' 
                                             : 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
@@ -642,6 +652,7 @@ const getContractUsage = (user: User): {
                                 >
                                     {user.blocked ? '🔓 Разблокировать' : '🔒 Заблокировать'}
                                 </button>
+                                </div>
                             </div>
                         );
                     })}
@@ -898,6 +909,11 @@ const getContractUsage = (user: User): {
                         </div>
                     )}
                 </div>
+            )}
+
+            {historyUserId && (
+                <UserHistory userId={historyUserId} onClose={() => setHistoryUserId(null)}
+                             onExtend={(id) => { const u = users.find(x => x.id === id); if (u) handleOpenModal(u); }} />
             )}
 
             {/* 🔹 Modal: Управление тарифом */}

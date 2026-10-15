@@ -5028,9 +5028,10 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
 // дошёл ли до договоров и платежей, платил ли, когда заходил (он сам или его
 // сотрудники и инвесторы), писал ли в поддержку и что ответил на опрос. Группы
 // («не начал», «бросил на пробном»…) считает админка — правила видны там же.
-app.get('/api/admin/retention', adminAuth, async (req, res) => {
-  try {
-    const { rows } = await pool.query(`
+// Сводка по владельцу аккаунта для «Удержания»: путь, оплаты, посещения, поддержка.
+// userId — один человек (карточка «История» во вкладке «Пользователи»), без него — все владельцы.
+const retentionRows = async (userId = null) => {
+  const { rows } = await pool.query(`
       WITH data_counts AS (
         SELECT user_id,
           COUNT(*) FILTER (WHERE type = 'customers') AS customers,
@@ -5089,14 +5090,11 @@ app.get('/api/admin/retention', adminAuth, async (req, res) => {
       LEFT JOIN days dy ON dy.account_id = u.id
       LEFT JOIN tickets tk ON tk.user_id = u.id
       LEFT JOIN fb ON fb.user_id = u.id
-      WHERE u.role = 'manager'
+      WHERE ${userId ? 'u.id = $1' : "u.role = 'manager'"}
       ORDER BY u.created_at DESC
-    `);
-    const num = (v) => Number(v) || 0;
-    res.json({
-      generatedAt: new Date().toISOString(),
-      trackingSince: (await pool.query(`SELECT to_char(MIN(day), 'YYYY-MM-DD') AS d FROM user_activity_days`)).rows[0]?.d || null,
-      users: rows.map(r => ({
+`, userId ? [userId] : []);
+  const num = (v) => Number(v) || 0;
+  return rows.map(r => ({
         id: r.id, name: r.name, email: r.email, phone: r.phone, createdAt: r.created_at,
         subscription: r.subscription, blocked: !!r.blocked, referred: !!r.referred_by,
         lastSeenAt: r.last_seen_at, lastPlatform: r.last_platform, teamSeenAt: r.team_seen_at, team: num(r.team),
@@ -5107,7 +5105,15 @@ app.get('/api/admin/retention', adminAuth, async (req, res) => {
         days30: num(r.days_30), daysTotal: num(r.days_total),
         tickets: num(r.tickets), lastTicketAt: r.last_ticket_at,
         feedback: r.feedback_reason ? { reason: r.feedback_reason, details: r.feedback_details, at: r.feedback_at } : null,
-      })),
+}));
+};
+
+app.get('/api/admin/retention', adminAuth, async (req, res) => {
+  try {
+    res.json({
+      generatedAt: new Date().toISOString(),
+      trackingSince: (await pool.query(`SELECT to_char(MIN(day), 'YYYY-MM-DD') AS d FROM user_activity_days`)).rows[0]?.d || null,
+      users: await retentionRows(),
     });
   } catch (err) {
     console.error('Admin retention error:', err);
@@ -5119,7 +5125,8 @@ app.get('/api/admin/retention', adminAuth, async (req, res) => {
 app.get('/api/admin/users/:userId/timeline', adminAuth, async (req, res) => {
   const { userId } = req.params;
   try {
-    const [months, payments, tickets, days, feedback, team] = await Promise.all([
+    const [summary, months, payments, tickets, days, feedback, team] = await Promise.all([
+      retentionRows(userId).then(r => r[0] || null),
       pool.query(`
         SELECT to_char(created_at, 'YYYY-MM') AS month,
           COUNT(*) FILTER (WHERE type = 'customers') AS customers,
@@ -5134,7 +5141,9 @@ app.get('/api/admin/users/:userId/timeline', adminAuth, async (req, res) => {
       pool.query(`SELECT reason, details, plan, created_at FROM churn_feedback WHERE user_id = $1 ORDER BY created_at DESC`, [userId]),
       pool.query(`SELECT id, name, role, last_seen_at, last_platform FROM users WHERE manager_id = $1 ORDER BY role, name`, [userId]),
     ]);
+    if (!summary) return res.status(404).json({ msg: 'Пользователь не найден' });
     res.json({
+      summary,
       months: months.rows.map(r => ({ month: r.month, customers: Number(r.customers), sales: Number(r.sales) })),
       payments: payments.rows,
       tickets: tickets.rows,
