@@ -138,6 +138,15 @@ const NewSale: React.FC<NewSaleProps> = ({
 
   // Modals State
   const [showConfirmModal, setShowConfirmModal] = useState(false);
+  // Подсказка «Что такое первый платеж» — по значку «?», закрывается нажатием мимо
+  const [payDateHint, setPayDateHint] = useState(false);
+  const payDateHintRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!payDateHint) return;
+    const close = (e: PointerEvent) => { if (!payDateHintRef.current?.contains(e.target as Node)) setPayDateHint(false); };
+    document.addEventListener('pointerdown', close);
+    return () => document.removeEventListener('pointerdown', close);
+  }, [payDateHint]);
   const [showSuccessModal, setShowSuccessModal] = useState(false);
   const [showWhatsAppConfirmModal, setShowWhatsAppConfirmModal] = useState(false);
   const [isSendingWhatsApp, setIsSendingWhatsApp] = useState(false);
@@ -1212,29 +1221,30 @@ if (mode === 'CASH') {
                      onChange={e => setFormData(prev => ({ ...prev, startDate: e.target.value }))}/>
             </div>
             {mode === 'INSTALLMENT' && (
-                <div className="w-40">
-                  <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">
-                    Первый платеж
-                  </label>
+                <div className="w-40 relative" ref={payDateHintRef}>
+                  <div className="flex items-center gap-1.5 mb-1">
+                    <label className="text-sm font-medium text-slate-700 dark:text-slate-300">Первый платеж</label>
+                    {/* Что такое «Первый платеж», спрашивали чаще всего: путали с первым взносом */}
+                    <button type="button" aria-label="Что такое первый платеж" aria-expanded={payDateHint}
+                            onClick={() => setPayDateHint(v => !v)}
+                            className={`w-[18px] h-[18px] rounded-full text-[11px] font-bold leading-none flex items-center justify-center transition-colors ${payDateHint ? 'bg-indigo-600 text-white' : 'bg-slate-200 text-slate-500 dark:bg-slate-700 dark:text-slate-300 hover:bg-slate-300 dark:hover:bg-slate-600'}`}>
+                      ?
+                    </button>
+                  </div>
+                  {payDateHint && (
+                      <div role="tooltip"
+                           className="absolute left-0 top-7 z-30 w-64 p-3 rounded-xl bg-slate-900 text-white dark:bg-slate-700 text-xs leading-snug shadow-xl animate-[modal-fade-in_.15s_ease-out]">
+                        Когда клиент внесёт первый ежемесячный платёж. Дальше — в тот же день каждого месяца. Первый взнос при покупке указывается ниже.
+                        {formData.id && <span className="block mt-1.5 text-slate-300">Изменение даты пересчитает график ещё не оплаченных платежей.</span>}
+                      </div>
+                  )}
                   <input type="date" required
                          className="w-full p-2 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white text-sm border-slate-300 dark:border-slate-600 focus:border-indigo-500"
                          value={formData.paymentDate}
                          onChange={handlePaymentDateChange}/>
-                  {/* 🔹 Подсказка */}
-                  {formData.id && (
-                      <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-1">
-                        💡 Изменение даты пересчитает график будущих (ещё не оплаченных) платежей
-                      </p>
-                  )}
                 </div>
             )}
           </div>
-          {/* Что такое «Первый платеж», спрашивали чаще всего: путали с первым взносом */}
-          {mode === 'INSTALLMENT' && !formData.id && (
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-3 leading-snug">
-                Первый платеж — когда клиент внесёт первый ежемесячный платёж. Дальше — в тот же день каждого месяца. Первый взнос при покупке указывается ниже.
-              </p>
-          )}
         </div>
 
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
