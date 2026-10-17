@@ -222,6 +222,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const running = useRef<{ id: string; ctrl: AbortController; userMsgId: string } | null>(null);
   const [stopping, setStopping] = useState(false);
   const [elapsed, setElapsed] = useState(0);
+  // Что ассистент делает сейчас — приходит с сервера по шагам («Ищу клиента…»)
+  const [stepLabel, setStepLabel] = useState('');
   useEffect(() => {
     if (!sending) { setElapsed(0); return; }
     const started = Date.now();
@@ -318,11 +320,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     setSending(true);
     const req = { id: newId(), ctrl: new AbortController(), userMsgId: userMsg.id };
     running.current = req;
+    setStepLabel('');
     try {
       const r = await api.aiAssistant.message({
         text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '),
         history, image: payload.image || undefined, audio: payload.audio, mode, requestId: req.id,
-      }, req.ctrl.signal);
+      }, req.ctrl.signal, label => { if (running.current === req) setStepLabel(label); });
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
       let actions: Action[] = r.actions || [];
       if (r.cancelled) {
@@ -601,7 +604,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               {/* Долгий ответ — видно, что не завис; после «Стоп» — что останавливаем */}
               {stopping
                 ? <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">Останавливаем…</span>
-                : elapsed >= 4 && <span className="ml-1.5 text-xs tabular-nums text-slate-400 dark:text-slate-500">{elapsed} с</span>}
+                : <>
+                    {stepLabel && <span key={stepLabel} className="ai-msg-in ml-1.5 text-xs text-slate-500 dark:text-slate-400">{stepLabel}</span>}
+                    {elapsed >= 4 && <span className="ml-1 text-xs tabular-nums text-slate-400 dark:text-slate-500">· {elapsed} с</span>}
+                  </>}
             </div>
           </div>
         )}

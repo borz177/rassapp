@@ -4509,7 +4509,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     if (st.left <= 0) {
       return res.status(402).json({ code: 'AI_LIMIT', msg: st.plan ? 'Запросы на этот месяц закончились.' : 'Пробные запросы закончились.' });
     }
-    const { text, history, image, audio, mode, requestId } = req.body || {};
+    const { text, history, image, audio, mode, requestId, stream } = req.body || {};
     if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
     if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
     const me = (await pool.query('SELECT id, name FROM users WHERE id = $1', [req.user.id])).rows[0];
@@ -4518,8 +4518,19 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     const stop = new AbortController();
     const reqKey = requestId ? `${req.user.id}:${String(requestId).slice(0, 64)}` : null;
     if (reqKey) aiRunning.set(reqKey, stop);
+    // stream: ответ строками JSON (NDJSON) — сначала шаги «Ищу клиента…», в конце
+    // итог. Без него — один JSON, как понимают сборки приложения постарше.
+    // no-transform — чтобы compression() не копил поток; X-Accel-Buffering — то же для nginx
+    let streaming = false;
+    const send = (obj) => { res.write(`${JSON.stringify(obj)}\n`); };
+    if (stream === true) {
+      res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
+      streaming = true;
+      res.locals.aiStreaming = true;
+    }
     const out = await aiAssistant.reply({
       signal: stop.signal,
+      onStep: streaming ? (label) => send({ step: label }) : null,
       user: me,
       text: String(text || '').slice(0, 4000),
       history: Array.isArray(history) ? history : [],
@@ -4543,10 +4554,13 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
          cost_usd = ai_assistant_usage.cost_usd + EXCLUDED.cost_usd`,
       [req.user.id, aiMonth(), out.usage?.prompt || 0, out.usage?.completion || 0, out.usage?.cost || 0, counted ? 1 : 0]);
     if (st.trial && counted) await pool.query('UPDATE users SET ai_trial_used = ai_trial_used + 1 WHERE id = $1', [req.user.id]);
-    res.json({ reply: out.reply, actions: out.actions, cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)) });
+    const result = { reply: out.reply, actions: out.actions, cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)) };
+    if (streaming) { send({ done: true, ...result }); res.end(); } else res.json(result);
   } catch (e) {
     console.error('AI assistant error:', e.message);
-    res.status(e.status || 500).json({ msg: e.status === 503 ? 'Ассистент ещё не настроен.' : 'Ассистент сейчас не ответил — попробуйте ещё раз.' });
+    const msg = e.status === 503 ? 'Ассистент ещё не настроен.' : 'Ассистент сейчас не ответил — попробуйте ещё раз.';
+    if (res.locals.aiStreaming) { res.write(`${JSON.stringify({ error: true, status: e.status || 500, msg })}\n`); res.end(); }
+    else res.status(e.status || 500).json({ msg });
   }
 });
 

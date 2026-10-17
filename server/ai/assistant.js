@@ -26,9 +26,13 @@
 //    в приложении тем же шаблоном, что печать).
 
 const { TOOLS, query } = require('../api/mcp');
+const domain = require('../api/domain');
 
 const OPENROUTER_BASE = (process.env.OPENROUTER_BASE_URL || 'https://wa.rassrochka.pro/openrouter/v1').replace(/\/$/, '');
 const DEFAULT_MODEL = process.env.AI_ASSISTANT_MODEL || 'google/gemini-3.1-flash-lite';
+// Не ответила основная (сбой провайдера, перегрузка) — один повтор другой моделью
+// с теми же умениями: голос, фото, инструменты
+const FALLBACK_MODEL = process.env.AI_ASSISTANT_FALLBACK_MODEL || 'google/gemini-2.5-flash';
 // Сколько раз за одно сообщение модель может сходить за данными
 const MAX_TOOL_ROUNDS = 6;
 // Ответ инструмента в разговор с моделью — не больше этого (остальное режем)
@@ -140,6 +144,33 @@ const ASK_CHOICE_TOOL = {
   required: ['question', 'options'],
 };
 
+// Клиент со всеми договорами одним шагом: для «прими платёж от …» раньше
+// уходило два-три обращения к модели (list_customers → list_contracts → …)
+const CUSTOMER_OVERVIEW_TOOL = {
+  name: 'customer_overview',
+  description: [
+    'Найти клиента по ФИО, фамилии или телефону и сразу получить все его договоры: id, товар, статус, сумму, остаток,',
+    'просрочку и ближайший платёж по графику (дата, сумма). Для «прими платёж от …», «сколько должен …», «что у …»,',
+    '«оформи … » (найти клиента в базе) — вызывай его, а не list_customers с list_contracts.',
+  ].join(' '),
+  input: { query: { type: 'string', description: 'ФИО, фамилия (в любом падеже) или телефон' } },
+  required: ['query'],
+};
+
+// Основа слова без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
+const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
+
+// Что сейчас делает ассистент — строкой над точками «печатает»
+const STEP_LABELS = {
+  customer_overview: 'Смотрю клиента и договоры…', list_customers: 'Ищу клиента…',
+  list_contracts: 'Смотрю договоры…', get_contract: 'Смотрю договор…', overdue_contracts: 'Смотрю просрочки…',
+  list_payments: 'Смотрю платежи…', due_payments: 'Смотрю график платежей…', list_accounts: 'Смотрю счета…',
+  list_expenses: 'Смотрю расходы…', list_products: 'Смотрю склад…', list_investors: 'Смотрю инвесторов…',
+  get_summary: 'Считаю итоги…', whoami: 'Смотрю аккаунт…',
+  create_payment: 'Провожу платёж…', create_expense: 'Записываю расход…', create_income: 'Записываю приход…',
+  create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…',
+};
+
 // Ожидаемые платежи по графику за период — среди инструментов API такого нет
 // (там полученные деньги), а спрашивают «кто платит сегодня/завтра» чаще всего
 const DUE_PAYMENTS_TOOL = {
@@ -220,6 +251,44 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     out.sort((a, b) => a.date.localeCompare(b.date));
     const total = Math.round(out.reduce((n, x) => n + x.amount, 0));
     return JSON.stringify({ from, to, count: out.length, total, payments: out.slice(0, 60) });
+  };
+
+  const customerOverview = async (userId, args) => {
+    const q = String(args.query || '').trim();
+    const digits = q.replace(/\D/g, '');
+    const words = q.toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(w => w.length >= 2 && !/\d/.test(w));
+    let rows = [];
+    if (digits.length >= 4) {
+      rows = (await pool.query(
+        `SELECT id, data FROM data_items WHERE user_id = $1 AND type = 'customers' AND regexp_replace(coalesce(data->>'phone', ''), '\\D', '', 'g') LIKE $2 LIMIT 8`,
+        [userId, `%${digits.slice(-10)}%`])).rows;
+    }
+    if (!rows.length && words.length) {
+      // Все слова запроса — в ФИО, каждое по основе: «Дудаевой Мадине» → «дудаев» и «мадин»
+      const stems = words.map(w => { const s = nameStem(w); return s.length >= 3 ? s : w; });
+      const conds = stems.map((_, i) => `lower(replace(data->>'name', 'ё', 'е')) LIKE $${i + 2}`).join(' AND ');
+      rows = (await pool.query(`SELECT id, data FROM data_items WHERE user_id = $1 AND type = 'customers' AND ${conds} LIMIT 8`,
+        [userId, ...stems.map(s => `%${s}%`)])).rows;
+    }
+    if (!rows.length) return JSON.stringify({ count: 0, customers: [], hint: 'Не нашёл. Проверь написание или спроси телефон.' });
+    const ids = rows.map(r => r.id);
+    const sales = (await pool.query(
+      `SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales' AND data->>'customerId' = ANY($2)`, [userId, ids])).rows.map(r => r.data);
+    const customers = rows.map(({ id, data: c }) => ({
+      id, name: c.name || '', phone: c.phone || null,
+      contracts: sales.filter(s => s.customerId === id).map(s => {
+        const next = (s.paymentPlan || []).filter(p => p.isRealPayment !== true && !p.isPaid && p.date)
+          .sort((a, b) => new Date(a.date) - new Date(b.date))[0];
+        return {
+          contractId: s.id, product: s.productName || '', status: s.status,
+          total: Math.round(Number(s.totalAmount) || 0), remaining: Math.round(Number(s.remainingAmount) || 0),
+          overdue: Math.round(domain.overdueAmount(s)),
+          nextPayment: next ? { date: mskDate(next.date), amount: Math.round(Number(next.amount) || 0) } : null,
+          startDate: s.startDate ? mskDate(s.startDate) : null,
+        };
+      }).sort((a, b) => (a.status === 'ACTIVE' ? 0 : 1) - (b.status === 'ACTIVE' ? 0 : 1)),
+    }));
+    return JSON.stringify({ count: customers.length, customers });
   };
 
   const callV1 = (userId, tool, args) => v1Request(userId, tool.request(args || {}));
@@ -338,7 +407,17 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
   };
 
   // ── Разговор с моделью ───────────────────────────────────────────────────
+  // Основная модель, при сбое — один повтор запасной (не при «Стоп» и не при ошибке запроса)
   const callModel = async (body, signal) => {
+    try {
+      return await callModelOnce(body, signal);
+    } catch (e) {
+      if (signal?.aborted || e.status === 503 || !FALLBACK_MODEL || body.model === FALLBACK_MODEL || e.clientError) throw e;
+      console.warn(`AI: основная модель не ответила (${e.message}) — повтор запасной ${FALLBACK_MODEL}`);
+      return callModelOnce({ ...body, model: FALLBACK_MODEL }, signal);
+    }
+  };
+  const callModelOnce = async (body, signal) => {
     const key = process.env.OPENROUTER_API_KEY;
     if (!key) throw Object.assign(new Error('Ассистент ещё не настроен'), { status: 503 });
     const r = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
@@ -355,7 +434,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     const data = await r.json().catch(() => null);
     if (!r.ok || !data?.choices?.[0]) {
       const msg = data?.error?.message || `модель не ответила (${r.status})`;
-      throw Object.assign(new Error(msg), { status: 502 });
+      // 401/402/403 — ключ или оплата OpenRouter: другая модель не поможет. 400 — бывает
+      // и «модели больше нет», поэтому запасную пробуем
+      throw Object.assign(new Error(msg), { status: 502, clientError: [401, 402, 403].includes(r.status) });
     }
     return data;
   };
@@ -364,7 +445,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     `Ты — FinUchetGPT, ИИ-ассистент в FinUchet, программе учёта продаж в рассрочку. Владелец: ${userName || 'пользователь'}${companyName ? `, компания «${companyName}»` : ''}.`,
     `Сегодня ${today} (Москва). Отвечай по-русски, коротко и по делу, как опытный помощник бухгалтера. Суммы — в рублях с пробелами между тысячами.`,
     'Все цифры бери только из инструментов, ничего не досчитывай и не выдумывай. Не знаешь — скажи и предложи, где посмотреть.',
-    'Клиента, договор или счёт сначала найди инструментом (list_customers, list_contracts, list_accounts), не угадывай id.',
+    'Клиента, договор или счёт сначала найди инструментом, не угадывай id. Клиента и его договоры — одним вызовом customer_overview (по ФИО в любом падеже или телефону).',
     'Никогда не показывай человеку технические идентификаторы (cust_…, sale_…, acc_… и любые id): клиента называй по ФИО, договор — по товару, счёт — по названию. Если в данных только id клиента — найди его ФИО через list_customers.',
     '«Платежи сегодня/завтра/на неделе», «кто должен заплатить» — это ожидаемые по графику платежи: бери due_payments. Полученные деньги — list_payments.',
     'Списки оформляй коротко: по строке на позицию (ФИО — товар — сумма), в конце итог.',
@@ -400,8 +481,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     if (args.confirmedNewCustomer && fullName) return null;
     const words = String(nc.name).toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(w => w.length >= 3);
     if (!words.length) return null;
-    // Основа фамилии без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
-    const stem = words[0].replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
+    const stem = nameStem(words[0]);
     const { rows } = await pool.query(
       `SELECT id, data->>'name' AS name, data->>'phone' AS phone FROM data_items
        WHERE user_id = $1 AND type = 'customers' AND lower(replace(data->>'name', 'ё', 'е')) LIKE $2 LIMIT 6`,
@@ -503,7 +583,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * а начатая запись доводится до конца — и возвращается с «Отменить», а не
    * теряется молча.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null }) => {
+  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null }) => {
+    const step = (label) => { try { if (label && onStep) onStep(label); } catch { /* шаги — только подсказка */ } };
+    step(image ? 'Читаю фото…' : audio ? 'Слушаю голосовое…' : 'Думаю…');
     const auto = mode === 'auto';
     // Порог «Авто»: сумма от него — с подтверждением даже в «Авто» (настройки ассистента)
     const overLimit = (amount) => auto && autoLimit != null && (Number(amount) || 0) >= autoLimit;
@@ -527,7 +609,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       ...historyMessages(history),
       { role: 'user', content },
     ];
-    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL)];
+    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
     const writes = new Set();
     const actions = [];
@@ -597,7 +679,10 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         let args = {};
         try { args = JSON.parse(call.function?.arguments || '{}'); } catch { /* пустые аргументы */ }
         let result;
-        if (name === 'due_payments') {
+        step(name === 'create_payment' && !auto ? 'Готовлю платёж…' : STEP_LABELS[name]);
+        if (name === 'customer_overview') {
+          result = await customerOverview(user.id, args);
+        } else if (name === 'due_payments') {
           result = await duePayments(user.id, args);
         } else if (name === 'prepare_contract') {
           const missing = missingContractFields(args);

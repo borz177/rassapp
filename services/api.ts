@@ -2083,9 +2083,40 @@ export const api = {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/consent`, { method: 'POST' });
         if (!res.ok) throw new Error('Не удалось сохранить согласие');
       },
-      /** Ответ ассистента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT */
-      message: async (body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string }, signal?: AbortSignal): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean }> => {
-        const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, { method: 'POST', body: JSON.stringify(body), timeout: 120000, signal });
+      /**
+       * Ответ ассистента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT.
+       * onStep — что ассистент делает сейчас («Ищу клиента…»): тогда сервер
+       * отвечает потоком строк JSON (NDJSON), итог — в последней строке.
+       */
+      message: async (
+        body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string },
+        signal?: AbortSignal,
+        onStep?: (label: string) => void,
+      ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, {
+          method: 'POST', body: JSON.stringify(onStep ? { ...body, stream: true } : body), timeout: 120000, signal,
+        });
+        if (onStep && res.ok && res.body && /ndjson/.test(res.headers.get('content-type') || '')) {
+          const reader = res.body.getReader();
+          const decoder = new TextDecoder();
+          let buf = '';
+          for (;;) {
+            const { value, done } = await reader.read();
+            if (value) buf += decoder.decode(value, { stream: true });
+            let nl: number;
+            while ((nl = buf.indexOf('\n')) >= 0) {
+              const line = buf.slice(0, nl).trim();
+              buf = buf.slice(nl + 1);
+              if (!line) continue;
+              const msg = JSON.parse(line);
+              if (msg.step) onStep(msg.step);
+              else if (msg.error) throw Object.assign(new Error(msg.msg || 'Ассистент не ответил'), { code: msg.code });
+              else if (msg.done) return msg;
+            }
+            if (done) break;
+          }
+          throw new Error('Ассистент не ответил — попробуйте ещё раз.');
+        }
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error(data.msg || 'Ассистент не ответил'), { code: data.code });
         return data;
