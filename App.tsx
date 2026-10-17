@@ -4351,6 +4351,35 @@ const handleQuickAddCustomer = async (data: {
     }
   };
 
+  /**
+   * Отчёт Excel по просьбе ассистента — тот же, что на экране «Экспорт»
+   * (shared/excelReport.js), собирается на устройстве и сохраняется/отправляется
+   * системным «Поделиться». Вызывается из нажатия «Скачать» — иначе телефон
+   * «Поделиться» не покажет.
+   */
+  const exportReportFromAssistant = async (opts: { from: string | null; to: string | null; onlyActive?: boolean }): Promise<{ ok: boolean; text: string }> => {
+    try {
+      const [xlsxModule, { buildExcelReport }, { saveFile }] = await Promise.all([
+        import('xlsx'), import('./shared/excelReport.js'), import('./src/contractPdf'),
+      ]);
+      const XLSX = (xlsxModule as any).default || xlsxModule;
+      const data = await api.fetchAllData();
+      const { base64, salesCount } = buildExcelReport(XLSX, data, {
+        startDate: opts.from || undefined, endDate: opts.to || undefined, onlyActive: !!opts.onlyActive, includePlanned: false,
+      });
+      if (!base64) return { ok: false, text: 'За этот период данных нет.' };
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const today = new Date().toISOString().slice(0, 10);
+      const fileName = opts.from ? `Отчёт ${opts.from} — ${opts.to || today}.xlsx` : `Отчёт за всё время ${today}.xlsx`;
+      await saveFile(new Blob([bytes], { type: mime }), fileName, mime);
+      return { ok: true, text: `Отчёт готов: договоров — ${salesCount}` };
+    } catch (e: any) {
+      if (isStaleBundleError(e)) { reloadForNewBuild(); return { ok: false, text: 'Приложение обновилось — повторите.' }; }
+      return { ok: false, text: e?.message ? `Не удалось собрать отчёт: ${e.message}` : 'Не удалось собрать отчёт.' };
+    }
+  };
+
   /** «Отменить» у договора, оформленного ассистентом: обычное удаление договора */
   const deleteContractFromAssistant = async (saleId: string): Promise<{ ok: boolean; text: string }> => {
     try { await handleDeleteSale(saleId); return { ok: true, text: 'Договор отменён и удалён.' }; }
@@ -5345,6 +5374,7 @@ if (!user && !showSplash) {
                         onSendDocument={sendDocumentFromAssistant}
                         onDeleteContract={deleteContractFromAssistant}
                         onShowContract={openContractById}
+                        onExportReport={exportReportFromAssistant}
                         whatsappEnabled={!!assistantWhatsApp?.enabled}
                       />
                     </Suspense>

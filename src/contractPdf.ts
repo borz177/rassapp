@@ -196,7 +196,14 @@ export const setContractPdfProperties = (pdf: any, title: string, companyName?: 
  * WebView её не сохраняет. Там файл пишется плагином и уходит в системное окно
  * «Поделиться / Сохранить», как это уже сделано для выгрузки в Excel.
  */
-export const saveContractPdf = async (blob: Blob, fileName: string): Promise<void> => {
+export const saveContractPdf = (blob: Blob, fileName: string): Promise<void> => saveFile(blob, fileName, 'application/pdf');
+
+/**
+ * Сохранить или отправить файл любого вида (PDF, Excel): в приложении —
+ * системным «Поделиться», с телефона в браузере — тоже, на компьютере —
+ * скачиванием. Вызывать из нажатия кнопки: «Поделиться» без него запрещено.
+ */
+export const saveFile = async (blob: Blob, fileName: string, mime: string): Promise<void> => {
   const name = safeFileName(fileName);
   const native = !!(window as any).Capacitor?.isNativePlatform?.();
 
@@ -223,7 +230,7 @@ export const saveContractPdf = async (blob: Blob, fileName: string): Promise<voi
   // вместе с PDF уходила эта ссылка — у получателя она не открывается.
   // На компьютере — обычное скачивание: окно «Поделиться» там не к месту.
   const touch = typeof matchMedia === 'function' && matchMedia('(pointer: coarse)').matches;
-  const file = typeof File === 'function' ? new File([blob], name, { type: 'application/pdf' }) : null;
+  const file = typeof File === 'function' ? new File([blob], name, { type: mime }) : null;
   if (touch && file && navigator.canShare?.({ files: [file] })) {
     try {
       await navigator.share({ files: [file] });

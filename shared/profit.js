@@ -388,6 +388,35 @@ export const moneyInProfit = (sale, money, paymentsOnly = false) => {
 };
 
 /**
+ * Начисления прибыли инвестору: каждое поступление по договорам его счёта
+ * (первый взнос и оплаты) × его доля в прибыли этого поступления. Этим
+ * считают экран инвестора и FinUchetGPT — две копии разошлись бы.
+ * sales — уже разложенные по совместному финансированию (expandFundedSales).
+ */
+export const investorProfitAccruals = (account, investors, sales, investorId, paymentsOnly = false) => {
+  if (!account) return [];
+  const out = [];
+  sales.filter(s => s.accountId === account.id && s.buyPrice > 0).forEach(sale => {
+    if (sale.totalAmount <= 0 || sale.totalAmount - sale.buyPrice <= 0) return;
+    const money = [
+      { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
+      ...(sale.paymentPlan || []).filter(p => p.isPaid && p.isRealPayment !== false),
+    ];
+    money.forEach(p => {
+      if (!(p.amount > 0)) return;
+      const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investorId);
+      const percent = share ? share.percentage : 0;
+      if (percent <= 0) return;
+      const amount = moneyInProfit(sale, p, paymentsOnly) * percent / 100;
+      // С настройкой «только с платежей» первый взнос прибыли не приносит — без строки «+0 ₽»
+      if (amount <= 0) return;
+      out.push({ id: p.id, date: p.date, amount, sale, paymentAmount: p.amount, isDownPayment: isDownPaymentOf(sale, p.id) });
+    });
+  });
+  return out;
+};
+
+/**
  * Начисленная сотруднику премия за период.
  * profitBase: CONTRACTS — договоры, которые он оформил; PAYMENTS — платежи,
  * которые он принял; ALL — всё. profitSource: MANAGER — из доли менеджера,

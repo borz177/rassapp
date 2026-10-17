@@ -44,6 +44,9 @@ export const expectedManagerPercent: (account: Account | undefined, investors: I
 export const saleProfitMargin: (sale: Pick<Sale, 'totalAmount' | 'buyPrice' | 'downPayment'>, paymentsOnly?: boolean) => number = Profit.saleProfitMargin;
 export const isDownPaymentOf: (sale: Pick<Sale, 'id'>, moneyId?: string) => boolean = Profit.isDownPaymentOf;
 export const moneyInProfit: (sale: Pick<Sale, 'id' | 'totalAmount' | 'buyPrice' | 'downPayment'>, money: { id?: string; amount: number }, paymentsOnly?: boolean) => number = Profit.moneyInProfit;
+/** Начисления прибыли инвестору по поступлениям на его счёт (экран инвестора, FinUchetGPT) */
+export const investorProfitAccruals: (account: Account | undefined, investors: Investor[], sales: Sale[], investorId: string, paymentsOnly?: boolean) =>
+  { id: string; date: string; amount: number; sale: Sale; paymentAmount: number; isDownPayment: boolean }[] = Profit.investorProfitAccruals;
 /**
  * Начисленная сотруднику премия: от доли менеджера (или всей прибыли — SHARED) в
  * каждом фактическом платеже, по базе CONTRACTS / PAYMENTS / ALL, с даты profitSince.

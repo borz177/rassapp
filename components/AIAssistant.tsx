@@ -52,6 +52,8 @@ interface Props {
   onDeleteContract: (saleId: string) => Promise<{ ok: boolean; text: string }>;
   /** Карточка договора у клиента */
   onShowContract: (saleId: string, customerId?: string) => void;
+  /** Отчёт Excel за период — собрать и сохранить (по нажатию «Скачать») */
+  onExportReport: (opts: { from: string | null; to: string | null; onlyActive?: boolean }) => Promise<{ ok: boolean; text: string }>;
   whatsappEnabled: boolean;
   /** После подтверждённого действия — подтянуть свежие данные */
   onDataChanged: () => void;
@@ -193,7 +195,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, whatsappEnabled, onDataChanged, onOpenTariffs }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   const [prevChat, setPrevChat] = useState<Msg[]>(() => readStore(userId, true));
@@ -457,6 +459,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     patchAction(msgId, a.id, r.ok ? { state: 'deleted', result: r.text } : { state: 'saved', result: r.text });
   };
 
+  const downloadReport = async (msgId: string, a: Action) => {
+    if (a.kind !== 'report') return;
+    patchAction(msgId, a.id, { state: 'busy' });
+    const r = await onExportReport({ from: a.from, to: a.to, onlyActive: a.onlyActive });
+    patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
+  };
+
   // Документ клиенту (карточка send_doc)
   const sendDoc = async (msgId: string, a: Action, fresh = false) => {
     if (a.kind !== 'send_doc') return;
@@ -587,6 +596,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onSendContract={() => sendContract(m.id, a)}
                   onDeleteContract={() => deleteContract(m.id, a)}
                   onSendDoc={() => sendDoc(m.id, a)}
+                  onDownloadReport={() => downloadReport(m.id, a)}
                   onCancelDoc={() => patchAction(m.id, a.id, { state: 'cancelled' })}
                 />
               ))}

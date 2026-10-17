@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, InvestmentPeriod, LossEvent } from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
-import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows } from '../src/utils';
+import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows, investorProfitAccruals } from '../src/utils';
 import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
 import { appConfirm } from '../src/dialogs';
 
@@ -360,45 +360,18 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
     if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
 
-    const investorSales = sales.filter(s => s.accountId === account.id && s.buyPrice > 0);
-    let profitSum = 0;
-    const accruals: {
-      id: string; date: string; amount: number; source: string;
-      productName: string; customerId: string; paymentAmount: number; isDownPayment: boolean;
-    }[] = [];
-
-    investorSales.forEach(sale => {
-      const totalSaleProfit = sale.totalAmount - sale.buyPrice;
-      if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
-
-      const allPayments: (Payment | { date: string; amount: number; id: string; isRealPayment?: boolean })[] = [
-        { date: sale.startDate, amount: sale.downPayment, id: `${sale.id}_dp`, isRealPayment: true },
-        ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-      ];
-
-      allPayments.forEach(p => {
-        if (p.amount > 0) {
-          const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investor.id);
-          const myPercent = share ? share.percentage : 0;
-          if (myPercent <= 0) return;
-          const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly) * myPercent / 100;
-          // С настройкой «только с платежей» первый взнос прибыли не приносит —
-          // строка «+0 ₽» в ленте ни о чём не говорит, поэтому её не показываем.
-          if (profitFromPayment <= 0) return;
-          profitSum += profitFromPayment;
-          accruals.push({
-            id: p.id, date: p.date, amount: profitFromPayment,
-            source: `Платеж по '${sale.productName}'`,
-            productName: sale.productName,
-            customerId: sale.customerId,
-            paymentAmount: p.amount,
-            // Первый взнос называем взносом, остальное — платежами: раньше
-            // «взнос» стоял под каждым начислением и путал.
-            isDownPayment: isDownPaymentOf(sale, p.id),
-          });
-        }
-      });
-    });
+    // Тот же расчёт, что у FinUchetGPT (shared/profit.js)
+    const accruals = investorProfitAccruals(account, investors, sales, investor.id, profitFromPaymentsOnly).map(a => ({
+      id: a.id, date: a.date, amount: a.amount,
+      source: `Платеж по '${a.sale.productName}'`,
+      productName: a.sale.productName,
+      customerId: a.sale.customerId,
+      paymentAmount: a.paymentAmount,
+      // Первый взнос называем взносом, остальное — платежами: раньше
+      // «взнос» стоял под каждым начислением и путал.
+      isDownPayment: a.isDownPayment,
+    }));
+    const profitSum = accruals.reduce((sum, a) => sum + a.amount, 0);
 
     // Адресные выплаты прибыли этому инвестору + его доля в общих расходах, списанных из
     // прибыли. Та же функция считает и кабинет самого инвестора — иначе «доступно к

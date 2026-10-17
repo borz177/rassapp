@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, FileText, Receipt, RotateCcw, Send, ShieldAlert, Undo2 } from 'lucide-react';
+import { Check, Download, FileSpreadsheet, FileText, Receipt, RotateCcw, Send, ShieldAlert, Undo2 } from 'lucide-react';
 
 /**
  * Карточки действий FinUchetGPT под ответом ассистента. Поведение (запросы,
@@ -16,7 +16,7 @@ export type SendState = 'busy' | 'done' | 'error';
 
 export type AIAction =
   | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
-  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number;
+  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number; always?: boolean;
       state?: 'busy' | 'done' | 'error' | 'cancelled' | 'undoing' | 'undone'; result?: string; undoable?: boolean;
       undoResult?: string; receipt?: SendState; receiptResult?: string }
   | { id: string; kind: 'done'; tool: string; title: string; summary: string; contractId?: string; ok: boolean; result: string; undoable?: boolean;
@@ -25,6 +25,8 @@ export type AIAction =
       state?: 'done' | 'saving' | 'saved' | 'failed' | 'deleting' | 'deleted';
       saved?: { saleId: string; customerId?: string; number?: string; total?: number; monthly?: number; offline?: boolean };
       result?: string; send?: SendState; sendResult?: string }
+  | { id: string; kind: 'report'; title: string; summary: string; from: string | null; to: string | null; onlyActive?: boolean;
+      state?: 'busy' | 'done' | 'error'; result?: string }
   | { id: string; kind: 'send_doc'; title: string; summary: string; doc: 'contract' | 'receipt'; saleId: string; auto?: boolean;
       state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string };
 
@@ -55,6 +57,7 @@ interface Props {
   onSendContract: () => void;
   onDeleteContract: () => void;
   onSendDoc: () => void;
+  onDownloadReport: () => void;
   onCancelDoc: () => void;
 }
 
@@ -113,6 +116,11 @@ const AIActionCard: React.FC<Props> = (p) => {
         {title}
         <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100">{a.summary}</p>
         {a.kind === 'confirm' && !a.state && a.overLimit != null && <OverLimit limit={a.overLimit} />}
+        {a.kind === 'confirm' && !a.state && a.always && (
+          <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
+            <ShieldAlert size={13} /> Рассылку всегда подтверждаете вы — отменить её нельзя
+          </p>
+        )}
         {a.kind === 'confirm' && !a.state && (
           <div className="mt-3 flex gap-2">
             <button onClick={p.onConfirm} className={primary}>Подтвердить</button>
@@ -139,6 +147,20 @@ const AIActionCard: React.FC<Props> = (p) => {
             )}
           </>
         )}
+      </div>
+    );
+  }
+
+  if (a.kind === 'report') {
+    return (
+      <div className={shell}>
+        {title}
+        <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100 flex items-start gap-2"><FileSpreadsheet size={18} className="mt-0.5 shrink-0 text-emerald-600" />{a.summary}</p>
+        {a.state === 'done' && <p className={okLine}>✓ {a.result}</p>}
+        {a.state === 'error' && <p className={errLine}>{a.result}</p>}
+        <button onClick={p.onDownloadReport} disabled={a.state === 'busy'} className={`${primary} mt-3 w-full`}>
+          <Download size={16} /> {a.state === 'busy' ? 'Собираем отчёт…' : a.state === 'done' ? 'Скачать ещё раз' : 'Скачать'}
+        </button>
       </div>
     );
   }

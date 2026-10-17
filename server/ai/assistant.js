@@ -157,6 +157,62 @@ const CUSTOMER_OVERVIEW_TOOL = {
   required: ['query'],
 };
 
+// ── Умения сверх /api/v1 ───────────────────────────────────────────────────
+// Записи идут тем же путём, что платёж: «Подтвердить» / «Авто» / порог / «Отменить»
+const UPDATE_CUSTOMER_TOOL = {
+  name: 'update_customer',
+  description: 'Изменить карточку клиента: телефон, адрес, заметку, ФИО, паспорт. Клиента найди через customer_overview. Передавай только то, что меняется.',
+  input: {
+    customerId: { type: 'string', description: 'id клиента' },
+    phone: { type: 'string' }, address: { type: 'string' }, notes: { type: 'string', description: 'Заметка о клиенте' },
+    name: { type: 'string', description: 'ФИО полностью' },
+    passportSeries: { type: 'string' }, passportNumber: { type: 'string' }, passportIssuedBy: { type: 'string' },
+  },
+  required: ['customerId'],
+};
+const CREATE_TASK_TOOL = {
+  name: 'create_task',
+  description: 'Задача человеку в раздел «Задачи» с напоминанием в срок: «напомни мне завтра позвонить Дудаевой». Клиента — через customer_overview, если речь о нём.',
+  input: {
+    title: { type: 'string', description: 'Что сделать, коротко: «Позвонить Дудаевой»' },
+    dueDate: { type: 'string', description: 'Когда, ГГГГ-ММ-ДД (по Москве)' },
+    time: { type: 'string', description: 'Время ЧЧ:ММ, если названо' },
+    note: { type: 'string', description: 'Подробности' },
+    customerId: { type: 'string' }, contractId: { type: 'string' },
+  },
+  required: ['title'],
+};
+const SEND_REMINDER_TOOL = {
+  name: 'send_reminder',
+  description: 'Отправить клиенту в WhatsApp напоминание о просрочке по договору (шаблон из настроек WhatsApp). Договор — через customer_overview.',
+  input: { contractId: { type: 'string', description: 'id договора' } },
+  required: ['contractId'],
+};
+const REMIND_ALL_TOOL = {
+  name: 'remind_all_overdue',
+  description: 'Отправить в WhatsApp напоминания ВСЕМ клиентам с просрочкой. Всегда ждёт «Подтвердить» — даже в «Авто».',
+  input: {},
+};
+const INVESTOR_PROFIT_TOOL = {
+  name: 'investor_profit',
+  description: 'Сколько прибыли начислено инвестору: за период и за всё время, по каким договорам. Тем же расчётом, что экран инвестора. Выплаты и «доступно к выводу» — на экране инвестора.',
+  input: {
+    investor: { type: 'string', description: 'Имя инвестора или его id' },
+    from: { type: 'string', description: 'С какой даты, ГГГГ-ММ-ДД' }, to: { type: 'string', description: 'По какую дату, ГГГГ-ММ-ДД' },
+  },
+  required: ['investor'],
+};
+const EXCEL_REPORT_TOOL = {
+  name: 'excel_report',
+  description: 'Отчёт Excel за период (договоры, платежи, расходы — как на экране «Экспорт»). Под ответом карточка «Скачать».',
+  input: {
+    from: { type: 'string', description: 'С какой даты, ГГГГ-ММ-ДД; не задано — за всё время' },
+    to: { type: 'string', description: 'По какую дату, ГГГГ-ММ-ДД' },
+    onlyActive: { type: 'boolean', description: 'Только действующие договоры' },
+  },
+};
+const CUSTOM_WRITE_NAMES = new Set(['update_customer', 'create_task', 'send_reminder', 'remind_all_overdue']);
+
 // Основа слова без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
 const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
 
@@ -167,6 +223,8 @@ const STEP_LABELS = {
   list_payments: 'Смотрю платежи…', due_payments: 'Смотрю график платежей…', list_accounts: 'Смотрю счета…',
   list_expenses: 'Смотрю расходы…', list_products: 'Смотрю склад…', list_investors: 'Смотрю инвесторов…',
   get_summary: 'Считаю итоги…', whoami: 'Смотрю аккаунт…',
+  update_customer: 'Меняю карточку клиента…', create_task: 'Добавляю задачу…', send_reminder: 'Готовлю напоминание…',
+  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…',
   create_payment: 'Провожу платёж…', create_expense: 'Записываю расход…', create_income: 'Записываю приход…',
   create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…',
 };
@@ -188,6 +246,10 @@ const WRITE_TITLES = {
   create_customer: 'Завести клиента',
   create_expense: 'Записать расход',
   create_income: 'Записать приход',
+  update_customer: 'Изменить клиента',
+  create_task: 'Задача',
+  send_reminder: 'Напомнить в WhatsApp',
+  remind_all_overdue: 'Напомнить всем с просрочкой',
 };
 
 const DONE_TITLES = {
@@ -195,6 +257,10 @@ const DONE_TITLES = {
   create_customer: 'клиент заведён',
   create_expense: 'расход записан',
   create_income: 'приход записан',
+  update_customer: 'карточка клиента изменена',
+  create_task: 'задача добавлена',
+  send_reminder: 'напоминание отправлено',
+  remind_all_overdue: 'рассылка запущена',
 };
 
 const toOpenAiTool = (tool) => ({
@@ -251,6 +317,173 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     out.sort((a, b) => a.date.localeCompare(b.date));
     const total = Math.round(out.reduce((n, x) => n + x.amount, 0));
     return JSON.stringify({ from, to, count: out.length, total, payments: out.slice(0, 60) });
+  };
+
+  // ── Умения сверх /api/v1 ─────────────────────────────────────────────────
+  // Общие модули приложения (ESM): прибыль инвестора — тем же расчётом, что экран
+  const sharedModule = (() => {
+    const cache = {};
+    return (name) => (cache[name] ||= import(require('url').pathToFileURL(require('path').join(__dirname, '..', '..', 'shared', `${name}.js`)).href));
+  })();
+  const loadItems = async (userId, type) =>
+    (await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = $2`, [userId, type])).rows.map(r => r.data);
+  const loadItem = async (userId, type, id) =>
+    (await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = $2 AND id = $3`, [userId, type, String(id || '')])).rows[0]?.data || null;
+
+  // Пропуск на внутренние маршруты приложения (напоминания) — как у самого пользователя, на минуту
+  const userToken = async (userId) => {
+    const u = (await pool.query('SELECT id, role, manager_id FROM users WHERE id = $1', [userId])).rows[0];
+    return jwt.sign({ id: u.id, role: u.role, managerId: u.manager_id }, jwtSecret, { expiresIn: 60 });
+  };
+  const appRequest = async (userId, path, body, waitMs = 0) => {
+    const req = fetch(`http://127.0.0.1:${port}/api${path}`, {
+      method: 'POST', headers: { 'x-auth-token': await userToken(userId), 'Content-Type': 'application/json' }, body: JSON.stringify(body || {}),
+    }).then(async r => ({ ok: r.ok, status: r.status, data: await r.json().catch(() => null) }));
+    if (!waitMs) return req;
+    // Долгая рассылка: не ждём до конца — об итоге придёт уведомление
+    return Promise.race([req, new Promise(res => setTimeout(() => res({ ok: true, pending: true }), waitMs))]);
+  };
+
+  // Просрочка договора — как у рассылки напоминаний (server/index.js, send-reminder-all)
+  const overdueInfo = (sale) => {
+    const today = new Date(); today.setHours(0, 0, 0, 0);
+    const plan = sale.paymentPlan || [];
+    return {
+      overdueAmount: Math.round(domain.overdueAmount(sale) * 100) / 100,
+      monthlyPayment: Number(plan.filter(p => !p.isRealPayment).map(p => p.amount)[0]) || 0,
+      monthsOverdue: plan.filter(p => !p.isPaid && !p.isRealPayment && new Date(p.date) < today).length,
+    };
+  };
+  const overdueSalesWithPhone = async (userId) => {
+    const [sales, customers] = await Promise.all([loadItems(userId, 'sales'), loadItems(userId, 'customers')]);
+    return sales.filter(s => s.status === 'ACTIVE' || s.status === 'DRAFT').map(sale => {
+      const customer = customers.find(c => c.id === sale.customerId);
+      return { sale, customer, ...overdueInfo(sale) };
+    }).filter(x => x.overdueAmount >= 1 && x.customer?.phone && x.customer.allowWhatsappNotification !== false);
+  };
+
+  const CUSTOMER_FIELDS = ['name', 'phone', 'address', 'notes', 'passportSeries', 'passportNumber', 'passportIssuedBy'];
+  const FIELD_NAMES = { name: 'ФИО', phone: 'телефон', address: 'адрес', notes: 'заметка', passportSeries: 'серия паспорта', passportNumber: 'номер паспорта', passportIssuedBy: 'кем выдан' };
+  const taskDue = (args) => {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(args.dueDate || '')) return null;
+    const time = /^\d{1,2}:\d{2}$/.test(args.time || '') ? args.time.padStart(5, '0') : null;
+    // Дата и время — по Москве
+    return { iso: new Date(`${args.dueDate}T${time || '09:00'}:00+03:00`).toISOString(), hasTime: !!time, label: `${args.dueDate.split('-').reverse().join('.')}${time ? ` ${time}` : ''}` };
+  };
+
+  /** Описание для карточки; null — делать нечего (сказать модели почему) */
+  const customSummary = async (userId, name, args) => {
+    if (name === 'update_customer') {
+      const c = await loadItem(userId, 'customers', args.customerId);
+      if (!c) return { error: 'Клиент не найден — найди его через customer_overview.' };
+      const changes = CUSTOMER_FIELDS.filter(f => typeof args[f] === 'string' && args[f].trim() && args[f].trim() !== (c[f] || ''));
+      if (!changes.length) return { error: 'Менять нечего — значения те же, что в карточке.' };
+      return { text: `${c.name}: ${changes.map(f => `${FIELD_NAMES[f]} → ${args[f].trim()}`).join('; ')}` };
+    }
+    if (name === 'create_task') {
+      const due = taskDue(args);
+      return { text: `«${String(args.title).trim()}»${due ? ` — ${due.label}` : ' — без срока'}` };
+    }
+    if (name === 'send_reminder') {
+      const sale = await loadItem(userId, 'sales', args.contractId);
+      if (!sale) return { error: 'Договор не найден — найди его через customer_overview.' };
+      const customer = await loadItem(userId, 'customers', sale.customerId);
+      const why = await cannotSendWhy(userId, null, customer?.phone);
+      if (why) return { error: `Напомнить нельзя: ${why}` };
+      if (customer.allowWhatsappNotification === false) return { error: 'У клиента выключены WhatsApp-уведомления (карточка клиента).' };
+      const info = overdueInfo(sale);
+      if (info.overdueAmount < 1) return { error: 'Просрочки по этому договору нет — напоминать не о чем.' };
+      return { text: `${customer.name}, ${sale.productName}: просрочка ${money(info.overdueAmount)} → WhatsApp` };
+    }
+    if (name === 'remind_all_overdue') {
+      const why = await cannotSendWhy(userId, null, '0000000000');
+      if (why) return { error: `Напомнить нельзя: ${why}` };
+      const list = await overdueSalesWithPhone(userId);
+      if (!list.length) return { error: 'Клиентов с просрочкой и телефоном нет — напоминать некому.' };
+      const people = new Set(list.map(x => x.customer.id)).size;
+      return { text: `${people} ${people % 10 === 1 && people % 100 !== 11 ? 'клиенту' : 'клиентам'} с просрочкой, всего ${money(list.reduce((n, x) => n + x.overdueAmount, 0))} → WhatsApp` };
+    }
+    return { text: '' };
+  };
+
+  /** Выполнить своё умение. ok, text; undo — как отменить */
+  const runCustom = async (userId, name, args) => {
+    if (name === 'update_customer') {
+      const c = await loadItem(userId, 'customers', args.customerId);
+      if (!c) return { ok: false, text: 'Клиент не найден.' };
+      const patch = {}, prev = {};
+      for (const f of CUSTOMER_FIELDS) if (typeof args[f] === 'string' && args[f].trim()) { patch[f] = args[f].trim(); prev[f] = c[f] || ''; }
+      const r = await v1Request(userId, { method: 'PATCH', path: `/customers/${encodeURIComponent(c.id)}`, body: patch });
+      return r.ok ? { ok: true, undo: { kind: 'customer', id: c.id, prev } } : r;
+    }
+    if (name === 'create_task') {
+      const due = taskDue(args);
+      const contract = args.contractId ? await loadItem(userId, 'sales', args.contractId) : null;
+      const customer = await loadItem(userId, 'customers', args.customerId || contract?.customerId);
+      const task = {
+        id: `task_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`, userId,
+        title: String(args.title).trim().slice(0, 200), note: args.note ? String(args.note).slice(0, 1000) : undefined,
+        ...(due ? { dueDate: due.iso, hasTime: due.hasTime } : {}),
+        isDone: false, createdAt: new Date().toISOString(), createdVia: 'ai',
+        ...(customer ? { customerId: customer.id, customerName: customer.name } : {}),
+        ...(contract ? { saleId: contract.id } : {}),
+      };
+      await pool.query(`INSERT INTO data_items (id, user_id, type, data, updated_at) VALUES ($1, $2, 'tasks', $3, NOW())`, [task.id, userId, JSON.stringify(task)]);
+      return { ok: true, undo: { kind: 'task', id: task.id } };
+    }
+    if (name === 'send_reminder') {
+      const sale = await loadItem(userId, 'sales', args.contractId);
+      const customer = sale && await loadItem(userId, 'customers', sale.customerId);
+      if (!sale || !customer) return { ok: false, text: 'Договор или клиент не найден.' };
+      const r = await appRequest(userId, '/integrations/whatsapp/send-reminder', {
+        customerId: customer.id, phone: customer.phone, customerName: customer.name, productName: sale.productName,
+        ...overdueInfo(sale), template: 'overdue',
+      });
+      return r.ok ? { ok: true } : { ok: false, text: r.data?.msg || r.data?.error || 'WhatsApp не отправил напоминание.' };
+    }
+    if (name === 'remind_all_overdue') {
+      const r = await appRequest(userId, '/integrations/whatsapp/send-reminder-all', { template: 'overdue' }, 4000);
+      if (!r.ok) return { ok: false, text: r.data?.msg || r.data?.error || 'Рассылка не запустилась.' };
+      const res = r.data?.results;
+      return { ok: true, text: r.pending || r.data?.background ? 'Рассылка идёт — об итоге придёт уведомление.' : res ? `Отправлено ${res.sent} из ${res.total}.` : '' };
+    }
+    return { ok: false, text: 'Это действие не поддерживается.' };
+  };
+
+  const investorProfit = async (userId, args) => {
+    const [P, F, investors, accounts, salesRaw, settings] = await Promise.all([
+      sharedModule('profit'), sharedModule('funding'), loadItems(userId, 'investors'), loadItems(userId, 'accounts'), loadItems(userId, 'sales'),
+      pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'settings' LIMIT 1`, [userId]).then(r => r.rows[0]?.data || {}),
+    ]);
+    const q = String(args.investor || '').toLowerCase().replace(/ё/g, 'е').trim();
+    const stems = q.split(/\s+/).filter(Boolean).map(w => { const st = nameStem(w); return st.length >= 3 ? st : w; });
+    const found = investors.filter(i => i.id === args.investor || stems.every(st => String(i.name || '').toLowerCase().replace(/ё/g, 'е').includes(st)));
+    if (found.length !== 1) return JSON.stringify(found.length ? { ambiguous: found.map(i => ({ id: i.id, name: i.name })) } : { notFound: true, investors: investors.map(i => i.name) });
+    const inv = found[0];
+    // Инвестор бывает и со своим счётом, и в общей кассе — считаем по каждому
+    const own = accounts.filter(a => a.ownerId === inv.id || (a.type === 'POOL' && (a.poolMemberIds || []).includes(inv.id)));
+    if (!own.length) return JSON.stringify({ investor: inv.name, noAccount: true });
+    const sales = F.expandFundedSales(salesRaw);
+    const inRange = (d) => { const day = mskDate(d); return (!args.from || day >= args.from) && (!args.to || day <= args.to); };
+    const perAccount = own.map(account => {
+      const accruals = P.investorProfitAccruals(account, investors, sales, inv.id, !!settings.profitFromPaymentsOnly);
+      const period = accruals.filter(a => inRange(a.date));
+      const byContract = {};
+      for (const a of period) byContract[a.sale.productName || a.sale.id] = (byContract[a.sale.productName || a.sale.id] || 0) + a.amount;
+      return {
+        account: account.name,
+        earnedInPeriod: Math.round(period.reduce((n, a) => n + a.amount, 0)),
+        earnedAllTime: Math.round(accruals.reduce((n, a) => n + a.amount, 0)),
+        byContract: Object.entries(byContract).map(([product, amount]) => ({ product, amount: Math.round(amount) })).sort((a, b) => b.amount - a.amount).slice(0, 10),
+      };
+    });
+    return JSON.stringify({
+      investor: inv.name, period: { from: args.from || null, to: args.to || null },
+      totalInPeriod: perAccount.reduce((n, a) => n + a.earnedInPeriod, 0),
+      totalAllTime: perAccount.reduce((n, a) => n + a.earnedAllTime, 0),
+      accounts: perAccount,
+      note: perAccount.length > 1 ? 'Инвестор участвует в нескольких счетах — назови каждый и итог.' : undefined,
+    });
   };
 
   const customerOverview = async (userId, args) => {
@@ -362,12 +595,19 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
 
   /** Выполнить действие: по «Подтвердить» или сразу в режиме «Авто» */
   const execute = async (userId, actionId, toolName, args, summary) => {
+    const doneText = (extra) => `Готово: ${DONE_TITLES[toolName] || 'сделано'} — ${summary.replace('Остаток станет', 'остаток теперь')}.${extra ? ` ${extra}` : ''}`;
+    if (CUSTOM_WRITE_NAMES.has(toolName)) {
+      const r = await runCustom(userId, toolName, args);
+      if (!r.ok) return { ok: false, text: r.text };
+      if (r.undo) done.set(actionId, { userId, tool: toolName, undo: r.undo, summary, at: Date.now() });
+      return { ok: true, undoable: !!r.undo, text: doneText(r.text) };
+    }
     const tool = TOOLS.find(t => t.name === toolName);
     const r = await callV1(userId, tool, args);
     if (!r.ok) return { ok: false, text: r.text };
     const ref = createdRef(toolName, r.data);
     if (ref) done.set(actionId, { userId, tool: toolName, ref: String(ref), summary, at: Date.now() });
-    return { ok: true, undoable: !!ref, text: `Готово: ${DONE_TITLES[toolName] || 'сделано'} — ${summary.replace('Остаток станет', 'остаток теперь')}.` };
+    return { ok: true, undoable: !!ref, text: doneText() };
   };
 
   const confirmAction = async (userId, actionId) => {
@@ -383,9 +623,25 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     const d = done.get(actionId);
     if (!d || d.userId !== userId) return { ok: false, text: 'Отменить уже нельзя — прошло больше 30 минут. Исправьте запись в приложении.' };
     if (d.undone) return { ok: false, text: 'Уже отменено.' };
-    const id = encodeURIComponent(d.ref);
+    const id = encodeURIComponent(d.ref || '');
     let r;
-    if (d.tool === 'create_payment') r = await v1Request(userId, { method: 'DELETE', path: `/payments/${id}` });
+    if (d.undo?.kind === 'customer') {
+      // Прежние значения — напрямую: API пустое значение пропускает, и
+      // «вернуть пустой телефон» через него молча ничего не делало
+      const c = await loadItem(userId, 'customers', d.undo.id);
+      if (!c) r = { ok: false, text: 'Клиент не найден — возможно, его удалили.' };
+      else {
+        const restored = { ...c };
+        for (const [f, v] of Object.entries(d.undo.prev)) { if (v) restored[f] = v; else delete restored[f]; }
+        await pool.query(`UPDATE data_items SET data = $1, updated_at = NOW() WHERE user_id = $2 AND type = 'customers' AND id = $3`,
+          [JSON.stringify(restored), userId, c.id]);
+        const check = await loadItem(userId, 'customers', c.id);
+        r = Object.entries(d.undo.prev).every(([f, v]) => (check?.[f] || '') === v) ? { ok: true } : { ok: false, text: 'Не удалось вернуть прежние данные клиента.' };
+      }
+    } else if (d.undo?.kind === 'task') {
+      const q = await pool.query(`DELETE FROM data_items WHERE user_id = $1 AND type = 'tasks' AND id = $2 RETURNING id`, [userId, d.undo.id]);
+      r = q.rowCount ? { ok: true } : { ok: false, text: 'Задача не найдена — возможно, её уже удалили.' };
+    } else if (d.tool === 'create_payment') r = await v1Request(userId, { method: 'DELETE', path: `/payments/${id}` });
     else if (d.tool === 'create_expense') r = await v1Request(userId, { method: 'DELETE', path: `/expenses/${id}` });
     else if (d.tool === 'create_customer') r = await v1Request(userId, { method: 'DELETE', path: `/customers/${id}` });
     else if (d.tool === 'create_income') {
@@ -399,6 +655,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     } else r = { ok: false, text: 'Это действие так не отменить.' };
     if (!r.ok) return r;
     d.undone = true;
+    if (d.undo?.kind === 'customer') return { ok: true, text: `Отменено: вернул прежние данные — ${d.summary.split(':')[0]}.` };
+    if (d.undo?.kind === 'task') return { ok: true, text: `Отменено: задача ${d.summary.split(' — ')[0]} удалена.` };
     return { ok: true, text: `Отменено: ${d.summary.replace(/\. Остаток станет .*$/, '')}.` };
   };
   const cancelAction = (userId, actionId) => {
@@ -460,6 +718,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       : 'Оформить договор — вызывай prepare_contract: под ответом появится карточка с кнопкой «Открыть форму договора», человек проверит и сохранит. Скажи одной фразой: «Черновик готов — нажмите «Открыть форму договора»». Не говори, что форма уже открыта, и не проси «открыть приложение» — человек уже в нём. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
     'Для договора обязательны клиент, товар, закуп, срок в месяцах и наценка или цена. Чего-то не назвали — спроси до prepare_contract, в любом режиме; не подставляй сам.',
     'Отправить клиенту договор или чек об оплате в WhatsApp — send_document. «Оформи и отправь» — prepare_contract с sendToWhatsApp.',
+    'Ещё умеешь: изменить карточку клиента (update_customer — телефон, адрес, заметка, паспорт), поставить задачу с напоминанием (create_task: «напомни завтра позвонить»; относительные даты считай от сегодняшней), напомнить клиенту о просрочке в WhatsApp (send_reminder), напомнить всем должникам (remind_all_overdue — всегда с подтверждением), прибыль инвестора (investor_profit), остатки склада (list_products), отчёт Excel за период (excel_report).',
+    'Товары в каталоге часто записаны латиницей (iPhone, Samsung): ищи и по-русски, и по-английски, а ничего не нашлось — посмотри весь список list_products без search.',
+    'Эти записи (клиент, задача, напоминание) идут так же, как платёж: в «Подтверждать» — карточка «Подтвердить», в «Авто» — сразу.',
     'Люди, о которых шла речь в этом разговоре («он», «она», «этот клиент», «первый клиент», «тот, что на фото»), — это клиенты из разговора: фото паспортов и пометки [Черновик договора …] в истории. Если такого клиента ещё нет в базе (черновик не сохранён) — снова передай его данные в newCustomer, переписав их с фото или из пометки. Никогда не бери клиента из базы по порядку в списке или наугад: не уверен, о ком речь, — спроси.',
     'Для черновика договора телефон, адрес и счёт не обязательны: их допишут в форме. Не задерживай черновик вопросами о них.',
     'Прислали фото паспорта без задания — коротко назови, кого распознал (ФИО), и спроси, что оформить.',
@@ -609,7 +870,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       ...historyMessages(history),
       { role: 'user', content },
     ];
-    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL)];
+    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL),
+      ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL].map(toOpenAiTool)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
     const writes = new Set();
     const actions = [];
@@ -711,33 +973,51 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           }
         } else if (name === 'send_document') {
           result = await prepareSendDocument(user.id, args, actions, auto);
+        } else if (name === 'investor_profit') {
+          result = await investorProfit(user.id, args);
+        } else if (name === 'excel_report') {
+          const period = [args.from, args.to].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || '')).map(d => d.split('-').reverse().join('.'));
+          actions.push({ id: newActionId(), kind: 'report', title: 'Отчёт Excel', from: args.from || null, to: args.to || null, onlyActive: !!args.onlyActive,
+            summary: period.length ? `За ${period.join(' — ')}${args.onlyActive ? ', только действующие договоры' : ''}` : `За всё время${args.onlyActive ? ', только действующие договоры' : ''}` });
+          result = 'Под ответом карточка «Скачать» — отчёт соберёт приложение. Скажи коротко, что отчёт готов к скачиванию.';
         } else {
           const tool = TOOLS.find(t => t.name === name);
-          if (!tool) {
+          const custom = CUSTOM_WRITE_NAMES.has(name);
+          if (!tool && !custom) {
             result = `Инструмента ${name} нет.`;
-          } else if (tool.scope === 'write') {
+          } else if (custom || tool.scope === 'write') {
             const key = `${name}:${JSON.stringify(args)}`;
+            const cs = custom ? await customSummary(user.id, name, args) : null;
             if (writes.has(key)) {
               result = 'Это действие в этом сообщении уже есть — повторять не нужно.';
+            } else if (cs?.error) {
+              result = `${cs.error} Скажи об этом человеку.`;
             } else {
               writes.add(key);
               const id = newActionId();
-              const summary = name === 'create_payment' ? await paymentSummary(user.id, args)
+              const title = WRITE_TITLES[name] || tool?.title || name;
+              const summary = custom ? cs.text
+                : name === 'create_payment' ? await paymentSummary(user.id, args)
                 : (name === 'create_expense' || name === 'create_income') ? await accountSummary(user.id, name, args)
                 : describe(name, args);
-              if (overLimit(args.amount)) {
+              if (name === 'remind_all_overdue') {
+                // Рассылка многим клиентам сразу и без возврата — только по нажатию, в любом режиме
                 pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
-                actions.push({ id, kind: 'confirm', tool: name, title: WRITE_TITLES[name] || tool.title, summary, args, overLimit: autoLimit,
+                actions.push({ id, kind: 'confirm', tool: name, title, summary, args, always: true });
+                result = 'Рассылка ждёт «Подтвердить» — её всегда подтверждает человек. Скажи об этом одной фразой.';
+              } else if (overLimit(args.amount)) {
+                pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
+                actions.push({ id, kind: 'confirm', tool: name, title, summary, args, overLimit: autoLimit,
                   ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
                 result = `Сумма не меньше порога «Авто» (${money(autoLimit)}) — это действие ждёт «Подтвердить». Скажи об этом одной фразой.`;
               } else if (auto) {
                 const r = await execute(user.id, id, name, args, summary);
-                actions.push({ id, kind: 'done', tool: name, title: WRITE_TITLES[name] || tool.title, summary, ok: r.ok, result: r.text, undoable: !!r.undoable,
+                actions.push({ id, kind: 'done', tool: name, title, summary, ok: r.ok, result: r.text, undoable: !!r.undoable,
                   ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
                 result = r.ok ? `Выполнено: ${r.text}` : `Не выполнено: ${r.text}. Скажи человеку, что не так.`;
               } else {
                 pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
-                actions.push({ id, kind: 'confirm', tool: name, title: WRITE_TITLES[name] || tool.title, summary, args,
+                actions.push({ id, kind: 'confirm', tool: name, title, summary, args,
                   ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
                 result = 'Действие подготовлено и ждёт, пока человек нажмёт «Подтвердить». Не повторяй вызов.';
               }
