@@ -126,13 +126,51 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
   const [consentOpen, setConsentOpen] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
   const listEnd = useRef<HTMLDivElement>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const loadStatus = () => api.aiAssistant.status().then(s => { setStatus(s); if (!s.consent) setConsentOpen(true); }).catch(() => {});
   useEffect(() => { loadStatus(); }, []);
   useEffect(() => { writeStore(userId, messages); }, [messages, userId]);
-  useLayoutEffect(() => { listEnd.current?.scrollIntoView({ behavior: 'smooth', block: 'end' }); }, [messages.length, sending]);
+  // Что листается: слой страницы PagePush, на Mac — карточка, иначе окно
+  const scroller = (): HTMLElement | null => {
+    let el: HTMLElement | null = listEnd.current?.parentElement || null;
+    while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
+    return el;
+  };
+  const scrollToEnd = (smooth: boolean) => {
+    const el = scroller();
+    const behavior: ScrollBehavior = smooth ? 'smooth' : 'auto';
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
+    else window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
+  };
+  // При открытии — сразу внизу, без анимации: плавная прокрутка во время
+  // въезда страницы обрывалась, и длинный чат открывался посередине.
+  // Новые сообщения — плавно.
+  const opened = useRef(false);
+  useLayoutEffect(() => {
+    scrollToEnd(opened.current);
+    opened.current = true;
+  }, [messages.length, sending]);
+  // Прилипание к низу: пока человек внизу, а лента подросла (догрузились
+  // тариф в шапке, фото, карточка действия) — остаёмся внизу. Пролистал
+  // вверх — не трогаем.
+  const atBottom = useRef(true);
+  useEffect(() => {
+    const root = rootRef.current; if (!root) return;
+    const el = scroller();
+    const target: HTMLElement | Window = el || window;
+    const onScroll = () => {
+      const top = el ? el.scrollTop : window.scrollY;
+      const max = el ? el.scrollHeight - el.clientHeight : document.documentElement.scrollHeight - window.innerHeight;
+      atBottom.current = max - top < 80;
+    };
+    const ro = new ResizeObserver(() => { if (atBottom.current) scrollToEnd(false); });
+    ro.observe(root);
+    target.addEventListener('scroll', onScroll, { passive: true });
+    return () => { ro.disconnect(); target.removeEventListener('scroll', onScroll); };
+  }, []);
 
   // Поле ввода растёт вместе с текстом, до пяти строк
   useLayoutEffect(() => {
@@ -256,7 +294,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
   const empty = messages.length === 0;
 
   return (
-    <div className="flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
+    <div ref={rootRef} className="flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
       {/* Шапка */}
       {/* В пустом чате шар один — большой посередине; маленький в шапке появляется вместе с перепиской */}
       <div className="flex items-center gap-3 pb-3">
