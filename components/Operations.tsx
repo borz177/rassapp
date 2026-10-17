@@ -378,6 +378,11 @@ const Operations: React.FC<OperationsProps> = ({
                         Из прибыли менеджера
                     </span>
                 )}
+                {op.viaAi && (
+                    <span className="inline-flex items-center gap-1 mt-1 text-[10px] font-semibold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-500/15 px-1.5 py-0.5 rounded" title="Провёл FinUchetGPT">
+                        ✦ FinUchetGPT
+                    </span>
+                )}
                 {employees.length > 0 && getEmployeeName(op.raw?.createdByUserId) && op.raw?.createdByUserId !== op.raw?.employeeId && (
                     <p className="text-[10px] text-indigo-500 dark:text-indigo-400 mt-0.5">
                         Добавил: {getEmployeeName(op.raw.createdByUserId)}

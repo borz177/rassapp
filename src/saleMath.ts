@@ -291,6 +291,7 @@ export const buildAssistantSale = (opts: {
     funding: undefined,
     fundingExtra: undefined,
     type: 'INSTALLMENT' as const,
+    createdVia: 'ai' as const,
     totalAmount,
     remainingAmount: totalAmount - downPayment,
   };

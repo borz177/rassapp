@@ -381,6 +381,9 @@ const MoneyRow: React.FC<{ op: MoneyOperation; cents?: boolean; onOpen: () => vo
         <span className="flex items-center gap-1.5">
           <UnsyncedMark id={op.raw?.id} />
           <span className="font-semibold text-[15px] text-slate-800 dark:text-white truncate">{op.title}</span>
+          {op.viaAi && (
+            <span className="shrink-0 text-[10px] font-semibold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-500/15 px-1.5 py-0.5 rounded" title="Провёл FinUchetGPT">✦ FinUchetGPT</span>
+          )}
         </span>
         <span className="block text-xs text-slate-500 dark:text-slate-400 truncate">
           {timeOf(op.date)} · {op.description}

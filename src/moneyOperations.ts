@@ -29,6 +29,8 @@ export interface MoneyOperation {
   comment?: string;
   balanceBefore?: number;
   balanceAfter?: number;
+  /** Операцию провёл FinUchetGPT */
+  viaAi?: boolean;
 }
 
 export const buildMoneyOperations = ({ sales, expenses, accounts, customers, investors = [], retailSales = [] }: {
@@ -126,7 +128,8 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
               accountId: s.accountId,
               type: 'INCOME',
               category: s.category || 'Продажа',
-              raw: s
+              raw: s,
+              viaAi: s.createdVia === 'ai',
           });
       } else { // INSTALLMENT
           // Доля совместного договора (shared/funding.js): у частей одного договора
@@ -143,7 +146,8 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
                   accountId: s.accountId,
                   type: 'INCOME',
                   category: 'Платеж',
-                  raw: s
+                  raw: s,
+                  viaAi: s.createdVia === 'ai',
               });
           }
           // 2. Paid installments
@@ -164,7 +168,8 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
                       // 🆕 Передаем данные о скидке из платежа
                       discountAmount: paymentAny.discountAmount || 0,
                       discountPercent: paymentAny.discountPercent || 0,
-                      note: paymentAny.note || ''
+                      note: paymentAny.note || '',
+                      viaAi: p.createdVia === 'ai',
                   });
               }
           });
@@ -181,7 +186,8 @@ export const buildMoneyOperations = ({ sales, expenses, accounts, customers, inv
       type: 'EXPENSE',
       category: e.category,
       comment: e.description?.trim() || undefined,
-      raw: e
+      raw: e,
+      viaAi: e.createdVia === 'ai',
   }));
 
   const all: MoneyOperation[] = [...incomeOps, ...expenseOps] as MoneyOperation[];

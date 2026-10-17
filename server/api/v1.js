@@ -271,6 +271,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     const customer = {
       id: newId('cust'), userId,
       createdAt: new Date().toISOString(),
+      ...viaAi(req),
       totalPurchases: 0, documents: [],
       ...value,
       email: value.email || '',
@@ -304,6 +305,9 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     await remove(userId, 'customers', req.params.id);
     noContent(res);
   }));
+
+  // Запись сделал FinUchetGPT (пропуск fu_agent_): журнал операций показывает это меткой
+  const viaAi = req => (req.apiAuth?.key?.isAgent ? { createdVia: 'ai' } : {});
 
   // ── договоры ─────────────────────────────────────────────────────────────
   const contractSchema = {
@@ -543,7 +547,8 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
         date: value.date || new Date().toISOString(),
         actualDate: new Date().toISOString(),
         isPaid: true, isRealPayment: true,
-        note: value.note || 'Платёж через API',
+        note: value.note || (req.apiAuth?.key?.isAgent ? 'FinUchetGPT' : 'Платёж через API'),
+        ...viaAi(req),
       };
       sale.paymentPlan.push(payment);
       const updated = reconcile(sale);
@@ -628,6 +633,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     const expense = {
       id: newId('exp'), userId,
       createdAt: new Date().toISOString(),
+      ...viaAi(req),
       ...value,
       date: value.date || new Date().toISOString(),
     };
@@ -683,6 +689,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
       remainingAmount: 0, interestRate: 0, installments: 0,
       startDate: value.date || new Date().toISOString(),
       status: 'COMPLETED', paymentPlan: [],
+      ...viaAi(req),
     };
     await save(userId, 'sales', income);
     created(res, {

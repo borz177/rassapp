@@ -322,6 +322,8 @@ export interface OAuthClientCreated {
 
 export interface Customer {
   id: string;
+  /** Запись сделал FinUchetGPT — в журнале операций метка */
+  createdVia?: 'ai';
   userId: string; // Owner
   createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
   createdAt?: string; // ISO String
@@ -593,6 +595,8 @@ export interface StockMovement {
 
 export interface Payment {
   id: string;
+  /** Запись сделал FinUchetGPT — в журнале операций метка */
+  createdVia?: 'ai';
   saleId: string;
   amount: number;
   date: string; // ISO String
@@ -607,6 +611,8 @@ export interface Payment {
 
 export interface Expense {
   id: string;
+  /** Запись сделал FinUchetGPT — в журнале операций метка */
+  createdVia?: 'ai';
   userId: string; // Owner
   createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
   accountId: string; // Linked account
@@ -664,6 +670,8 @@ export interface Sale {
   /** Категория прочего прихода: по ней операция находится в фильтрах */
   category?: string;
   id: string;
+  /** Запись сделал FinUchetGPT — в журнале операций метка */
+  createdVia?: 'ai';
   userId: string; // Owner
   createdByUserId?: string; // Actual creator (manager or employee id) — for audit/visibility
   type: 'INSTALLMENT' | 'CASH';
