@@ -1,6 +1,7 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
+import { SquarePen, Trash2, RotateCcw } from 'lucide-react';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
@@ -73,14 +74,16 @@ const SUGGESTIONS = [
   'Покажи просроченные договоры',
 ];
 
-const storeKey = (userId: string) => `finuchet_ai_chat_${userId}`;
-const readStore = (userId: string): Msg[] => {
-  try { return JSON.parse(localStorage.getItem(storeKey(userId)) || '[]'); } catch { return []; }
+/** Текущий чат и прошлый — тот, что был до «Нового чата» (его можно вернуть) */
+const storeKey = (userId: string, prev = false) => `finuchet_ai_chat_${userId}${prev ? '_prev' : ''}`;
+const readStore = (userId: string, prev = false): Msg[] => {
+  try { return JSON.parse(localStorage.getItem(storeKey(userId, prev)) || '[]'); } catch { return []; }
 };
-const writeStore = (userId: string, msgs: Msg[]) => {
+const writeStore = (userId: string, msgs: Msg[], prev = false) => {
   try {
+    if (prev && !msgs.length) { localStorage.removeItem(storeKey(userId, true)); return; }
     // Без фото: они тяжёлые и это паспорта
-    localStorage.setItem(storeKey(userId), JSON.stringify(msgs.slice(-40).map(m => ({ ...m, image: m.image ? 'stripped' : undefined }))));
+    localStorage.setItem(storeKey(userId, prev), JSON.stringify(msgs.slice(-40).map(m => ({ ...m, image: m.image ? 'stripped' : undefined }))));
   } catch { /* место кончилось или приватный режим — история просто не сохранится */ }
 };
 const newId = () => `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -111,6 +114,8 @@ const fmt = (n: any) => (Number(n) ? `${Math.round(Number(n)).toLocaleString('ru
 const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataChanged, onOpenTariffs }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
+  const [prevChat, setPrevChat] = useState<Msg[]>(() => readStore(userId, true));
+  const [clearOpen, setClearOpen] = useState(false);
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -230,7 +235,23 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
     loadStatus();
   };
 
-  const clearChat = () => setMessages([]);
+  // Новый чат: текущий откладываем — его можно вернуть из пустого чата
+  const newChat = () => {
+    if (sending) return;
+    writeStore(userId, messages, true);
+    setPrevChat(messages);
+    setMessages([]);
+  };
+  const restorePrev = () => {
+    setMessages(prevChat);
+    writeStore(userId, [], true);
+    setPrevChat([]);
+  };
+  // Очистить: переписка удаляется с устройства насовсем
+  const clearChat = () => {
+    setMessages([]);
+    setClearOpen(false);
+  };
   const iosApp = isIOSApp();
   const empty = messages.length === 0;
 
@@ -248,9 +269,16 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
           </button>
         </div>
         {!empty && (
-          <button onClick={clearChat} className="px-3 py-1.5 rounded-xl text-xs font-semibold text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition">
-            Новый чат
-          </button>
+          <div className="ai-msg-in flex items-center gap-1 shrink-0">
+            <button onClick={() => setClearOpen(true)} disabled={sending} aria-label="Очистить чат" title="Очистить чат"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition disabled:opacity-40">
+              <Trash2 size={20} />
+            </button>
+            <button onClick={newChat} disabled={sending} aria-label="Новый чат" title="Новый чат"
+                    className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition disabled:opacity-40">
+              <SquarePen size={20} />
+            </button>
+          </div>
         )}
       </div>
 
@@ -271,6 +299,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
                 </button>
               ))}
             </div>
+            {prevChat.length > 0 && (
+              <button onClick={restorePrev} style={{ animationDelay: '340ms' }}
+                      className="ai-msg-in mt-4 inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-sm font-semibold text-violet-600 dark:text-violet-300 hover:bg-violet-50 dark:hover:bg-violet-500/10 transition">
+                <RotateCcw size={15} /> Вернуть прошлый чат
+              </button>
+            )}
           </div>
         )}
 
@@ -420,6 +454,20 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
       </div>
 
       {/* Согласие на передачу данных */}
+      {clearOpen && (
+        <Sheet onClose={() => setClearOpen(false)} className="sm:max-w-sm p-6">
+          <div className="flex flex-col items-center text-center">
+            <span className="w-12 h-12 rounded-full flex items-center justify-center bg-rose-50 dark:bg-rose-500/10 text-rose-500"><Trash2 size={22} /></span>
+            <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Очистить чат?</h3>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Переписка удалится с этого устройства, вернуть её не получится. Данные учёта не затронуты.</p>
+          </div>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button onClick={() => setClearOpen(false)} className="py-3 rounded-2xl font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 active:scale-[.98] transition">Отмена</button>
+            <button onClick={clearChat} className="py-3 rounded-2xl font-semibold bg-rose-500 text-white active:scale-[.98] transition">Очистить</button>
+          </div>
+        </Sheet>
+      )}
+
       {consentOpen && (
         <Sheet onClose={() => setConsentOpen(false)} className="sm:max-w-md p-6">
           <div className="flex flex-col items-center text-center">
