@@ -10,6 +10,7 @@ import SyncStatus, { type SyncStatusData } from './SyncStatus';
 import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPlan } from '../types';
 import { ICONS, APP_NAME, THEMES } from '../constants';
 import { calculateSaleOverdue, timeAgoRu } from '../src/utils';
+import { scrollFrontToTop } from '../src/scrollToTop';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -105,6 +106,12 @@ const Layout: React.FC<LayoutProps> = ({
    * остаётся на месте.
    */
   const [manualRefreshing, setManualRefreshing] = useState(false);
+  // iPhone: касание строки состояния (часы) — в начало экрана. Событие шлёт
+  // @capacitor/status-bar; в браузере и на Android его просто нет.
+  useEffect(() => {
+    window.addEventListener('statusTap', scrollFrontToTop);
+    return () => window.removeEventListener('statusTap', scrollFrontToTop);
+  }, []);
   // Подпись «обновлено N назад» должна стареть сама, пока на неё смотрят.
   const [, setAgoTick] = useState(0);
   useEffect(() => {
@@ -759,7 +766,9 @@ const counts = useMemo(() => {
                 поэтому без стрелки название прижато к краю как раньше. */}
             <div id="topbar-back-slot" className="contents" />
             <div className="glass-surface rounded-full pointer-events-auto flex items-center gap-2 min-w-0 pl-4 pr-4 py-2">
-            <h1 className="text-lg font-bold tracking-tight text-indigo-600 dark:text-indigo-400 truncate">
+            {/* Касание названия — в начало экрана, как касание заголовка в iOS */}
+            <h1 onClick={scrollFrontToTop} title="В начало"
+                className="text-lg font-bold tracking-tight text-indigo-600 dark:text-indigo-400 truncate cursor-pointer select-none">
               {appSettings.companyName}
             </h1>
             {syncStatus && onRetrySync && (
