@@ -1,7 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
-import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap } from 'lucide-react';
+import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2 } from 'lucide-react';
+import AIAssistantSettings, { type AISettings } from './AIAssistantSettings';
 import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
@@ -151,11 +152,53 @@ const renderRich = (text: string): React.ReactNode => {
 };
 
 
+/**
+ * Меню «⋯» в шапке чата: новый чат, очистить, настройки ассистента.
+ * Раскрывается из угла, закрывается касанием мимо и Esc.
+ */
+const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; onClear: () => void; onSettings: () => void }> = ({ hasChat, busy, onNew, onClear, onSettings }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const close = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', close);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', close); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const item = (label: string, Icon: React.ElementType, onClick: () => void, opts: { danger?: boolean; disabled?: boolean } = {}) => (
+    <button role="menuitem" disabled={opts.disabled} onClick={() => { setOpen(false); onClick(); }}
+            className={`w-full flex items-center gap-3 px-3.5 py-2.5 text-[15px] text-left transition-colors disabled:opacity-40 ${opts.danger
+              ? 'text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10'
+              : 'text-slate-800 dark:text-slate-100 hover:bg-slate-100 dark:hover:bg-slate-700/60'}`}>
+      <Icon size={18} className="shrink-0" /> {label}
+    </button>
+  );
+  return (
+    <div ref={ref} className="relative shrink-0">
+      <button onClick={() => setOpen(o => !o)} aria-label="Меню чата" aria-haspopup="menu" aria-expanded={open}
+              className={`w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition ${open ? 'bg-slate-200/70 dark:bg-slate-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+        <MoreHorizontal size={22} />
+      </button>
+      {open && (
+        <div role="menu" className="ai-menu-in absolute right-0 top-12 z-30 w-60 py-1.5 rounded-2xl bg-white/95 dark:bg-slate-800/95 backdrop-blur border border-slate-200/80 dark:border-slate-700 shadow-xl">
+          {item('Новый чат', SquarePen, onNew, { disabled: !hasChat || busy })}
+          {item('Очистить чат', Trash2, onClear, { danger: true, disabled: !hasChat || busy })}
+          <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-700" />
+          {item('Настройки ассистента', Settings2, onSettings)}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, whatsappEnabled, onDataChanged, onOpenTariffs }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   const [prevChat, setPrevChat] = useState<Msg[]>(() => readStore(userId, true));
   const [clearOpen, setClearOpen] = useState(false);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [mode, setModeState] = useState<Mode>(() => readMode(userId));
   const [autoIntro, setAutoIntro] = useState(false);
   const setMode = (m: Mode) => {
@@ -470,18 +513,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             {status && !iosApp && <span className="ml-1 font-semibold text-violet-600 dark:text-violet-300">· Тарифы ›</span>}
           </button>
         </div>
-        {!empty && (
-          <div className="ai-msg-in flex items-center gap-1 shrink-0">
-            <button onClick={() => setClearOpen(true)} disabled={sending} aria-label="Очистить чат" title="Очистить чат"
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition disabled:opacity-40">
-              <Trash2 size={20} />
-            </button>
-            <button onClick={newChat} disabled={sending} aria-label="Новый чат" title="Новый чат"
-                    className="w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 active:scale-95 transition disabled:opacity-40">
-              <SquarePen size={20} />
-            </button>
-          </div>
-        )}
+        <ChatMenu hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />
       </div>
 
       {/* Лента */}
@@ -546,6 +578,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onCancel={() => cancel(m.id, a)}
                   onUndo={() => undo(m.id, a)}
                   onSendReceipt={() => sendReceipt(m.id, a)}
+                  onSaveContract={() => saveContract(m.id, a)}
                   onOpenForm={() => { if (a.kind !== 'contract_form') return; onOpenContract(a.draft); if (a.state !== 'failed') patchAction(m.id, a.id, { state: 'done' }); }}
                   onShowContract={() => { if (a.kind === 'contract_form' && a.saved) onShowContract(a.saved.saleId, a.saved.customerId); }}
                   onSendContract={() => sendContract(m.id, a)}
@@ -663,6 +696,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       </div>
 
       {/* Согласие на передачу данных */}
+      {settingsOpen && (
+        <AIAssistantSettings
+          settings={status?.settings || { autoLimit: 50000, morningDigest: false }}
+          onClose={() => setSettingsOpen(false)}
+          onSaved={(st: AISettings) => setStatus((x: any) => x ? { ...x, settings: st } : x)}
+        />
+      )}
+
       {autoIntro && (
         <Sheet onClose={() => setAutoIntro(false)} className="sm:max-w-md p-6">
           <div className="flex flex-col items-center text-center">

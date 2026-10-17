@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, FileText, Receipt, RotateCcw, Send, Undo2 } from 'lucide-react';
+import { Check, FileText, Receipt, RotateCcw, Send, ShieldAlert, Undo2 } from 'lucide-react';
 
 /**
  * Карточки действий FinUchetGPT под ответом ассистента. Поведение (запросы,
@@ -16,12 +16,12 @@ export type SendState = 'busy' | 'done' | 'error';
 
 export type AIAction =
   | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
-  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string;
+  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number;
       state?: 'busy' | 'done' | 'error' | 'cancelled' | 'undoing' | 'undone'; result?: string; undoable?: boolean;
       undoResult?: string; receipt?: SendState; receiptResult?: string }
   | { id: string; kind: 'done'; tool: string; title: string; summary: string; contractId?: string; ok: boolean; result: string; undoable?: boolean;
       state?: 'undoing' | 'undone'; undoResult?: string; receipt?: SendState; receiptResult?: string }
-  | { id: string; kind: 'contract_form'; title: string; draft: any; auto?: boolean;
+  | { id: string; kind: 'contract_form'; title: string; draft: any; auto?: boolean; overLimit?: number;
       state?: 'done' | 'saving' | 'saved' | 'failed' | 'deleting' | 'deleted';
       saved?: { saleId: string; customerId?: string; number?: string; total?: number; monthly?: number; offline?: boolean };
       result?: string; send?: SendState; sendResult?: string }
@@ -49,12 +49,21 @@ interface Props {
   onUndo: () => void;
   onSendReceipt: () => void;
   onOpenForm: () => void;
+  /** Оформить сразу (договор выше порога «Авто» ждёт нажатия) */
+  onSaveContract: () => void;
   onShowContract: () => void;
   onSendContract: () => void;
   onDeleteContract: () => void;
   onSendDoc: () => void;
   onCancelDoc: () => void;
 }
+
+/** Пояснение, почему в «Авто» всё же просят подтвердить */
+const OverLimit: React.FC<{ limit: number; what?: string }> = ({ limit, what = 'Сумма' }) => (
+  <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
+    <ShieldAlert size={13} /> {what} от {limit.toLocaleString('ru-RU')} ₽ — подтвердите (порог «Авто»)
+  </p>
+);
 
 /** Строка «Отправить чек» под выполненным платежом */
 const ReceiptRow: React.FC<{ state?: SendState; result?: string; onSend: () => void }> = ({ state, result, onSend }) => (
@@ -103,6 +112,7 @@ const AIActionCard: React.FC<Props> = (p) => {
       <div className={shell}>
         {title}
         <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100">{a.summary}</p>
+        {a.kind === 'confirm' && !a.state && a.overLimit != null && <OverLimit limit={a.overLimit} />}
         {a.kind === 'confirm' && !a.state && (
           <div className="mt-3 flex gap-2">
             <button onClick={p.onConfirm} className={primary}>Подтвердить</button>
@@ -239,9 +249,19 @@ const AIActionCard: React.FC<Props> = (p) => {
         <p className="mt-2 text-xs text-slate-500">Паспорт {d.newCustomer.passportSeries} {d.newCustomer.passportNumber} — новый клиент будет заведён с этими данными</p>
       )}
       {a.state === 'failed' && <p className={errLine}>Сразу не оформил: {a.result}</p>}
-      <button onClick={p.onOpenForm} className={`${primary} mt-3 w-full`}>
-        {a.state === 'done' ? 'Открыть форму ещё раз' : 'Открыть форму договора'}
-      </button>
+      {a.overLimit != null && !a.state ? (
+        <>
+          <OverLimit limit={a.overLimit} what="Закуп" />
+          <div className="mt-3 flex gap-2">
+            <button onClick={p.onSaveContract} className={primary}>Оформить</button>
+            <button onClick={p.onOpenForm} className={secondary}>Форма</button>
+          </div>
+        </>
+      ) : (
+        <button onClick={p.onOpenForm} className={`${primary} mt-3 w-full`}>
+          {a.state === 'done' ? 'Открыть форму ещё раз' : 'Открыть форму договора'}
+        </button>
+      )}
     </div>
   );
 };

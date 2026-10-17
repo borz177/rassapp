@@ -1458,6 +1458,7 @@ await pool.query(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_consent_at TIMESTAMPTZ;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_subscription JSONB;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_trial_used INTEGER NOT NULL DEFAULT 0;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_settings JSONB;
   CREATE TABLE IF NOT EXISTS ai_assistant_usage (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
     month TEXT NOT NULL,
@@ -4430,8 +4431,24 @@ const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
 
 /** Что может пользователь прямо сейчас: согласие, тариф, сколько осталось */
+// Настройки ассистента (окно «Настройки» в чате). Хранятся на сервере: порог
+// действует на всех устройствах, и соблюдает его сам сервер.
+//  autoLimit — в «Авто» сумма от этой и больше всё равно ждёт «Подтвердить»;
+//              null — без порога;
+//  morningDigest — утренняя сводка уведомлением (server/ai/digest.js).
+const AI_SETTINGS_DEFAULTS = { autoLimit: 50000, morningDigest: false };
+const normalizeAiSettings = (raw) => {
+  const s = { ...AI_SETTINGS_DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
+  const limit = s.autoLimit === null || s.autoLimit === '' ? null : Math.round(Number(s.autoLimit));
+  return {
+    autoLimit: limit === null || !Number.isFinite(limit) || limit < 0 ? null : Math.min(limit, 100_000_000),
+    morningDigest: s.morningDigest === true,
+    ...(typeof s.digestSentOn === 'string' ? { digestSentOn: s.digestSentOn } : {}),
+  };
+};
+
 const aiAssistantState = async (userId) => {
-  const { rows } = await pool.query('SELECT role, ai_consent_at, ai_subscription, ai_trial_used FROM users WHERE id = $1', [userId]);
+  const { rows } = await pool.query('SELECT role, ai_consent_at, ai_subscription, ai_trial_used, ai_settings FROM users WHERE id = $1', [userId]);
   const u = rows[0];
   if (!u) return null;
   const sub = u.ai_subscription && new Date(u.ai_subscription.expiresAt) > new Date() ? u.ai_subscription : null;
@@ -4448,8 +4465,28 @@ const aiAssistantState = async (userId) => {
     trial: !sub && !admin,
     trialLeft,
     plans: Object.entries(AI_PLANS).map(([key, p]) => ({ key, ...p })),
+    settings: (({ digestSentOn, ...pub }) => pub)(normalizeAiSettings(u.ai_settings)),
   };
 };
+
+app.put('/api/ai/assistant/settings', auth, async (req, res) => {
+  try {
+    const cur = (await pool.query('SELECT ai_settings FROM users WHERE id = $1', [req.user.id])).rows[0]?.ai_settings;
+    const body = req.body || {};
+    // Неверная сумма не должна молча выключить порог: отказ, прежний остаётся
+    if ('autoLimit' in body && body.autoLimit !== null && !(Number.isFinite(Number(body.autoLimit)) && Number(body.autoLimit) >= 0)) {
+      return res.status(400).json({ msg: 'Порог — сумма в рублях, не меньше нуля.' });
+    }
+    const next = normalizeAiSettings({
+      ...normalizeAiSettings(cur),
+      ...('autoLimit' in body ? { autoLimit: body.autoLimit } : {}),
+      ...('morningDigest' in body ? { morningDigest: body.morningDigest === true } : {}),
+    });
+    await pool.query('UPDATE users SET ai_settings = $1 WHERE id = $2', [JSON.stringify(next), req.user.id]);
+    const { digestSentOn, ...pub } = next;
+    res.json({ settings: pub });
+  } catch (e) { console.error('AI settings error:', e.message); res.status(500).json({ msg: 'Не удалось сохранить' }); }
+});
 
 app.get('/api/ai/assistant/status', auth, async (req, res) => {
   try { res.json(await aiAssistantState(req.user.id)); }
@@ -4489,8 +4526,10 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       image: image || null,
       audio: audio || null,
       companyName: settingsRow.rows[0]?.data?.companyName || '',
-      // «Авто» — действия выполняются сразу, без «Подтвердить» (выбор в чате)
+      // «Авто» — действия выполняются сразу, без «Подтвердить» (выбор в чате);
+      // от порога суммы — всё равно с подтверждением
       mode: mode === 'auto' ? 'auto' : 'confirm',
+      autoLimit: st.settings.autoLimit,
     }).finally(() => { if (reqKey) aiRunning.delete(reqKey); });
     // Остановленный до первого ответа модели в лимит не идёт; потраченное — в учёт
     const counted = !out.cancelled || (out.usage?.completion || 0) > 0;

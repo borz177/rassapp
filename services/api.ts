@@ -2099,6 +2099,12 @@ export const api = {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/undo`, { method: 'POST', timeout: 60000 });
         return res.json().catch(() => ({ ok: false, text: 'Не удалось отменить' }));
       },
+      /** Настройки ассистента (порог «Авто», утренняя сводка) */
+      saveSettings: async (patch: { autoLimit?: number | null; morningDigest?: boolean }): Promise<{ settings: { autoLimit: number | null; morningDigest: boolean } }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/settings`, { method: 'PUT', body: JSON.stringify(patch) });
+        if (!res.ok) throw new Error('Не удалось сохранить');
+        return res.json();
+      },
       /** «Стоп»: сервер остановит запрос в безопасной точке и вернёт, что успел сделать */
       stop: async (requestId: string): Promise<void> => {
         await fetchWithAuth(`${API_URL}/ai/assistant/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'POST', timeout: 10000 }).catch(() => {});

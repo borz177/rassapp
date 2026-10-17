@@ -73,6 +73,7 @@ const PREPARE_CONTRACT_TOOL = {
     downPayment: { type: 'number', description: 'Первый взнос, ₽ (0 — без взноса)' },
     accountId: { type: 'string', description: 'Счёт из list_accounts, если назван' },
     sendToWhatsApp: { type: 'boolean', description: 'Просят сразу отправить договор клиенту в WhatsApp' },
+    confirmedNewCustomer: { type: 'boolean', description: 'Человек сам подтвердил, что это новый клиент, а не похожий из базы' },
   },
   required: ['productName'],
 };
@@ -385,6 +386,33 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     'Не обсуждай темы, не связанные с учётом, — вежливо верни разговор к делу.',
   ].join('\n');
 
+  /**
+   * «Новый» клиент договора без паспорта — почти всегда клиент из базы, которого
+   * модель не поискала («оформи Ахмадову…»). Без проверки заводился бы второй
+   * Ахмадов или «Ахмадова». С паспортом (фото) — правда новый: там приложение
+   * само сверит по паспорту (src/sameCustomer.ts).
+   * Возвращает указание модели или null — можно готовить договор.
+   */
+  const existingLookalikes = async (userId, args) => {
+    const nc = args.newCustomer;
+    if (args.customerId || !nc?.name || nc.passportNumber) return null;
+    const fullName = String(nc.name).trim().split(/\s+/).length >= 2;
+    if (args.confirmedNewCustomer && fullName) return null;
+    const words = String(nc.name).toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(w => w.length >= 3);
+    if (!words.length) return null;
+    // Основа фамилии без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
+    const stem = words[0].replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
+    const { rows } = await pool.query(
+      `SELECT id, data->>'name' AS name, data->>'phone' AS phone FROM data_items
+       WHERE user_id = $1 AND type = 'customers' AND lower(replace(data->>'name', 'ё', 'е')) LIKE $2 LIMIT 6`,
+      [userId, `%${stem.length >= 3 ? stem : words[0]}%`]);
+    if (args.confirmedNewCustomer) return 'Для нового клиента нужно ФИО полностью (хотя бы фамилия и имя) или фото паспорта — спроси одним вопросом.';
+    if (rows.length === 1) return `В базе уже есть клиент «${rows[0].name}» (id ${rows[0].id}). Если человек имел в виду его — вызови prepare_contract с customerId, без newCustomer. Если не уверен — спроси через ask_choice: «${rows[0].name}» или «Новый клиент» (тогда confirmedNewCustomer: true).`;
+    if (rows.length > 1) return `В базе несколько похожих клиентов: ${rows.map(r => `«${r.name}» (id ${r.id})`).join(', ')}. Спроси через ask_choice, какой из них, и вариант «Новый клиент» (тогда confirmedNewCustomer: true).`;
+    if (words.length < 2) return 'Для нового клиента нужно ФИО полностью (хотя бы фамилия и имя) или фото паспорта — спроси одним вопросом.';
+    return null;
+  };
+
   /** Почему документ клиенту не отправить (null — отправить можно) */
   const cannotSendWhy = async (userId, customerId, phone) => {
     const wa = (await pool.query('SELECT whatsapp_settings FROM users WHERE id = $1', [userId])).rows[0]?.whatsapp_settings;
@@ -475,8 +503,10 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * а начатая запись доводится до конца — и возвращается с «Отменить», а не
    * теряется молча.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null }) => {
+  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null }) => {
     const auto = mode === 'auto';
+    // Порог «Авто»: сумма от него — с подтверждением даже в «Авто» (настройки ассистента)
+    const overLimit = (amount) => auto && autoLimit != null && (Number(amount) || 0) >= autoLimit;
     const stopped = (actions, usage) => ({
       cancelled: true, actions, usage,
       reply: actions.some(a => a.kind === 'done' || a.kind === 'contract_form' || a.kind === 'confirm' || a.kind === 'send_doc')
@@ -520,14 +550,15 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       if (!calls.length) {
         // Служебные пометки истории (см. actionNote в AIAssistant.tsx) модель иногда повторяет — человеку они не нужны
         let text = (msg.content || '').replace(/\[(Черновик договора|Договор оформлен|Выполнено|Отменено|Отправлено|Не выполнено|Не отправлено|Ждёт подтверждения)[^\]]*\]/g, '')
-          // Кнопки карточки модель иногда «рисует» текстом: [Отменить], [Подтвердить]
-          .replace(/\[(Отменить|Подтвердить|Отправить|Открыть форму договора|Открыть договор)\]/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+          // Кнопки и карточки модель иногда «рисует» текстом: [Отменить], [Карточка: …]
+          .replace(/\[(Отменить|Подтвердить|Отправить|Открыть форму договора|Открыть договор)\]/g, '')
+          .replace(/^\s*\[(Карточка|Кнопка)[^\]\n]{0,80}\]\s*$/gm, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
         // «Подтвердить» модель зовёт по привычке: у договора кнопка своя, а в
         // «Авто» подтверждать нечего — такие фразы убираем
-        if ((auto || actions.some(a => a.kind === 'contract_form')) && !actions.some(a => a.kind === 'confirm')) {
+        if ((auto || actions.some(a => a.kind === 'contract_form')) && !actions.some(a => a.kind === 'confirm' || a.overLimit)) {
           text = text.replace(/[^.!?\n]*«?Подтвердить»?[^.!?\n]*[.!?]?/g, '').trim();
         }
-        if (!auto && actions.some(a => a.kind === 'contract_form') && !/(Открыть|Откройте|открыть) форму договора/.test(text)) {
+        if (!auto && actions.some(a => a.kind === 'contract_form' && !a.overLimit) && !/(Открыть|Откройте|открыть) форму договора/.test(text)) {
           text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
         }
         if (!text) text = auto && actions.some(a => a.kind === 'contract_form') ? 'Оформляю договор.' : 'Готово.';
@@ -570,7 +601,10 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           result = await duePayments(user.id, args);
         } else if (name === 'prepare_contract') {
           const missing = missingContractFields(args);
-          if (missing.length) {
+          const lookalikes = !missing.length ? await existingLookalikes(user.id, args) : null;
+          if (lookalikes) {
+            result = lookalikes;
+          } else if (missing.length) {
             result = `Договор не подготовлен — не хватает обязательного: ${missing.join(', ')}. Спроси у человека одним вопросом (если варианты известны — ask_choice), не подставляй сам, потом вызови prepare_contract снова со всеми полями.`;
           } else if (actions.some(a => a.kind === 'contract_form' && sameContract(a.draft, args))) {
             result = 'Этот договор в этом сообщении уже подготовлен — повторять не нужно.';
@@ -581,8 +615,11 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
               const why = await cannotSendWhy(user.id, args.customerId, args.newCustomer?.phone);
               if (why) { args.sendToWhatsApp = false; sendNote = ` Отправить договор не получится: ${why} Скажи об этом.`; }
             }
-            actions.push({ id: newActionId(), kind: 'contract_form', title: auto ? 'Договор' : 'Оформить договор', draft: args, auto });
-            result = auto
+            const bigBuy = overLimit(args.buyPrice);
+            actions.push({ id: newActionId(), kind: 'contract_form', title: auto ? 'Договор' : 'Оформить договор', draft: args, auto: auto && !bigBuy, ...(bigBuy ? { overLimit: autoLimit } : {}) });
+            result = bigBuy
+              ? `Закуп не меньше порога «Авто» (${money(autoLimit)}) — договор не оформлен сразу: под ответом карточка с кнопкой «Оформить». Скажи об этом одной фразой.`
+              : auto
               ? 'Режим «Авто»: приложение сразу оформит договор по этим данным и покажет результат в карточке. Скажи коротко, что договор оформляется.'
               : 'Черновик договора передан в приложение: человек увидит заполненную форму и сохранит её сам.';
             result += sendNote;
@@ -603,7 +640,12 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
               const summary = name === 'create_payment' ? await paymentSummary(user.id, args)
                 : (name === 'create_expense' || name === 'create_income') ? await accountSummary(user.id, name, args)
                 : describe(name, args);
-              if (auto) {
+              if (overLimit(args.amount)) {
+                pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
+                actions.push({ id, kind: 'confirm', tool: name, title: WRITE_TITLES[name] || tool.title, summary, args, overLimit: autoLimit,
+                  ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
+                result = `Сумма не меньше порога «Авто» (${money(autoLimit)}) — это действие ждёт «Подтвердить». Скажи об этом одной фразой.`;
+              } else if (auto) {
                 const r = await execute(user.id, id, name, args, summary);
                 actions.push({ id, kind: 'done', tool: name, title: WRITE_TITLES[name] || tool.title, summary, ok: r.ok, result: r.text, undoable: !!r.undoable,
                   ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
