@@ -39,7 +39,7 @@ const FEATURE_LABELS: { key: keyof PlanLimits; label: string; note?: string }[] 
 ];
 
 /** Знак Системы быстрых платежей — официальный, векторно, чтобы был чётким на любом экране */
-const SbpMark: React.FC = () => (
+export const SbpMark: React.FC = () => (
   <svg viewBox="58 48 170 190" className="w-7 h-7" aria-label="СБП" role="img">
     <polygon fill="#5B57A2" points="64,92 84,128 84,166 64,192" />
     <polygon fill="#984995" points="64,192 132,152 132,126 84,166" />
@@ -53,7 +53,7 @@ const SbpMark: React.FC = () => (
 );
 
 /** Кнопка способа оплаты: плитка со знаком, название и подсказка, стрелка */
-const PayMethodButton: React.FC<{
+export const PayMethodButton: React.FC<{
   primary?: boolean;
   onClick: () => void;
   disabled: boolean;

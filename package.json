@@ -96,7 +96,11 @@
       "icon": "build/icon.png",
       "category": "public.app-category.finance",
       "identity": "-",
-      "hardenedRuntime": false
+      "hardenedRuntime": false,
+      "extendInfo": {
+        "NSMicrophoneUsageDescription": "Микрофон нужен, чтобы давать команды ИИ-ассистенту голосом.",
+        "NSCameraUsageDescription": "Камера нужна, чтобы фотографировать документы клиентов."
+      }
     },
     "dmg": {
       "title": "FinUchet",

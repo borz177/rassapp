@@ -26,6 +26,8 @@
 	<false/>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Микрофон нужен, чтобы давать команды ИИ-ассистенту голосом.</string>
 	<key>NSCameraUsageDescription</key>
 	<string>Камера нужна, чтобы сканировать штрихкоды товаров и фотографировать документы клиентов.</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>

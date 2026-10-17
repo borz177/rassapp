@@ -2072,6 +2072,43 @@ export const api = {
       return res.json();
     },
 
+    /** ИИ-ассистент (server/ai/assistant.js) */
+    aiAssistant: {
+      status: async (): Promise<any> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/status`);
+        if (!res.ok) throw new Error('Не удалось загрузить ассистента');
+        return res.json();
+      },
+      consent: async (): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/consent`, { method: 'POST' });
+        if (!res.ok) throw new Error('Не удалось сохранить согласие');
+      },
+      /** Ответ ассистента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT */
+      message: async (body: { text?: string; history?: { role: string; text: string }[]; image?: string; audio?: { data: string; format: string } }): Promise<{ reply: string; actions: any[]; left: number }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, { method: 'POST', body: JSON.stringify(body), timeout: 120000 });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw Object.assign(new Error(data.msg || 'Ассистент не ответил'), { code: data.code });
+        return data;
+      },
+      confirm: async (id: string): Promise<{ ok: boolean; text: string }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/confirm`, { method: 'POST', timeout: 60000 });
+        return res.json().catch(() => ({ ok: false, text: 'Не удалось выполнить' }));
+      },
+      cancel: async (id: string): Promise<void> => {
+        await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }).catch(() => {});
+      },
+      /** Оплата тарифа ИИ: ссылка ЮKassa */
+      buy: async (plan: string, method?: 'sbp' | 'card'): Promise<{ id: string; confirmationUrl: string }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/buy`, {
+          method: 'POST',
+          body: JSON.stringify({ plan, method, returnUrl: 'https://rassrochka.pro/?ai_payment=success' }),
+        });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Не удалось создать оплату');
+        return data;
+      },
+    },
+
     /** Вкладка «Удержание»: по каждому владельцу аккаунта — путь, оплаты, посещения */
     adminGetRetention: async (): Promise<{ generatedAt: string; trackingSince: string | null; users: any[] }> => {
       const res = await fetchWithAuth(`${API_URL}/admin/retention`);

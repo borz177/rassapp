@@ -31,6 +31,8 @@
 
     <!-- Permissions -->
 
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
+    <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
     <uses-permission android:name="android.permission.INTERNET" />
     <!-- Камера: сканирование штрихкодов на складе и в кассе. required="false" —
          без камеры приложение всё равно ставится: остаются ручной ввод кода и

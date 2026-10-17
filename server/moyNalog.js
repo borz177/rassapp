@@ -27,7 +27,7 @@ const TIMEOUT = 20000;
 const MAX_ATTEMPTS = 6;
 const box = createSecretBox('finuchet-npd', 'NPD_TOKEN_KEY');
 
-const PLAN_TITLES = { START: 'Старт', STANDARD: 'Стандарт', BUSINESS: 'Бизнес', BUSINESS_PRO: 'Бизнес Pro', TRIAL: 'Пробный' };
+const PLAN_TITLES = { START: 'Старт', STANDARD: 'Стандарт', BUSINESS: 'Бизнес', BUSINESS_PRO: 'Бизнес Pro', TRIAL: 'Пробный', AI_START: 'ИИ Старт', AI_PRO: 'ИИ Про' };
 
 /** Дата в формате «Мой налог»: 2026-10-14T13:05:00+03:00 (без миллисекунд, по Москве) */
 const mskIso = (d) => {

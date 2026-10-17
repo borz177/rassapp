@@ -4500,6 +4500,66 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
   }
 });
 
+// Оплата тарифа ИИ: месяц, сумма считается здесь (как у основных тарифов)
+app.post('/api/ai/assistant/buy', auth, async (req, res) => {
+  const { plan, method, returnUrl } = req.body || {};
+  const p = AI_PLANS[plan];
+  if (!p) return res.status(400).json({ msg: 'Недопустимый тариф' });
+  if (method !== undefined && !PAYMENT_METHODS[method]) return res.status(400).json({ msg: 'Недопустимый способ оплаты' });
+  const shopId = process.env.YOOKASSA_SHOP_ID;
+  const secretKey = process.env.YOOKASSA_SECRET_KEY;
+  if (!shopId || !secretKey) return res.status(503).json({ msg: 'Оплата не настроена' });
+  try {
+    const response = await axios.post('https://api.yookassa.ru/v3/payments', {
+      amount: { value: p.price.toFixed(2), currency: 'RUB' },
+      capture: true,
+      ...(method ? { payment_method_data: { type: PAYMENT_METHODS[method] } } : {}),
+      confirmation: { type: 'redirect', return_url: /^https:\/\/rassrochka\.pro\//.test(String(returnUrl)) ? returnUrl : 'https://rassrochka.pro/' },
+      description: `Оплата тарифа ${p.name} на 1 мес.`,
+      metadata: { userId: req.user.id, aiPlan: plan, months: 1 },
+    }, {
+      headers: {
+        Authorization: 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64'),
+        'Idempotence-Key': uuidv4(),
+        'Content-Type': 'application/json',
+      },
+    });
+    res.json({ id: response.data.id, status: response.data.status, confirmationUrl: response.data.confirmation.confirmation_url });
+  } catch (error) {
+    console.error('YooKassa AI Error:', error.response?.data || error.message);
+    res.status(500).json({ msg: 'Не удалось создать оплату' });
+  }
+});
+
+/**
+ * Оплачен тариф ИИ (вебхук ЮKassa). Тот же тариф — продлеваем от конца текущего
+ * срока, другой — с сегодняшнего дня. Идемпотентно по id платежа: повторный
+ * вебхук срок второй раз не прибавит.
+ */
+const applyAiPayment = async (paymentId, payment) => {
+  const { userId, aiPlan } = payment.metadata || {};
+  const p = AI_PLANS[aiPlan];
+  const paid = Number(payment.amount?.value);
+  if (!userId || !p || !(paid >= p.price)) {
+    console.error(`🚨 Оплата ИИ не соответствует тарифу: ${userId}, ${aiPlan}, ${payment.amount?.value} ₽`);
+    return;
+  }
+  const seen = await pool.query('SELECT 1 FROM subscription_payments WHERE id = $1', [paymentId]);
+  if (seen.rowCount) return;
+  const cur = (await pool.query('SELECT ai_subscription FROM users WHERE id = $1', [userId])).rows[0]?.ai_subscription;
+  const from = cur?.plan === aiPlan && new Date(cur.expiresAt) > new Date() ? new Date(cur.expiresAt) : new Date();
+  const expiresAt = addMonthsClamped(from, 1);
+  await pool.query('UPDATE users SET ai_subscription = $1 WHERE id = $2', [JSON.stringify({ plan: aiPlan, expiresAt: expiresAt.toISOString() }), userId]);
+  console.log(`🤖 Тариф ${p.name} для ${userId} до ${expiresAt.toISOString()}`);
+  try {
+    await recordSubscriptionPayment({ paymentId, userId, amount: paid, plan: aiPlan, months: 1 });
+    await accruePartnerCommission({ paymentId, clientId: userId, amount: paid });
+    npd.afterPayment(paymentId);
+  } catch (e) {
+    console.error('⚠️ Оплата ИИ: журнал/партнёр/чек:', e.message);
+  }
+};
+
 app.post('/api/ai/assistant/actions/:id/confirm', auth, async (req, res) => {
   try {
     const r = await aiAssistant.confirmAction(req.user.id, req.params.id);
@@ -5396,7 +5456,9 @@ const PLAN_TITLES = {
   START: 'Старт',
   STANDARD: 'Стандарт',
   BUSINESS: 'Бизнес',
-  BUSINESS_PRO: 'Бизнес Pro'
+  BUSINESS_PRO: 'Бизнес Pro',
+  AI_START: 'ИИ Старт',
+  AI_PRO: 'ИИ Про'
 };
 
 const pluralMonths = (n) => {
@@ -6541,7 +6603,10 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                 headers: { 'Authorization': 'Basic ' + Buffer.from(`${shopId}:${secretKey}`).toString('base64') }
             });
 
-            if (verifyResp.data?.status === 'succeeded') {
+            if (verifyResp.data?.status === 'succeeded' && verifyResp.data.metadata?.aiPlan) {
+                // 🤖 Тариф ИИ-ассистента — своя подписка, основную не трогаем
+                await applyAiPayment(object.id, verifyResp.data);
+            } else if (verifyResp.data?.status === 'succeeded') {
                 const { userId, plan, months } = verifyResp.data.metadata || {};
                 if (userId && plan && months) {
                     // 🔒 Сверяем, что заплачено ровно столько, сколько стоит этот тариф

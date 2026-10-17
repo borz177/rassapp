@@ -989,6 +989,8 @@ export type ViewState =
   | 'ADMIN_PANEL'
   | 'TASKS'
   | 'HELP'
+  | 'AI_ASSISTANT'
+  | 'AI_TARIFFS'
   | 'NOTIFICATIONS';
 
 // Задачи менеджера — личный список дел, не привязанный к договорам.

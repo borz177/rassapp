@@ -41,6 +41,9 @@ const AdminPanel = lazy(() => import('./components/AdminPanel'));
 const AdminSupportPanel = lazy(() => import('./components/AdminSupportPanel'));
 const Integrations = lazy(() => import('./components/Integrations'));
 const Calculator = lazy(() => import('./components/Calculator'));
+const AIAssistant = lazy(() => import('./components/AIAssistant'));
+const AITariffs = lazy(() => import('./components/AITariffs'));
+import AIOrb from './components/AIOrb';
 const Referral = lazy(() => import('./components/Referral'));
 import { SuccessCheck } from './components/feedback';
 const LazyFallback: React.FC = () => (
@@ -4238,6 +4241,47 @@ const handleQuickAddCustomer = async (data: {
 
   // Что ищем и куда переходим. Данные передаём те же, что уже на руках у этого
   // пользователя: у сотрудника они урезаны по его правам, значит и поиск урезан.
+  // ── ИИ-ассистент: владельцу аккаунта, кнопка в шапке и в боковом меню ─────
+  const aiAvailable = !!user && (user.role === 'manager' || user.role === 'admin');
+  // Откуда открыли ассистента: «назад» возвращает туда, а не в тарифы ИИ,
+  // открытые из него же
+  const aiBackRef = useRef<ViewState>('DASHBOARD');
+  const openAssistant = () => {
+    if (currentView !== 'AI_ASSISTANT' && currentView !== 'AI_TARIFFS') aiBackRef.current = currentView;
+    setPreviousView(currentView);
+    setCurrentView('AI_ASSISTANT');
+  };
+  // Черновик договора от ассистента → форма договора. Новый клиент (например,
+  // с фото паспорта) заводится сразу, чтобы форма открылась уже с ним.
+  const openContractFromAssistant = async (draft: any) => {
+    let customerId = draft.customerId && customers.some((c: Customer) => c.id === draft.customerId) ? draft.customerId : '';
+    if (!customerId && draft.newCustomer?.name) {
+      const nc = draft.newCustomer;
+      const issued = [nc.passportIssuedBy, nc.passportIssueDate ? `дата выдачи ${nc.passportIssueDate}` : '', nc.passportDivisionCode ? `код ${nc.passportDivisionCode}` : ''].filter(Boolean).join(', ');
+      const saved = await handleAddCustomer({
+        name: nc.name, phone: nc.phone || '', address: nc.address,
+        passportSeries: nc.passportSeries, passportNumber: nc.passportNumber,
+        passportIssuedBy: issued || undefined, birthDate: nc.birthDate,
+      });
+      if (saved?.id) customerId = saved.id;
+    }
+    const totalPrice = Number(draft.totalPrice) || 0;
+    const buy = Number(draft.buyPrice) || 0;
+    setEditingSale(null);
+    setDraftSaleData({
+      customerId: customerId || undefined,
+      productName: draft.productName || '',
+      buyPrice: buy || undefined,
+      interestRate: draft.markupPercent != null ? Number(draft.markupPercent) : (totalPrice && buy ? Math.round((totalPrice / buy - 1) * 1000) / 10 : undefined),
+      installments: Number(draft.months) || undefined,
+      downPayment: Number(draft.downPayment) || 0,
+      ...(totalPrice ? { totalAmount: totalPrice } : {}),
+      ...(draft.accountId && accounts.some((a: Account) => a.id === draft.accountId) ? { accountId: draft.accountId } : {}),
+    });
+    setFormReturnView('AI_ASSISTANT');
+    setCurrentView('CREATE_SALE');
+  };
+
   const globalSearchProps = {
     data: { customers, sales, products, expenses },
     // Поиск откладывается под найденное: «назад» с клиента, договора, товара или
@@ -4706,8 +4750,25 @@ if (!user && !showSplash) {
        <Layout
     // Сквозной поиск собираем здесь: только App знает все данные и умеет
     // переходить к найденному. Шапка получает готовый элемент.
-    search={<GlobalSearch variant="topbar" {...globalSearchProps} />}
-    searchSidebar={<GlobalSearch variant="sidebar" {...globalSearchProps} />}
+    search={<>
+      {aiAvailable && (
+        <button onClick={openAssistant} aria-label="ИИ-ассистент"
+                className="pointer-events-auto shrink-0 rounded-full active:scale-95 transition-transform">
+          <AIOrb size={44} />
+        </button>
+      )}
+      <GlobalSearch variant="topbar" {...globalSearchProps} />
+    </>}
+    searchSidebar={<>
+      <GlobalSearch variant="sidebar" {...globalSearchProps} />
+      {aiAvailable && (
+        <button onClick={openAssistant}
+                className={`mt-2 w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold transition-colors ${currentView === 'AI_ASSISTANT' ? 'bg-violet-600/20 text-white' : 'text-slate-200 hover:bg-slate-800'}`}>
+          <AIOrb size={26} />
+          ИИ-ассистент
+        </button>
+      )}
+    </>}
     currentView={currentView}
     setView={setCurrentView}
     onAction={handleAction}
@@ -5162,6 +5223,29 @@ if (!user && !showSplash) {
                       </PagePush>
                   ) : null;
               })()}
+              {currentView === 'AI_ASSISTANT' && (
+                <PagePush onClose={() => setCurrentView(aiBackRef.current)} showBackButton>
+                  {(requestClose: () => void) => (
+                    <Suspense fallback={null}>
+                      <AIAssistant
+                        userId={user.id}
+                        onBack={requestClose}
+                        onDataChanged={() => { handleSync(); }}
+                        onOpenTariffs={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('AI_TARIFFS'); }}
+                        onOpenContract={openContractFromAssistant}
+                      />
+                    </Suspense>
+                  )}
+                </PagePush>
+              )}
+              {currentView === 'AI_TARIFFS' && (
+                <PagePush onClose={() => setCurrentView(previousView === 'AI_TARIFFS' ? 'AI_ASSISTANT' : previousView)} showBackButton>
+                  <Suspense fallback={null}>
+                    <AITariffs onOpenAssistant={openAssistant} />
+                  </Suspense>
+                </PagePush>
+              )}
+
               {currentView === 'HELP' && (
                 <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
                   <Help onSupport={user?.role === 'manager' ? () => { loadSupportUnreadCount(user); setShowSupportChat(true); } : undefined} />
