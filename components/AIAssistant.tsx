@@ -392,12 +392,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
                   ) : (
                     <>
                       <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                        <span className="text-slate-500">Клиент</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.newCustomer?.name || (a.draft.customerId ? 'из базы' : '—')}</span>
+                        <span className="text-slate-500">Клиент</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.newCustomer?.name || a.draft.customerName || (a.draft.customerId ? 'из базы' : '—')}</span>
                         <span className="text-slate-500">Товар</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.productName || '—'}</span>
                         <span className="text-slate-500">Закуп</span><span className="text-slate-800 dark:text-slate-100 text-right">{fmt(a.draft.buyPrice)}</span>
                         <span className="text-slate-500">{a.draft.totalPrice ? 'Цена' : 'Наценка'}</span><span className="text-slate-800 dark:text-slate-100 text-right">{a.draft.totalPrice ? fmt(a.draft.totalPrice) : a.draft.markupPercent != null ? `${a.draft.markupPercent}%` : '—'}</span>
                         <span className="text-slate-500">Срок</span><span className="text-slate-800 dark:text-slate-100 text-right">{a.draft.months ? `${a.draft.months} мес.` : 'уточните в форме'}</span>
                         <span className="text-slate-500">Взнос</span><span className="text-slate-800 dark:text-slate-100 text-right">{a.draft.downPayment ? fmt(a.draft.downPayment) : 'без взноса'}</span>
+                        {a.draft.accountName && <><span className="text-slate-500">Счёт</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.accountName}</span></>}
                       </div>
                       {a.draft.newCustomer?.passportNumber && (
                         <p className="mt-2 text-xs text-slate-500">Паспорт {a.draft.newCustomer.passportSeries} {a.draft.newCustomer.passportNumber} — новый клиент будет заведён с этими данными</p>

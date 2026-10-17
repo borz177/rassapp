@@ -266,6 +266,27 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
   ].join('\n');
 
   /**
+   * В карточке черновика — названия, а не id: ФИО клиента из базы и счёт.
+   * Счёта, которого нет у владельца, в черновике быть не должно — убираем.
+   */
+  const nameDraftRefs = async (userId, actions) => {
+    const drafts = actions.filter(a => a.kind === 'contract_form' && a.draft).map(a => a.draft);
+    const ids = drafts.flatMap(d => [d.customerId, d.accountId]).filter(Boolean);
+    if (!ids.length) return;
+    const { rows } = await pool.query(
+      `SELECT id, type, data->>'name' AS name FROM data_items WHERE user_id = $1 AND type IN ('customers', 'accounts') AND id = ANY($2)`,
+      [userId, ids]);
+    const byId = new Map(rows.map(r => [`${r.type}:${r.id}`, r.name]));
+    for (const d of drafts) {
+      if (d.customerId) d.customerName = byId.get(`customers:${d.customerId}`) || undefined;
+      if (d.accountId) {
+        const name = byId.get(`accounts:${d.accountId}`);
+        if (name) d.accountName = name; else delete d.accountId;
+      }
+    }
+  };
+
+  /**
    * Прошлые реплики для модели. Фото в историю попадают только последние два
    * (приложение присылает их снова): иначе «оформи на неё ещё один» после
    * паспорта модель уже не видит, чей это паспорт. Остальные фото — пометкой.
@@ -327,6 +348,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           text = text.replace(/[^.!?\n]*«?Подтвердить»?[^.!?\n]*[.!?]?/g, '').trim();
           if (!/Открыть форму договора/.test(text)) text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
         }
+        await nameDraftRefs(user.id, actions);
         // Пустые поля, которые модель заполнила словами («не указан»)
         for (const a of actions) {
           const nc = a.kind === 'contract_form' && a.draft?.newCustomer;
