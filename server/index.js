@@ -1452,6 +1452,23 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_churn_feedback_user ON churn_feedback(user_id, created_at DESC);
 `).catch(err => console.error('❌ Retention tables:', err.message));
 
+// 🤖 ИИ-ассистент: согласие на передачу данных провайдеру модели, своя подписка
+// (отдельно от основной) и счётчик запросов по месяцам
+await pool.query(`
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_consent_at TIMESTAMPTZ;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_subscription JSONB;
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_trial_used INTEGER NOT NULL DEFAULT 0;
+  CREATE TABLE IF NOT EXISTS ai_assistant_usage (
+    user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+    month TEXT NOT NULL,
+    requests INTEGER NOT NULL DEFAULT 0,
+    prompt_tokens BIGINT NOT NULL DEFAULT 0,
+    completion_tokens BIGINT NOT NULL DEFAULT 0,
+    cost_usd NUMERIC(12,5) NOT NULL DEFAULT 0,
+    PRIMARY KEY (user_id, month)
+  );
+`).catch(err => console.error('❌ AI assistant tables:', err.message));
+
     initSuperAdmin();
 
   } catch (err) {
@@ -4394,6 +4411,106 @@ const recognizePassportViaYandex = async (base64Jpeg) => {
 };
 
 const PASSPORT_DAILY_LIMIT = 50;
+
+// ==========================================================
+// 🤖 ИИ-АССИСТЕНТ (server/ai/assistant.js)
+// ==========================================================
+// Своя подписка, отдельно от основной: тарифы ИИ и пробные запросы. Запрос —
+// одно сообщение человека (текст, голос или фото), сколько бы шагов ни сделал
+// ассистент внутри.
+const AI_PLANS = {
+  AI_START: { name: 'ИИ Старт', price: 490, monthly: 300 },
+  AI_PRO: { name: 'ИИ Про', price: 990, monthly: 1000 },
+};
+const AI_TRIAL_REQUESTS = 20;
+const { createAssistant } = require('./ai/assistant');
+const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT });
+const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
+
+/** Что может пользователь прямо сейчас: согласие, тариф, сколько осталось */
+const aiAssistantState = async (userId) => {
+  const { rows } = await pool.query('SELECT role, ai_consent_at, ai_subscription, ai_trial_used FROM users WHERE id = $1', [userId]);
+  const u = rows[0];
+  if (!u) return null;
+  const sub = u.ai_subscription && new Date(u.ai_subscription.expiresAt) > new Date() ? u.ai_subscription : null;
+  const plan = sub ? AI_PLANS[sub.plan] : null;
+  const used = (await pool.query('SELECT requests FROM ai_assistant_usage WHERE user_id = $1 AND month = $2', [userId, aiMonth()])).rows[0]?.requests || 0;
+  const admin = u.role === 'admin';
+  const trialLeft = Math.max(0, AI_TRIAL_REQUESTS - (u.ai_trial_used || 0));
+  return {
+    allowedRole: u.role === 'manager' || admin,
+    consent: !!u.ai_consent_at,
+    plan: sub ? { key: sub.plan, name: plan?.name || sub.plan, expiresAt: sub.expiresAt, monthly: plan?.monthly || 0 } : null,
+    used,
+    left: admin ? 9999 : plan ? Math.max(0, plan.monthly - used) : trialLeft,
+    trial: !sub && !admin,
+    trialLeft,
+    plans: Object.entries(AI_PLANS).map(([key, p]) => ({ key, ...p })),
+  };
+};
+
+app.get('/api/ai/assistant/status', auth, async (req, res) => {
+  try { res.json(await aiAssistantState(req.user.id)); }
+  catch (e) { console.error('AI status error:', e); res.status(500).json({ msg: 'Не удалось загрузить' }); }
+});
+
+// Согласие на передачу данных провайдеру модели — один раз, с отметкой времени
+app.post('/api/ai/assistant/consent', auth, async (req, res) => {
+  try {
+    await pool.query('UPDATE users SET ai_consent_at = COALESCE(ai_consent_at, NOW()) WHERE id = $1', [req.user.id]);
+    res.json({ success: true });
+  } catch (e) { res.status(500).json({ msg: 'Не удалось сохранить' }); }
+});
+
+app.post('/api/ai/assistant/message', auth, async (req, res) => {
+  try {
+    const st = await aiAssistantState(req.user.id);
+    if (!st?.allowedRole) return res.status(403).json({ msg: 'Ассистент доступен владельцу аккаунта.' });
+    if (!st.consent) return res.status(403).json({ code: 'AI_CONSENT_REQUIRED', msg: 'Нужно согласие на обработку данных ассистентом.' });
+    if (st.left <= 0) {
+      return res.status(402).json({ code: 'AI_LIMIT', msg: st.plan ? 'Запросы на этот месяц закончились.' : 'Пробные запросы закончились.' });
+    }
+    const { text, history, image, audio } = req.body || {};
+    if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
+    if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
+    const me = (await pool.query('SELECT id, name FROM users WHERE id = $1', [req.user.id])).rows[0];
+    const settingsRow = await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'settings' LIMIT 1`, [req.user.id]);
+    const out = await aiAssistant.reply({
+      user: me,
+      text: String(text || '').slice(0, 4000),
+      history: Array.isArray(history) ? history : [],
+      image: image || null,
+      audio: audio || null,
+      companyName: settingsRow.rows[0]?.data?.companyName || '',
+    });
+    // Учёт: запрос засчитывается, когда ассистент ответил
+    await pool.query(
+      `INSERT INTO ai_assistant_usage (user_id, month, requests, prompt_tokens, completion_tokens, cost_usd)
+       VALUES ($1, $2, 1, $3, $4, $5)
+       ON CONFLICT (user_id, month) DO UPDATE SET requests = ai_assistant_usage.requests + 1,
+         prompt_tokens = ai_assistant_usage.prompt_tokens + EXCLUDED.prompt_tokens,
+         completion_tokens = ai_assistant_usage.completion_tokens + EXCLUDED.completion_tokens,
+         cost_usd = ai_assistant_usage.cost_usd + EXCLUDED.cost_usd`,
+      [req.user.id, aiMonth(), out.usage?.prompt || 0, out.usage?.completion || 0, out.usage?.cost || 0]);
+    if (st.trial) await pool.query('UPDATE users SET ai_trial_used = ai_trial_used + 1 WHERE id = $1', [req.user.id]);
+    res.json({ reply: out.reply, actions: out.actions, left: Math.max(0, st.left - 1) });
+  } catch (e) {
+    console.error('AI assistant error:', e.message);
+    res.status(e.status || 500).json({ msg: e.status === 503 ? 'Ассистент ещё не настроен.' : 'Ассистент сейчас не ответил — попробуйте ещё раз.' });
+  }
+});
+
+app.post('/api/ai/assistant/actions/:id/confirm', auth, async (req, res) => {
+  try {
+    const r = await aiAssistant.confirmAction(req.user.id, req.params.id);
+    res.status(r.ok ? 200 : 400).json({ ok: r.ok, text: r.text });
+  } catch (e) { console.error('AI confirm error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось выполнить — попробуйте ещё раз.' }); }
+});
+
+app.post('/api/ai/assistant/actions/:id/cancel', auth, (req, res) => {
+  aiAssistant.cancelAction(req.user.id, req.params.id);
+  res.json({ ok: true });
+});
 
 app.post('/api/ai/passport', auth, async (req, res) => {
   try {
@@ -7475,7 +7592,7 @@ app.use(
   apiRequestId,
   makeRequestLog(pool),
   authFailureLimiter,
-  makeApiKeyAuth({ pool, getEffectivePlan, planLimits: PLAN_LIMITS }),
+  makeApiKeyAuth({ pool, getEffectivePlan, planLimits: PLAN_LIMITS, verifyAgentToken: (raw) => aiAssistant.verifyAgentToken(raw) }),
   perMinuteLimiter,
   perDayLimiter,
   makeIdempotency(pool),

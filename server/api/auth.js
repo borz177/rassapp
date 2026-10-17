@@ -25,8 +25,9 @@ const readKey = req => {
  * @param deps.pool
  * @param deps.getEffectivePlan   (subscription) => план с учётом срока
  * @param deps.planLimits         PLAN_LIMITS из index.js
+ * @param deps.verifyAgentToken   (raw) => userId | null — пропуск ИИ-ассистента (fu_agent_…)
  */
-const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits }) => async (req, res, next) => {
+const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits, verifyAgentToken }) => async (req, res, next) => {
   const raw = readKey(req);
   if (!raw) {
     res.setHeader('WWW-Authenticate', 'Bearer realm="FinUchet API"');
@@ -37,8 +38,16 @@ const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits }) => async (req, r
   // Заголовок один на два способа: постоянный ключ владельца (sk_live_…) и
   // временный токен помощника, полученный входом «Через FinUchet» (fu_at_…).
   const isAccessToken = raw.startsWith('fu_at_');
+  // Третий вид — пропуск встроенного ИИ-ассистента: сервер сам выпускает его на
+  // пару минут от имени вошедшего пользователя (server/ai/assistant.js) и сам же
+  // предъявляет. Снаружи его не получить: он подписан секретом сервера.
+  const isAgent = raw.startsWith('fu_agent_');
   let keyRow;
-  if (isAccessToken) {
+  if (isAgent) {
+    const userId = verifyAgentToken ? verifyAgentToken(raw) : null;
+    if (!userId) return fail(res, 401, CODES.INVALID_KEY, 'Пропуск ассистента недействителен.');
+    keyRow = { id: 'agent', user_id: userId, scopes: ['read', 'write'], name: 'ИИ-ассистент', key_prefix: 'agent', isAgent: true };
+  } else if (isAccessToken) {
     const token = await findByAccessToken(pool, raw);
     if (!token) return fail(res, 401, CODES.INVALID_KEY, 'Подключение не найдено или отключено.');
     if (token.expired) {
@@ -75,7 +84,12 @@ const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits }) => async (req, r
   const subscription = typeof user.subscription === 'string' ? JSON.parse(user.subscription) : user.subscription;
   const effectivePlan = getEffectivePlan(subscription);
   const expired = !!subscription?.plan && effectivePlan !== subscription.plan;
-  const allowed = user.role === 'admin' || !!planLimits?.[effectivePlan]?.api;
+  // Ассистенту тариф «Бизнес» не нужен — у него своя подписка, её проверяет он сам.
+  // Но основная подписка должна действовать: без неё учёт закрыт и в приложении.
+  if (keyRow.isAgent && user.role !== 'admin' && (!effectivePlan || expired)) {
+    return fail(res, 403, CODES.SUBSCRIPTION_EXPIRED, 'Срок действия подписки истёк — продлите тариф, чтобы ассистент мог работать с учётом.');
+  }
+  const allowed = user.role === 'admin' || keyRow.isAgent || !!planLimits?.[effectivePlan]?.api;
   if (!allowed) {
     return expired
       ? fail(res, 403, CODES.SUBSCRIPTION_EXPIRED, 'Срок действия подписки истёк — доступ к API приостановлен. Продлите тариф.')
@@ -90,7 +104,8 @@ const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits }) => async (req, r
     plan: effectivePlan,
   };
   // Отметка о последнем обращении — без await: она не должна задерживать ответ.
-  if (keyRow.isConnection) touchToken(pool, keyRow.id);
+  if (keyRow.isAgent) { /* пропуск ассистента не хранится — отмечать нечего */ }
+  else if (keyRow.isConnection) touchToken(pool, keyRow.id);
   else touchKey(pool, keyRow, req.ip);
   next();
 };
@@ -112,7 +127,8 @@ const limitHandler = (req, res) => fail(res, 429, CODES.RATE_LIMITED,
 // несколько клиентов, а один клиент — ходить с разных адресов. Для запросов без
 // ключа падаем на адрес, но через ipKeyGenerator: он сводит IPv6 к подсети,
 // иначе один клиент обходил бы лимит, меняя адрес внутри своего блока.
-const keyOf = req => req.apiAuth?.key?.id || `ip:${ipKeyGenerator(req.ip)}`;
+// У ассистента пропуск общий по виду, а лимит — свой у каждого пользователя
+const keyOf = req => (req.apiAuth?.key?.isAgent ? `agent:${req.apiAuth.userId}` : req.apiAuth?.key?.id) || `ip:${ipKeyGenerator(req.ip)}`;
 
 const perMinuteLimiter = rateLimit({
   windowMs: 60_000,
