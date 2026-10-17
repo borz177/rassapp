@@ -39,7 +39,7 @@ npm run dev                  # nodemon index.js
 npm start                    # node index.js
 ```
 
-There is no test suite and no linter configured in either package — don't invent `npm test`/`npm run lint` commands. `npx tsc --noEmit -p .` works as a type check but the codebase has ~14 pre-existing errors (as of Oct 2026) — diff against `git stash` rather than expecting zero; Vite's build doesn't type-check.
+There is no test suite and no linter configured in either package — don't invent `npm test`/`npm run lint` commands. The one exception is FinUchetGPT: `cd server && npm run ai:eval` runs ~20 scenarios against the real model (`server/ai/evals/run.js`; needs a running local server with an OpenRouter key and the demo account, `AI_EVAL_URL` + `AI_EVAL_TOKEN` or `JWT_SECRET` + `AI_EVAL_USER_ID`; every write it makes is undone). Run it after changing the assistant's prompt, tools or model. `npx tsc --noEmit -p .` works as a type check but the codebase has ~14 pre-existing errors (as of Oct 2026) — diff against `git stash` rather than expecting zero; Vite's build doesn't type-check.
 
 On this Mac, Node is installed under `~/.local/node` (added to PATH in `~/.zprofile`); non-login shells may need `export PATH="$HOME/.local/node/bin:$PATH"`. `xlsx` is installed from the SheetJS CDN tarball, not the npm registry (the npm `xlsx` package is abandoned).
 

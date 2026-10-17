@@ -216,6 +216,12 @@ const CUSTOM_WRITE_NAMES = new Set(['update_customer', 'create_task', 'send_remi
 // Основа слова без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
 const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
 
+// «Записал», «провёл», «отправил»… — модель говорит, что сделала. Если в этом
+// ответе действия не было, это неправда (бывает, когда она отказалась от части
+// просьбы и по инерции отчиталась за всё)
+const CLAIMS_DONE_RE = /(^|[^а-яё])(?<!не )(записал[аи]?|сохранил[аи]?|провёл|провел|провела|принял[аи]?|добавил[аи]?|изменил[аи]?|обновил[аи]?|оформил[аи]?|отправил[аи]?|поставил[аи]?|завёл|завел|удалил[аи]?)([^а-яё]|$)/i;
+const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report']);
+
 // Что сейчас делает ассистент — строкой над точками «печатает»
 const STEP_LABELS = {
   customer_overview: 'Смотрю клиента и договоры…', list_customers: 'Ищу клиента…',
@@ -881,6 +887,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL].map(toOpenAiTool)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
     const writes = new Set();
+    let claimChecked = false;
     const actions = [];
     const usage = { prompt: 0, completion: 0, cost: 0 };
 
@@ -898,6 +905,34 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       usage.cost += Number(data.usage?.cost) || 0;
       const msg = data.choices[0].message || {};
       const calls = msg.tool_calls || [];
+      if (!calls.length && !claimChecked && CLAIMS_DONE_RE.test(msg.content || '') && !actions.some(a => ACTION_KINDS.has(a.kind))) {
+        // Отчитался о деле, которого в этом ответе не было. Переспрашиваем с
+        // выключенными инструментами: модель может только переписать ответ
+        // честно — повторить действие (например, на «что ты сделал?») она не сможет
+        claimChecked = true;
+        try {
+          const check = await callModel({
+            model: DEFAULT_MODEL, tools, tool_choice: 'none', temperature: 0, max_tokens: 600, usage: { include: true },
+            messages: [...messages, { role: 'assistant', content: msg.content || '' }, {
+              role: 'system',
+              content: 'Проверка ответа: в этом сообщении ты не вызывал инструменты, значит сейчас ничего не записано и не изменено. Если ты рассказываешь о действии из прошлых сообщений разговора — повтори ответ как есть. Если пишешь, что сделал что-то сейчас, — это неверно: перепиши ответ честно, что не сделано и почему. Только текст ответа.',
+            }],
+          }, signal);
+          usage.prompt += check.usage?.prompt_tokens || 0;
+          usage.completion += check.usage?.completion_tokens || 0;
+          usage.cost += Number(check.usage?.cost) || 0;
+          const fixed = (check.choices?.[0]?.message?.content || '').trim();
+          if (fixed) msg.content = fixed;
+          // Всё ещё «сделал», а в разговоре ничего не выполнялось (пометки о
+          // выполненном приложение кладёт в историю) — говорим правду сами
+          const pastActions = history.some(m => /\[(Выполнено|Договор оформлен|Отправлено):/.test(String(m?.text || '')));
+          if (CLAIMS_DONE_RE.test(msg.content || '') && !pastActions) {
+            msg.content = `${msg.content}\n\n⚠️ В этом ответе ничего не записано и не изменено — если нужно, попросите ещё раз.`;
+          }
+        } catch (e) {
+          if (signal?.aborted) return stopped(actions, usage);
+        }
+      }
       if (!calls.length) {
         // Служебные пометки истории (см. actionNote в AIAssistant.tsx) модель иногда повторяет — человеку они не нужны
         let text = (msg.content || '').replace(/\[(Черновик договора|Договор оформлен|Выполнено|Отменено|Отправлено|Не выполнено|Не отправлено|Ждёт подтверждения)[^\]]*\]/g, '')
@@ -912,7 +947,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         if (!auto && actions.some(a => a.kind === 'contract_form' && !a.overLimit) && !/(Открыть|Откройте|открыть) форму договора/.test(text)) {
           text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
         }
-        if (!text) text = auto && actions.some(a => a.kind === 'contract_form') ? 'Оформляю договор.' : 'Готово.';
+        // Пустой ответ: «Готово» — только если что-то правда сделано
+        if (!text) text = auto && actions.some(a => a.kind === 'contract_form') ? 'Оформляю договор.'
+          : actions.some(a => ACTION_KINDS.has(a.kind)) ? 'Готово.' : 'Ничего не сделано — уточните, что нужно.';
         await nameDraftRefs(user.id, actions);
         // Пустые поля, которые модель заполнила словами («не указан»)
         for (const a of actions) {
