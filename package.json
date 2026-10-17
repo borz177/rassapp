@@ -98,7 +98,7 @@
       "identity": "-",
       "hardenedRuntime": false,
       "extendInfo": {
-        "NSMicrophoneUsageDescription": "Микрофон нужен, чтобы давать команды ИИ-ассистенту голосом.",
+        "NSMicrophoneUsageDescription": "Микрофон нужен, чтобы давать команды FinUchetGPT голосом.",
         "NSCameraUsageDescription": "Камера нужна, чтобы фотографировать документы клиентов."
       }
     },

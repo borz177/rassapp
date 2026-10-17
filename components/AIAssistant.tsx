@@ -214,7 +214,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
       <div className="flex items-center gap-3 pb-3">
         <AIOrb size={44} />
         <div className="min-w-0 flex-1">
-          <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">ИИ-ассистент</h2>
+          <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">FinUchetGPT</h2>
           <button type="button" onClick={iosApp ? undefined : onOpenTariffs} className={`block text-left text-xs text-slate-500 dark:text-slate-400 ${iosApp ? 'cursor-default' : 'hover:text-violet-600 dark:hover:text-violet-300'}`}>
             {status ? (status.plan ? `${status.plan.name} · осталось ${status.left} из ${status.plan.monthly} в этом месяце` : `Пробный доступ · осталось ${status.left} запросов`) : 'Загружаем…'}
             {status && !iosApp && <span className="ml-1 font-semibold text-violet-600 dark:text-violet-300">· Тарифы ›</span>}

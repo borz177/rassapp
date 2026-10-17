@@ -8,7 +8,7 @@ import { isIOSApp } from '../src/platform';
 import { PayMethodButton, SbpMark } from './Tariffs';
 
 /**
- * Тарифы ИИ-ассистента — отдельно от основных. Подписка на месяц, лимит
+ * Тарифы FinUchetGPT — отдельно от основных. Подписка на месяц, лимит
  * запросов в месяц (запрос — одно сообщение: текст, голос или фото). Цены и
  * лимиты приходят с сервера (AI_PLANS в server/index.js).
  *
@@ -46,7 +46,7 @@ const AITariffs: React.FC<{ onOpenAssistant: () => void }> = ({ onOpenAssistant 
     <div className="max-w-3xl mx-auto space-y-5 pb-24">
       <div className="ai-msg-in flex flex-col items-center text-center pt-2">
         <AIOrb size={72} />
-        <h2 className="mt-4 text-2xl font-bold text-slate-900 dark:text-white">Тарифы ИИ-ассистента</h2>
+        <h2 className="mt-4 text-2xl font-bold text-slate-900 dark:text-white">Тарифы FinUchetGPT</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-md">
           Отдельно от основного тарифа. Запрос — одно сообщение: вопрос, голосовое или фото, сколько бы шагов ассистент ни сделал внутри.
         </p>
@@ -97,7 +97,7 @@ const AITariffs: React.FC<{ onOpenAssistant: () => void }> = ({ onOpenAssistant 
       </div>
 
       <button onClick={onOpenAssistant} className="ai-msg-in w-full py-3.5 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-bold active:scale-[.99] transition">
-        Открыть ассистента
+        Открыть FinUchetGPT
       </button>
     </div>
   );

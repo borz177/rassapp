@@ -4752,7 +4752,7 @@ if (!user && !showSplash) {
     // переходить к найденному. Шапка получает готовый элемент.
     search={<>
       {aiAvailable && (
-        <button onClick={openAssistant} aria-label="ИИ-ассистент"
+        <button onClick={openAssistant} aria-label="FinUchetGPT"
                 className="pointer-events-auto shrink-0 rounded-full active:scale-95 transition-transform">
           <AIOrb size={44} />
         </button>
@@ -4765,7 +4765,7 @@ if (!user && !showSplash) {
         <button onClick={openAssistant}
                 className={`mt-2 w-full flex items-center gap-2.5 px-2.5 py-2 rounded-xl text-sm font-semibold transition-colors ${currentView === 'AI_ASSISTANT' ? 'bg-violet-600/20 text-white' : 'text-slate-200 hover:bg-slate-800'}`}>
           <AIOrb size={26} />
-          ИИ-ассистент
+          FinUchetGPT
         </button>
       )}
     </>}
