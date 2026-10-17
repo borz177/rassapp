@@ -3377,6 +3377,20 @@ app.get('/api/data', auth, async (req, res) => {
       }
     });
 
+    // Подключение WhatsApp — из users.whatsapp_settings: им пользуются рассылка,
+    // отправка документов и FinUchetGPT. В общих настройках оно отставало, когда
+    // подключение меняли не с экрана настроек (встроенный WhatsApp на сервере,
+    // отключение в админке) — и приложение считало WhatsApp подключённым, хотя
+    // его не было, или наоборот. Шаблоны сообщений — свои, если на сервере их нет.
+    if ((req.user.role === 'manager' || req.user.role === 'admin') && result.settings) {
+      const wa = (await pool.query('SELECT whatsapp_settings FROM users WHERE id = $1', [targetUserId])).rows[0]?.whatsapp_settings;
+      const waObj = typeof wa === 'string' ? JSON.parse(wa) : wa;
+      if (waObj && typeof waObj === 'object') {
+        const local = result.settings.whatsapp || {};
+        result.settings = { ...result.settings, whatsapp: { ...local, ...waObj, templates: waObj.templates || local.templates } };
+      }
+    }
+
     // Остальные участники пулов инвестора. Без них доля считалась бы так, будто весь
     // капитал пула — его (100% вместо реальных 30%), и кабинет показывал бы чужую
     // прибыль своей. Отдаём только то, что нужно для расчёта долей, — без имён и контактов.
