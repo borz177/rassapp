@@ -425,24 +425,26 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
               <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
               <textarea ref={inputRef} value={text} onChange={e => setText(e.target.value)} rows={1}
                         onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); submit(); } }}
-                        placeholder={image ? 'Что сделать с фото?' : 'Спросите или попросите…'}
+                        placeholder={image ? 'Что сделать?' : 'Спросите или попросите…'}
                         className="flex-1 resize-none bg-transparent outline-none py-2.5 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36" />
             </>
           )}
-          {text.trim() || image ? (
-            <button onClick={submit} disabled={sending} aria-label="Отправить"
-                    className="ai-msg-in w-11 h-11 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-60">
-              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
-            </button>
-          ) : (
+          {/* Микрофон — всегда, пока не набран текст: к фото можно сказать задание голосом */}
+          {!text.trim() && (
             <button onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
-                    className={`relative w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-white shadow-md active:scale-95 transition disabled:opacity-60 ${recording ? 'bg-rose-500' : 'bg-gradient-to-br from-indigo-500 to-violet-600'}`}>
+                    className={`relative w-11 h-11 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
               {recording && <span className="ai-mic-ring absolute inset-0 rounded-full bg-rose-400" />}
               {recording ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
               ) : (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4" /></svg>
               )}
+            </button>
+          )}
+          {(text.trim() || image) && !recording && (
+            <button onClick={submit} disabled={sending} aria-label="Отправить"
+                    className="ai-msg-in w-11 h-11 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-60">
+              <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
             </button>
           )}
         </div>
