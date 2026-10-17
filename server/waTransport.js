@@ -219,7 +219,13 @@ function createWaTransport(pool) {
     await pool.query('DELETE FROM wa_builtin WHERE user_id = $1', [userId]);
   };
 
-  /** Состояние: 'authorized' | 'notAuthorized' | null (проверить не удалось) */
+  /**
+   * Состояние: 'authorized' | 'notAuthorized' | null (проверить не удалось), а
+   * у Green API ещё 'expired' (кончилась оплата инстанса — шлюз отвечает 400
+   * «Instance account is expired») и 'invalidToken' (401/403: ключ сменили или
+   * инстанс удалён). Раньше оба последних давали null — «не знаем», — и рассылка
+   * шла, хотя ни одно сообщение уйти не могло.
+   */
   const getState = async (userId, settings) => {
     try {
       if (isBuiltin(settings)) {
@@ -234,6 +240,10 @@ function createWaTransport(pool) {
       );
       return r.data?.stateInstance || null;
     } catch (e) {
+      const status = e.response?.status;
+      const text = JSON.stringify(e.response?.data || '');
+      if (!isBuiltin(settings) && status === 400 && /expired/i.test(text)) return 'expired';
+      if (!isBuiltin(settings) && (status === 401 || status === 403)) return 'invalidToken';
       console.warn(`⚠️ WhatsApp: не удалось проверить состояние (${userId}): ${e.message}`);
       return null;
     }

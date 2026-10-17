@@ -2302,6 +2302,9 @@ const message = rawTemplate
 
 // 🔹 5. Отправка — встроенным WhatsApp или через Green API (waTransport)
 const waState = await waTransport.getState(userId, settings);
+if (waState && waState !== 'authorized') {
+  return res.status(400).json({ error: 'WhatsApp не подключён', msg: waStateProblemText(waState) });
+}
 const sent = (!waState || waState === 'authorized')
   && (await waTransport.sendText(userId, settings, phone, message)).ok;
 
@@ -2431,7 +2434,7 @@ app.post('/api/integrations/whatsapp/send-reminder-all', auth, massReminderLimit
     if (instanceState && instanceState !== 'authorized') {
       return res.status(400).json({
         error: 'WhatsApp не подключён',
-        msg: 'WhatsApp отключился. Подключите его заново в настройках.'
+        msg: waStateProblemText(instanceState)
       });
     }
 
@@ -5022,6 +5025,12 @@ app.get('/api/admin/stats', adminAuth, async (req, res) => {
     res.status(500).json({ msg: 'Server error' });
   }
 });
+
+// Почему WhatsApp не может отправить — для ответа человеку (см. waTransport.getState)
+const waStateProblemText = (state) => ({
+  expired: 'В Green API закончился оплаченный период — продлите его в личном кабинете Green API или подключите WhatsApp прямо в приложении (Настройки → Интеграции).',
+  invalidToken: 'Green API не принимает ключ — проверьте ID инстанса и токен в Настройки → Интеграции.',
+}[state] || 'WhatsApp отключился. Подключите его заново в настройках.');
 
 // === АДМИН: УДЕРЖАНИЕ ===
 // По каждому владельцу аккаунта — всё, что нужно, чтобы понять, где он сейчас:

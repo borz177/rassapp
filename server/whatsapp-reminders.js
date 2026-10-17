@@ -99,6 +99,48 @@ async function notifyWhatsAppDisconnected(userId) {
   }
 }
 
+// Green API: почему напоминания не ушли и что сделать. Не чаще раза в 20 часов —
+// по последнему такому уведомлению (строки wa_builtin у Green API нет).
+const GREEN_PROBLEMS = {
+  expired: {
+    title: 'WhatsApp: закончилась оплата Green API',
+    body: 'Напоминания клиентам не уходят: в Green API закончился оплаченный период. Продлите его в личном кабинете Green API или подключите WhatsApp прямо в приложении: Настройки → Интеграции.',
+  },
+  notAuthorized: {
+    title: 'WhatsApp отключился',
+    body: 'Напоминания клиентам не уходят: номер отвязан от Green API. Подключите его заново (QR-код в личном кабинете Green API) или подключите WhatsApp прямо в приложении: Настройки → Интеграции.',
+  },
+  invalidToken: {
+    title: 'WhatsApp: ключ Green API не подходит',
+    body: 'Напоминания клиентам не уходят: Green API не принимает ключ. Проверьте ID инстанса и токен в Настройки → Интеграции.',
+  },
+};
+async function notifyGreenApiProblem(userId, state) {
+  try {
+    const problem = GREEN_PROBLEMS[state] || GREEN_PROBLEMS.notAuthorized;
+    const settingsResult = await pool.query(
+      `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'settings'`,
+      [`settings_${userId}`, userId]
+    );
+    const notifSettings = settingsResult.rows[0]?.data?.notifications;
+    if (notifSettings?.enabled === false) return;
+    const recent = await pool.query(
+      `SELECT 1 FROM notifications WHERE user_id = $1 AND data->>'reason' = 'greenapi_problem'
+         AND created_at > NOW() - INTERVAL '20 hours' LIMIT 1`,
+      [userId]
+    );
+    if (recent.rowCount) return;
+    const nid = `notif_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    await pool.query(
+      `INSERT INTO notifications (id, user_id, type, title, body, data) VALUES ($1, $2, 'WHATSAPP_SENT', $3, $4, $5)`,
+      [nid, userId, problem.title, problem.body, JSON.stringify({ reason: 'greenapi_problem', state })]
+    );
+    if (notifSettings?.pushEnabled !== false) await sendPushToUser(userId, problem.title, problem.body);
+  } catch (e) {
+    console.error(`${LOG_PREFIX} ❌ notifyGreenApiProblem:`, e.message);
+  }
+}
+
 async function createWhatsAppSentNotification(userId, title, body, data) {
   try {
     const settingsResult = await pool.query(
@@ -320,10 +362,11 @@ async function processRemindersForUser(user) {
   const state = await waTransport.getState(id, settings);
   if (state && state !== 'authorized') {
     console.warn(`${LOG_PREFIX} [${id}] ⛔ Инстанс не авторизован (${state}) — рассылка пропущена`);
-    // Встроенный номер отвалился (сменили телефон, удалили связанное устройство) —
-    // без предупреждения владелец узнал бы об этом только от клиентов. Проверка
-    // идёт раз в день, во время рассылки, — значит и уведомление раз в день.
+    // Номер отвалился, у Green API кончилась оплата или ключ не подходит — без
+    // предупреждения владелец узнал бы об этом только от клиентов. Проверка идёт
+    // раз в день, во время рассылки, — значит и уведомление раз в день.
     if (settings.provider === 'builtin') await notifyWhatsAppDisconnected(id);
+    else await notifyGreenApiProblem(id, state);
     return;
   }
 
