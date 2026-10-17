@@ -2084,8 +2084,8 @@ export const api = {
         if (!res.ok) throw new Error('Не удалось сохранить согласие');
       },
       /** Ответ ассистента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT */
-      message: async (body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm' }): Promise<{ reply: string; actions: any[]; left: number }> => {
-        const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, { method: 'POST', body: JSON.stringify(body), timeout: 120000 });
+      message: async (body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string }, signal?: AbortSignal): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, { method: 'POST', body: JSON.stringify(body), timeout: 120000, signal });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error(data.msg || 'Ассистент не ответил'), { code: data.code });
         return data;
@@ -2098,6 +2098,10 @@ export const api = {
       undo: async (id: string): Promise<{ ok: boolean; text: string }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/undo`, { method: 'POST', timeout: 60000 });
         return res.json().catch(() => ({ ok: false, text: 'Не удалось отменить' }));
+      },
+      /** «Стоп»: сервер остановит запрос в безопасной точке и вернёт, что успел сделать */
+      stop: async (requestId: string): Promise<void> => {
+        await fetchWithAuth(`${API_URL}/ai/assistant/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'POST', timeout: 10000 }).catch(() => {});
       },
       cancel: async (id: string): Promise<void> => {
         await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/cancel`, { method: 'POST' }).catch(() => {});

@@ -337,7 +337,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
   };
 
   // ── Разговор с моделью ───────────────────────────────────────────────────
-  const callModel = async (body) => {
+  const callModel = async (body, signal) => {
     const key = process.env.OPENROUTER_API_KEY;
     if (!key) throw Object.assign(new Error('Ассистент ещё не настроен'), { status: 503 });
     const r = await fetch(`${OPENROUTER_BASE}/chat/completions`, {
@@ -349,7 +349,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         'X-Title': 'FinUchet',
       },
       body: JSON.stringify(body),
-      signal: AbortSignal.timeout(90000),
+      signal: signal ? AbortSignal.any([signal, AbortSignal.timeout(90000)]) : AbortSignal.timeout(90000),
     });
     const data = await r.json().catch(() => null);
     if (!r.ok || !data?.choices?.[0]) {
@@ -469,8 +469,19 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * history — прошлые реплики [{role:'user'|'assistant', text, image?}] (фото — см. historyMessages).
    * image — data:image/jpeg;base64,…; audio — { data: base64, format: 'mp3'|'wav'|… }.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm' }) => {
+  /**
+   * signal — человек нажал «Стоп» (server/index.js, /requests/:id/cancel).
+   * Останавливаемся в безопасной точке: обращение к модели обрывается сразу,
+   * а начатая запись доводится до конца — и возвращается с «Отменить», а не
+   * теряется молча.
+   */
+  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null }) => {
     const auto = mode === 'auto';
+    const stopped = (actions, usage) => ({
+      cancelled: true, actions, usage,
+      reply: actions.some(a => a.kind === 'done' || a.kind === 'contract_form' || a.kind === 'confirm' || a.kind === 'send_doc')
+        ? 'Остановлено. Вот что успел сделать:' : '',
+    });
     sweep();
     const today = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' });
     const content = [];
@@ -493,7 +504,14 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     const usage = { prompt: 0, completion: 0, cost: 0 };
 
     for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-      const data = await callModel({ model: DEFAULT_MODEL, messages, tools, temperature: 0.2, max_tokens: 1200, usage: { include: true } });
+      if (signal?.aborted) return stopped(actions, usage);
+      let data;
+      try {
+        data = await callModel({ model: DEFAULT_MODEL, messages, tools, temperature: 0.2, max_tokens: 1200, usage: { include: true } }, signal);
+      } catch (e) {
+        if (signal?.aborted) return stopped(actions, usage);
+        throw e;
+      }
       usage.prompt += data.usage?.prompt_tokens || 0;
       usage.completion += data.usage?.completion_tokens || 0;
       usage.cost += Number(data.usage?.cost) || 0;
@@ -542,6 +560,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       }
       messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
       for (const call of calls) {
+        // Между шагами: «Стоп» до записи — запись не делаем
+        if (signal?.aborted) return stopped(actions, usage);
         const name = call.function?.name;
         let args = {};
         try { args = JSON.parse(call.function?.arguments || '{}'); } catch { /* пустые аргументы */ }

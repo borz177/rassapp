@@ -4425,6 +4425,8 @@ const AI_PLANS = {
 const AI_TRIAL_REQUESTS = 20;
 const { createAssistant } = require('./ai/assistant');
 const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT });
+// Идущие запросы к ассистенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
+const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
 
 /** Что может пользователь прямо сейчас: согласие, тариф, сколько осталось */
@@ -4470,12 +4472,17 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     if (st.left <= 0) {
       return res.status(402).json({ code: 'AI_LIMIT', msg: st.plan ? 'Запросы на этот месяц закончились.' : 'Пробные запросы закончились.' });
     }
-    const { text, history, image, audio, mode } = req.body || {};
+    const { text, history, image, audio, mode, requestId } = req.body || {};
     if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
     if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
     const me = (await pool.query('SELECT id, name FROM users WHERE id = $1', [req.user.id])).rows[0];
     const settingsRow = await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'settings' LIMIT 1`, [req.user.id]);
+    // «Стоп» из чата находит запрос по его номеру (только свой)
+    const stop = new AbortController();
+    const reqKey = requestId ? `${req.user.id}:${String(requestId).slice(0, 64)}` : null;
+    if (reqKey) aiRunning.set(reqKey, stop);
     const out = await aiAssistant.reply({
+      signal: stop.signal,
       user: me,
       text: String(text || '').slice(0, 4000),
       history: Array.isArray(history) ? history : [],
@@ -4484,18 +4491,20 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       companyName: settingsRow.rows[0]?.data?.companyName || '',
       // «Авто» — действия выполняются сразу, без «Подтвердить» (выбор в чате)
       mode: mode === 'auto' ? 'auto' : 'confirm',
-    });
+    }).finally(() => { if (reqKey) aiRunning.delete(reqKey); });
+    // Остановленный до первого ответа модели в лимит не идёт; потраченное — в учёт
+    const counted = !out.cancelled || (out.usage?.completion || 0) > 0;
     // Учёт: запрос засчитывается, когда ассистент ответил
     await pool.query(
       `INSERT INTO ai_assistant_usage (user_id, month, requests, prompt_tokens, completion_tokens, cost_usd)
-       VALUES ($1, $2, 1, $3, $4, $5)
-       ON CONFLICT (user_id, month) DO UPDATE SET requests = ai_assistant_usage.requests + 1,
+       VALUES ($1, $2, $6, $3, $4, $5)
+       ON CONFLICT (user_id, month) DO UPDATE SET requests = ai_assistant_usage.requests + EXCLUDED.requests,
          prompt_tokens = ai_assistant_usage.prompt_tokens + EXCLUDED.prompt_tokens,
          completion_tokens = ai_assistant_usage.completion_tokens + EXCLUDED.completion_tokens,
          cost_usd = ai_assistant_usage.cost_usd + EXCLUDED.cost_usd`,
-      [req.user.id, aiMonth(), out.usage?.prompt || 0, out.usage?.completion || 0, out.usage?.cost || 0]);
-    if (st.trial) await pool.query('UPDATE users SET ai_trial_used = ai_trial_used + 1 WHERE id = $1', [req.user.id]);
-    res.json({ reply: out.reply, actions: out.actions, left: Math.max(0, st.left - 1) });
+      [req.user.id, aiMonth(), out.usage?.prompt || 0, out.usage?.completion || 0, out.usage?.cost || 0, counted ? 1 : 0]);
+    if (st.trial && counted) await pool.query('UPDATE users SET ai_trial_used = ai_trial_used + 1 WHERE id = $1', [req.user.id]);
+    res.json({ reply: out.reply, actions: out.actions, cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)) });
   } catch (e) {
     console.error('AI assistant error:', e.message);
     res.status(e.status || 500).json({ msg: e.status === 503 ? 'Ассистент ещё не настроен.' : 'Ассистент сейчас не ответил — попробуйте ещё раз.' });
@@ -4567,6 +4576,14 @@ app.post('/api/ai/assistant/actions/:id/confirm', auth, async (req, res) => {
     const r = await aiAssistant.confirmAction(req.user.id, req.params.id);
     res.status(r.ok ? 200 : 400).json({ ok: r.ok, text: r.text, undoable: !!r.undoable });
   } catch (e) { console.error('AI confirm error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось выполнить — попробуйте ещё раз.' }); }
+});
+
+// «Стоп» в чате: запрос остановится в ближайшей безопасной точке и вернёт,
+// что успел сделать (см. reply в server/ai/assistant.js)
+app.post('/api/ai/assistant/requests/:id/cancel', auth, (req, res) => {
+  const c = aiRunning.get(`${req.user.id}:${String(req.params.id).slice(0, 64)}`);
+  if (c) c.abort();
+  res.json({ ok: true, running: !!c });
 });
 
 // «Отменить» у выполненного действия (по «Подтвердить» или в режиме «Авто»)

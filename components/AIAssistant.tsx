@@ -33,6 +33,7 @@ interface Msg {
   image?: string;
   voice?: number; // длительность голосового, с
   note?: string; // для ассистента, не показывается: id варианта, выбранного кнопкой
+  stopped?: boolean; // человек нажал «Стоп», ответа не было
   actions?: Action[];
   error?: boolean;
 }
@@ -98,7 +99,7 @@ const toHistory = (messages: Msg[]) => messages
   .slice(-12)
   .map(m => ({
     role: m.role,
-    text: [m.text + (m.note ? ` [${m.note}]` : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n'),
+    text: [m.text + (m.note ? ` [${m.note}]` : '') + (m.stopped ? ' [запрос остановлен человеком — не выполнять]' : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n'),
     image: m.image && m.image.startsWith('data:image/') ? m.image : undefined,
   }));
 
@@ -174,6 +175,16 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
+  // Идущий запрос — для «Стоп»; stopping — «Стоп» нажат, ждём безопасной точки
+  const running = useRef<{ id: string; ctrl: AbortController; userMsgId: string } | null>(null);
+  const [stopping, setStopping] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  useEffect(() => {
+    if (!sending) { setElapsed(0); return; }
+    const started = Date.now();
+    const t = setInterval(() => setElapsed(Math.floor((Date.now() - started) / 1000)), 1000);
+    return () => clearInterval(t);
+  }, [sending]);
   const [recording, setRecording] = useState<Recording | null>(null);
   const [recSeconds, setRecSeconds] = useState(0);
   const [level, setLevel] = useState(0);
@@ -262,15 +273,33 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     setMessages(ms => [...ms, userMsg]);
     setText(''); setImage(null);
     setSending(true);
+    const req = { id: newId(), ctrl: new AbortController(), userMsgId: userMsg.id };
+    running.current = req;
     try {
-      const r = await api.aiAssistant.message({ text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '), history, image: payload.image || undefined, audio: payload.audio, mode });
-      const msgId = newId();
-      const actions: Action[] = r.actions || [];
-      setMessages(ms => [...ms, { id: msgId, role: 'assistant', text: r.reply, actions }]);
+      const r = await api.aiAssistant.message({
+        text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '),
+        history, image: payload.image || undefined, audio: payload.audio, mode, requestId: req.id,
+      }, req.ctrl.signal);
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
+      let actions: Action[] = r.actions || [];
+      if (r.cancelled) {
+        // Остановили: сделанное сервером показываем (с «Отменить»), а то, что
+        // приложение сделало бы само (договор, отправка), — только кнопками
+        actions = actions.map(a => (a.kind === 'contract_form' || a.kind === 'send_doc') ? { ...a, auto: false } : a);
+        if (!actions.length) { markStopped(userMsg.id); return; }
+      }
+      const msgId = newId();
+      setMessages(ms => [...ms, { id: msgId, role: 'assistant', text: r.reply || (r.cancelled ? 'Остановлено.' : ''), actions }]);
       if (actions.some(a => a.kind === 'done' && a.ok)) onDataChanged();
-      runAuto(msgId, actions);
+      if (!r.cancelled) runAuto(msgId, actions);
     } catch (e: any) {
+      if (req.ctrl.signal.aborted) {
+        // Сервер не ответил на «Стоп» вовремя — оборвали сами. Что-то могло
+        // успеть записаться: данные подтягиваем
+        markStopped(userMsg.id);
+        onDataChanged();
+        return;
+      }
       if (e.code === 'AI_CONSENT_REQUIRED') setConsentOpen(true);
       setMessages(ms => [...ms, {
         id: newId(), role: 'assistant', error: true,
@@ -278,8 +307,22 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       }]);
       if (e.code === 'AI_LIMIT') loadStatus();
     } finally {
+      if (running.current === req) running.current = null;
       setSending(false);
+      setStopping(false);
     }
+  };
+
+  const markStopped = (userMsgId: string) =>
+    setMessages(ms => ms.map(m => m.id === userMsgId ? { ...m, stopped: true } : m));
+
+  // «Стоп»: просим сервер остановиться в безопасной точке; молчит — обрываем сами
+  const stopRequest = () => {
+    const req = running.current;
+    if (!req || stopping) return;
+    setStopping(true);
+    api.aiAssistant.stop(req.id);
+    setTimeout(() => { if (running.current === req) req.ctrl.abort(); }, 12000);
   };
 
   const submit = () => {
@@ -487,6 +530,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   )}
                 </div>
               )}
+              {m.stopped && (
+                <p className="ai-msg-in text-right text-xs text-slate-400 dark:text-slate-500">
+                  Остановлено
+                  {m.text && !m.image && !m.voice && !sending && (
+                    <> · <button onClick={() => send({ text: m.text, note: m.note })} className="font-semibold text-violet-600 dark:text-violet-300">Повторить</button></>
+                  )}
+                </p>
+              )}
               {m.actions?.map(a => (
                 <AIActionCard key={a.id} action={a} sending={sending} whatsappEnabled={whatsappEnabled}
                   choicesActive={m.id === messages[messages.length - 1]?.id}
@@ -514,6 +565,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
               <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
               <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
+              {/* Долгий ответ — видно, что не завис; после «Стоп» — что останавливаем */}
+              {stopping
+                ? <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">Останавливаем…</span>
+                : elapsed >= 4 && <span className="ml-1.5 text-xs tabular-nums text-slate-400 dark:text-slate-500">{elapsed} с</span>}
             </div>
           </div>
         )}
@@ -572,6 +627,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                         className="flex-1 resize-none bg-transparent outline-none py-2.5 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36" />
             </>
           )}
+          {/* Идёт ответ — на месте отправки «Стоп» с бегущим кольцом */}
+          {sending && !recording ? (
+            <button onClick={stopRequest} disabled={stopping} aria-label={stopping ? 'Останавливаем' : 'Остановить ответ'} title="Остановить"
+                    className="ai-msg-in relative w-11 h-11 shrink-0 rounded-full flex items-center justify-center bg-slate-900 dark:bg-white active:scale-95 transition">
+              <span aria-hidden className={`ai-busy-ring absolute -inset-[3px] rounded-full ${stopping ? 'opacity-40' : ''}`} />
+              <span aria-hidden className={`w-3.5 h-3.5 rounded-[3px] bg-white dark:bg-slate-900 ${stopping ? 'animate-pulse' : ''}`} />
+            </button>
+          ) : <>
           {/* Микрофон — всегда, пока не набран текст: к фото можно сказать задание голосом */}
           {!text.trim() && (
             <button onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
@@ -590,6 +653,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
             </button>
           )}
+          </>}
         </div>
         {status && !status.plan && status.left <= 5 && !iosApp && (
           <button onClick={onOpenTariffs} className="mt-2 block mx-auto text-xs font-semibold text-violet-600 dark:text-violet-300">
