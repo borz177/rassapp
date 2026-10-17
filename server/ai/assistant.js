@@ -381,6 +381,12 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       return { text: `${c.name}: ${changes.map(f => `${FIELD_NAMES[f]} → ${args[f].trim()}`).join('; ')}` };
     }
     if (name === 'create_task') {
+      // Раздел «Задачи» — на «Бизнесе» и «Бизнес Pro» (checkAccess('TASKS') в App.tsx): иначе задачу не увидят
+      const u = (await pool.query('SELECT role, subscription FROM users WHERE id = $1', [userId])).rows[0];
+      const plan = (typeof u?.subscription === 'string' ? JSON.parse(u.subscription) : u?.subscription)?.plan;
+      if (u?.role !== 'admin' && plan !== 'BUSINESS' && plan !== 'BUSINESS_PRO') {
+        return { error: 'Раздел «Задачи» есть на тарифах «Бизнес» и «Бизнес Pro» — на этом тарифе задачу поставить некуда.' };
+      }
       const due = taskDue(args);
       return { text: `«${String(args.title).trim()}»${due ? ` — ${due.label}` : ' — без срока'}` };
     }

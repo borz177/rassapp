@@ -8065,6 +8065,8 @@ backupModule.startScheduler();
 
 // 📧 Письма о конце подписки со ссылкой на оплату (см. subscription-reminders.js)
 require('./subscription-reminders')({ pool, sendEmail }).start();
+// Утренняя сводка FinUchetGPT (настройки ассистента → «Утренняя сводка»)
+require('./ai/digest')({ pool, createNotification, aiTrialRequests: AI_TRIAL_REQUESTS, aiPlans: AI_PLANS }).start();
 
 // 🔹 Очистка старых конфигов (запускается раз в сутки)
 setInterval(async () => {

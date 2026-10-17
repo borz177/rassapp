@@ -932,6 +932,7 @@ export type NotificationType =
   | 'CONTRACT_CLOSED'
   | 'EXPENSE'
   | 'WHATSAPP_SENT'
+  | 'AI_DIGEST' // утренняя сводка FinUchetGPT (server/ai/digest.js)
   | 'ADMIN_BROADCAST'
   | 'SUPPORT_MESSAGE'
   | 'TASK_ASSIGNED'
