@@ -1,7 +1,8 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
-import { SquarePen, Trash2, RotateCcw } from 'lucide-react';
+import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap } from 'lucide-react';
+import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
@@ -9,18 +10,21 @@ import { isIOSApp, publicOrigin } from '../src/platform';
 /**
  * ИИ-ассистент: чат, голос и фото. Ответы и действия — server/ai/assistant.js.
  *
- * Всё, что меняет учёт, приходит карточкой: «Подтвердить» выполняет действие на
- * сервере, «Отмена» — забывает его. Договор ассистент не создаёт сам, а
- * открывает заполненную форму (onOpenContract) — человек проверяет и сохраняет.
+ * Режим выбирает человек (переключатель над полем ввода, запоминается):
+ *  • «Подтверждение» — всё, что меняет учёт, приходит карточкой «Подтвердить»;
+ *    договор — заполненной формой (onOpenContract);
+ *  • «Авто» — платёж, расход, приход, клиент выполняются на сервере сразу,
+ *    договор оформляется сразу (onCreateContract — тот же расчёт и сохранение,
+ *    что у формы), документы уходят в WhatsApp сразу. У выполненного —
+ *    «Отменить». Без обязательных полей договора ассистент спрашивает в любом
+ *    режиме (server/ai/assistant.js).
  *
  * История разговора живёт на устройстве (localStorage, без фото и голоса) —
  * на сервере её нет.
  */
 
-type Action =
-  | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
-  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; state?: 'done' | 'cancelled' | 'busy' | 'error'; result?: string }
-  | { id: string; kind: 'contract_form'; title: string; draft: any; state?: 'done' };
+type Action = AIAction;
+type Mode = 'confirm' | 'auto';
 
 interface Msg {
   id: string;
@@ -38,25 +42,54 @@ interface Props {
   onBack: () => void;
   /** Черновик договора от ассистента → форма договора */
   onOpenContract: (draft: any) => void;
+  /** «Авто»: оформить договор сразу, без формы */
+  onCreateContract: (draft: any) => Promise<{ ok: boolean; text: string; saleId?: string; customerId?: string; number?: string; monthly?: number; total?: number; offline?: boolean }>;
+  /** PDF договора или чека клиенту в WhatsApp; fresh — сначала подтянуть данные (чек сразу после платежа) */
+  onSendDocument: (saleId: string, kind: 'contract' | 'receipt', opts?: { fresh?: boolean }) => Promise<{ ok: boolean; text: string }>;
+  /** «Отменить договор», оформленный в «Авто» */
+  onDeleteContract: (saleId: string) => Promise<{ ok: boolean; text: string }>;
+  /** Карточка договора у клиента */
+  onShowContract: (saleId: string, customerId?: string) => void;
+  whatsappEnabled: boolean;
   /** После подтверждённого действия — подтянуть свежие данные */
   onDataChanged: () => void;
   onOpenTariffs: () => void;
 }
 
 /**
- * Пометка о черновике договора для истории: без неё «оформи на неё ещё один»
- * или «первому клиенту» модели не на что опереться — черновик ещё не сохранён,
- * клиента в базе нет. Модели id показывать можно, человеку она их не называет.
+ * Пометки о действиях для истории: без них модель не знает, что черновик ещё
+ * не сохранён («оформи на неё ещё один»), что платёж уже принят или отменён,
+ * какой договор только что оформлен («отправь ему договор»). Модели id
+ * показывать можно — человеку она их не называет.
  */
-const draftNote = (a: Action) => {
-  if (a.kind !== 'contract_form') return '';
-  const d = a.draft || {}, c = d.newCustomer;
-  const who = c
-    ? [c.name, c.birthDate && `д.р. ${c.birthDate}`, (c.passportSeries || c.passportNumber) && `паспорт ${c.passportSeries || ''} ${c.passportNumber || ''}`.trim(),
-       c.passportIssuedBy && `выдан ${c.passportIssuedBy}`, c.passportIssueDate && `дата выдачи ${c.passportIssueDate}`, c.passportDivisionCode && `код ${c.passportDivisionCode}`,
-       c.phone && `тел. ${c.phone}`, c.address && `адрес ${c.address}`].filter(Boolean).join(', ') + ' (новый клиент, в базе ещё нет)'
-    : `клиент из базы ${d.customerId}`;
-  return `[Черновик договора: ${d.productName || 'товар'}; ${who}]`;
+const actionNote = (a: Action): string => {
+  if (a.kind === 'contract_form') {
+    const d = a.draft || {}, c = d.newCustomer;
+    if (a.state === 'saved' && a.saved) return `[Договор оформлен: ${a.saved.saleId}${a.saved.number ? ` (№${a.saved.number})` : ''}; ${d.productName || 'товар'}; клиент ${a.saved.customerId || d.customerId || c?.name || ''}]`;
+    if (a.state === 'deleted') return `[Отменено: договор ${d.productName || ''} удалён]`;
+    const who = c
+      ? [c.name, c.birthDate && `д.р. ${c.birthDate}`, (c.passportSeries || c.passportNumber) && `паспорт ${c.passportSeries || ''} ${c.passportNumber || ''}`.trim(),
+         c.passportIssuedBy && `выдан ${c.passportIssuedBy}`, c.passportIssueDate && `дата выдачи ${c.passportIssueDate}`, c.passportDivisionCode && `код ${c.passportDivisionCode}`,
+         c.phone && `тел. ${c.phone}`, c.address && `адрес ${c.address}`].filter(Boolean).join(', ') + ' (новый клиент, в базе ещё нет)'
+      : `клиент из базы ${d.customerId}`;
+    return `[Черновик договора: ${d.productName || 'товар'}; ${who}]`;
+  }
+  if (a.kind === 'confirm') {
+    if (a.state === 'undone') return `[Отменено: ${a.summary}]`;
+    if (a.state === 'done' || a.state === 'undoing') return `[Выполнено: ${a.summary}]`;
+    if (a.state === 'cancelled') return `[Отменено человеком, не выполнено: ${a.summary}]`;
+    return `[Ждёт подтверждения: ${a.summary}]`;
+  }
+  if (a.kind === 'done') {
+    if (!a.ok) return `[Не выполнено: ${a.result}]`;
+    return a.state === 'undone' ? `[Отменено: ${a.summary}]` : `[Выполнено: ${a.summary}]`;
+  }
+  if (a.kind === 'send_doc') {
+    if (a.state === 'done') return `[Отправлено: ${a.title.toLowerCase()} — ${a.summary}]`;
+    if (a.state === 'error') return `[Не отправлено: ${a.result}]`;
+    return '';
+  }
+  return '';
 };
 
 /** Прошлые реплики для ассистента: последние 12; фото — пока они есть в памяти (после перезапуска не сохраняются) */
@@ -65,7 +98,7 @@ const toHistory = (messages: Msg[]) => messages
   .slice(-12)
   .map(m => ({
     role: m.role,
-    text: [m.text + (m.note ? ` [${m.note}]` : ''), ...(m.actions || []).map(draftNote)].filter(Boolean).join('\n'),
+    text: [m.text + (m.note ? ` [${m.note}]` : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n'),
     image: m.image && m.image.startsWith('data:image/') ? m.image : undefined,
   }));
 
@@ -90,6 +123,11 @@ const writeStore = (userId: string, msgs: Msg[], prev = false) => {
 };
 const newId = () => `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+// Режим запоминается на устройстве; про «Авто» один раз объясняем, что это значит
+const modeKey = (userId: string) => `finuchet_ai_mode_${userId}`;
+const autoAckKey = (userId: string) => `finuchet_ai_auto_ack_${userId}`;
+const readMode = (userId: string): Mode => { try { return localStorage.getItem(modeKey(userId)) === 'auto' ? 'auto' : 'confirm'; } catch { return 'confirm'; } };
+
 /**
  * Немного разметки из ответа модели: **жирный**, пункты «* » / «- » / «1. ».
  * Остальное — обычный текст (HTML не вставляем).
@@ -111,13 +149,28 @@ const renderRich = (text: string): React.ReactNode => {
   return out;
 };
 
-const fmt = (n: any) => (Number(n) ? `${Math.round(Number(n)).toLocaleString('ru-RU')} ₽` : '—');
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataChanged, onOpenTariffs }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, whatsappEnabled, onDataChanged, onOpenTariffs }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   const [prevChat, setPrevChat] = useState<Msg[]>(() => readStore(userId, true));
   const [clearOpen, setClearOpen] = useState(false);
+  const [mode, setModeState] = useState<Mode>(() => readMode(userId));
+  const [autoIntro, setAutoIntro] = useState(false);
+  const setMode = (m: Mode) => {
+    if (m === 'auto') {
+      let acked = false;
+      try { acked = localStorage.getItem(autoAckKey(userId)) === '1'; } catch { /* приватный режим */ }
+      if (!acked) { setAutoIntro(true); return; }
+    }
+    setModeState(m);
+    try { localStorage.setItem(modeKey(userId), m); } catch { /* приватный режим — режим только до закрытия */ }
+  };
+  const acceptAuto = () => {
+    try { localStorage.setItem(autoAckKey(userId), '1'); localStorage.setItem(modeKey(userId), 'auto'); } catch { /* см. выше */ }
+    setModeState('auto');
+    setAutoIntro(false);
+  };
   const [text, setText] = useState('');
   const [image, setImage] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
@@ -210,9 +263,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
     setText(''); setImage(null);
     setSending(true);
     try {
-      const r = await api.aiAssistant.message({ text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '), history, image: payload.image || undefined, audio: payload.audio });
-      setMessages(ms => [...ms, { id: newId(), role: 'assistant', text: r.reply, actions: r.actions }]);
+      const r = await api.aiAssistant.message({ text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '), history, image: payload.image || undefined, audio: payload.audio, mode });
+      const msgId = newId();
+      const actions: Action[] = r.actions || [];
+      setMessages(ms => [...ms, { id: msgId, role: 'assistant', text: r.reply, actions }]);
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
+      if (actions.some(a => a.kind === 'done' && a.ok)) onDataChanged();
+      runAuto(msgId, actions);
     } catch (e: any) {
       if (e.code === 'AI_CONSENT_REQUIRED') setConsentOpen(true);
       setMessages(ms => [...ms, {
@@ -261,8 +318,70 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
   const confirm = async (msgId: string, a: Action) => {
     patchAction(msgId, a.id, { state: 'busy' });
     const r = await api.aiAssistant.confirm(a.id);
-    patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
+    patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text, undoable: !!r.undoable });
     if (r.ok) onDataChanged();
+  };
+
+  // «Отменить» выполненное: платёж, расход, приход, клиент (сервер, 30 минут)
+  const undo = async (msgId: string, a: Action) => {
+    if (a.kind !== 'confirm' && a.kind !== 'done') return;
+    const before = a.state;
+    patchAction(msgId, a.id, { state: 'undoing', undoResult: undefined });
+    const r = await api.aiAssistant.undo(a.id);
+    if (r.ok) {
+      patchAction(msgId, a.id, { state: 'undone', undoResult: r.text });
+      onDataChanged();
+    } else {
+      patchAction(msgId, a.id, { state: before, undoResult: r.text } as Partial<Action>);
+    }
+  };
+
+  // Чек по только что принятому платежу
+  const sendReceipt = async (msgId: string, a: Action) => {
+    if ((a.kind !== 'confirm' && a.kind !== 'done') || !a.contractId) return;
+    patchAction(msgId, a.id, { receipt: 'busy' });
+    const r = await onSendDocument(a.contractId, 'receipt', { fresh: true });
+    patchAction(msgId, a.id, { receipt: r.ok ? 'done' : 'error', receiptResult: r.text });
+  };
+
+  // Договор в «Авто»: сохранить сразу; не вышло — карточка с причиной и формой
+  const saveContract = async (msgId: string, a: Action) => {
+    if (a.kind !== 'contract_form') return;
+    patchAction(msgId, a.id, { state: 'saving' });
+    const r = await onCreateContract(a.draft);
+    if (!r.ok || !r.saleId) { patchAction(msgId, a.id, { state: 'failed', result: r.text }); return; }
+    const saved = { saleId: r.saleId, customerId: r.customerId, number: r.number, total: r.total, monthly: r.monthly, offline: r.offline };
+    patchAction(msgId, a.id, { state: 'saved', saved, result: r.text });
+    onDataChanged();
+    if (a.draft?.sendToWhatsApp && whatsappEnabled) await sendContract(msgId, { ...a, saved });
+  };
+  const sendContract = async (msgId: string, a: Action) => {
+    if (a.kind !== 'contract_form' || !a.saved) return;
+    patchAction(msgId, a.id, { send: 'busy' });
+    const r = await onSendDocument(a.saved.saleId, 'contract');
+    patchAction(msgId, a.id, { send: r.ok ? 'done' : 'error', sendResult: r.text });
+  };
+  const deleteContract = async (msgId: string, a: Action) => {
+    if (a.kind !== 'contract_form' || !a.saved) return;
+    patchAction(msgId, a.id, { state: 'deleting' });
+    const r = await onDeleteContract(a.saved.saleId);
+    patchAction(msgId, a.id, r.ok ? { state: 'deleted', result: r.text } : { state: 'saved', result: r.text });
+  };
+
+  // Документ клиенту (карточка send_doc)
+  const sendDoc = async (msgId: string, a: Action, fresh = false) => {
+    if (a.kind !== 'send_doc') return;
+    patchAction(msgId, a.id, { state: 'busy' });
+    const r = await onSendDocument(a.saleId, a.doc, { fresh: fresh || a.doc === 'receipt' });
+    patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
+  };
+
+  // Что в «Авто» делает само приложение: договоры, затем документы (чек — уже
+  // с платежом из этого же сообщения)
+  const runAuto = async (msgId: string, actions: Action[]) => {
+    for (const a of actions) if (a.kind === 'contract_form' && a.auto) await saveContract(msgId, a);
+    const paid = actions.some(a => a.kind === 'done' && a.ok && a.tool === 'create_payment');
+    for (const a of actions) if (a.kind === 'send_doc' && a.auto) await sendDoc(msgId, a, paid);
   };
   const cancel = (msgId: string, a: Action) => {
     api.aiAssistant.cancel(a.id);
@@ -368,70 +487,21 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
                   )}
                 </div>
               )}
-              {m.actions?.map(a => a.kind === 'choices' ? (
-                // Варианты ответа: нажатый уходит сообщением; после ответа (или если разговор ушёл дальше) — не нажимаются
-                <div key={a.id} className="flex flex-wrap gap-2">
-                  {a.options.map((o, i) => {
-                    const stale = a.state === 'done' || m.id !== messages[messages.length - 1]?.id;
-                    const chosen = a.chosen === i;
-                    return (
-                      <button key={i} disabled={stale || sending}
-                              onClick={() => { patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: o.label, note: o.ref }); }}
-                              style={{ animationDelay: `${i * 50}ms` }}
-                              className={`ai-msg-in px-3.5 py-2 rounded-2xl text-sm text-left border transition active:scale-[.97] ${chosen
-                                ? 'bg-violet-600 border-violet-600 text-white'
-                                : stale
-                                  ? 'bg-white/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500'
-                                  : 'bg-white dark:bg-slate-800 border-violet-300 dark:border-violet-500/40 text-violet-700 dark:text-violet-200 hover:bg-violet-50 dark:hover:bg-violet-500/10'}`}>
-                        {o.label}
-                      </button>
-                    );
-                  })}
-                </div>
-              ) : (
-                <div key={a.id} className="ai-card-in rounded-3xl border border-violet-200 dark:border-violet-500/30 bg-violet-50/70 dark:bg-violet-500/10 p-4">
-                  <p className="text-xs font-bold uppercase tracking-wide text-violet-600 dark:text-violet-300">{a.title}</p>
-                  {a.kind === 'confirm' ? (
-                    <>
-                      <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100">{a.summary}</p>
-                      {a.state === 'done' || a.state === 'error' ? (
-                        <p className={`mt-2 text-sm font-semibold ${a.state === 'done' ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>{a.state === 'done' ? '✓ ' : ''}{a.result}</p>
-                      ) : a.state === 'cancelled' ? (
-                        <p className="mt-2 text-sm text-slate-500">Отменено</p>
-                      ) : (
-                        <div className="mt-3 flex gap-2">
-                          <button disabled={a.state === 'busy'} onClick={() => confirm(m.id, a)}
-                                  className="flex-1 py-2.5 rounded-2xl bg-violet-600 text-white text-sm font-bold active:scale-[.98] transition disabled:opacity-60">
-                            {a.state === 'busy' ? 'Выполняем…' : 'Подтвердить'}
-                          </button>
-                          <button disabled={a.state === 'busy'} onClick={() => cancel(m.id, a)}
-                                  className="px-4 py-2.5 rounded-2xl bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 text-sm font-semibold border border-slate-200 dark:border-slate-700">
-                            Отмена
-                          </button>
-                        </div>
-                      )}
-                    </>
-                  ) : (
-                    <>
-                      <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                        <span className="text-slate-500">Клиент</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.newCustomer?.name || a.draft.customerName || (a.draft.customerId ? 'из базы' : '—')}</span>
-                        <span className="text-slate-500">Товар</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.productName || '—'}</span>
-                        <span className="text-slate-500">Закуп</span><span className="text-slate-800 dark:text-slate-100 text-right">{fmt(a.draft.buyPrice)}</span>
-                        <span className="text-slate-500">{a.draft.totalPrice ? 'Цена' : 'Наценка'}</span><span className="text-slate-800 dark:text-slate-100 text-right">{a.draft.totalPrice ? fmt(a.draft.totalPrice) : a.draft.markupPercent != null ? `${a.draft.markupPercent}%` : '—'}</span>
-                        <span className="text-slate-500">Срок</span><span className="text-slate-800 dark:text-slate-100 text-right">{a.draft.months ? `${a.draft.months} мес.` : 'уточните в форме'}</span>
-                        <span className="text-slate-500">Взнос</span><span className="text-slate-800 dark:text-slate-100 text-right">{a.draft.downPayment ? fmt(a.draft.downPayment) : 'без взноса'}</span>
-                        {a.draft.accountName && <><span className="text-slate-500">Счёт</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{a.draft.accountName}</span></>}
-                      </div>
-                      {a.draft.newCustomer?.passportNumber && (
-                        <p className="mt-2 text-xs text-slate-500">Паспорт {a.draft.newCustomer.passportSeries} {a.draft.newCustomer.passportNumber} — новый клиент будет заведён с этими данными</p>
-                      )}
-                      <button onClick={() => { onOpenContract(a.draft); patchAction(m.id, a.id, { state: 'done' }); }}
-                              className="mt-3 w-full py-2.5 rounded-2xl bg-violet-600 text-white text-sm font-bold active:scale-[.98] transition">
-                        {a.state === 'done' ? 'Открыть форму ещё раз' : 'Открыть форму договора'}
-                      </button>
-                    </>
-                  )}
-                </div>
+              {m.actions?.map(a => (
+                <AIActionCard key={a.id} action={a} sending={sending} whatsappEnabled={whatsappEnabled}
+                  choicesActive={m.id === messages[messages.length - 1]?.id}
+                  onChoose={i => { if (a.kind !== 'choices') return; patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: a.options[i].label, note: a.options[i].ref }); }}
+                  onConfirm={() => confirm(m.id, a)}
+                  onCancel={() => cancel(m.id, a)}
+                  onUndo={() => undo(m.id, a)}
+                  onSendReceipt={() => sendReceipt(m.id, a)}
+                  onOpenForm={() => { if (a.kind !== 'contract_form') return; onOpenContract(a.draft); if (a.state !== 'failed') patchAction(m.id, a.id, { state: 'done' }); }}
+                  onShowContract={() => { if (a.kind === 'contract_form' && a.saved) onShowContract(a.saved.saleId, a.saved.customerId); }}
+                  onSendContract={() => sendContract(m.id, a)}
+                  onDeleteContract={() => deleteContract(m.id, a)}
+                  onSendDoc={() => sendDoc(m.id, a)}
+                  onCancelDoc={() => patchAction(m.id, a.id, { state: 'cancelled' })}
+                />
               ))}
             </div>
           </div>
@@ -448,13 +518,25 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
           </div>
         )}
         {/* Место под полем ввода: последнее сообщение не прячется за ним */}
-        <div ref={listEnd} className="h-24" />
+        <div ref={listEnd} className="h-44" />
       </div>
 
       {/* Ввод */}
       {/* На телефоне поле ввода прижато к низу экрана (нижней панели здесь нет), на компьютере — к низу колонки */}
       <div className="fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20">
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
+        {/* Режим: подтверждать каждое действие или выполнять сразу */}
+        <div role="radiogroup" aria-label="Режим ассистента"
+             className="mb-2 mx-auto w-max flex p-1 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-semibold">
+          {([['confirm', 'Подтверждать', ShieldCheck], ['auto', 'Авто', Zap]] as const).map(([m, label, Icon]) => (
+            <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}
+                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${mode === m
+                      ? m === 'auto' ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow' : 'bg-violet-600 text-white shadow'
+                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
+              <Icon size={14} /> {label}
+            </button>
+          ))}
+        </div>
         {image && (
           <div className="ai-msg-in mb-2 inline-flex items-start gap-2 p-2 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
             <img src={image} alt="" className="h-16 rounded-xl" />
@@ -517,6 +599,25 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
       </div>
 
       {/* Согласие на передачу данных */}
+      {autoIntro && (
+        <Sheet onClose={() => setAutoIntro(false)} className="sm:max-w-md p-6">
+          <div className="flex flex-col items-center text-center">
+            <span className="w-12 h-12 rounded-full flex items-center justify-center bg-gradient-to-br from-amber-400 to-orange-500 text-white"><Zap size={22} /></span>
+            <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Режим «Авто»</h3>
+          </div>
+          <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+            <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Платежи, расходы, приходы и новых клиентов ассистент проводит сразу — без кнопки «Подтвердить».</li>
+            <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Договор оформляет сразу, если названы клиент, товар, закуп, срок и наценка или цена. Чего-то нет — сначала спросит.</li>
+            <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Договор и чек отправляет клиенту в WhatsApp, когда попросите.</li>
+            <li className="flex gap-2"><span className="text-violet-500 shrink-0">↩</span>У каждого выполненного действия есть «Отменить» — 30 минут.</li>
+          </ul>
+          <div className="mt-5 grid grid-cols-2 gap-2">
+            <button onClick={() => setAutoIntro(false)} className="py-3 rounded-2xl font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 active:scale-[.98] transition">Не сейчас</button>
+            <button onClick={acceptAuto} className="py-3 rounded-2xl font-semibold bg-gradient-to-br from-amber-400 to-orange-500 text-white active:scale-[.98] transition">Включить</button>
+          </div>
+        </Sheet>
+      )}
+
       {clearOpen && (
         <Sheet onClose={() => setClearOpen(false)} className="sm:max-w-sm p-6">
           <div className="flex flex-col items-center text-center">

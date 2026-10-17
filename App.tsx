@@ -45,6 +45,10 @@ const AIAssistant = lazy(() => import('./components/AIAssistant'));
 const AITariffs = lazy(() => import('./components/AITariffs'));
 import AIOrb from './components/AIOrb';
 import { findSameCustomer } from './src/sameCustomer';
+import { assistantSaleProblem, buildAssistantSale, rateForPrice } from './src/saleMath';
+import { contractPdfFile } from './components/contractPrint';
+import { sendWhatsAppDocument } from './services/whatsapp';
+import { isStaleBundleError, reloadForNewBuild } from './src/staleBundle';
 const Referral = lazy(() => import('./components/Referral'));
 import { SuccessCheck } from './components/feedback';
 const LazyFallback: React.FC = () => (
@@ -70,7 +74,7 @@ import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
 import { expandFundedSales, saleTouchesAccount, primaryPurchaseView, coFundExpenses, isCoFundExpenseOf, fundingPieces } from './src/funding';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -4254,7 +4258,9 @@ const handleQuickAddCustomer = async (data: {
   };
   // Черновик договора от ассистента → форма договора. Новый клиент (например,
   // с фото паспорта) заводится сразу, чтобы форма открылась уже с ним.
-  const openContractFromAssistant = async (draft: any) => {
+  // ── FinUchetGPT: договор и документы ─────────────────────────────────────
+  // Клиент черновика: из базы, тот же по паспорту/ФИО или новый (заводим)
+  const resolveDraftCustomer = async (draft: any): Promise<string> => {
     let customerId = draft.customerId && customers.some((c: Customer) => c.id === draft.customerId) ? draft.customerId : '';
     if (!customerId && draft.newCustomer?.name) customerId = findSameCustomer(customers, draft.newCustomer)?.id || '';
     if (!customerId && draft.newCustomer?.name) {
@@ -4267,14 +4273,113 @@ const handleQuickAddCustomer = async (data: {
       });
       if (saved?.id) customerId = saved.id;
     }
+    return customerId;
+  };
+  const draftAccountId = (draft: any) => draft.accountId && accounts.some((a: Account) => a.id === draft.accountId)
+    ? draft.accountId
+    // Как форма: основной счёт, иначе первый
+    : (accounts.find((a: Account) => a.isMain || a.type === 'MAIN') || accounts[0])?.id || '';
+
+  // Свежие договоры и клиенты для PDF: отправка может идти сразу за платежом,
+  // проведённым на сервере, когда в замыкании данные ещё прежние
+  const aiDataRef = useRef({ sales, customers });
+  aiDataRef.current = { sales, customers };
+
+  /**
+   * Режим «Авто»: договор оформляется сразу, без формы — тем же расчётом
+   * (src/saleMath.ts) и тем же сохранением, что из формы (handleSaveSale:
+   * закуп со счёта, лимит тарифа, офлайн-очередь). Не всё ясно — не сохраняем,
+   * а говорим, что не так: тогда человек откроет форму.
+   */
+  const createContractFromAssistant = async (draft: any): Promise<{ ok: boolean; text: string; saleId?: string; customerId?: string; number?: string; monthly?: number; total?: number; offline?: boolean }> => {
+    try {
+      const customerId = await resolveDraftCustomer(draft);
+      const accountId = draftAccountId(draft);
+      const problem = assistantSaleProblem({ draft, customerId, accountId, sales, fromNetBuyPrice: appSettings.markupFromNetBuyPrice });
+      if (problem) return { ok: false, text: problem, customerId };
+      const sale = buildAssistantSale({ draft, customerId, accountId, fromNetBuyPrice: appSettings.markupFromNetBuyPrice });
+      const saved = await handleSaveSale(sale);
+      if (!saved?.id) return { ok: false, text: 'Договор не сохранён — откройте форму и сохраните вручную.', customerId };
+      const all = [...aiDataRef.current.sales.filter(s => s.id !== saved.id), saved];
+      return {
+        ok: true, text: 'Договор оформлен', saleId: saved.id, customerId, offline: !!saved._isOffline,
+        number: contractNumberFor(all, saved), total: saved.totalAmount,
+        monthly: (saved.paymentPlan || []).find((p: Payment) => p.isRealPayment !== true)?.amount,
+      };
+    } catch (e: any) {
+      return { ok: false, text: e?.message && e.message !== 'LIMIT_EXCEEDED' ? e.message : 'Договор не сохранён — откройте форму договора.' };
+    }
+  };
+
+  // Подключение WhatsApp — в первую очередь то, что хранит сервер у пользователя
+  // (им же пользуются рассылка и проверка ассистента): в общих настройках оно
+  // может отстать, если подключение меняли не с экрана настроек
+  const assistantWhatsApp = (user?.whatsapp_settings?.enabled ? user.whatsapp_settings : appSettings.whatsapp) || undefined;
+
+  /** PDF договора или чека клиенту в WhatsApp — тот же лист, что печать */
+  const sendDocumentFromAssistant = async (saleId: string, kind: 'contract' | 'receipt', opts: { fresh?: boolean } = {}): Promise<{ ok: boolean; text: string }> => {
+    if (!assistantWhatsApp?.enabled) return { ok: false, text: 'WhatsApp не подключён — Настройки → WhatsApp.' };
+    try {
+      // Чек сразу после платежа: сначала подтянуть сам платёж
+      if (opts.fresh) {
+        for (let i = 0; i < 4; i++) {
+          await handleSync();
+          await new Promise(r => setTimeout(r, 80));
+          if (!isSyncingRef.current) break;
+          await new Promise(r => setTimeout(r, 700));
+        }
+      }
+      // Только что оформленный договор попадает в данные со следующей отрисовкой
+      for (let i = 0; i < 15 && !aiDataRef.current.sales.some(s => s.id === saleId); i++) await new Promise(r => setTimeout(r, 100));
+      const { sales: allSales, customers: allCustomers } = aiDataRef.current;
+      const sale = allSales.find(s => s.id === saleId);
+      if (!sale) return { ok: false, text: 'Договор не найден — обновите данные и попробуйте ещё раз.' };
+      const { blob, fileName, customer } = await contractPdfFile({
+        sale, sales: allSales, customers: allCustomers, appSettings, user, contractTemplatesAllowed: checkAccess('CONTRACT_TEMPLATES'),
+      }, kind);
+      // Номер — как при отправке из оформления договора: 8… → 7…
+      const digits = String(customer?.phone || '').replace(/\D/g, '');
+      if (digits.length < 10) return { ok: false, text: 'У клиента нет телефона — добавьте его в карточке клиента.' };
+      const phone = digits.startsWith('8') ? `7${digits.slice(1)}` : digits.startsWith('7') ? digits : `7${digits}`;
+      const sent = await sendWhatsAppDocument(assistantWhatsApp, phone, blob, fileName);
+      return sent
+        ? { ok: true, text: `Отправлено в WhatsApp: ${fileName.replace(/\.pdf$/i, '')}` }
+        : { ok: false, text: 'WhatsApp не принял файл — проверьте подключение в настройках.' };
+    } catch (e: any) {
+      if (isStaleBundleError(e)) { reloadForNewBuild(); return { ok: false, text: 'Приложение обновилось — повторите.' }; }
+      return { ok: false, text: e?.message ? `Не удалось отправить: ${e.message}` : 'Не удалось отправить документ.' };
+    }
+  };
+
+  /** «Отменить» у договора, оформленного ассистентом: обычное удаление договора */
+  const deleteContractFromAssistant = async (saleId: string): Promise<{ ok: boolean; text: string }> => {
+    try { await handleDeleteSale(saleId); return { ok: true, text: 'Договор отменён и удалён.' }; }
+    catch (e: any) { return { ok: false, text: e?.message || 'Не удалось удалить договор.' }; }
+  };
+
+  const openContractById = (saleId: string, customerId?: string) => {
+    const cid = customerId || aiDataRef.current.sales.find(s => s.id === saleId)?.customerId;
+    if (!cid) return;
+    setSelectedCustomerId(cid);
+    setInitialSaleIdForDetails(saleId);
+    setInitialSaleDirect(true);
+    setPreviousView(currentView);
+    setCurrentView('CUSTOMER_DETAILS');
+  };
+
+  const openContractFromAssistant = async (draft: any) => {
+    const customerId = await resolveDraftCustomer(draft);
     const totalPrice = Number(draft.totalPrice) || 0;
     const buy = Number(draft.buyPrice) || 0;
+    const down = Number(draft.downPayment) || 0;
     setEditingSale(null);
     setDraftSaleData({
       customerId: customerId || undefined,
       productName: draft.productName || '',
       buyPrice: buy || undefined,
-      interestRate: draft.markupPercent != null ? Number(draft.markupPercent) : (totalPrice && buy ? Math.round((totalPrice / buy - 1) * 1000) / 10 : undefined),
+      // Названа цена, а не наценка: форма считает цену из наценки — подбираем
+      // наценку, дающую ровно эту цену (с учётом «наценки от закупа минус взнос»)
+      interestRate: draft.markupPercent != null ? Number(draft.markupPercent) : (totalPrice && buy ? rateForPrice(buy, down, totalPrice, appSettings.markupFromNetBuyPrice) : undefined),
       installments: Number(draft.months) || undefined,
       downPayment: Number(draft.downPayment) || 0,
       ...(totalPrice ? { totalAmount: totalPrice } : {}),
@@ -5236,6 +5341,11 @@ if (!user && !showSplash) {
                         onDataChanged={() => { handleSync(); }}
                         onOpenTariffs={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('AI_TARIFFS'); }}
                         onOpenContract={openContractFromAssistant}
+                        onCreateContract={createContractFromAssistant}
+                        onSendDocument={sendDocumentFromAssistant}
+                        onDeleteContract={deleteContractFromAssistant}
+                        onShowContract={openContractById}
+                        whatsappEnabled={!!assistantWhatsApp?.enabled}
                       />
                     </Suspense>
                   )}

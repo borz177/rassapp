@@ -4470,7 +4470,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     if (st.left <= 0) {
       return res.status(402).json({ code: 'AI_LIMIT', msg: st.plan ? 'Запросы на этот месяц закончились.' : 'Пробные запросы закончились.' });
     }
-    const { text, history, image, audio } = req.body || {};
+    const { text, history, image, audio, mode } = req.body || {};
     if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
     if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
     const me = (await pool.query('SELECT id, name FROM users WHERE id = $1', [req.user.id])).rows[0];
@@ -4482,6 +4482,8 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       image: image || null,
       audio: audio || null,
       companyName: settingsRow.rows[0]?.data?.companyName || '',
+      // «Авто» — действия выполняются сразу, без «Подтвердить» (выбор в чате)
+      mode: mode === 'auto' ? 'auto' : 'confirm',
     });
     // Учёт: запрос засчитывается, когда ассистент ответил
     await pool.query(
@@ -4563,8 +4565,16 @@ const applyAiPayment = async (paymentId, payment) => {
 app.post('/api/ai/assistant/actions/:id/confirm', auth, async (req, res) => {
   try {
     const r = await aiAssistant.confirmAction(req.user.id, req.params.id);
-    res.status(r.ok ? 200 : 400).json({ ok: r.ok, text: r.text });
+    res.status(r.ok ? 200 : 400).json({ ok: r.ok, text: r.text, undoable: !!r.undoable });
   } catch (e) { console.error('AI confirm error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось выполнить — попробуйте ещё раз.' }); }
+});
+
+// «Отменить» у выполненного действия (по «Подтвердить» или в режиме «Авто»)
+app.post('/api/ai/assistant/actions/:id/undo', auth, async (req, res) => {
+  try {
+    const r = await aiAssistant.undoAction(req.user.id, req.params.id);
+    res.status(r.ok ? 200 : 400).json({ ok: r.ok, text: r.text });
+  } catch (e) { console.error('AI undo error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось отменить — попробуйте ещё раз.' }); }
 });
 
 app.post('/api/ai/assistant/actions/:id/cancel', auth, (req, res) => {

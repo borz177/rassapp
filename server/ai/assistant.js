@@ -9,15 +9,21 @@
 // каждый — вызов нашего же /api/v1 от имени пользователя, с теми же правами и
 // проверками. Второй копии расчётов нет.
 //
-// Чтение выполняется сразу. Всё, что меняет данные (платёж, клиент, расход,
-// приход), ассистент только предлагает: сервер откладывает действие и отдаёт
-// приложению карточку «Подтвердить». Выполняется оно, когда человек нажал
-// кнопку (confirmAction). Модель может ошибиться в имени или сумме — по
-// деньгам последнее слово за человеком.
+// Чтение выполняется сразу. Что меняет данные (платёж, клиент, расход,
+// приход), зависит от режима, который человек выбрал в чате:
+//  • «Подтверждение» — сервер откладывает действие и отдаёт карточку
+//    «Подтвердить»; выполняется оно по нажатию (confirmAction);
+//  • «Авто» — выполняется сразу.
+// В обоих случаях у выполненного действия есть «Отменить» (undoAction): модель
+// может ошибиться в имени или сумме, и исправить это должно быть просто.
 //
-// Договор ассистент не создаёт сам: он готовит черновик (prepare_contract), и
-// приложение открывает заполненную форму договора — с теми же расчётами,
-// закупом, складом и графиком, что при оформлении руками.
+// Договор и документы сервер не создаёт сам — это делает приложение, теми же
+// расчётами, закупом, складом и графиком, что при оформлении руками:
+//  • prepare_contract — черновик; приложение открывает заполненную форму, а в
+//    «Авто» сразу сохраняет договор. Без обязательных полей черновика нет —
+//    ассистент сначала спрашивает, в любом режиме;
+//  • send_document — PDF договора или чека клиенту в WhatsApp (PDF собирается
+//    в приложении тем же шаблоном, что печать).
 
 const { TOOLS, query } = require('../api/mcp');
 
@@ -29,6 +35,8 @@ const MAX_TOOL_ROUNDS = 6;
 const MAX_TOOL_RESULT_CHARS = 12000;
 // Отложенные действия живут, пока человек думает, но не вечно
 const ACTION_TTL_MS = 15 * 60 * 1000;
+// Отменить выполненное можно в течение получаса — дальше правят в приложении
+const UNDO_TTL_MS = 30 * 60 * 1000;
 
 // Черновик договора: модель собирает поля, приложение открывает форму
 const IMAGE_RE = /^data:image\/(jpeg|png|webp);base64,/;
@@ -40,7 +48,8 @@ const PREPARE_CONTRACT_TOOL = {
     'человек проверит и сохранит её сам. Вызывай, когда просят оформить договор или продажу в рассрочку.',
     'Клиента бери из list_customers (customerId), а если его нет — передай данные нового клиента в newCustomer',
     '(с фото паспорта перепиши поля паспорта точно, как написано). Суммы — в рублях: «закуп 500» почти всегда',
-    'значит 500 000 ₽, но если по смыслу неясно — спроси. Срок не назван — не придумывай, оставь пустым.',
+    'значит 500 000 ₽, но если по смыслу неясно — спроси. Обязательны: клиент, товар, закуп, срок (месяцев) и наценка или цена —',
+    'чего-то нет, не придумывай: спроси (через ask_choice, если варианты известны), потом вызови снова.',
   ].join(' '),
   input: {
     customerId: { type: 'string', description: 'id существующего клиента' },
@@ -63,8 +72,44 @@ const PREPARE_CONTRACT_TOOL = {
     months: { type: 'number', description: 'Срок, месяцев' },
     downPayment: { type: 'number', description: 'Первый взнос, ₽ (0 — без взноса)' },
     accountId: { type: 'string', description: 'Счёт из list_accounts, если назван' },
+    sendToWhatsApp: { type: 'boolean', description: 'Просят сразу отправить договор клиенту в WhatsApp' },
   },
   required: ['productName'],
+};
+
+// Чего не хватает договору. Без этого форма подставила бы свои значения
+// (3 месяца, наценка 30 %) — договор вышел бы не тем, что просили.
+const missingContractFields = (a) => {
+  const missing = [];
+  if (!a.customerId && !String(a.newCustomer?.name || '').trim()) missing.push('клиент');
+  if (!String(a.productName || '').trim()) missing.push('товар');
+  if (!(Number(a.buyPrice) > 0)) missing.push('закуп');
+  const months = Number(a.months);
+  if (!(Number.isInteger(months) && months >= 1 && months <= 120)) missing.push('срок в месяцах');
+  if (!(a.markupPercent != null && Number(a.markupPercent) >= 0) && !(Number(a.totalPrice) > 0)) missing.push('наценка или цена в рассрочку');
+  return missing;
+};
+
+// Тот же договор, что уже подготовлен в этом сообщении (модель повторила вызов)
+const sameContract = (a, b) => {
+  const who = (d) => d.customerId || String(d.newCustomer?.name || '').toLowerCase().replace(/\s+/g, ' ').trim();
+  return who(a) === who(b) && String(a.productName || '').toLowerCase().trim() === String(b.productName || '').toLowerCase().trim();
+};
+
+// Документ клиенту в WhatsApp — PDF собирает приложение
+const SEND_DOCUMENT_TOOL = {
+  name: 'send_document',
+  description: [
+    'Отправить клиенту в WhatsApp PDF по договору: kind=contract — договор, kind=receipt — чек об оплате',
+    '(лист договора с графиком и уже внесёнными платежами). Договор найди инструментами (contractId).',
+    'Нужно, чтобы WhatsApp был подключён и у клиента был телефон — иначе инструмент скажет, что не так.',
+    'Только что оформленный в этом разговоре договор отправляй через prepare_contract с sendToWhatsApp.',
+  ].join(' '),
+  input: {
+    contractId: { type: 'string', description: 'id договора' },
+    kind: { type: 'string', enum: ['contract', 'receipt'], description: 'contract — договор, receipt — чек об оплате' },
+  },
+  required: ['contractId', 'kind'],
 };
 
 // Уточнение с вариантами: под вопросом кнопки, нажатая уходит ответом —
@@ -138,6 +183,7 @@ const money = (n) => `${Math.round(Number(n) || 0).toLocaleString('ru-RU')} ₽`
 function createAssistant({ pool, jwt, jwtSecret, port }) {
   const v1Base = `http://127.0.0.1:${port}/api/v1`;
   const pending = new Map(); // id → { userId, tool, args, summary, at }
+  const done = new Map(); // id → { userId, tool, ref, summary, at } — для «Отменить»
 
   // ── Пропуск ассистента в /api/v1 (см. server/api/auth.js, fu_agent_) ─────
   const agentToken = (userId) => `fu_agent_${jwt.sign({ sub: userId, typ: 'agent' }, jwtSecret, { expiresIn: 120 })}`;
@@ -175,8 +221,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return JSON.stringify({ from, to, count: out.length, total, payments: out.slice(0, 60) });
   };
 
-  const callV1 = async (userId, tool, args) => {
-    const { method, path, body } = tool.request(args || {});
+  const callV1 = (userId, tool, args) => v1Request(userId, tool.request(args || {}));
+  const v1Request = async (userId, { method, path, body }) => {
     const r = await fetch(`${v1Base}${path}`, {
       method,
       headers: { Authorization: `Bearer ${agentToken(userId)}`, ...(body ? { 'Content-Type': 'application/json' } : {}) },
@@ -197,6 +243,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
   const sweep = () => {
     const now = Date.now();
     for (const [id, a] of pending) if (now - a.at > ACTION_TTL_MS) pending.delete(id);
+    for (const [id, a] of done) if (now - a.at > UNDO_TTL_MS) done.delete(id);
   };
   const newActionId = () => `act_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
 
@@ -237,14 +284,52 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     } catch { return base; }
   };
 
+  // id созданной записи — по нему «Отменить» её удалит
+  const createdRef = (tool, payload) => {
+    const d = payload?.data;
+    return tool === 'create_payment' ? d?.payment?.id : d?.id;
+  };
+
+  /** Выполнить действие: по «Подтвердить» или сразу в режиме «Авто» */
+  const execute = async (userId, actionId, toolName, args, summary) => {
+    const tool = TOOLS.find(t => t.name === toolName);
+    const r = await callV1(userId, tool, args);
+    if (!r.ok) return { ok: false, text: r.text };
+    const ref = createdRef(toolName, r.data);
+    if (ref) done.set(actionId, { userId, tool: toolName, ref: String(ref), summary, at: Date.now() });
+    return { ok: true, undoable: !!ref, text: `Готово: ${DONE_TITLES[toolName] || 'сделано'} — ${summary.replace('Остаток станет', 'остаток теперь')}.` };
+  };
+
   const confirmAction = async (userId, actionId) => {
     sweep();
     const a = pending.get(actionId);
     if (!a || a.userId !== userId) return { ok: false, text: 'Действие устарело — попросите ассистента ещё раз.' };
     pending.delete(actionId);
-    const tool = TOOLS.find(t => t.name === a.tool);
-    const r = await callV1(userId, tool, a.args);
-    return r.ok ? { ok: true, text: `Готово: ${DONE_TITLES[a.tool] || 'сделано'} — ${a.summary.replace('Остаток станет', 'остаток теперь')}.`, data: r.data } : r;
+    return execute(userId, actionId, a.tool, a.args, a.summary);
+  };
+
+  const undoAction = async (userId, actionId) => {
+    sweep();
+    const d = done.get(actionId);
+    if (!d || d.userId !== userId) return { ok: false, text: 'Отменить уже нельзя — прошло больше 30 минут. Исправьте запись в приложении.' };
+    if (d.undone) return { ok: false, text: 'Уже отменено.' };
+    const id = encodeURIComponent(d.ref);
+    let r;
+    if (d.tool === 'create_payment') r = await v1Request(userId, { method: 'DELETE', path: `/payments/${id}` });
+    else if (d.tool === 'create_expense') r = await v1Request(userId, { method: 'DELETE', path: `/expenses/${id}` });
+    else if (d.tool === 'create_customer') r = await v1Request(userId, { method: 'DELETE', path: `/customers/${id}` });
+    else if (d.tool === 'create_income') {
+      // API приход не удаляет (деньги уже на счёте — правят в приложении). Эту
+      // запись только что создал сам ассистент, и удаляем ровно её: прочий приход
+      // владельца, без договора за ней
+      const q = await pool.query(
+        `DELETE FROM data_items WHERE user_id = $1 AND type = 'sales' AND id = $2 AND data->>'customerId' = 'system_income' RETURNING id`,
+        [userId, d.ref]);
+      r = q.rowCount ? { ok: true } : { ok: false, text: 'Приход не найден — возможно, его уже удалили.' };
+    } else r = { ok: false, text: 'Это действие так не отменить.' };
+    if (!r.ok) return r;
+    d.undone = true;
+    return { ok: true, text: `Отменено: ${d.summary.replace(/\. Остаток станет .*$/, '')}.` };
   };
   const cancelAction = (userId, actionId) => {
     const a = pending.get(actionId);
@@ -274,7 +359,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return data;
   };
 
-  const systemPrompt = ({ userName, companyName, today }) => [
+  const systemPrompt = ({ userName, companyName, today, auto }) => [
     `Ты — FinUchetGPT, ИИ-ассистент в FinUchet, программе учёта продаж в рассрочку. Владелец: ${userName || 'пользователь'}${companyName ? `, компания «${companyName}»` : ''}.`,
     `Сегодня ${today} (Москва). Отвечай по-русски, коротко и по делу, как опытный помощник бухгалтера. Суммы — в рублях с пробелами между тысячами.`,
     'Все цифры бери только из инструментов, ничего не досчитывай и не выдумывай. Не знаешь — скажи и предложи, где посмотреть.',
@@ -282,16 +367,60 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     'Никогда не показывай человеку технические идентификаторы (cust_…, sale_…, acc_… и любые id): клиента называй по ФИО, договор — по товару, счёт — по названию. Если в данных только id клиента — найди его ФИО через list_customers.',
     '«Платежи сегодня/завтра/на неделе», «кто должен заплатить» — это ожидаемые по графику платежи: бери due_payments. Полученные деньги — list_payments.',
     'Списки оформляй коротко: по строке на позицию (ФИО — товар — сумма), в конце итог.',
-    'Принять платёж, завести клиента, записать расход или приход — вызывай соответствующий инструмент: действие не выполнится сразу, под твоим ответом появится карточка с кнопкой «Подтвердить». Скажи одной фразой: «Проверьте и нажмите «Подтвердить»». Не говори про формы и окна.',
+    auto
+      ? 'Режим «Авто»: принять платёж, завести клиента, записать расход или приход — вызывай инструмент, действие выполнится сразу. Скажи коротко, что сделано (под ответом карточка с кнопкой «Отменить»). Не проси ничего подтверждать. Раз выполняется сразу — сначала убедись, что клиент, договор, сумма и счёт верные; не уверен — спроси.'
+      : 'Принять платёж, завести клиента, записать расход или приход — вызывай соответствующий инструмент: действие не выполнится сразу, под твоим ответом появится карточка с кнопкой «Подтвердить». Скажи одной фразой: «Проверьте и нажмите «Подтвердить»». Не говори про формы и окна.',
+    'Один и тот же платёж, расход или приход вызывай один раз.',
     'Принять платёж без названной суммы — сумму не выбирай сам и не бери весь остаток: спроси через ask_choice с вариантами «Платёж по графику — N ₽» (ближайший неоплаченный платёж этого договора из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе добавь «или напишите свою сумму».',
     'Расход и приход проводятся по счёту: если счёт не назван, а счетов несколько — спроси, с какого (list_accounts); если счёт один — бери его.',
-    'Оформить договор — вызывай prepare_contract: под ответом появится карточка с кнопкой «Открыть форму договора», человек проверит и сохранит. Скажи именно так, не говори, что форма уже открыта. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
+    auto
+      ? 'Оформить договор — вызывай prepare_contract со всеми обязательными полями: в режиме «Авто» приложение сразу оформит договор и покажет его в карточке. Скажи коротко: «Оформляю договор». Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.'
+      : 'Оформить договор — вызывай prepare_contract: под ответом появится карточка с кнопкой «Открыть форму договора», человек проверит и сохранит. Скажи одной фразой: «Черновик готов — нажмите «Открыть форму договора»». Не говори, что форма уже открыта, и не проси «открыть приложение» — человек уже в нём. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
+    'Для договора обязательны клиент, товар, закуп, срок в месяцах и наценка или цена. Чего-то не назвали — спроси до prepare_contract, в любом режиме; не подставляй сам.',
+    'Отправить клиенту договор или чек об оплате в WhatsApp — send_document. «Оформи и отправь» — prepare_contract с sendToWhatsApp.',
     'Люди, о которых шла речь в этом разговоре («он», «она», «этот клиент», «первый клиент», «тот, что на фото»), — это клиенты из разговора: фото паспортов и пометки [Черновик договора …] в истории. Если такого клиента ещё нет в базе (черновик не сохранён) — снова передай его данные в newCustomer, переписав их с фото или из пометки. Никогда не бери клиента из базы по порядку в списке или наугад: не уверен, о ком речь, — спроси.',
     'Для черновика договора телефон, адрес и счёт не обязательны: их допишут в форме. Не задерживай черновик вопросами о них.',
     'Прислали фото паспорта без задания — коротко назови, кого распознал (ФИО), и спроси, что оформить.',
     'Если в просьбе не хватает важного (какой клиент, какая сумма) — уточни одним коротким вопросом. Когда ответ — выбор из известных вариантов (у клиента несколько договоров, нашлось несколько клиентов, несколько счетов, неясная сумма), не перечисляй их текстом: вызови ask_choice — человек нажмёт кнопку. Ответ на кнопку придёт с id в квадратных скобках — используй его, не ищи заново.',
     'Не обсуждай темы, не связанные с учётом, — вежливо верни разговор к делу.',
   ].join('\n');
+
+  /** Почему документ клиенту не отправить (null — отправить можно) */
+  const cannotSendWhy = async (userId, customerId, phone) => {
+    const wa = (await pool.query('SELECT whatsapp_settings FROM users WHERE id = $1', [userId])).rows[0]?.whatsapp_settings;
+    if (!wa?.enabled) return 'WhatsApp не подключён (Настройки → WhatsApp).';
+    let p = phone;
+    if (!p && customerId) {
+      p = (await pool.query(`SELECT data->>'phone' AS phone FROM data_items WHERE user_id = $1 AND type = 'customers' AND id = $2`, [userId, customerId])).rows[0]?.phone;
+    }
+    if (String(p || '').replace(/\D/g, '').length < 10) return 'у клиента нет телефона.';
+    return null;
+  };
+
+  /**
+   * Отправка PDF клиенту: сервер проверяет, что отправлять есть кому и чем, а
+   * PDF собирает и отправляет приложение (карточка send_doc; в «Авто» — сразу).
+   */
+  const prepareSendDocument = async (userId, args, actions, auto) => {
+    const kind = args.kind === 'receipt' ? 'receipt' : 'contract';
+    const { rows } = await pool.query(
+      `SELECT s.data AS sale, c.data AS customer FROM data_items s
+       LEFT JOIN data_items c ON c.user_id = s.user_id AND c.type = 'customers' AND c.id = s.data->>'customerId'
+       WHERE s.user_id = $1 AND s.type = 'sales' AND s.id = $2`, [userId, String(args.contractId || '')]);
+    const sale = rows[0]?.sale, customer = rows[0]?.customer;
+    if (!sale || String(sale.customerId || '').startsWith('system_')) return 'Договор не найден — найди его через list_contracts.';
+    const why = await cannotSendWhy(userId, null, customer?.phone);
+    if (why) return `Отправить нельзя: ${why} Скажи об этом человеку${/телефон/.test(why) ? ' и предложи добавить телефон в карточке клиента' : ''}.`;
+    if (actions.some(a => a.kind === 'send_doc' && a.saleId === sale.id && a.doc === kind)) return 'Этот документ в этом сообщении уже отправляется.';
+    const title = kind === 'receipt' ? 'Отправить чек' : 'Отправить договор';
+    actions.push({
+      id: newActionId(), kind: 'send_doc', doc: kind, saleId: sale.id, auto, title,
+      summary: `${customer?.name || 'Клиент'}, ${sale.productName || 'договор'} → WhatsApp`,
+    });
+    return auto
+      ? 'Приложение отправляет PDF клиенту (режим «Авто»). Скажи коротко, что отправляешь.'
+      : 'Под ответом карточка с кнопкой «Отправить» — человек отправит сам. Скажи: «Нажмите «Отправить»».';
+  };
 
   /**
    * В карточке черновика — названия, а не id: ФИО клиента из базы и счёт.
@@ -340,7 +469,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * history — прошлые реплики [{role:'user'|'assistant', text, image?}] (фото — см. historyMessages).
    * image — data:image/jpeg;base64,…; audio — { data: base64, format: 'mp3'|'wav'|… }.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '' }) => {
+  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm' }) => {
+    const auto = mode === 'auto';
     sweep();
     const today = new Date().toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit' });
     const content = [];
@@ -352,11 +482,13 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     if (!content.length) return { reply: 'Напишите или скажите, что сделать.', actions: [] };
 
     const messages = [
-      { role: 'system', content: systemPrompt({ userName: user.name, companyName, today }) },
+      { role: 'system', content: systemPrompt({ userName: user.name, companyName, today, auto }) },
       ...historyMessages(history),
       { role: 'user', content },
     ];
-    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL)];
+    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL)];
+    // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
+    const writes = new Set();
     const actions = [];
     const usage = { prompt: 0, completion: 0, cost: 0 };
 
@@ -368,14 +500,19 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       const msg = data.choices[0].message || {};
       const calls = msg.tool_calls || [];
       if (!calls.length) {
-        // Служебные пометки истории (см. draftNote в AIAssistant.tsx) модель иногда повторяет — человеку они не нужны
-        let text = (msg.content || '').replace(/^\s*\[Черновик договора:[^\]]*\]\s*$/gm, '').trim() || 'Готово.';
-        // У черновика договора кнопка своя — модель иногда по привычке зовёт
-        // «Подтвердить», которого на карточке договора нет
-        if (actions.some(a => a.kind === 'contract_form') && !actions.some(a => a.kind === 'confirm')) {
+        // Служебные пометки истории (см. actionNote в AIAssistant.tsx) модель иногда повторяет — человеку они не нужны
+        let text = (msg.content || '').replace(/\[(Черновик договора|Договор оформлен|Выполнено|Отменено|Отправлено|Не выполнено|Не отправлено|Ждёт подтверждения)[^\]]*\]/g, '')
+          // Кнопки карточки модель иногда «рисует» текстом: [Отменить], [Подтвердить]
+          .replace(/\[(Отменить|Подтвердить|Отправить|Открыть форму договора|Открыть договор)\]/g, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
+        // «Подтвердить» модель зовёт по привычке: у договора кнопка своя, а в
+        // «Авто» подтверждать нечего — такие фразы убираем
+        if ((auto || actions.some(a => a.kind === 'contract_form')) && !actions.some(a => a.kind === 'confirm')) {
           text = text.replace(/[^.!?\n]*«?Подтвердить»?[^.!?\n]*[.!?]?/g, '').trim();
-          if (!/(Открыть|Откройте|открыть) форму договора/.test(text)) text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
         }
+        if (!auto && actions.some(a => a.kind === 'contract_form') && !/(Открыть|Откройте|открыть) форму договора/.test(text)) {
+          text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
+        }
+        if (!text) text = auto && actions.some(a => a.kind === 'contract_form') ? 'Оформляю договор.' : 'Готово.';
         await nameDraftRefs(user.id, actions);
         // Пустые поля, которые модель заполнила словами («не указан»)
         for (const a of actions) {
@@ -412,20 +549,52 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         if (name === 'due_payments') {
           result = await duePayments(user.id, args);
         } else if (name === 'prepare_contract') {
-          actions.push({ id: newActionId(), kind: 'contract_form', title: 'Оформить договор', draft: args });
-          result = 'Черновик договора передан в приложение: человек увидит заполненную форму и сохранит её сам.';
+          const missing = missingContractFields(args);
+          if (missing.length) {
+            result = `Договор не подготовлен — не хватает обязательного: ${missing.join(', ')}. Спроси у человека одним вопросом (если варианты известны — ask_choice), не подставляй сам, потом вызови prepare_contract снова со всеми полями.`;
+          } else if (actions.some(a => a.kind === 'contract_form' && sameContract(a.draft, args))) {
+            result = 'Этот договор в этом сообщении уже подготовлен — повторять не нужно.';
+          } else {
+            // «Оформи и отправь»: сразу сказать, если отправить не выйдет, — а не обещать
+            let sendNote = '';
+            if (args.sendToWhatsApp) {
+              const why = await cannotSendWhy(user.id, args.customerId, args.newCustomer?.phone);
+              if (why) { args.sendToWhatsApp = false; sendNote = ` Отправить договор не получится: ${why} Скажи об этом.`; }
+            }
+            actions.push({ id: newActionId(), kind: 'contract_form', title: auto ? 'Договор' : 'Оформить договор', draft: args, auto });
+            result = auto
+              ? 'Режим «Авто»: приложение сразу оформит договор по этим данным и покажет результат в карточке. Скажи коротко, что договор оформляется.'
+              : 'Черновик договора передан в приложение: человек увидит заполненную форму и сохранит её сам.';
+            result += sendNote;
+          }
+        } else if (name === 'send_document') {
+          result = await prepareSendDocument(user.id, args, actions, auto);
         } else {
           const tool = TOOLS.find(t => t.name === name);
           if (!tool) {
             result = `Инструмента ${name} нет.`;
           } else if (tool.scope === 'write') {
-            const id = newActionId();
-            const summary = name === 'create_payment' ? await paymentSummary(user.id, args)
-              : (name === 'create_expense' || name === 'create_income') ? await accountSummary(user.id, name, args)
-              : describe(name, args);
-            pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
-            actions.push({ id, kind: 'confirm', tool: name, title: WRITE_TITLES[name] || tool.title, summary, args });
-            result = 'Действие подготовлено и ждёт, пока человек нажмёт «Подтвердить». Не повторяй вызов.';
+            const key = `${name}:${JSON.stringify(args)}`;
+            if (writes.has(key)) {
+              result = 'Это действие в этом сообщении уже есть — повторять не нужно.';
+            } else {
+              writes.add(key);
+              const id = newActionId();
+              const summary = name === 'create_payment' ? await paymentSummary(user.id, args)
+                : (name === 'create_expense' || name === 'create_income') ? await accountSummary(user.id, name, args)
+                : describe(name, args);
+              if (auto) {
+                const r = await execute(user.id, id, name, args, summary);
+                actions.push({ id, kind: 'done', tool: name, title: WRITE_TITLES[name] || tool.title, summary, ok: r.ok, result: r.text, undoable: !!r.undoable,
+                  ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
+                result = r.ok ? `Выполнено: ${r.text}` : `Не выполнено: ${r.text}. Скажи человеку, что не так.`;
+              } else {
+                pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
+                actions.push({ id, kind: 'confirm', tool: name, title: WRITE_TITLES[name] || tool.title, summary, args,
+                  ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
+                result = 'Действие подготовлено и ждёт, пока человек нажмёт «Подтвердить». Не повторяй вызов.';
+              }
+            }
           } else {
             const r = await callV1(user.id, tool, args);
             result = r.text;
@@ -437,7 +606,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return { reply: 'Не успел закончить — попробуйте сформулировать короче.', actions, usage };
   };
 
-  return { reply, confirmAction, cancelAction, verifyAgentToken, model: DEFAULT_MODEL, query };
+  return { reply, confirmAction, cancelAction, undoAction, verifyAgentToken, model: DEFAULT_MODEL, query };
 }
 
 module.exports = { createAssistant };

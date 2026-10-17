@@ -12,6 +12,7 @@ import { sendWhatsAppDocument } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
 import { contractScheduleRows } from '../src/contractSchedule';
+import { checkDuplicateSale, isLegacyPaidSlot, regeneratePaymentPlan, markupPrice, parseInputDate, toInputDate } from '../src/saleMath';
 import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX, type ContractData } from '../src/contractTemplates';
 import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setContractPdfProperties } from '../src/contractPdf';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
@@ -73,50 +74,9 @@ const formatPhone = (raw: string | undefined): string => {
     return raw;
 };
 
-// 🔍 Проверка: есть ли уже похожий активный договор?
-// Разбор и вывод даты из <input type="date"> строго в локальном времени.
-// new Date('2026-08-15') трактуется как полночь UTC, и обратный toISOString()
-// в поясах восточнее/западнее Гринвича легко сдвигает дату на сутки.
-const parseInputDate = (value: string): Date => {
-  const [y, m, d] = value.split('-').map(Number);
-  return new Date(y, (m || 1) - 1, d || 1);
-};
-const toInputDate = (date: Date): string =>
-  `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
-
-const checkDuplicateSale = (
-  sales: Sale[] | undefined,
-  customerId: string,
-  productName: string,
-  startDate: string,
-  totalAmount: number,
-  excludeId?: string
-) => {
-  if (!Array.isArray(sales) || sales.length === 0) return undefined;
-  if (typeof totalAmount !== 'number' || isNaN(totalAmount)) return undefined;
-
-  const saleDate = new Date(startDate).toDateString();
-
-  return sales.find(sale => {
-    if (!sale) return false;
-    if (excludeId && sale.id === excludeId) return false;
-    if (sale.status === 'DELETED' || sale.status === 'COMPLETED') return false;
-
-    const sameCustomer = sale.customerId === customerId;
-    const sameProduct = sale.productName?.toLowerCase() === productName.toLowerCase();
-    const sameDate = new Date(sale.startDate).toDateString() === saleDate;
-    const sameAmount = Math.abs((sale.totalAmount || 0) - totalAmount) < 0.01;
-
-    return sameCustomer && sameProduct && sameDate && sameAmount;
-  });
-};
 
 
-// Оплаченная плановая строка старого формата — до отдельных записей о поступлениях
-// деньги лежали прямо в строке графика (isRealPayment не задан). Строка с
-// isRealPayment === false — только пометка «закрыта»: в кассе и в долге её не считают
-// (computeAccountBalances), не считаем и здесь.
-const isLegacyPaidSlot = (p: Payment) => !!p.isPaid && p.isRealPayment == null;
+
 
 const NewSale: React.FC<NewSaleProps> = ({
   initialData, customers, products, accounts, sales, suppliers, showSupplierField,
@@ -295,123 +255,6 @@ const impliedOriginalPaymentDate = useMemo(() => {
   const selectedCustomer = customers.find(c => c.id === formData.customerId);
   const selectedAccount = accounts.find(a => a.id === formData.accountId);
 
-  // 🔹 Функция пересчёта графика платежей при изменении даты первого платежа
-  // 🔹 Функция пересчёта графика платежей с ЗАЩИТОЙ реальных платежей
-const regeneratePaymentPlan = (
-  saleData: any,
-  newFirstPaymentDate: string,
-  existingPayments: Payment[] = []
-): Payment[] => {
-  // 🔹 1. Сохраняем ВСЕ реальные платежи (историю поступлений)
-  // Это платежи с isRealPayment === true (фактически полученные деньги)
-  const realPayments = existingPayments.filter(p => p.isRealPayment === true);
-
-  // 🔹 2. Также сохраняем оплаченные плановые платежи старого формата — те, что сами
-  // несли деньги (isRealPayment не задан). Плановая строка с isRealPayment === false,
-  // отмеченная оплаченной, — лишь пометка «закрыта реальным платежом»: деньги уже в
-  // realPayments. Раньше её тоже считали оплатой, и правка даты первого платежа
-  // вычитала один и тот же платёж дважды — будущие платежи получались меньше долга
-  // (долг 43 200 ₽, а график 27 900 ₽).
-  const legacyPaidPayments = existingPayments.filter(isLegacyPaidSlot);
-
-  // 🔹 2.1 Нынешний формат (деньги — только в realPayments): график строим заново
-  // целиком от новой даты — installments строк на весь долг после первого взноса,
-  // как у нового договора. Какие строки уже закрыты, решает распределение реальных
-  // платежей при показе; месяцы с поступлениями не пропускаем — платёж не привязан
-  // к месяцу графика.
-  if (legacyPaidPayments.length === 0) {
-    const totalDue = Math.max(0, saleData.totalAmount - saleData.downPayment);
-    const n = Math.max(1, Number(saleData.installments) || 1);
-    const base = Math.floor(totalDue / n);
-    const last = Math.round((totalDue - base * (n - 1)) * 100) / 100;
-    const firstDate = new Date(newFirstPaymentDate);
-    const rows: Payment[] = Array.from({ length: n }, (_, i) => ({
-      id: `pay_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 6)}`,
-      saleId: saleData.id,
-      amount: i === n - 1 ? last : base,
-      date: addMonthsClamped(firstDate, i).toISOString(),
-      isPaid: false,
-      isRealPayment: false
-    }));
-    return [...realPayments, ...rows].sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }
-
-  // 🔹 3. Объединяем сохранённые платежи
-  const preservedPayments = [...realPayments, ...legacyPaidPayments];
-
-  // 🔹 4. Считаем, сколько ещё нужно платежей и какую сумму распределять
-  const preservedAmount = preservedPayments.reduce((sum, p) => sum + p.amount, 0);
-  const remainingInstallments = saleData.installments - preservedPayments.length;
-
-  // 🔹 5. Если все платежи уже сохранены — возвращаем их
-  if (remainingInstallments <= 0) {
-    return preservedPayments.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-  }
-
-  // 🔹 6. Считаем сумму для будущих платежей.
-  // 🔥 ВАЖНО: считаем ВСЕГДА от totalAmount/downPayment/preservedAmount, а не берём
-  // saleData.remainingAmount "как есть" — это поле обычно равно (totalAmount - downPayment)
-  // и НЕ учитывает уже оплаченные платежи по графику (preservedAmount). Раньше это было
-  // безопасно, т.к. функция вызывалась только когда preservedAmount === 0, но теперь
-  // редактирование пересчитывает график и при наличии оплаченных платежей — тут это критично.
-  // 🔒 Защита от отрицательного остатка (не должно происходить — валидируется до вызова,
-  // но подстраховываемся на случай прямого вызова функции с некорректными данными).
-  const remainingAmount = Math.max(0, saleData.totalAmount - saleData.downPayment - preservedAmount);
-  // 🔒 Платежи считаем ЦЕЛЫМИ РУБЛЯМИ, а остаток от деления кладём в ПОСЛЕДНИЙ платёж.
-  // Раньше все платежи получали одну сумму с копейками (91 000 / 3 = 30 333,33), и их сумма
-  // не сходилась с долгом (30 333,33 × 3 = 90 999,99). А так как принимают платежи целыми
-  // рублями, каждый раз недоплачивалось 33 копейки: они копились в остатке долга, из-за чего
-  // график показывал 30 333 ₽, а «Остаток долга» — 30 334 ₽, и в графике вылезали строки-хвосты.
-  // Теперь 91 000 / 3 → 30 333 + 30 333 + 30 334: сумма сходится точно, копеек нет.
-  // Если сама сумма договора с копейками (например, 43 312,50) — они уйдут в последний платёж.
-  const baseAmount = remainingInstallments > 0
-    ? Math.floor(remainingAmount / remainingInstallments)
-    : 0;
-  const lastAmount = remainingInstallments > 0
-    ? Math.round((remainingAmount - baseAmount * (remainingInstallments - 1)) * 100) / 100
-    : 0;
-
-  // 🔹 7. Генерируем новые даты для будущих платежей
-  const firstDate = new Date(newFirstPaymentDate);
-
-  // 🔹 8. Пропускаем месяцы, которые уже заняты сохранёнными платежами
-  const usedMonths = new Set(preservedPayments.map(p => new Date(p.date).toISOString().slice(0, 7)));
-
-  const futurePayments: Payment[] = [];
-  let monthOffset = 0;
-
-  while (futurePayments.length < remainingInstallments) {
-    // 🔒 addMonthsClamped, а не pDate.setMonth(...): при дне платежа 29-31 обычный setMonth
-    // "переливает" несуществующую дату в следующий месяц (30 февраля → 2 марта). Из-за этого
-    // февральский платёж не создавался вовсе — его месяц оказывался занят сбойной мартовской
-    // датой, настоящий март отсекался проверкой usedMonths ниже, и весь оставшийся график
-    // сдвигался на месяц (в печатном договоре это выглядело как пропущенный месяц).
-    const pDate = addMonthsClamped(firstDate, monthOffset);
-
-    const monthKey = pDate.toISOString().slice(0, 7);
-
-    // 🔹 Пропускаем месяцы, которые уже заняты
-    if (!usedMonths.has(monthKey)) {
-      futurePayments.push({
-        id: `pay_${Date.now()}_${futurePayments.length}_${Math.random().toString(36).substr(2, 6)}`,
-        saleId: saleData.id,
-        // Последнему платежу достаётся остаток от деления, чтобы сумма графика сошлась точно.
-        amount: futurePayments.length === remainingInstallments - 1 ? lastAmount : baseAmount,
-        date: pDate.toISOString(),
-        isPaid: false,
-        isRealPayment: false
-      });
-      usedMonths.add(monthKey);
-    }
-
-    monthOffset++;
-  }
-
-  // 🔹 9. Объединяем и сортируем по дате
-  return [...preservedPayments, ...futurePayments].sort(
-    (a, b) => new Date(a.date).getTime() - new Date(b.date).getTime()
-  );
-};
 
   // Авто-расчёт цены при вводе закупа (только для новых записей!)
   useEffect(() => {
@@ -421,11 +264,7 @@ const regeneratePaymentPlan = (
     if (mode === 'INSTALLMENT' && Number(formData.buyPrice) > 0) {
       if (isPriceManual) return;
 
-      const bp = Number(formData.buyPrice);
-      const dp = Number(formData.downPayment) || 0;
-      const rate = Number(formData.interestRate);
-      const markupBase = appSettings.markupFromNetBuyPrice ? Math.max(0, bp - dp) : bp;
-      const calculatedPrice = Math.round(bp + (markupBase * (rate / 100)));
+      const calculatedPrice = markupPrice(formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice);
 
       setFormData(prev => ({ ...prev, price: calculatedPrice }));
     }
@@ -463,11 +302,8 @@ const regeneratePaymentPlan = (
 
   // 🔹 1. Базовая цена (Закуп + Наценка)
   const baseCalculatedPrice = useMemo(() => {
-    const bp = Number(formData.buyPrice) || 0;
-    const dp = Number(formData.downPayment) || 0;
-    const rate = Number(formData.interestRate) || 0;
-    const markupBase = appSettings.markupFromNetBuyPrice ? Math.max(0, bp - dp) : bp;
-    return Math.round(bp + (markupBase * (rate / 100)));
+    // Та же формула, что у договора, оформленного ассистентом (src/saleMath.ts)
+    return markupPrice(formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice);
   }, [formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice]);
 
   // 🔹 1.5. Фактическая наценка. Когда цену вписали руками или включили округление,
