@@ -4751,8 +4751,8 @@ if (!user && !showSplash) {
     // Сквозной поиск собираем здесь: только App знает все данные и умеет
     // переходить к найденному. Шапка получает готовый элемент.
     search={<>
-      {/* На страницах ассистента шар в шапке лишний — он уже на экране */}
-      {aiAvailable && currentView !== 'AI_ASSISTANT' && currentView !== 'AI_TARIFFS' && (
+      {/* В чате шар в шапке лишний — он уже на экране; на тарифах ИИ это и есть путь в чат */}
+      {aiAvailable && currentView !== 'AI_ASSISTANT' && (
         <button onClick={openAssistant} aria-label="FinUchetGPT"
                 className="pointer-events-auto shrink-0 rounded-full active:scale-95 transition-transform">
           <AIOrb size={44} />
@@ -5242,7 +5242,7 @@ if (!user && !showSplash) {
               {currentView === 'AI_TARIFFS' && (
                 <PagePush onClose={() => setCurrentView(previousView === 'AI_TARIFFS' ? 'AI_ASSISTANT' : previousView)} showBackButton>
                   <Suspense fallback={null}>
-                    <AITariffs onOpenAssistant={openAssistant} />
+                    <AITariffs />
                   </Suspense>
                 </PagePush>
               )}

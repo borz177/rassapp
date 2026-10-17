@@ -21,7 +21,7 @@ const FEATURES: Record<string, string[]> = {
   AI_PRO: ['Всё из «ИИ Старт»', '1 000 запросов в месяц', 'Для тех, кто работает с ассистентом весь день'],
 };
 
-const AITariffs: React.FC<{ onOpenAssistant: () => void }> = ({ onOpenAssistant }) => {
+const AITariffs: React.FC = () => {
   const [status, setStatus] = useState<any>(null);
   const [buying, setBuying] = useState<{ plan: string; method: string } | null>(null);
   const iosApp = isIOSApp();
@@ -96,9 +96,6 @@ const AITariffs: React.FC<{ onOpenAssistant: () => void }> = ({ onOpenAssistant 
         })}
       </div>
 
-      <button onClick={onOpenAssistant} className="ai-msg-in w-full py-3.5 rounded-2xl bg-slate-900 text-white dark:bg-white dark:text-slate-900 font-bold active:scale-[.99] transition">
-        Открыть FinUchetGPT
-      </button>
     </div>
   );
 };
