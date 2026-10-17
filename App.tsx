@@ -4751,7 +4751,8 @@ if (!user && !showSplash) {
     // Сквозной поиск собираем здесь: только App знает все данные и умеет
     // переходить к найденному. Шапка получает готовый элемент.
     search={<>
-      {aiAvailable && (
+      {/* На страницах ассистента шар в шапке лишний — он уже на экране */}
+      {aiAvailable && currentView !== 'AI_ASSISTANT' && currentView !== 'AI_TARIFFS' && (
         <button onClick={openAssistant} aria-label="FinUchetGPT"
                 className="pointer-events-auto shrink-0 rounded-full active:scale-95 transition-transform">
           <AIOrb size={44} />
