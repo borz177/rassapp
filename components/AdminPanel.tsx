@@ -7,6 +7,7 @@ import AdminPartners from './AdminPartners';
 import AdminPayments from './AdminPayments';
 import AdminWhatsApp from './AdminWhatsApp';
 import AdminRetention, { UserHistory } from './AdminRetention';
+import AdminAI from './AdminAI';
 import { User, SubscriptionPlan, ApiKeyInfo } from '../types';
 import { addMonthsClamped } from '../src/utils';
 import { ICONS } from '../constants';
@@ -439,6 +440,7 @@ const getContractUsage = (user: User): {
                     { id: 'referrals', label: 'Рефералы' },
                     { id: 'partners', label: 'Партнёры' },
                     { id: 'whatsapp', label: 'WhatsApp' },
+                    { id: 'ai', label: 'ИИ' },
                     { id: 'logs', label: 'Журнал' },
                     { id: 'apps', label: 'Помощники' },
                 ] as const).map(tab => (
@@ -680,6 +682,7 @@ const getContractUsage = (user: User): {
             {activeTab === 'payments' && <AdminPayments />}
 
             {activeTab === 'whatsapp' && <AdminWhatsApp />}
+            {activeTab === 'ai' && <AdminAI />}
 
             {activeTab === 'stats' && (
                 <div className="space-y-4">

@@ -4631,6 +4631,44 @@ app.post('/api/ai/assistant/actions/:id/confirm', auth, async (req, res) => {
   } catch (e) { console.error('AI confirm error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось выполнить — попробуйте ещё раз.' }); }
 });
 
+// Админ: расход и доход FinUchetGPT — запросы, токены и стоимость модели по
+// каждому пользователю за месяц, итоги по месяцам и выручка с тарифов ИИ.
+// Стоимость — в долларах, как её отдаёт OpenRouter (usage.cost).
+app.get('/api/admin/ai', adminAuth, async (req, res) => {
+  try {
+    const month = /^\d{4}-\d{2}$/.test(String(req.query.month || '')) ? String(req.query.month) : aiMonth();
+    const rows = (await pool.query(
+      `SELECT u.id, u.email, u.name, u.ai_subscription, u.ai_trial_used, u.ai_consent_at, u.ai_settings,
+              coalesce(m.requests, 0) AS requests, coalesce(m.prompt_tokens, 0) AS prompt_tokens,
+              coalesce(m.completion_tokens, 0) AS completion_tokens, coalesce(m.cost_usd, 0) AS cost_usd
+         FROM users u
+         LEFT JOIN ai_assistant_usage m ON m.user_id = u.id AND m.month = $1
+        WHERE m.user_id IS NOT NULL OR u.ai_subscription IS NOT NULL OR u.ai_consent_at IS NOT NULL
+        ORDER BY coalesce(m.cost_usd, 0) DESC, coalesce(m.requests, 0) DESC`, [month])).rows;
+    const months = (await pool.query(
+      `SELECT month, sum(requests)::int AS requests, sum(cost_usd)::float AS cost_usd, count(*)::int AS users
+         FROM ai_assistant_usage GROUP BY month ORDER BY month DESC LIMIT 6`)).rows;
+    const revenue = (await pool.query(
+      `SELECT to_char(paid_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM') AS month, sum(amount)::float AS rub, count(*)::int AS payments
+         FROM subscription_payments WHERE plan = ANY($1) AND refunded_at IS NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 6`, [Object.keys(AI_PLANS)])).rows;
+    const now = new Date();
+    res.json({
+      month,
+      users: rows.map(r => {
+        const sub = r.ai_subscription && new Date(r.ai_subscription.expiresAt) > now ? r.ai_subscription : null;
+        return {
+          id: r.id, email: r.email, name: r.name,
+          plan: sub ? (AI_PLANS[sub.plan]?.name || sub.plan) : null, planExpiresAt: sub?.expiresAt || null,
+          trialUsed: r.ai_trial_used || 0, trialTotal: AI_TRIAL_REQUESTS, consent: !!r.ai_consent_at,
+          requests: Number(r.requests), promptTokens: Number(r.prompt_tokens), completionTokens: Number(r.completion_tokens),
+          costUsd: Number(r.cost_usd), autoLimit: normalizeAiSettings(r.ai_settings).autoLimit, morningDigest: normalizeAiSettings(r.ai_settings).morningDigest,
+        };
+      }),
+      months: months.map(m => ({ ...m, revenueRub: revenue.find(r => r.month === m.month)?.rub || 0, payments: revenue.find(r => r.month === m.month)?.payments || 0 })),
+    });
+  } catch (e) { console.error('admin ai error:', e.message); res.status(500).json({ msg: 'Не удалось загрузить' }); }
+});
+
 // «Стоп» в чате: запрос остановится в ближайшей безопасной точке и вернёт,
 // что успел сделать (см. reply в server/ai/assistant.js)
 app.post('/api/ai/assistant/requests/:id/cancel', auth, (req, res) => {

@@ -376,6 +376,20 @@ export interface AdminWhatsAppRow {
     lastError: string | null;
 }
 
+/** Админ: расход и доход FinUchetGPT (GET /api/admin/ai) */
+export interface AdminAiUser {
+    id: string; email: string; name: string;
+    plan: string | null; planExpiresAt: string | null;
+    trialUsed: number; trialTotal: number; consent: boolean;
+    requests: number; promptTokens: number; completionTokens: number; costUsd: number;
+    autoLimit: number | null; morningDigest: boolean;
+}
+export interface AdminAiReport {
+    month: string;
+    users: AdminAiUser[];
+    months: { month: string; requests: number; cost_usd: number; users: number; revenueRub: number; payments: number }[];
+}
+
 export interface AdminWhatsAppReport {
     service: { available: boolean; reachable: boolean; sessions?: number | null };
     rows: AdminWhatsAppRow[];
@@ -1467,6 +1481,12 @@ export const api = {
     adminGetWhatsApp: async (): Promise<AdminWhatsAppReport> => {
         const res = await fetchWithAuth(`${API_URL}/admin/whatsapp`, { timeout: 30000 });
         if (!res.ok) throw new Error('Не удалось загрузить WhatsApp-подключения');
+        return res.json();
+    },
+    /** Админ: запросы, токены и стоимость ИИ по пользователям за месяц (ГГГГ-ММ) */
+    adminGetAi: async (month?: string): Promise<AdminAiReport> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/ai${month ? `?month=${encodeURIComponent(month)}` : ''}`, { timeout: 30000 });
+        if (!res.ok) throw new Error('Не удалось загрузить данные ИИ');
         return res.json();
     },
     adminDisconnectWhatsApp: async (userId: string): Promise<void> => {
