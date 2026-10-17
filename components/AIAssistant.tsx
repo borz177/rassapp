@@ -330,7 +330,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
       </div>
 
       {/* Ввод */}
-      <div className="sticky bottom-[calc(5.5rem+env(safe-area-inset-bottom))] md:bottom-4 z-10">
+      {/* На телефоне поле ввода прижато к низу экрана (нижней панели здесь нет), на компьютере — к низу колонки */}
+      <div className="fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20">
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
         {image && (
           <div className="ai-msg-in mb-2 inline-flex items-start gap-2 p-2 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">

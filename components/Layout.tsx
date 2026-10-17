@@ -979,9 +979,13 @@ const counts = useMemo(() => {
       {/* Обёртка держит отступы от краёв и безопасную зону, сам остров — внутри.
           pointer-events-none, чтобы прозрачные поля по бокам не перехватывали нажатия
           по контенту под ними. */}
+      {/* На странице ИИ-ассистента панель уезжает вниз: внизу там поле ввода,
+          и чату нужен весь экран, как в мессенджерах */}
       <div
-        className="md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none vv-anchor"
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none vv-anchor transition-[transform,opacity] duration-300 ease-out ${
+          currentView === 'AI_ASSISTANT' ? 'translate-y-[130%] opacity-0' : ''}`}
         style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0px))' }}
+        aria-hidden={currentView === 'AI_ASSISTANT' || undefined}
       >
       <nav
         ref={navRef}
