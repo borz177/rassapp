@@ -31,6 +31,8 @@ const MAX_TOOL_RESULT_CHARS = 12000;
 const ACTION_TTL_MS = 15 * 60 * 1000;
 
 // Черновик договора: модель собирает поля, приложение открывает форму
+const IMAGE_RE = /^data:image\/(jpeg|png|webp);base64,/;
+
 const PREPARE_CONTRACT_TOOL = {
   name: 'prepare_contract',
   description: [
@@ -256,13 +258,37 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     'Принять платёж, завести клиента, записать расход или приход — вызывай соответствующий инструмент: действие не выполнится сразу, под твоим ответом появится карточка с кнопкой «Подтвердить». Скажи одной фразой: «Проверьте и нажмите «Подтвердить»». Не говори про формы и окна.',
     'Расход и приход проводятся по счёту: если счёт не назван, а счетов несколько — спроси, с какого (list_accounts); если счёт один — бери его.',
     'Оформить договор — вызывай prepare_contract: под ответом появится карточка с кнопкой «Открыть форму договора», человек проверит и сохранит. Скажи именно так, не говори, что форма уже открыта. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
+    'Люди, о которых шла речь в этом разговоре («он», «она», «этот клиент», «первый клиент», «тот, что на фото»), — это клиенты из разговора: фото паспортов и пометки [Черновик договора …] в истории. Если такого клиента ещё нет в базе (черновик не сохранён) — снова передай его данные в newCustomer, переписав их с фото или из пометки. Никогда не бери клиента из базы по порядку в списке или наугад: не уверен, о ком речь, — спроси.',
+    'Для черновика договора телефон, адрес и счёт не обязательны: их допишут в форме. Не задерживай черновик вопросами о них.',
+    'Прислали фото паспорта без задания — коротко назови, кого распознал (ФИО), и спроси, что оформить.',
     'Если в просьбе не хватает важного (какой клиент, какая сумма) — уточни одним коротким вопросом.',
     'Не обсуждай темы, не связанные с учётом, — вежливо верни разговор к делу.',
   ].join('\n');
 
   /**
+   * Прошлые реплики для модели. Фото в историю попадают только последние два
+   * (приложение присылает их снова): иначе «оформи на неё ещё один» после
+   * паспорта модель уже не видит, чей это паспорт. Остальные фото — пометкой.
+   */
+  const historyMessages = (history) => {
+    const items = history.slice(-12).filter(m => m && (m.text || m.image));
+    let photosLeft = 2;
+    const withPhoto = new Set();
+    for (let i = items.length - 1; i >= 0; i--) {
+      const img = items[i].role !== 'assistant' && typeof items[i].image === 'string' && IMAGE_RE.test(items[i].image) && items[i].image.length < 3_000_000;
+      if (img && photosLeft > 0) { withPhoto.add(i); photosLeft--; }
+    }
+    return items.map((m, i) => {
+      const text = String(m.text || '').slice(0, 4000);
+      if (m.role === 'assistant') return { role: 'assistant', content: text || '…' };
+      if (withPhoto.has(i)) return { role: 'user', content: [{ type: 'text', text: text || '(фото без подписи)' }, { type: 'image_url', image_url: { url: m.image } }] };
+      return { role: 'user', content: m.image ? `${text || ''} (было фото)`.trim() : text };
+    });
+  };
+
+  /**
    * Одно сообщение пользователя → ответ ассистента и, возможно, карточки действий.
-   * history — прошлые реплики [{role:'user'|'assistant', text}] (без вложений).
+   * history — прошлые реплики [{role:'user'|'assistant', text, image?}] (фото — см. historyMessages).
    * image — data:image/jpeg;base64,…; audio — { data: base64, format: 'mp3'|'wav'|… }.
    */
   const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '' }) => {
@@ -273,11 +299,12 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     if (image) content.push({ type: 'image_url', image_url: { url: image } });
     if (audio) content.push({ type: 'input_audio', input_audio: { data: audio.data, format: audio.format } });
     if (audio && !text) content.unshift({ type: 'text', text: 'Это голосовое сообщение пользователя — выполни то, что он говорит.' });
+    if (image && !text && !audio) content.unshift({ type: 'text', text: '(фото без подписи)' });
     if (!content.length) return { reply: 'Напишите или скажите, что сделать.', actions: [] };
 
     const messages = [
       { role: 'system', content: systemPrompt({ userName: user.name, companyName, today }) },
-      ...history.slice(-12).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text || '').slice(0, 4000) })),
+      ...historyMessages(history),
       { role: 'user', content },
     ];
     const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL)];
@@ -292,7 +319,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       const msg = data.choices[0].message || {};
       const calls = msg.tool_calls || [];
       if (!calls.length) {
-        let text = (msg.content || '').trim() || 'Готово.';
+        // Служебные пометки истории (см. draftNote в AIAssistant.tsx) модель иногда повторяет — человеку они не нужны
+        let text = (msg.content || '').replace(/^\s*\[Черновик договора:[^\]]*\]\s*$/gm, '').trim() || 'Готово.';
         // У черновика договора кнопка своя — модель иногда по привычке зовёт
         // «Подтвердить», которого на карточке договора нет
         if (actions.some(a => a.kind === 'contract_form') && !actions.some(a => a.kind === 'confirm')) {

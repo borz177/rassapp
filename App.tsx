@@ -44,6 +44,7 @@ const Calculator = lazy(() => import('./components/Calculator'));
 const AIAssistant = lazy(() => import('./components/AIAssistant'));
 const AITariffs = lazy(() => import('./components/AITariffs'));
 import AIOrb from './components/AIOrb';
+import { findSameCustomer } from './src/sameCustomer';
 const Referral = lazy(() => import('./components/Referral'));
 import { SuccessCheck } from './components/feedback';
 const LazyFallback: React.FC = () => (
@@ -4255,6 +4256,7 @@ const handleQuickAddCustomer = async (data: {
   // с фото паспорта) заводится сразу, чтобы форма открылась уже с ним.
   const openContractFromAssistant = async (draft: any) => {
     let customerId = draft.customerId && customers.some((c: Customer) => c.id === draft.customerId) ? draft.customerId : '';
+    if (!customerId && draft.newCustomer?.name) customerId = findSameCustomer(customers, draft.newCustomer)?.id || '';
     if (!customerId && draft.newCustomer?.name) {
       const nc = draft.newCustomer;
       const issued = [nc.passportIssuedBy, nc.passportIssueDate ? `дата выдачи ${nc.passportIssueDate}` : '', nc.passportDivisionCode ? `код ${nc.passportDivisionCode}` : ''].filter(Boolean).join(', ');

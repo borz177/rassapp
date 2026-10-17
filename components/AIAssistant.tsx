@@ -40,6 +40,32 @@ interface Props {
   onOpenTariffs: () => void;
 }
 
+/**
+ * Пометка о черновике договора для истории: без неё «оформи на неё ещё один»
+ * или «первому клиенту» модели не на что опереться — черновик ещё не сохранён,
+ * клиента в базе нет. Модели id показывать можно, человеку она их не называет.
+ */
+const draftNote = (a: Action) => {
+  if (a.kind !== 'contract_form') return '';
+  const d = a.draft || {}, c = d.newCustomer;
+  const who = c
+    ? [c.name, c.birthDate && `д.р. ${c.birthDate}`, (c.passportSeries || c.passportNumber) && `паспорт ${c.passportSeries || ''} ${c.passportNumber || ''}`.trim(),
+       c.passportIssuedBy && `выдан ${c.passportIssuedBy}`, c.passportIssueDate && `дата выдачи ${c.passportIssueDate}`, c.passportDivisionCode && `код ${c.passportDivisionCode}`,
+       c.phone && `тел. ${c.phone}`, c.address && `адрес ${c.address}`].filter(Boolean).join(', ') + ' (новый клиент, в базе ещё нет)'
+    : `клиент из базы ${d.customerId}`;
+  return `[Черновик договора: ${d.productName || 'товар'}; ${who}]`;
+};
+
+/** Прошлые реплики для ассистента: последние 12; фото — пока они есть в памяти (после перезапуска не сохраняются) */
+const toHistory = (messages: Msg[]) => messages
+  .filter(m => !m.error && (m.text || m.image || m.actions?.length))
+  .slice(-12)
+  .map(m => ({
+    role: m.role,
+    text: [m.text, ...(m.actions || []).map(draftNote)].filter(Boolean).join('\n'),
+    image: m.image && m.image.startsWith('data:image/') ? m.image : undefined,
+  }));
+
 const SUGGESTIONS = [
   'Кто должен больше всех?',
   'Какие платежи сегодня и завтра?',
@@ -134,7 +160,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
     if (sending) return;
     if (status && !status.consent) { setConsentOpen(true); return; }
     const userMsg: Msg = { id: newId(), role: 'user', text: payload.text || '', image: payload.image || undefined, voice: payload.voice };
-    const history = messages.filter(m => m.text && !m.error).slice(-12).map(m => ({ role: m.role, text: m.text }));
+    const history = toHistory(messages);
     setMessages(ms => [...ms, userMsg]);
     setText(''); setImage(null);
     setSending(true);

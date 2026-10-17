@@ -2084,7 +2084,7 @@ export const api = {
         if (!res.ok) throw new Error('Не удалось сохранить согласие');
       },
       /** Ответ ассистента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT */
-      message: async (body: { text?: string; history?: { role: string; text: string }[]; image?: string; audio?: { data: string; format: string } }): Promise<{ reply: string; actions: any[]; left: number }> => {
+      message: async (body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string } }): Promise<{ reply: string; actions: any[]; left: number }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, { method: 'POST', body: JSON.stringify(body), timeout: 120000 });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw Object.assign(new Error(data.msg || 'Ассистент не ответил'), { code: data.code });
