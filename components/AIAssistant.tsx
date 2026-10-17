@@ -59,6 +59,27 @@ const writeStore = (userId: string, msgs: Msg[]) => {
 };
 const newId = () => `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
+/**
+ * Немного разметки из ответа модели: **жирный**, пункты «* » / «- » / «1. ».
+ * Остальное — обычный текст (HTML не вставляем).
+ */
+const renderRich = (text: string): React.ReactNode => {
+  const bold = (line: string, key: string) => line.split(/(\*\*[^*]+\*\*)/g).map((part, i) =>
+    /^\*\*[^*]+\*\*$/.test(part) ? <strong key={`${key}-${i}`}>{part.slice(2, -2)}</strong> : <React.Fragment key={`${key}-${i}`}>{part.replace(/\*\*/g, '')}</React.Fragment>);
+  const lines = text.split('\n');
+  const out: React.ReactNode[] = [];
+  let list: React.ReactNode[] = [];
+  const flush = () => { if (list.length) { out.push(<ul key={`ul${out.length}`} className="my-1 space-y-1">{list}</ul>); list = []; } };
+  lines.forEach((raw, i) => {
+    const m = /^\s*(?:[*•-]|\d+[.)])\s+(.*)$/.exec(raw);
+    if (m) { list.push(<li key={i} className="flex gap-2"><span className="text-violet-500 shrink-0">•</span><span>{bold(m[1], `l${i}`)}</span></li>); return; }
+    flush();
+    if (raw.trim()) out.push(<p key={i} className="my-0.5">{bold(raw, `p${i}`)}</p>);
+  });
+  flush();
+  return out;
+};
+
 const fmt = (n: any) => (Number(n) ? `${Math.round(Number(n)).toLocaleString('ru-RU')} ₽` : '—');
 
 const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataChanged, onOpenTariffs }) => {
@@ -240,7 +261,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
                   {m.image && m.image !== 'stripped' && <img src={m.image} alt="" className="mb-2 max-h-48 rounded-2xl" />}
                   {m.image === 'stripped' && <p className="text-xs opacity-75 mb-1">📷 Фото</p>}
                   {m.voice ? <p className="text-xs opacity-80 mb-0.5">🎙 Голосовое · {m.voice} с</p> : null}
-                  {m.text}
+                  {m.role === 'assistant' && !m.error ? renderRich(m.text) : m.text}
                   {m.error && /тариф ИИ/.test(m.text) && !iosApp && (
                     <button onClick={onOpenTariffs} className="block mt-2 text-sm font-bold underline">Тарифы ИИ</button>
                   )}

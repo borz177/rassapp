@@ -65,6 +65,18 @@ const PREPARE_CONTRACT_TOOL = {
   required: ['productName'],
 };
 
+// Ожидаемые платежи по графику за период — среди инструментов API такого нет
+// (там полученные деньги), а спрашивают «кто платит сегодня/завтра» чаще всего
+const DUE_PAYMENTS_TOOL = {
+  name: 'due_payments',
+  description: 'Платежи, которые клиенты ДОЛЖНЫ внести по графику за период (ещё не оплаченные), с ФИО, телефоном, товаром и суммой. Для вопросов «кто платит сегодня/завтра/на неделе», «какие платежи ожидаются». Просроченные — с флагом overdue.',
+  input: {
+    from: { type: 'string', description: 'С какой даты, ГГГГ-ММ-ДД; по умолчанию сегодня' },
+    to: { type: 'string', description: 'По какую дату включительно, ГГГГ-ММ-ДД; по умолчанию завтра' },
+    includeOverdue: { type: 'boolean', description: 'Добавить и все просроченные до from' },
+  },
+};
+
 const WRITE_TITLES = {
   create_payment: 'Принять платёж',
   create_customer: 'Завести клиента',
@@ -105,6 +117,33 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       const p = jwt.verify(String(raw).slice('fu_agent_'.length), jwtSecret);
       return p?.typ === 'agent' && p.sub ? p.sub : null;
     } catch { return null; }
+  };
+
+  // Дата строки графика по Москве: строки хранятся как полночь по Москве в UTC
+  const mskDate = (iso) => new Date(iso).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+  const duePayments = async (userId, args) => {
+    const today = mskDate(new Date().toISOString());
+    const from = /^\d{4}-\d{2}-\d{2}$/.test(args.from || '') ? args.from : today;
+    const tomorrow = mskDate(new Date(Date.now() + 864e5).toISOString());
+    const to = /^\d{4}-\d{2}-\d{2}$/.test(args.to || '') ? args.to : tomorrow;
+    const { rows } = await pool.query(
+      `SELECT s.data AS sale, c.data AS customer FROM data_items s
+       LEFT JOIN data_items c ON c.user_id = s.user_id AND c.type = 'customers' AND c.id = s.data->>'customerId'
+       WHERE s.user_id = $1 AND s.type = 'sales' AND s.data->>'status' = 'ACTIVE'`, [userId]);
+    const out = [];
+    for (const { sale, customer } of rows) {
+      for (const p of sale.paymentPlan || []) {
+        if (p.isRealPayment === true || p.isPaid || !p.date) continue;
+        const d = mskDate(p.date);
+        const overdue = d < today;
+        if ((d >= from && d <= to) || (args.includeOverdue && overdue && d < from)) {
+          out.push({ date: d, overdue, amount: Number(p.amount) || 0, customer: customer?.name || '—', phone: customer?.phone || null, product: sale.productName || '', contractId: sale.id });
+        }
+      }
+    }
+    out.sort((a, b) => a.date.localeCompare(b.date));
+    const total = Math.round(out.reduce((n, x) => n + x.amount, 0));
+    return JSON.stringify({ from, to, count: out.length, total, payments: out.slice(0, 60) });
   };
 
   const callV1 = async (userId, tool, args) => {
@@ -159,6 +198,16 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     } catch { return base; }
   };
 
+  // Расход и приход — с названием счёта: «3 000 ₽ — бензин» без счёта не проверить
+  const accountSummary = async (userId, name, args) => {
+    const base = describe(name, args);
+    if (!args.accountId) return base;
+    try {
+      const { rows } = await pool.query(`SELECT data->>'name' AS n FROM data_items WHERE user_id = $1 AND type = 'accounts' AND id = $2`, [userId, args.accountId]);
+      return rows[0]?.n ? `${base} · счёт «${rows[0].n}»` : base;
+    } catch { return base; }
+  };
+
   const confirmAction = async (userId, actionId) => {
     sweep();
     const a = pending.get(actionId);
@@ -166,7 +215,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     pending.delete(actionId);
     const tool = TOOLS.find(t => t.name === a.tool);
     const r = await callV1(userId, tool, a.args);
-    return r.ok ? { ok: true, text: `Готово: ${DONE_TITLES[a.tool] || 'сделано'} — ${a.summary}.`, data: r.data } : r;
+    return r.ok ? { ok: true, text: `Готово: ${DONE_TITLES[a.tool] || 'сделано'} — ${a.summary.replace('Остаток станет', 'остаток теперь')}.`, data: r.data } : r;
   };
   const cancelAction = (userId, actionId) => {
     const a = pending.get(actionId);
@@ -201,8 +250,12 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     `Сегодня ${today} (Москва). Отвечай по-русски, коротко и по делу, как опытный помощник бухгалтера. Суммы — в рублях с пробелами между тысячами.`,
     'Все цифры бери только из инструментов, ничего не досчитывай и не выдумывай. Не знаешь — скажи и предложи, где посмотреть.',
     'Клиента, договор или счёт сначала найди инструментом (list_customers, list_contracts, list_accounts), не угадывай id.',
-    'Принять платёж, завести клиента, записать расход или приход — вызывай соответствующий инструмент: он не выполнит действие сразу, а покажет человеку карточку «Подтвердить». Скажи об этом одной фразой.',
-    'Оформить договор — вызывай prepare_contract: приложение откроет заполненную форму. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
+    'Никогда не показывай человеку технические идентификаторы (cust_…, sale_…, acc_… и любые id): клиента называй по ФИО, договор — по товару, счёт — по названию. Если в данных только id клиента — найди его ФИО через list_customers.',
+    '«Платежи сегодня/завтра/на неделе», «кто должен заплатить» — это ожидаемые по графику платежи: бери due_payments. Полученные деньги — list_payments.',
+    'Списки оформляй коротко: по строке на позицию (ФИО — товар — сумма), в конце итог.',
+    'Принять платёж, завести клиента, записать расход или приход — вызывай соответствующий инструмент: действие не выполнится сразу, под твоим ответом появится карточка с кнопкой «Подтвердить». Скажи одной фразой: «Проверьте и нажмите «Подтвердить»». Не говори про формы и окна.',
+    'Расход и приход проводятся по счёту: если счёт не назван, а счетов несколько — спроси, с какого (list_accounts); если счёт один — бери его.',
+    'Оформить договор — вызывай prepare_contract: под ответом появится карточка с кнопкой «Открыть форму договора», человек проверит и сохранит. Скажи именно так, не говори, что форма уже открыта. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
     'Если в просьбе не хватает важного (какой клиент, какая сумма) — уточни одним коротким вопросом.',
     'Не обсуждай темы, не связанные с учётом, — вежливо верни разговор к делу.',
   ].join('\n');
@@ -227,7 +280,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       ...history.slice(-12).map(m => ({ role: m.role === 'assistant' ? 'assistant' : 'user', content: String(m.text || '').slice(0, 4000) })),
       { role: 'user', content },
     ];
-    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL)];
+    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL)];
     const actions = [];
     const usage = { prompt: 0, completion: 0, cost: 0 };
 
@@ -239,7 +292,20 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       const msg = data.choices[0].message || {};
       const calls = msg.tool_calls || [];
       if (!calls.length) {
-        return { reply: (msg.content || '').trim() || 'Готово.', actions, usage };
+        let text = (msg.content || '').trim() || 'Готово.';
+        // У черновика договора кнопка своя — модель иногда по привычке зовёт
+        // «Подтвердить», которого на карточке договора нет
+        if (actions.some(a => a.kind === 'contract_form') && !actions.some(a => a.kind === 'confirm')) {
+          text = text.replace(/[^.!?\n]*«?Подтвердить»?[^.!?\n]*[.!?]?/g, '').trim();
+          if (!/Открыть форму договора/.test(text)) text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
+        }
+        // Пустые поля, которые модель заполнила словами («не указан»)
+        for (const a of actions) {
+          const nc = a.kind === 'contract_form' && a.draft?.newCustomer;
+          if (nc) for (const k of Object.keys(nc)) if (typeof nc[k] === 'string' && /^(не\s*указан[аоы]?|нет|неизвестно|—|-)$/i.test(nc[k].trim())) delete nc[k];
+          if (nc?.phone && !/\d{5,}/.test(nc.phone)) delete nc.phone;
+        }
+        return { reply: text, actions, usage };
       }
       messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
       for (const call of calls) {
@@ -247,7 +313,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         let args = {};
         try { args = JSON.parse(call.function?.arguments || '{}'); } catch { /* пустые аргументы */ }
         let result;
-        if (name === 'prepare_contract') {
+        if (name === 'due_payments') {
+          result = await duePayments(user.id, args);
+        } else if (name === 'prepare_contract') {
           actions.push({ id: newActionId(), kind: 'contract_form', title: 'Оформить договор', draft: args });
           result = 'Черновик договора передан в приложение: человек увидит заполненную форму и сохранит её сам.';
         } else {
@@ -256,7 +324,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
             result = `Инструмента ${name} нет.`;
           } else if (tool.scope === 'write') {
             const id = newActionId();
-            const summary = name === 'create_payment' ? await paymentSummary(user.id, args) : describe(name, args);
+            const summary = name === 'create_payment' ? await paymentSummary(user.id, args)
+              : (name === 'create_expense' || name === 'create_income') ? await accountSummary(user.id, name, args)
+              : describe(name, args);
             pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
             actions.push({ id, kind: 'confirm', tool: name, title: WRITE_TITLES[name] || tool.title, summary, args });
             result = 'Действие подготовлено и ждёт, пока человек нажмёт «Подтвердить». Не повторяй вызов.';
