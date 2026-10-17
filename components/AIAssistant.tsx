@@ -18,6 +18,7 @@ import { isIOSApp, publicOrigin } from '../src/platform';
  */
 
 type Action =
+  | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
   | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; state?: 'done' | 'cancelled' | 'busy' | 'error'; result?: string }
   | { id: string; kind: 'contract_form'; title: string; draft: any; state?: 'done' };
 
@@ -27,6 +28,7 @@ interface Msg {
   text: string;
   image?: string;
   voice?: number; // длительность голосового, с
+  note?: string; // для ассистента, не показывается: id варианта, выбранного кнопкой
   actions?: Action[];
   error?: boolean;
 }
@@ -63,7 +65,7 @@ const toHistory = (messages: Msg[]) => messages
   .slice(-12)
   .map(m => ({
     role: m.role,
-    text: [m.text, ...(m.actions || []).map(draftNote)].filter(Boolean).join('\n'),
+    text: [m.text + (m.note ? ` [${m.note}]` : ''), ...(m.actions || []).map(draftNote)].filter(Boolean).join('\n'),
     image: m.image && m.image.startsWith('data:image/') ? m.image : undefined,
   }));
 
@@ -199,16 +201,16 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
   const patchAction = (msgId: string, actionId: string, patch: Partial<Action>) =>
     setMessages(ms => ms.map(m => m.id !== msgId ? m : { ...m, actions: m.actions?.map(a => a.id === actionId ? { ...a, ...patch } as Action : a) }));
 
-  const send = async (payload: { text?: string; image?: string | null; audio?: { data: string; format: string }; voice?: number }) => {
+  const send = async (payload: { text?: string; image?: string | null; audio?: { data: string; format: string }; voice?: number; note?: string }) => {
     if (sending) return;
     if (status && !status.consent) { setConsentOpen(true); return; }
-    const userMsg: Msg = { id: newId(), role: 'user', text: payload.text || '', image: payload.image || undefined, voice: payload.voice };
+    const userMsg: Msg = { id: newId(), role: 'user', text: payload.text || '', image: payload.image || undefined, voice: payload.voice, note: payload.note };
     const history = toHistory(messages);
     setMessages(ms => [...ms, userMsg]);
     setText(''); setImage(null);
     setSending(true);
     try {
-      const r = await api.aiAssistant.message({ text: payload.text, history, image: payload.image || undefined, audio: payload.audio });
+      const r = await api.aiAssistant.message({ text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '), history, image: payload.image || undefined, audio: payload.audio });
       setMessages(ms => [...ms, { id: newId(), role: 'assistant', text: r.reply, actions: r.actions }]);
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
     } catch (e: any) {
@@ -366,7 +368,27 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onDataCh
                   )}
                 </div>
               )}
-              {m.actions?.map(a => (
+              {m.actions?.map(a => a.kind === 'choices' ? (
+                // Варианты ответа: нажатый уходит сообщением; после ответа (или если разговор ушёл дальше) — не нажимаются
+                <div key={a.id} className="flex flex-wrap gap-2">
+                  {a.options.map((o, i) => {
+                    const stale = a.state === 'done' || m.id !== messages[messages.length - 1]?.id;
+                    const chosen = a.chosen === i;
+                    return (
+                      <button key={i} disabled={stale || sending}
+                              onClick={() => { patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: o.label, note: o.ref }); }}
+                              style={{ animationDelay: `${i * 50}ms` }}
+                              className={`ai-msg-in px-3.5 py-2 rounded-2xl text-sm text-left border transition active:scale-[.97] ${chosen
+                                ? 'bg-violet-600 border-violet-600 text-white'
+                                : stale
+                                  ? 'bg-white/60 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500'
+                                  : 'bg-white dark:bg-slate-800 border-violet-300 dark:border-violet-500/40 text-violet-700 dark:text-violet-200 hover:bg-violet-50 dark:hover:bg-violet-500/10'}`}>
+                        {o.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
                 <div key={a.id} className="ai-card-in rounded-3xl border border-violet-200 dark:border-violet-500/30 bg-violet-50/70 dark:bg-violet-500/10 p-4">
                   <p className="text-xs font-bold uppercase tracking-wide text-violet-600 dark:text-violet-300">{a.title}</p>
                   {a.kind === 'confirm' ? (

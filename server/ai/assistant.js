@@ -67,6 +67,33 @@ const PREPARE_CONTRACT_TOOL = {
   required: ['productName'],
 };
 
+// Уточнение с вариантами: под вопросом кнопки, нажатая уходит ответом —
+// не нужно печатать «тот, что на айфон»
+const ASK_CHOICE_TOOL = {
+  name: 'ask_choice',
+  description: [
+    'Задать уточняющий вопрос с вариантами-кнопками вместо вопроса текстом. Вызывай, когда вариантов немного (2–6) и они известны:',
+    'какой из договоров клиента, какой из найденных клиентов, с какого счёта, какую сумму принять (платёж по графику / весь остаток), что значит сумма («500» — 500 000 ₽ или 500 ₽).',
+    'Сначала найди варианты инструментами. После вызова дождись ответа человека, ничего больше не делай.',
+  ].join(' '),
+  input: {
+    question: { type: 'string', description: 'Вопрос, коротко' },
+    options: {
+      type: 'array',
+      description: '2–6 вариантов',
+      items: {
+        type: 'object',
+        properties: {
+          label: { type: 'string', description: 'Надпись на кнопке, коротко: «Samsung S25 · остаток 91 876 ₽»' },
+          ref: { type: 'string', description: 'id договора, клиента или счёта, если вариант — он (человеку не показывается)' },
+        },
+        required: ['label'],
+      },
+    },
+  },
+  required: ['question', 'options'],
+};
+
 // Ожидаемые платежи по графику за период — среди инструментов API такого нет
 // (там полученные деньги), а спрашивают «кто платит сегодня/завтра» чаще всего
 const DUE_PAYMENTS_TOOL = {
@@ -256,12 +283,13 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     '«Платежи сегодня/завтра/на неделе», «кто должен заплатить» — это ожидаемые по графику платежи: бери due_payments. Полученные деньги — list_payments.',
     'Списки оформляй коротко: по строке на позицию (ФИО — товар — сумма), в конце итог.',
     'Принять платёж, завести клиента, записать расход или приход — вызывай соответствующий инструмент: действие не выполнится сразу, под твоим ответом появится карточка с кнопкой «Подтвердить». Скажи одной фразой: «Проверьте и нажмите «Подтвердить»». Не говори про формы и окна.',
+    'Принять платёж без названной суммы — сумму не выбирай сам и не бери весь остаток: спроси через ask_choice с вариантами «Платёж по графику — N ₽» (ближайший неоплаченный платёж этого договора из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе добавь «или напишите свою сумму».',
     'Расход и приход проводятся по счёту: если счёт не назван, а счетов несколько — спроси, с какого (list_accounts); если счёт один — бери его.',
     'Оформить договор — вызывай prepare_contract: под ответом появится карточка с кнопкой «Открыть форму договора», человек проверит и сохранит. Скажи именно так, не говори, что форма уже открыта. Если на фото паспорт — перепиши данные паспорта в newCustomer точно, буква в букву.',
     'Люди, о которых шла речь в этом разговоре («он», «она», «этот клиент», «первый клиент», «тот, что на фото»), — это клиенты из разговора: фото паспортов и пометки [Черновик договора …] в истории. Если такого клиента ещё нет в базе (черновик не сохранён) — снова передай его данные в newCustomer, переписав их с фото или из пометки. Никогда не бери клиента из базы по порядку в списке или наугад: не уверен, о ком речь, — спроси.',
     'Для черновика договора телефон, адрес и счёт не обязательны: их допишут в форме. Не задерживай черновик вопросами о них.',
     'Прислали фото паспорта без задания — коротко назови, кого распознал (ФИО), и спроси, что оформить.',
-    'Если в просьбе не хватает важного (какой клиент, какая сумма) — уточни одним коротким вопросом.',
+    'Если в просьбе не хватает важного (какой клиент, какая сумма) — уточни одним коротким вопросом. Когда ответ — выбор из известных вариантов (у клиента несколько договоров, нашлось несколько клиентов, несколько счетов, неясная сумма), не перечисляй их текстом: вызови ask_choice — человек нажмёт кнопку. Ответ на кнопку придёт с id в квадратных скобках — используй его, не ищи заново.',
     'Не обсуждай темы, не связанные с учётом, — вежливо верни разговор к делу.',
   ].join('\n');
 
@@ -328,7 +356,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       ...historyMessages(history),
       { role: 'user', content },
     ];
-    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL)];
+    const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL)];
     const actions = [];
     const usage = { prompt: 0, completion: 0, cost: 0 };
 
@@ -346,7 +374,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         // «Подтвердить», которого на карточке договора нет
         if (actions.some(a => a.kind === 'contract_form') && !actions.some(a => a.kind === 'confirm')) {
           text = text.replace(/[^.!?\n]*«?Подтвердить»?[^.!?\n]*[.!?]?/g, '').trim();
-          if (!/Открыть форму договора/.test(text)) text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
+          if (!/(Открыть|Откройте|открыть) форму договора/.test(text)) text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
         }
         await nameDraftRefs(user.id, actions);
         // Пустые поля, которые модель заполнила словами («не указан»)
@@ -356,6 +384,24 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           if (nc?.phone && !/\d{5,}/.test(nc.phone)) delete nc.phone;
         }
         return { reply: text, actions, usage };
+      }
+      // Вопрос с кнопками — ход человека: дальше не идём, ждём выбора
+      const choice = calls.find(c => c.function?.name === 'ask_choice');
+      if (choice) {
+        let args = {};
+        try { args = JSON.parse(choice.function.arguments || '{}'); } catch { /* пустые аргументы */ }
+        const options = (Array.isArray(args.options) ? args.options : [])
+          .map(o => (typeof o === 'string' ? { label: o } : o))
+          .filter(o => o && String(o.label || '').trim())
+          .slice(0, 6)
+          .map(o => ({ label: String(o.label).trim().slice(0, 120), ...(o.ref ? { ref: String(o.ref).slice(0, 80) } : {}) }));
+        const question = String(args.question || msg.content || '').trim() || 'Уточните, пожалуйста:';
+        if (options.length >= 2) {
+          actions.push({ id: newActionId(), kind: 'choices', title: question, options });
+          return { reply: question, actions, usage };
+        }
+        if (options.length === 1) return { reply: `${question}\n${options[0].label}?`, actions, usage };
+        return { reply: question, actions, usage };
       }
       messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
       for (const call of calls) {
