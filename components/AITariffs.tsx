@@ -73,7 +73,7 @@ const AITariffs: React.FC = () => {
               {!iosApp && (
                 <p className="mt-1"><span className="text-3xl font-bold text-slate-900 dark:text-white">{p.price.toLocaleString('ru-RU')} ₽</span><span className="text-sm text-slate-500"> / мес</span></p>
               )}
-              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{p.monthly.toLocaleString('ru-RU')} запросов в месяц{!iosApp ? ` · ≈ ${(p.price / p.monthly).toFixed(2).replace('.', ',')} ₽ за запрос` : ''}</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">{p.monthly.toLocaleString('ru-RU')} запросов в месяц</p>
               <ul className="mt-4 space-y-2">
                 {(FEATURES[p.key] || []).map(f => (
                   <li key={f} className="flex gap-2 text-sm text-slate-700 dark:text-slate-200">

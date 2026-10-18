@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
-import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2 } from 'lucide-react';
+import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check } from 'lucide-react';
 import AIAssistantSettings, { type AISettings } from './AIAssistantSettings';
 import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
@@ -104,6 +104,54 @@ const actionNote = (a: Action): string => {
  * ответ сразу сделан черновик, больше не отправляем — его данные уже в пометке
  * черновика, а каждое фото — 1–2 тысячи токенов на каждом шаге разговора.
  */
+/**
+ * Режим агента в нижнем ряду панели — как выбор модели в ChatGPT: подпись
+ * текущего режима, по нажатию — меню из двух вариантов с пояснением.
+ */
+const MODES = [
+  { key: 'confirm', label: 'Подтверждать', hint: 'Каждое действие ждёт вашей кнопки', Icon: ShieldCheck, tone: 'text-violet-600 dark:text-violet-300' },
+  { key: 'auto', label: 'Авто', hint: 'Делаю сразу, отменить можно 30 минут', Icon: Zap, tone: 'text-amber-500' },
+] as const;
+const ModeMenu: React.FC<{ mode: Mode; onChange: (m: Mode) => void }> = ({ mode, onChange }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const cur = MODES.find(m => m.key === mode) || MODES[0];
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} aria-label={`Режим агента: ${cur.label}`}
+              className="h-10 inline-flex items-center gap-1.5 pl-2.5 pr-2 rounded-full text-[13px] font-semibold text-slate-700 dark:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-[.97] transition">
+        <cur.Icon size={16} className={cur.tone} />
+        {cur.label}
+        <ChevronDown size={15} className={`text-slate-400 transition-transform duration-200 ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div role="menu" className="ai-pop absolute bottom-full right-0 mb-2 w-64 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl">
+          {MODES.map(m => (
+            <button key={m.key} role="menuitemradio" aria-checked={mode === m.key}
+                    onClick={() => { setOpen(false); onChange(m.key); }}
+                    className="w-full flex items-start gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 transition">
+              <m.Icon size={18} className={`mt-0.5 shrink-0 ${m.tone}`} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{m.label}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{m.hint}</span>
+              </span>
+              {mode === m.key && <Check size={16} className="mt-0.5 shrink-0 text-violet-600 dark:text-violet-300" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
 const toHistory = (messages: Msg[]) => messages
   .filter(m => !m.error && (m.text || m.heard || m.image || m.actions?.length))
   .slice(-12)
@@ -278,6 +326,36 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // поверх ленты — ровно её высота (зазор даёт pb-4 ленты), а не отступ «с запасом»
   const composerRef = useRef<HTMLDivElement>(null);
   const [endSpace, setEndSpace] = useState(176);
+  // Клавиатура телефона: окно приложения под неё не сжимается (Capacitor
+  // Keyboard.resize: 'none', мобильные браузеры тоже), поэтому панель ввода
+  // поднимаем сами — плавно, как в нативных чатах. Высоту клавиатуры знает
+  // только visualViewport. lift — на сколько поднять панель: отступ под
+  // «полоску» (safe-area) клавиатура и так закрывает, его вычитаем
+  const [keyboard, setKeyboard] = useState(0);
+  const [focused, setFocused] = useState(false);
+  const focusedRef = useRef(false);
+  focusedRef.current = focused;
+  const safeBottom = useRef(0);
+  const lift = keyboard > 0 ? Math.max(0, keyboard - safeBottom.current) : 0;
+  const liftRef = useRef(0);
+  liftRef.current = lift;
+  useEffect(() => {
+    const vv = window.visualViewport;
+    if (!vv || !phone) return;
+    const sync = () => {
+      // Система сдвинула видимую область, чтобы показать поле (iPhone так
+      // делает с полем у нижнего края) — вместе с ней уезжали вверх шапка и
+      // лента. Возвращаем на место: над клавиатурой поднимается только панель
+      if (focusedRef.current && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);
+      const k = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      // Меньше 80 px — не клавиатура (адресная строка, панель браузера)
+      setKeyboard(k > 80 ? k : 0);
+    };
+    sync();
+    vv.addEventListener('resize', sync);
+    vv.addEventListener('scroll', sync);
+    return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
+  }, [phone]);
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
     // Высота панели + её отступ от низа экрана — а не «высота окна минус верх
@@ -287,7 +365,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // пустоты — лента «уезжала вверх» при открытии и при каждой отправке
     const measure = () => {
       const cs = getComputedStyle(el);
-      setEndSpace(cs.position === 'fixed' ? Math.max(0, Math.round(el.offsetHeight + (parseFloat(cs.bottom) || 0))) : 0);
+      const bottom = parseFloat(cs.bottom) || 0;
+      safeBottom.current = Math.max(0, bottom - 12); // bottom = 0.75rem + safe-area
+      setEndSpace(cs.position === 'fixed' ? Math.max(0, Math.round(el.offsetHeight + bottom + liftRef.current)) : 0);
     };
     measure();
     const ro = new ResizeObserver(measure);
@@ -295,6 +375,15 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     window.addEventListener('resize', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
+  // Клавиатура открылась/закрылась: место под лентой меняется вместе с панелью,
+  // а последнее сообщение остаётся над ней (если человек был внизу)
+  useLayoutEffect(() => {
+    const el = composerRef.current; if (!el) return;
+    const cs = getComputedStyle(el);
+    if (cs.position !== 'fixed') return;
+    setEndSpace(Math.max(0, Math.round(el.offsetHeight + (parseFloat(cs.bottom) || 0) + lift)));
+    if (atBottom.current) requestAnimationFrame(() => scrollToEnd(true));
+  }, [lift]);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -380,8 +469,15 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // Поле ввода растёт вместе с текстом, до пяти строк
   useLayoutEffect(() => {
     const el = inputRef.current; if (!el) return;
+    // Замер без анимации, затем переход от прежней высоты к новой
+    const from = el.style.height;
+    el.style.transition = 'none';
     el.style.height = 'auto';
-    el.style.height = `${Math.min(140, el.scrollHeight)}px`;
+    const to = `${Math.min(140, el.scrollHeight)}px`;
+    el.style.height = from || to;
+    void el.offsetHeight;
+    el.style.transition = '';
+    el.style.height = to;
   }, [text]);
 
   // Таймер и уровень звука во время записи
@@ -628,8 +724,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           : <ChatMenu hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />}
       </div>
 
-      {/* Лента */}
-      <div className="flex-1 space-y-3 pb-4">
+      {/* Лента. Касание ленты на телефоне закрывает клавиатуру — как в мессенджерах */}
+      <div className="flex-1 space-y-3 pb-4"
+           onPointerDown={e => { if (phone && focused && e.pointerType !== 'mouse' && !(e.target as HTMLElement).closest('button, a, input, textarea')) inputRef.current?.blur(); }}>
         {empty && (
           // Невысокий экран телефона (адресная строка, маленький iPhone) — приветствие
           // плотнее, чтобы подсказки не уходили под переключатель режима
@@ -739,31 +836,23 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
 
       {/* Ввод */}
       {/* На телефоне поле ввода прижато к низу экрана (нижней панели здесь нет), на компьютере — к низу колонки */}
-      <div ref={composerRef} className="fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20">
+      <div ref={composerRef} className="ai-composer fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20"
+           style={lift ? { transform: `translate3d(0, ${-lift}px, 0)` } : undefined}>
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
-        {/* Режим: подтверждать каждое действие или выполнять сразу */}
-        <div role="radiogroup" aria-label="Режим агента"
-             className="mb-2 mx-auto w-max flex p-1 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-semibold">
-          {([['confirm', 'Подтверждать', ShieldCheck], ['auto', 'Авто', Zap]] as const).map(([m, label, Icon]) => (
-            <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}
-                    className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full transition ${mode === m
-                      ? m === 'auto' ? 'bg-gradient-to-br from-amber-400 to-orange-500 text-white shadow' : 'bg-violet-600 text-white shadow'
-                      : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'}`}>
-              <Icon size={14} /> {label}
-            </button>
-          ))}
-        </div>
-        {image && (
-          <div className="ai-msg-in mb-2 inline-flex items-start gap-2 p-2 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm">
-            <img src={image} alt="" className="h-16 rounded-xl" />
-            <button onClick={() => setImage(null)} aria-label="Убрать фото" className="w-6 h-6 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 text-sm leading-none">✕</button>
-          </div>
-        )}
-        <div className="flex items-end gap-2 p-2 rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-lg">
+        {/* Карточка ввода, как в нативных чатах: сверху поле во всю ширину (и фото),
+            снизу «+», режим агента и микрофон / «Отправить» */}
+        <div className={`ai-field rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border shadow-lg ${focused ? 'border-violet-300 dark:border-violet-500/50 is-focused' : 'border-slate-200 dark:border-slate-700'}`}>
+          {image && (
+            <div className="ai-msg-in px-3 pt-3">
+              <div className="relative inline-block">
+                <img src={image} alt="" className="h-16 rounded-xl" />
+                <button onClick={() => setImage(null)} aria-label="Убрать фото"
+                        className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-slate-900/80 dark:bg-white/90 text-white dark:text-slate-900 text-xs leading-none flex items-center justify-center shadow">✕</button>
+              </div>
+            </div>
+          )}
           {recording ? (
-            <>
-              <button onClick={cancelRecording} aria-label="Отменить запись" className="w-11 h-11 shrink-0 rounded-full text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-lg">✕</button>
-              <div className="flex-1 flex items-center gap-3 h-11 px-1">
+            <div className="flex items-center gap-3 h-[52px] px-4 pt-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
                 <span className="text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200">
                   {Math.floor(recSeconds / 60)}:{String(Math.floor(recSeconds % 60)).padStart(2, '0')}
@@ -774,32 +863,53 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                           style={{ height: `${Math.max(12, Math.min(100, level * 100 * (0.5 + Math.abs(Math.sin(i * 1.7 + recSeconds * 6)) * 0.8)))}%` }} />
                   ))}
                 </div>
-              </div>
-            </>
+            </div>
           ) : (
-            <>
-              <button onClick={() => fileRef.current?.click()} aria-label="Фото" className="w-11 h-11 shrink-0 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 transition">
-                <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z" /><circle cx="12" cy="13" r="4" /></svg>
-              </button>
-              <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
-              <textarea ref={inputRef} value={text} onChange={e => setText(e.target.value)} rows={1}
-                        onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); submit(); } }}
-                        placeholder={image ? 'Что сделать?' : 'Спросите или попросите…'}
-                        className="flex-1 resize-none bg-transparent outline-none py-2.5 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36" />
-            </>
+            <textarea ref={inputRef} value={text} onChange={e => setText(e.target.value)} rows={1}
+                      onFocus={() => {
+                        focusedRef.current = true;
+                        setFocused(true);
+                        // Сдвиг области бывает и после фокуса — пока клавиатура выезжает
+                        if (phone) [0, 60, 180, 320].forEach(t => setTimeout(() => { if (focusedRef.current && (window.scrollY > 0 || (window.visualViewport?.offsetTop || 0) > 0)) window.scrollTo(0, 0); }, t));
+                      }}
+                      onBlur={() => setFocused(false)}
+                      // Первое касание: фокус без прокрутки к полю — иначе браузер
+                      // уводит страницу вверх. Дальше касания как обычно (курсор, выделение)
+                      onTouchEnd={e => {
+                        const el = e.currentTarget;
+                        if (document.activeElement === el) return;
+                        e.preventDefault();
+                        el.focus({ preventScroll: true });
+                      }}
+                      onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); submit(); } }}
+                      placeholder={image ? 'Что сделать?' : 'Спросите или попросите…'}
+                      className="ai-input block w-full resize-none bg-transparent outline-none px-4 pt-3.5 pb-1 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36" />
           )}
+          <div className="flex items-center gap-1 px-2 pb-2 pt-0.5">
+            {recording ? (
+              <button onClick={cancelRecording} aria-label="Отменить запись"
+                      className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-lg">✕</button>
+            ) : (
+              <button onClick={() => fileRef.current?.click()} aria-label="Добавить фото" title="Фото"
+                      className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition">
+                <Plus size={24} strokeWidth={1.8} />
+              </button>
+            )}
+            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+            <div className="flex-1" />
+            {!recording && <ModeMenu mode={mode} onChange={setMode} />}
           {/* Идёт ответ — на месте отправки «Стоп» с бегущим кольцом */}
           {sending && !recording ? (
             <button onClick={stopRequest} disabled={stopping} aria-label={stopping ? 'Останавливаем' : 'Остановить ответ'} title="Остановить"
-                    className="ai-msg-in relative w-11 h-11 shrink-0 rounded-full flex items-center justify-center bg-slate-900 dark:bg-white active:scale-95 transition">
+                    className="ai-msg-in relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-slate-900 dark:bg-white active:scale-95 transition">
               <span aria-hidden className={`ai-busy-ring absolute -inset-[3px] rounded-full ${stopping ? 'opacity-40' : ''}`} />
               <span aria-hidden className={`w-3.5 h-3.5 rounded-[3px] bg-white dark:bg-slate-900 ${stopping ? 'animate-pulse' : ''}`} />
             </button>
           ) : <>
           {/* Микрофон — всегда, пока не набран текст: к фото можно сказать задание голосом */}
           {!text.trim() && (
-            <button onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
-                    className={`relative w-11 h-11 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
+            <button key="mic" onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
+                    className={`ai-swap relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
               {recording && <span className="ai-mic-ring absolute inset-0 rounded-full bg-rose-400" />}
               {recording ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
@@ -809,12 +919,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             </button>
           )}
           {(text.trim() || image) && !recording && (
-            <button onClick={submit} disabled={sending} aria-label="Отправить"
-                    className="ai-msg-in w-11 h-11 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-60">
+            <button key="send" onClick={submit} disabled={sending} aria-label="Отправить"
+                    className="ai-swap w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-60">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
             </button>
           )}
           </>}
+          </div>
         </div>
         {status && !status.plan && status.left <= 5 && !iosApp && (
           <button onClick={onOpenTariffs} className="mt-2 block mx-auto text-xs font-semibold text-violet-600 dark:text-violet-300">
