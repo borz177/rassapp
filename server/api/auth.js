@@ -84,10 +84,11 @@ const makeApiKeyAuth = ({ pool, getEffectivePlan, planLimits, verifyAgentToken }
   const subscription = typeof user.subscription === 'string' ? JSON.parse(user.subscription) : user.subscription;
   const effectivePlan = getEffectivePlan(subscription);
   const expired = !!subscription?.plan && effectivePlan !== subscription.plan;
-  // Ассистенту тариф «Бизнес» не нужен — у него своя подписка, её проверяет он сам.
-  // Но основная подписка должна действовать: без неё учёт закрыт и в приложении.
-  if (keyRow.isAgent && user.role !== 'admin' && (!effectivePlan || expired)) {
-    return fail(res, 403, CODES.SUBSCRIPTION_EXPIRED, 'Срок действия подписки истёк — продлите тариф, чтобы ассистент мог работать с учётом.');
+  // Агенту (FinUchetGPT) тариф «Бизнес» не нужен — у него своя подписка, её
+  // проверяет он сам. Без основной подписки — как в приложении: данные видно,
+  // менять нельзя. Тариф ИИ этого не обходит.
+  if (keyRow.isAgent && user.role !== 'admin' && (!effectivePlan || expired) && req.method !== 'GET') {
+    return fail(res, 403, CODES.SUBSCRIPTION_EXPIRED, 'Срок подписки приложения истёк — сейчас можно только смотреть данные, менять их нельзя.');
   }
   const allowed = user.role === 'admin' || keyRow.isAgent || !!planLimits?.[effectivePlan]?.api;
   if (!allowed) {

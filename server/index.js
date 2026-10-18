@@ -4561,6 +4561,8 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       // от порога суммы — всё равно с подтверждением
       mode: mode === 'auto' ? 'auto' : 'confirm',
       autoLimit: st.settings.autoLimit,
+      // Подписка приложения кончилась (тариф ИИ может действовать) — только чтение, как в приложении
+      readOnly: req.user.role !== 'admin' && !!(await getSubscriptionState(req.user.id)).expired,
     }).finally(() => { if (reqKey) aiRunning.delete(reqKey); });
     // Остановленный до первого ответа модели в лимит не идёт; потраченное — в учёт
     const counted = !out.cancelled || (out.usage?.completion || 0) > 0;

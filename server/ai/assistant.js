@@ -221,6 +221,7 @@ const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|о
 // просьбы и по инерции отчиталась за всё)
 const CLAIMS_DONE_RE = /(^|[^а-яё])(?<!не )(записал[аи]?|сохранил[аи]?|провёл|провел|провела|принял[аи]?|добавил[аи]?|изменил[аи]?|обновил[аи]?|оформил[аи]?|отправил[аи]?|поставил[аи]?|завёл|завел|удалил[аи]?)([^а-яё]|$)/i;
 const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report']);
+const READ_ONLY_TEXT = 'Срок подписки приложения истёк — сейчас можно только смотреть данные: записи, договоры, задачи и отправка клиентам недоступны. Скажи об этом человеку одной фразой, без призывов продлить или купить, и не пытайся сделать это иначе.';
 
 // Что сейчас делает агент — строкой над точками «печатает»
 const STEP_LABELS = {
@@ -418,8 +419,19 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return { text: '' };
   };
 
+  // Подписка приложения истекла: свои записи (задачи и пр.) пишем мимо API — проверяем сами
+  const appExpired = async (userId) => {
+    const u = (await pool.query('SELECT role, subscription FROM users WHERE id = $1', [userId])).rows[0];
+    if (!u || u.role === 'admin') return false;
+    const sub = typeof u.subscription === 'string' ? JSON.parse(u.subscription) : u.subscription;
+    // Как getSubscriptionState в server/index.js: без даты окончания — не истекла
+    return !!sub?.expiresAt && new Date(sub.expiresAt) < new Date();
+  };
+
   /** Выполнить своё умение. ok, text; undo — как отменить */
   const runCustom = async (userId, name, args) => {
+    // Карточку «Подтвердить» могли нажать уже после окончания подписки
+    if (await appExpired(userId)) return { ok: false, text: 'Срок подписки приложения истёк — изменения недоступны.' };
     if (name === 'update_customer') {
       const c = await loadItem(userId, 'customers', args.customerId);
       if (!c) return { ok: false, text: 'Клиент не найден.' };
@@ -857,7 +869,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * а начатая запись доводится до конца — и возвращается с «Отменить», а не
    * теряется молча.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null }) => {
+  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false }) => {
     const step = (label) => { try { if (label && onStep) onStep(label); } catch { /* шаги — только подсказка */ } };
     step(image ? 'Читаю фото…' : audio ? 'Слушаю голосовое…' : 'Думаю…');
     const auto = mode === 'auto';
@@ -879,7 +891,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     if (!content.length) return { reply: 'Напишите или скажите, что сделать.', actions: [] };
 
     const messages = [
-      { role: 'system', content: systemPrompt({ userName: user.name, companyName, today, auto }) },
+      { role: 'system', content: systemPrompt({ userName: user.name, companyName, today, auto }) + (readOnly ? '\nСейчас срок подписки приложения истёк: ты можешь только показывать данные и отвечать на вопросы. Ничего не записывай, не оформляй и не отправляй — сразу скажи, что это недоступно, пока подписка не продлена. Не предлагай продлить или купить тариф и не говори, где это сделать.' : '') },
       ...historyMessages(history),
       { role: 'user', content },
     ];
@@ -990,6 +1002,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           result = await customerOverview(user.id, args);
         } else if (name === 'due_payments') {
           result = await duePayments(user.id, args);
+        } else if (readOnly && ['prepare_contract', 'send_document', ...CUSTOM_WRITE_NAMES].includes(name)) {
+          result = READ_ONLY_TEXT;
         } else if (name === 'prepare_contract') {
           const missing = missingContractFields(args);
           const lookalikes = !missing.length ? await existingLookalikes(user.id, args) : null;
@@ -1029,6 +1043,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           const custom = CUSTOM_WRITE_NAMES.has(name);
           if (!tool && !custom) {
             result = `Инструмента ${name} нет.`;
+          } else if (readOnly && (custom || tool.scope === 'write')) {
+            result = READ_ONLY_TEXT;
           } else if (custom || tool.scope === 'write') {
             const key = `${name}:${JSON.stringify(args)}`;
             const cs = custom ? await customSummary(user.id, name, args) : null;
