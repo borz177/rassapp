@@ -1,4 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
 import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2 } from 'lucide-react';
@@ -9,7 +10,7 @@ import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '..
 import { isIOSApp, publicOrigin } from '../src/platform';
 
 /**
- * ИИ-ассистент: чат, голос и фото. Ответы и действия — server/ai/assistant.js.
+ * ИИ-агент: чат, голос и фото. Ответы и действия — server/ai/assistant.js.
  *
  * Режим выбирает человек (переключатель над полем ввода, запоминается):
  *  • «Подтверждение» — всё, что меняет учёт, приходит карточкой «Подтвердить»;
@@ -17,7 +18,7 @@ import { isIOSApp, publicOrigin } from '../src/platform';
  *  • «Авто» — платёж, расход, приход, клиент выполняются на сервере сразу,
  *    договор оформляется сразу (onCreateContract — тот же расчёт и сохранение,
  *    что у формы), документы уходят в WhatsApp сразу. У выполненного —
- *    «Отменить». Без обязательных полей договора ассистент спрашивает в любом
+ *    «Отменить». Без обязательных полей договора агент спрашивает в любом
  *    режиме (server/ai/assistant.js).
  *
  * История разговора живёт на устройстве (localStorage, без фото и голоса) —
@@ -33,7 +34,7 @@ interface Msg {
   text: string;
   image?: string;
   voice?: number; // длительность голосового, с
-  note?: string; // для ассистента, не показывается: id варианта, выбранного кнопкой
+  note?: string; // для агента, не показывается: id варианта, выбранного кнопкой
   stopped?: boolean; // человек нажал «Стоп», ответа не было
   actions?: Action[];
   error?: boolean;
@@ -42,7 +43,7 @@ interface Msg {
 interface Props {
   userId: string;
   onBack: () => void;
-  /** Черновик договора от ассистента → форма договора */
+  /** Черновик договора от агента → форма договора */
   onOpenContract: (draft: any) => void;
   /** «Авто»: оформить договор сразу, без формы */
   onCreateContract: (draft: any) => Promise<{ ok: boolean; text: string; saleId?: string; customerId?: string; number?: string; monthly?: number; total?: number; offline?: boolean }>;
@@ -96,7 +97,7 @@ const actionNote = (a: Action): string => {
   return '';
 };
 
-/** Прошлые реплики для ассистента: последние 12; фото — пока они есть в памяти (после перезапуска не сохраняются) */
+/** Прошлые реплики для агента: последние 12; фото — пока они есть в памяти (после перезапуска не сохраняются) */
 const toHistory = (messages: Msg[]) => messages
   .filter(m => !m.error && (m.text || m.image || m.actions?.length))
   .slice(-12)
@@ -155,10 +156,10 @@ const renderRich = (text: string): React.ReactNode => {
 
 
 /**
- * Меню «⋯» в шапке чата: новый чат, очистить, настройки ассистента.
+ * Меню «⋯» в шапке чата: новый чат, очистить, настройки агента.
  * Раскрывается из угла, закрывается касанием мимо и Esc.
  */
-const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; onClear: () => void; onSettings: () => void }> = ({ hasChat, busy, onNew, onClear, onSettings }) => {
+const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; onClear: () => void; onSettings: () => void; inTopbar?: boolean }> = ({ hasChat, busy, onNew, onClear, onSettings, inTopbar }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -178,9 +179,11 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
     </button>
   );
   return (
-    <div ref={ref} className="relative shrink-0">
+    <div ref={ref} className="relative shrink-0 pointer-events-auto">
       <button onClick={() => setOpen(o => !o)} aria-label="Меню чата" aria-haspopup="menu" aria-expanded={open}
-              className={`w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition ${open ? 'bg-slate-200/70 dark:bg-slate-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
+              className={inTopbar
+                ? 'glass-surface rounded-full w-11 h-11 flex items-center justify-center text-slate-600 dark:text-slate-200 active:scale-95 transition-transform'
+                : `w-10 h-10 rounded-full flex items-center justify-center text-slate-500 dark:text-slate-400 active:scale-95 transition ${open ? 'bg-slate-200/70 dark:bg-slate-700' : 'hover:bg-slate-100 dark:hover:bg-slate-800'}`}>
         <MoreHorizontal size={22} />
       </button>
       {open && (
@@ -188,7 +191,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
           {item('Новый чат', SquarePen, onNew, { disabled: !hasChat || busy })}
           {item('Очистить чат', Trash2, onClear, { danger: true, disabled: !hasChat || busy })}
           <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-700" />
-          {item('Настройки ассистента', Settings2, onSettings)}
+          {item('Настройки агента', Settings2, onSettings)}
         </div>
       )}
     </div>
@@ -198,9 +201,22 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
 const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
+  // Сообщения, что были при открытии, — без анимации появления: иначе вся
+  // история разворачивалась заново и лента росла уже после прокрутки вниз
+  const shownAtOpen = useRef<Set<string>>(new Set(messages.map(m => m.id)));
   const [prevChat, setPrevChat] = useState<Msg[]>(() => readStore(userId, true));
   const [clearOpen, setClearOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
+  // Слот кнопок в верхней панели (Layout.tsx) — есть только в телефонной раскладке
+  const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null);
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && !window.matchMedia('(min-width: 768px)').matches);
+  useEffect(() => {
+    setTopbarSlot(document.getElementById('topbar-actions-slot'));
+    const mq = window.matchMedia('(min-width: 768px)');
+    const on = () => setPhone(!mq.matches);
+    mq.addEventListener('change', on);
+    return () => mq.removeEventListener('change', on);
+  }, []);
   const [mode, setModeState] = useState<Mode>(() => readMode(userId));
   const [autoIntro, setAutoIntro] = useState(false);
   const setMode = (m: Mode) => {
@@ -224,7 +240,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const running = useRef<{ id: string; ctrl: AbortController; userMsgId: string } | null>(null);
   const [stopping, setStopping] = useState(false);
   const [elapsed, setElapsed] = useState(0);
-  // Что ассистент делает сейчас — приходит с сервера по шагам («Ищу клиента…»)
+  // Что агент делает сейчас — приходит с сервера по шагам («Ищу клиента…»)
   const [stepLabel, setStepLabel] = useState('');
   useEffect(() => {
     if (!sending) { setElapsed(0); return; }
@@ -243,7 +259,25 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
-  const loadStatus = () => api.aiAssistant.status().then(s => { setStatus(s); if (!s.consent) setConsentOpen(true); }).catch(() => {});
+  const loadStatus = () => api.aiAssistant.status().then(s => {
+    setStatus(s);
+    if (!s.consent) setConsentOpen(true);
+    showDigest(s.digest);
+  }).catch(() => {});
+
+  // Утренняя сводка (server/ai/digest.js) — один раз за день сообщением в чате,
+  // с кнопками самых частых следующих шагов
+  const showDigest = (digest?: { date: string; text: string } | null) => {
+    if (!digest) return;
+    const key = `finuchet_ai_digest_seen_${userId}`;
+    try { if (localStorage.getItem(key) === digest.date) return; localStorage.setItem(key, digest.date); } catch { /* приватный режим */ }
+    setMessages(ms => [...ms, {
+      id: newId(), role: 'assistant', text: `☀️ **План на сегодня**\n${digest.text.replace(/ — спросите FinUchetGPT.*$/, '.')}`,
+      actions: [{ id: newId(), kind: 'choices', title: 'Что дальше?', options: [
+        { label: 'Кто просрочил?' }, { label: 'Какие платежи сегодня?' }, { label: 'Напомни всем должникам' },
+      ] }],
+    }]);
+  };
   useEffect(() => { loadStatus(); }, []);
   useEffect(() => { writeStore(userId, messages); }, [messages, userId]);
   // Что листается: слой страницы PagePush, на Mac — карточка, иначе окно
@@ -274,7 +308,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const root = rootRef.current; if (!root) return;
     const el = scroller();
     const target: HTMLElement | Window = el || window;
+    // Отлипаем от низа только по прокрутке человека (палец, колесо, клавиши):
+    // свою прокрутку, догоняющую выросшую ленту, раньше принимали за «пролистал
+    // вверх» — и длинный чат с карточками открывался посередине
+    let userAt = 0;
+    const touched = () => { userAt = Date.now(); };
     const onScroll = () => {
+      if (Date.now() - userAt > 1000) return;
       const top = el ? el.scrollTop : window.scrollY;
       const max = el ? el.scrollHeight - el.clientHeight : document.documentElement.scrollHeight - window.innerHeight;
       atBottom.current = max - top < 80;
@@ -282,7 +322,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const ro = new ResizeObserver(() => { if (atBottom.current) scrollToEnd(false); });
     ro.observe(root);
     target.addEventListener('scroll', onScroll, { passive: true });
-    return () => { ro.disconnect(); target.removeEventListener('scroll', onScroll); };
+    const intent = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const;
+    intent.forEach(ev => target.addEventListener(ev, touched, { passive: true }));
+    return () => {
+      ro.disconnect();
+      target.removeEventListener('scroll', onScroll);
+      intent.forEach(ev => target.removeEventListener(ev, touched));
+    };
   }, []);
 
   // Поле ввода растёт вместе с текстом, до пяти строк
@@ -351,7 +397,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       if (e.code === 'AI_CONSENT_REQUIRED') setConsentOpen(true);
       setMessages(ms => [...ms, {
         id: newId(), role: 'assistant', error: true,
-        text: e.code === 'AI_LIMIT' ? `${e.message} Подключите тариф ИИ, чтобы продолжить.` : e.message || 'Ассистент не ответил — попробуйте ещё раз.',
+        text: e.code === 'AI_LIMIT' ? `${e.message} Подключите тариф ИИ, чтобы продолжить.` : e.message || 'Агент не ответил — попробуйте ещё раз.',
       }]);
       if (e.code === 'AI_LIMIT') loadStatus();
     } finally {
@@ -516,7 +562,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     <div ref={rootRef} className="flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
       {/* Шапка */}
       {/* В пустом чате шар один — большой посередине; маленький в шапке появляется вместе с перепиской */}
-      <div className="flex items-center gap-3 pb-3">
+      <div className="flex items-center gap-3 pb-3 md:sticky md:top-0 md:z-20 md:pt-3 md:-mt-3 md:bg-slate-50/90 md:dark:bg-slate-900/90 md:backdrop-blur">
         {!empty && <AIOrb size={44} className="ai-msg-in" />}
         <div className="min-w-0 flex-1">
           <h2 className="text-xl font-bold text-slate-900 dark:text-white leading-tight">FinUchetGPT</h2>
@@ -525,7 +571,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             {status && !iosApp && <span className="ml-1 font-semibold text-violet-600 dark:text-violet-300">· Тарифы ›</span>}
           </button>
         </div>
-        <ChatMenu hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />
+        {/* Меню «⋯»: на телефоне — в верхней панели (не уезжает при прокрутке), на компьютере — в закреплённой шапке */}
+        {topbarSlot && phone
+          ? createPortal(<ChatMenu inTopbar hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />, topbarSlot)
+          : <ChatMenu hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />}
       </div>
 
       {/* Лента */}
@@ -555,7 +604,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         )}
 
         {messages.map(m => (
-          <div key={m.id} className={`ai-msg-in flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}>
+          <div key={m.id} data-old={shownAtOpen.current.has(m.id) || undefined}
+               className={`ai-msg-in flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}>
             {m.role === 'assistant' && <AIOrb size={28} static className="mt-1" />}
             <div className={`max-w-[85%] space-y-2 ${m.role === 'user' ? 'items-end' : ''}`}>
               {(m.text || m.image || m.voice) && (
@@ -630,7 +680,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       <div className="fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20">
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
         {/* Режим: подтверждать каждое действие или выполнять сразу */}
-        <div role="radiogroup" aria-label="Режим ассистента"
+        <div role="radiogroup" aria-label="Режим агента"
              className="mb-2 mx-auto w-max flex p-1 rounded-full bg-white/90 dark:bg-slate-800/90 backdrop-blur border border-slate-200 dark:border-slate-700 shadow-sm text-xs font-semibold">
           {([['confirm', 'Подтверждать', ShieldCheck], ['auto', 'Авто', Zap]] as const).map(([m, label, Icon]) => (
             <button key={m} role="radio" aria-checked={mode === m} onClick={() => setMode(m)}
@@ -714,7 +764,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       {/* Согласие на передачу данных */}
       {settingsOpen && (
         <AIAssistantSettings
-          settings={status?.settings || { autoLimit: 50000, morningDigest: false }}
+          settings={status?.settings || { autoLimit: null, morningDigest: false }}
           onClose={() => setSettingsOpen(false)}
           onSaved={(st: AISettings) => setStatus((x: any) => x ? { ...x, settings: st } : x)}
         />
@@ -727,7 +777,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Режим «Авто»</h3>
           </div>
           <ul className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Платежи, расходы, приходы и новых клиентов ассистент проводит сразу — без кнопки «Подтвердить».</li>
+            <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Платежи, расходы, приходы и новых клиентов агент проводит сразу — без кнопки «Подтвердить».</li>
             <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Договор оформляет сразу, если названы клиент, товар, закуп, срок и наценка или цена. Чего-то нет — сначала спросит.</li>
             <li className="flex gap-2"><span className="text-amber-500 shrink-0">⚡</span>Договор и чек отправляет клиенту в WhatsApp, когда попросите.</li>
             <li className="flex gap-2"><span className="text-violet-500 shrink-0">↩</span>У каждого выполненного действия есть «Отменить» — 30 минут.</li>
@@ -760,7 +810,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Перед началом</h3>
           </div>
           <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            <p>Чтобы отвечать и выполнять поручения, ассистент передаёт текст запросов, голос, фото и нужные для ответа данные учёта (клиенты, договоры, платежи) провайдеру модели искусственного интеллекта через сервис OpenRouter. Обработка может проходить за пределами России.</p>
+            <p>Чтобы отвечать и выполнять поручения, агент передаёт текст запросов, голос, фото и нужные для ответа данные учёта (клиенты, договоры, платежи) провайдеру модели искусственного интеллекта через сервис OpenRouter. Обработка может проходить за пределами России.</p>
             <p>Данные используются только для ответа на ваш запрос. Действия с деньгами и записями выполняются, только когда вы нажмёте «Подтвердить».</p>
             <p>Если отправляете фото паспорта клиента — у вас должно быть его согласие на обработку персональных данных.</p>
           </div>

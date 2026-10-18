@@ -791,6 +791,9 @@ const counts = useMemo(() => {
           </div>
 
           <div className="flex items-center gap-2 shrink-0">
+          {/* Кнопки действий страницы приходят сюда порталом (как стрелка «назад»):
+              например, меню «⋯» чата агента — так оно не уезжает при прокрутке */}
+          <div id="topbar-actions-slot" className="contents" />
           {search}
           {showNotificationsBell && (
             <button
@@ -988,7 +991,7 @@ const counts = useMemo(() => {
       {/* Обёртка держит отступы от краёв и безопасную зону, сам остров — внутри.
           pointer-events-none, чтобы прозрачные поля по бокам не перехватывали нажатия
           по контенту под ними. */}
-      {/* На странице ИИ-ассистента панель уезжает вниз: внизу там поле ввода,
+      {/* На странице ИИ-агента панель уезжает вниз: внизу там поле ввода,
           и чату нужен весь экран, как в мессенджерах */}
       <div
         className={`md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none vv-anchor transition-[transform,opacity] duration-300 ease-out ${

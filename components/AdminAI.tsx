@@ -5,7 +5,7 @@ import { friendlyError } from '../src/friendlyError';
 /**
  * FinUchetGPT в админке: сколько запросов и денег на модель уходит по каждому
  * пользователю за месяц и сколько приносят тарифы ИИ. Отсюда видно, окупается
- * ли ассистент и кто тратит пробные запросы, не покупая тариф.
+ * ли агент и кто тратит пробные запросы, не покупая тариф.
  * Стоимость модели — в долларах, как её считает OpenRouter.
  */
 
@@ -120,7 +120,7 @@ const AdminAI: React.FC = () => {
               </tr>
             ))}
             {!shown.length && !loading && (
-              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Никто ещё не пользовался ассистентом</td></tr>
+              <tr><td colSpan={6} className="px-4 py-8 text-center text-slate-400">Никто ещё не пользовался агентом</td></tr>
             )}
           </tbody>
         </table>

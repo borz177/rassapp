@@ -18,7 +18,7 @@ import { PayMethodButton, SbpMark } from './Tariffs';
 
 const FEATURES: Record<string, string[]> = {
   AI_START: ['Ответы по долгам, платежам и прибыли', 'Принять платёж, расход, приход — голосом', 'Фото паспорта → готовый договор', '300 запросов в месяц'],
-  AI_PRO: ['Всё из «ИИ Старт»', '1 000 запросов в месяц', 'Для тех, кто работает с ассистентом весь день'],
+  AI_PRO: ['Всё из «ИИ Старт»', '1 000 запросов в месяц', 'Для тех, кто работает с агентом весь день'],
 };
 
 const AITariffs: React.FC = () => {
@@ -48,7 +48,7 @@ const AITariffs: React.FC = () => {
         <AIOrb size={72} />
         <h2 className="mt-4 text-2xl font-bold text-slate-900 dark:text-white">Тарифы FinUchetGPT</h2>
         <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-md">
-          Отдельно от основного тарифа. Запрос — одно сообщение: вопрос, голосовое или фото, сколько бы шагов ассистент ни сделал внутри.
+          Отдельно от основного тарифа. Запрос — одно сообщение: вопрос, голосовое или фото, сколько бы шагов агент ни сделал внутри.
         </p>
         {status && (
           <p className="mt-3 px-3 py-1.5 rounded-full text-xs font-semibold bg-violet-50 dark:bg-violet-500/10 text-violet-700 dark:text-violet-300">

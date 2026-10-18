@@ -2092,11 +2092,11 @@ export const api = {
       return res.json();
     },
 
-    /** ИИ-ассистент (server/ai/assistant.js) */
+    /** ИИ-агент (server/ai/assistant.js) */
     aiAssistant: {
       status: async (): Promise<any> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/status`);
-        if (!res.ok) throw new Error('Не удалось загрузить ассистента');
+        if (!res.ok) throw new Error('Не удалось загрузить агента');
         return res.json();
       },
       consent: async (): Promise<void> => {
@@ -2104,8 +2104,8 @@ export const api = {
         if (!res.ok) throw new Error('Не удалось сохранить согласие');
       },
       /**
-       * Ответ ассистента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT.
-       * onStep — что ассистент делает сейчас («Ищу клиента…»): тогда сервер
+       * Ответ агента; ошибка несёт code: AI_CONSENT_REQUIRED | AI_LIMIT.
+       * onStep — что агент делает сейчас («Ищу клиента…»): тогда сервер
        * отвечает потоком строк JSON (NDJSON), итог — в последней строке.
        */
       message: async (
@@ -2130,15 +2130,15 @@ export const api = {
               if (!line) continue;
               const msg = JSON.parse(line);
               if (msg.step) onStep(msg.step);
-              else if (msg.error) throw Object.assign(new Error(msg.msg || 'Ассистент не ответил'), { code: msg.code });
+              else if (msg.error) throw Object.assign(new Error(msg.msg || 'Агент не ответил'), { code: msg.code });
               else if (msg.done) return msg;
             }
             if (done) break;
           }
-          throw new Error('Ассистент не ответил — попробуйте ещё раз.');
+          throw new Error('Агент не ответил — попробуйте ещё раз.');
         }
         const data = await res.json().catch(() => ({}));
-        if (!res.ok) throw Object.assign(new Error(data.msg || 'Ассистент не ответил'), { code: data.code });
+        if (!res.ok) throw Object.assign(new Error(data.msg || 'Агент не ответил'), { code: data.code });
         return data;
       },
       confirm: async (id: string): Promise<{ ok: boolean; text: string; undoable?: boolean }> => {
@@ -2150,7 +2150,7 @@ export const api = {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/undo`, { method: 'POST', timeout: 60000 });
         return res.json().catch(() => ({ ok: false, text: 'Не удалось отменить' }));
       },
-      /** Настройки ассистента (порог «Авто», утренняя сводка) */
+      /** Настройки агента (порог «Авто», утренняя сводка) */
       saveSettings: async (patch: { autoLimit?: number | null; morningDigest?: boolean }): Promise<{ settings: { autoLimit: number | null; morningDigest: boolean } }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/settings`, { method: 'PUT', body: JSON.stringify(patch) });
         if (!res.ok) throw new Error('Не удалось сохранить');

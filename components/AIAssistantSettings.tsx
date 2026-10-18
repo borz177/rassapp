@@ -7,7 +7,7 @@ import { toast } from '../src/toast';
 /**
  * Настройки FinUchetGPT — из меню «⋯» в чате. Хранятся на сервере
  * (users.ai_settings): порог действует на всех устройствах, и соблюдает его
- * сам сервер (server/ai/assistant.js). Новые настройки ассистента — сюда же,
+ * сам сервер (server/ai/assistant.js). Новые настройки агента — сюда же,
  * отдельной секцией.
  */
 
@@ -18,20 +18,16 @@ export interface AISettings {
   morningDigest: boolean;
 }
 
-const PRESETS = [10000, 50000, 100000];
-const rub = (n: number) => `${n.toLocaleString('ru-RU')} ₽`;
 
 const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void; onSaved: (s: AISettings) => void }> = ({ settings, onClose, onSaved }) => {
-  const initialCustom = settings.autoLimit != null && !PRESETS.includes(settings.autoLimit);
-  const [limitChoice, setLimitChoice] = useState<'none' | 'custom' | number>(
-    settings.autoLimit == null ? 'none' : initialCustom ? 'custom' : settings.autoLimit);
-  const [custom, setCustom] = useState(initialCustom ? String(settings.autoLimit) : '');
+  const [limitChoice, setLimitChoice] = useState<'none' | 'custom'>(settings.autoLimit == null ? 'none' : 'custom');
+  const [custom, setCustom] = useState(settings.autoLimit != null ? settings.autoLimit.toLocaleString('ru-RU') : '');
   const [digest, setDigest] = useState(settings.morningDigest);
   const [saving, setSaving] = useState(false);
 
   const customValue = Math.round(Number(custom.replace(/\s/g, '').replace(',', '.')));
   const customValid = Number.isFinite(customValue) && customValue > 0;
-  const nextLimit = limitChoice === 'none' ? null : limitChoice === 'custom' ? (customValid ? customValue : NaN) : limitChoice;
+  const nextLimit = limitChoice === 'none' ? null : customValid ? customValue : NaN;
   const valid = !(limitChoice === 'custom' && !customValid);
   const dirty = nextLimit !== settings.autoLimit || digest !== settings.morningDigest;
 
@@ -51,7 +47,7 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
 
   return (
     <GlassSheet
-      title="Настройки ассистента"
+      title="Настройки агента"
       onClose={onClose}
       cancelLabel="Закрыть"
       action={{ label: saving ? 'Сохраняем…' : 'Готово', onClick: save, disabled: !valid || saving || !dirty }}
@@ -63,11 +59,9 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
       <div className="space-y-6">
         <SheetSection
           title="Порог для режима «Авто»"
-          hint="В «Авто» платёж, расход или приход от этой суммы всё равно ждёт «Подтвердить». Договор — по сумме закупа. В режиме «Подтверждать» подтверждаете всё, как раньше."
+          hint="В «Авто» платёж, расход или приход от этой суммы ждёт «Подтвердить»; договор — по закупу."
         >
-          {PRESETS.map(n => (
-            <SheetChoice key={n} selected={limitChoice === n} label={`От ${rub(n)}`} onSelect={() => setLimitChoice(n)} />
-          ))}
+          <SheetChoice selected={limitChoice === 'none'} label="Без порога" onSelect={() => setLimitChoice('none')} />
           <SheetChoice selected={limitChoice === 'custom'} label="Своя сумма" onSelect={() => setLimitChoice('custom')} />
           {limitChoice === 'custom' && (
             <SheetField label="Подтверждать от, ₽" hint={!custom || customValid ? undefined : 'Введите сумму больше нуля'}>
@@ -75,13 +69,12 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
                      onChange={e => setCustom(e.target.value.replace(/[^\d\s]/g, ''))} placeholder="Например, 30 000" />
             </SheetField>
           )}
-          <SheetChoice selected={limitChoice === 'none'} label="Без порога" hint="«Авто» проводит любые суммы сразу" onSelect={() => setLimitChoice('none')} />
         </SheetSection>
 
         <SheetSection title="Уведомления">
           <SheetToggle
             label="Утренняя сводка"
-            description="В 9:00 по Москве: сколько платежей ждём сегодня и кто просрочил"
+            description="В 9:00 по Москве — сообщением в чате агента и уведомлением: сколько платежей ждём сегодня и кто просрочил"
             checked={digest}
             onChange={setDigest}
           />

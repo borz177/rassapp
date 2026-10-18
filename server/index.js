@@ -1452,7 +1452,7 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_churn_feedback_user ON churn_feedback(user_id, created_at DESC);
 `).catch(err => console.error('❌ Retention tables:', err.message));
 
-// 🤖 ИИ-ассистент: согласие на передачу данных провайдеру модели, своя подписка
+// 🤖 ИИ-агент: согласие на передачу данных провайдеру модели, своя подписка
 // (отдельно от основной) и счётчик запросов по месяцам
 await pool.query(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_consent_at TIMESTAMPTZ;
@@ -2675,7 +2675,7 @@ app.post(
         const lastMsg = customerData.lastNoContractsMessage || 0;
         if (!customerData.lastNoContractsMessage || (now - lastMsg) > (24 * 60 * 60 * 1000)) {
           await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
-            `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`);
+            `Здравствуйте 👋 Я агент ${managerName}. У вас нет активных договоров.`);
           customerData.lastNoContractsMessage = now;
           await pool.query(`UPDATE data_items SET data = $1 WHERE id = $2`, [JSON.stringify({ ...customerData, lastNoContractsMessage: now }), customerId]);
         }
@@ -4432,7 +4432,7 @@ const PASSPORT_DAILY_LIMIT = 50;
 // ==========================================================
 // Своя подписка, отдельно от основной: тарифы ИИ и пробные запросы. Запрос —
 // одно сообщение человека (текст, голос или фото), сколько бы шагов ни сделал
-// ассистент внутри.
+// агент внутри.
 const AI_PLANS = {
   AI_START: { name: 'ИИ Старт', price: 490, monthly: 300 },
   AI_PRO: { name: 'ИИ Про', price: 990, monthly: 1000 },
@@ -4440,17 +4440,17 @@ const AI_PLANS = {
 const AI_TRIAL_REQUESTS = 20;
 const { createAssistant } = require('./ai/assistant');
 const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT });
-// Идущие запросы к ассистенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
+// Идущие запросы к агенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
 const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
 
 /** Что может пользователь прямо сейчас: согласие, тариф, сколько осталось */
-// Настройки ассистента (окно «Настройки» в чате). Хранятся на сервере: порог
+// Настройки агента (окно «Настройки» в чате). Хранятся на сервере: порог
 // действует на всех устройствах, и соблюдает его сам сервер.
 //  autoLimit — в «Авто» сумма от этой и больше всё равно ждёт «Подтвердить»;
-//              null — без порога;
+//              null — без порога (по умолчанию);
 //  morningDigest — утренняя сводка уведомлением (server/ai/digest.js).
-const AI_SETTINGS_DEFAULTS = { autoLimit: 50000, morningDigest: false };
+const AI_SETTINGS_DEFAULTS = { autoLimit: null, morningDigest: false };
 const normalizeAiSettings = (raw) => {
   const s = { ...AI_SETTINGS_DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
   const limit = s.autoLimit === null || s.autoLimit === '' ? null : Math.round(Number(s.autoLimit));
@@ -4458,6 +4458,7 @@ const normalizeAiSettings = (raw) => {
     autoLimit: limit === null || !Number.isFinite(limit) || limit < 0 ? null : Math.min(limit, 100_000_000),
     morningDigest: s.morningDigest === true,
     ...(typeof s.digestSentOn === 'string' ? { digestSentOn: s.digestSentOn } : {}),
+    ...(s.digest && typeof s.digest.text === 'string' ? { digest: { date: String(s.digest.date), text: s.digest.text } } : {}),
   };
 };
 
@@ -4479,7 +4480,12 @@ const aiAssistantState = async (userId) => {
     trial: !sub && !admin,
     trialLeft,
     plans: Object.entries(AI_PLANS).map(([key, p]) => ({ key, ...p })),
-    settings: (({ digestSentOn, ...pub }) => pub)(normalizeAiSettings(u.ai_settings)),
+    settings: (({ digestSentOn, digest, ...pub }) => pub)(normalizeAiSettings(u.ai_settings)),
+    // Сегодняшняя утренняя сводка — чат покажет её первым сообщением
+    digest: (() => {
+      const d = normalizeAiSettings(u.ai_settings).digest;
+      return d && d.date === new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }) ? d : null;
+    })(),
   };
 };
 
@@ -4497,7 +4503,7 @@ app.put('/api/ai/assistant/settings', auth, async (req, res) => {
       ...('morningDigest' in body ? { morningDigest: body.morningDigest === true } : {}),
     });
     await pool.query('UPDATE users SET ai_settings = $1 WHERE id = $2', [JSON.stringify(next), req.user.id]);
-    const { digestSentOn, ...pub } = next;
+    const { digestSentOn, digest, ...pub } = next;
     res.json({ settings: pub });
   } catch (e) { console.error('AI settings error:', e.message); res.status(500).json({ msg: 'Не удалось сохранить' }); }
 });
@@ -4518,8 +4524,8 @@ app.post('/api/ai/assistant/consent', auth, async (req, res) => {
 app.post('/api/ai/assistant/message', auth, async (req, res) => {
   try {
     const st = await aiAssistantState(req.user.id);
-    if (!st?.allowedRole) return res.status(403).json({ msg: 'Ассистент доступен владельцу аккаунта.' });
-    if (!st.consent) return res.status(403).json({ code: 'AI_CONSENT_REQUIRED', msg: 'Нужно согласие на обработку данных ассистентом.' });
+    if (!st?.allowedRole) return res.status(403).json({ msg: 'Агент доступен владельцу аккаунта.' });
+    if (!st.consent) return res.status(403).json({ code: 'AI_CONSENT_REQUIRED', msg: 'Нужно согласие на обработку данных агентом.' });
     if (st.left <= 0) {
       return res.status(402).json({ code: 'AI_LIMIT', msg: st.plan ? 'Запросы на этот месяц закончились.' : 'Пробные запросы закончились.' });
     }
@@ -4558,7 +4564,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     }).finally(() => { if (reqKey) aiRunning.delete(reqKey); });
     // Остановленный до первого ответа модели в лимит не идёт; потраченное — в учёт
     const counted = !out.cancelled || (out.usage?.completion || 0) > 0;
-    // Учёт: запрос засчитывается, когда ассистент ответил
+    // Учёт: запрос засчитывается, когда агент ответил
     await pool.query(
       `INSERT INTO ai_assistant_usage (user_id, month, requests, prompt_tokens, completion_tokens, cost_usd)
        VALUES ($1, $2, $6, $3, $4, $5)
@@ -4572,7 +4578,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     if (streaming) { send({ done: true, ...result }); res.end(); } else res.json(result);
   } catch (e) {
     console.error('AI assistant error:', e.message);
-    const msg = e.status === 503 ? 'Ассистент ещё не настроен.' : 'Ассистент сейчас не ответил — попробуйте ещё раз.';
+    const msg = e.status === 503 ? 'Агент ещё не настроен.' : 'Агент сейчас не ответил — попробуйте ещё раз.';
     if (res.locals.aiStreaming) { res.write(`${JSON.stringify({ error: true, status: e.status || 500, msg })}\n`); res.end(); }
     else res.status(e.status || 500).json({ msg });
   }
@@ -6736,7 +6742,7 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
             });
 
             if (verifyResp.data?.status === 'succeeded' && verifyResp.data.metadata?.aiPlan) {
-                // 🤖 Тариф ИИ-ассистента — своя подписка, основную не трогаем
+                // 🤖 Тариф ИИ-агента — своя подписка, основную не трогаем
                 await applyAiPayment(object.id, verifyResp.data);
             } else if (verifyResp.data?.status === 'succeeded') {
                 const { userId, plan, months } = verifyResp.data.metadata || {};
@@ -8117,7 +8123,7 @@ backupModule.startScheduler();
 
 // 📧 Письма о конце подписки со ссылкой на оплату (см. subscription-reminders.js)
 require('./subscription-reminders')({ pool, sendEmail }).start();
-// Утренняя сводка FinUchetGPT (настройки ассистента → «Утренняя сводка»)
+// Утренняя сводка FinUchetGPT (настройки агента → «Утренняя сводка»)
 require('./ai/digest')({ pool, createNotification, aiTrialRequests: AI_TRIAL_REQUESTS, aiPlans: AI_PLANS }).start();
 
 // 🔹 Очистка старых конфигов (запускается раз в сутки)

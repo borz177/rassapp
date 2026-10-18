@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Check, Download, FileSpreadsheet, FileText, Receipt, RotateCcw, Send, ShieldAlert, Undo2 } from 'lucide-react';
 
 /**
- * Карточки действий FinUchetGPT под ответом ассистента. Поведение (запросы,
+ * Карточки действий FinUchetGPT под ответом агента. Поведение (запросы,
  * сохранение договора, отправка PDF) — в AIAssistant.tsx, здесь только вид.
  *
  *  • choices       — варианты-кнопки к уточняющему вопросу;
@@ -41,7 +41,7 @@ const mutedLine = 'mt-2 text-sm text-slate-500';
 
 interface Props {
   action: AIAction;
-  /** Варианты нажимаются только у последнего сообщения и пока ассистент не занят */
+  /** Варианты нажимаются только у последнего сообщения и пока агент не занят */
   choicesActive: boolean;
   sending: boolean;
   whatsappEnabled: boolean;

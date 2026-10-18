@@ -1,11 +1,12 @@
 // Утренняя сводка FinUchetGPT: в 9:00 по Москве — сколько платежей ждём
-// сегодня и сколько договоров в просрочке. Включается в настройках ассистента
+// сегодня и сколько договоров в просрочке. Включается в настройках агента
 // (users.ai_settings.morningDigest). Считается по базе, без модели: бесплатно
 // и цифры всегда те же, что в приложении. Уходит обычным уведомлением
-// приложения (createNotification) — с его настройками и пушем.
+// приложения (createNotification) — с его настройками и пушем — и первым
+// сообщением в чате агента, когда его откроют в тот же день.
 //
-// Только тем, у кого ассистент доступен: владелец аккаунта с тарифом ИИ или
-// оставшимися пробными запросами (сводка — часть ассистента).
+// Только тем, у кого агент доступен: владелец аккаунта с тарифом ИИ или
+// оставшимися пробными запросами (сводка — часть агента).
 
 const domain = require('../api/domain');
 
@@ -57,7 +58,11 @@ module.exports = ({ pool, createNotification, aiTrialRequests, aiPlans }) => {
         await pool.query(`UPDATE users SET ai_settings = coalesce(ai_settings, '{}'::jsonb) || jsonb_build_object('digestSentOn', $1::text) WHERE id = $2`, [today, u.id]);
         const sales = (await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'sales'`, [u.id])).rows.map(r => r.data);
         const text = buildDigest(sales, today);
-        if (text) await createNotification(u.id, 'AI_DIGEST', 'FinUchetGPT: план на сегодня', text);
+        if (text) {
+          // Та же сводка — первым сообщением в чате агента, когда его откроют сегодня
+          await pool.query(`UPDATE users SET ai_settings = ai_settings || jsonb_build_object('digest', jsonb_build_object('date', $1::text, 'text', $2::text)) WHERE id = $3`, [today, text, u.id]);
+          await createNotification(u.id, 'AI_DIGEST', 'FinUchetGPT: план на сегодня', text);
+        }
       } catch (e) {
         console.error('AI digest error:', u.id, e.message);
       }
