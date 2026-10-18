@@ -335,6 +335,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const [focused, setFocused] = useState(false);
   const focusedRef = useRef(false);
   focusedRef.current = focused;
+  // Запись голоса: поле уступает место записи и пропадает — blur от него может
+  // не прийти, а клавиатура уже закрыта
+  useEffect(() => { if (recording) setFocused(false); }, [recording]);
   const safeBottom = useRef(0);
   const lift = keyboard > 0 ? Math.max(0, keyboard - safeBottom.current) : 0;
   const liftRef = useRef(0);
@@ -575,6 +578,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const t = text.trim();
     if (!t && !image) return;
     send({ text: t, image });
+    // Печатали с открытой клавиатурой — курсор остаётся в поле, можно писать дальше
+    if (focusedRef.current) requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   };
 
   const toggleMic = async () => {
@@ -846,7 +851,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
         {/* Карточка ввода, как в нативных чатах: сверху поле во всю ширину (и фото),
             снизу «+», режим агента и микрофон / «Отправить» */}
-        <div className={`ai-field rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border shadow-lg ${focused ? 'border-violet-300 dark:border-violet-500/50 is-focused' : 'border-slate-200 dark:border-slate-700'}`}>
+        {/* Кнопки панели не забирают фокус у поля — клавиатура не прячется на
+            «Отправить» и выборе режима (как в нативных чатах). «+» и микрофон
+            закрывают её сами: открывается выбор фото / поле уступает записи */}
+        <div onMouseDown={e => { if ((e.target as HTMLElement).closest('button:not([data-blur])')) e.preventDefault(); }}
+             className={`ai-field rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border shadow-lg ${focused ? 'border-violet-300 dark:border-violet-500/50 is-focused' : 'border-slate-200 dark:border-slate-700'}`}>
           {image && (
             <div className="ai-msg-in px-3 pt-3">
               <div className="relative inline-block">
@@ -895,7 +904,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               <button onClick={cancelRecording} aria-label="Отменить запись"
                       className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-lg">✕</button>
             ) : (
-              <button onClick={() => fileRef.current?.click()} aria-label="Добавить фото" title="Фото"
+              <button data-blur onClick={() => fileRef.current?.click()} aria-label="Добавить фото" title="Фото"
                       className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition">
                 <Plus size={24} strokeWidth={1.8} />
               </button>
@@ -913,7 +922,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           ) : <>
           {/* Микрофон — всегда, пока не набран текст: к фото можно сказать задание голосом */}
           {!text.trim() && (
-            <button key="mic" onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
+            <button key="mic" data-blur onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
                     className={`ai-swap relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
               {recording && <span className="ai-mic-ring absolute inset-0 rounded-full bg-rose-400" />}
               {recording ? (
