@@ -255,6 +255,22 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const [consentOpen, setConsentOpen] = useState(false);
   const [consentChecked, setConsentChecked] = useState(false);
   const listEnd = useRef<HTMLDivElement>(null);
+  // Место под нижней панелью (режим, поле ввода, фото): на телефоне она висит
+  // поверх ленты — ровно её высота (зазор даёт pb-4 ленты), а не отступ «с запасом»
+  const composerRef = useRef<HTMLDivElement>(null);
+  const [endSpace, setEndSpace] = useState(176);
+  useLayoutEffect(() => {
+    const el = composerRef.current; if (!el) return;
+    const measure = () => {
+      const fixed = getComputedStyle(el).position === 'fixed';
+      setEndSpace(fixed ? Math.max(0, Math.round(window.innerHeight - el.getBoundingClientRect().top)) : 0);
+    };
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    window.addEventListener('resize', measure);
+    return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
+  }, []);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -559,7 +575,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const empty = messages.length === 0;
 
   return (
-    <div ref={rootRef} className="flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
+    <div ref={rootRef} className="ai-chat-root flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
       {/* Шапка */}
       {/* В пустом чате шар один — большой посередине; маленький в шапке появляется вместе с перепиской */}
       <div className="flex items-center gap-3 pb-3 md:sticky md:top-0 md:z-20 md:pt-3 md:-mt-3 md:bg-slate-50/90 md:dark:bg-slate-900/90 md:backdrop-blur">
@@ -672,12 +688,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           </div>
         )}
         {/* Место под полем ввода: последнее сообщение не прячется за ним */}
-        <div ref={listEnd} className="h-44" />
+        <div ref={listEnd} style={{ height: endSpace }} />
       </div>
 
       {/* Ввод */}
       {/* На телефоне поле ввода прижато к низу экрана (нижней панели здесь нет), на компьютере — к низу колонки */}
-      <div className="fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20">
+      <div ref={composerRef} className="fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20">
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
         {/* Режим: подтверждать каждое действие или выполнять сразу */}
         <div role="radiogroup" aria-label="Режим агента"

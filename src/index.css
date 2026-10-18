@@ -1110,6 +1110,13 @@ input, textarea, [contenteditable] {
     padding-bottom: calc(5.75rem + env(safe-area-inset-bottom, 0px));
   }
 }
+/* Чат агента: нижней навигации там нет (уезжает, Layout.tsx), а место под своей
+   панелью ввода чат оставляет сам — отступ под навигацию дал бы пустоту снизу */
+@media (max-width: 767px) {
+  .page-push-scroll:has(> .ai-chat-root), .page-push-scroll:has(.ai-chat-root) {
+    padding-bottom: 0;
+  }
+}
 
 
 
