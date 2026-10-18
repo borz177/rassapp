@@ -280,9 +280,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const [endSpace, setEndSpace] = useState(176);
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
+    // Высота панели + её отступ от низа экрана — а не «высота окна минус верх
+    // панели». Пока страница въезжает (PagePush: transform на слое), fixed-панель
+    // считается от слоя и прокручивается вместе с лентой: после прокрутки к концу
+    // её верх уходил далеко вверх, и под лентой появлялись тысячи пикселей
+    // пустоты — лента «уезжала вверх» при открытии и при каждой отправке
     const measure = () => {
-      const fixed = getComputedStyle(el).position === 'fixed';
-      setEndSpace(fixed ? Math.max(0, Math.round(window.innerHeight - el.getBoundingClientRect().top)) : 0);
+      const cs = getComputedStyle(el);
+      setEndSpace(cs.position === 'fixed' ? Math.max(0, Math.round(el.offsetHeight + (parseFloat(cs.bottom) || 0))) : 0);
     };
     measure();
     const ro = new ResizeObserver(measure);
