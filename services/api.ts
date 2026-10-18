@@ -381,13 +381,13 @@ export interface AdminAiUser {
     id: string; email: string; name: string;
     plan: string | null; planExpiresAt: string | null;
     trialUsed: number; trialTotal: number; consent: boolean;
-    requests: number; promptTokens: number; completionTokens: number; costUsd: number;
+    requests: number; promptTokens: number; completionTokens: number; costUsd: number; cachedTokens: number;
     autoLimit: number | null; morningDigest: boolean;
 }
 export interface AdminAiReport {
     month: string;
     users: AdminAiUser[];
-    months: { month: string; requests: number; cost_usd: number; users: number; revenueRub: number; payments: number }[];
+    months: { month: string; requests: number; cost_usd: number; users: number; revenueRub: number; payments: number; prompt_tokens: number; cached_tokens: number }[];
 }
 
 export interface AdminWhatsAppReport {
@@ -2112,6 +2112,8 @@ export const api = {
         body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string },
         signal?: AbortSignal,
         onStep?: (label: string) => void,
+        /** Текст ответа по мере появления: кусок; null — начать заново */
+        onDelta?: (piece: string | null) => void,
       ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, {
           method: 'POST', body: JSON.stringify(onStep ? { ...body, stream: true } : body), timeout: 120000, signal,
@@ -2130,6 +2132,8 @@ export const api = {
               if (!line) continue;
               const msg = JSON.parse(line);
               if (msg.step) onStep(msg.step);
+              else if (msg.delta) onDelta?.(msg.delta);
+              else if (msg.reset) onDelta?.(null);
               else if (msg.error) throw Object.assign(new Error(msg.msg || 'Агент не ответил'), { code: msg.code });
               else if (msg.done) return msg;
             }

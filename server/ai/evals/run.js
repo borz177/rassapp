@@ -44,7 +44,10 @@ class Chat {
       const c = a.draft?.newCustomer;
       return `[Черновик договора: ${a.draft?.productName}; ${c ? `${c.name}, паспорт ${c.passportSeries || ''} ${c.passportNumber || ''} (новый клиент, в базе ещё нет)` : `клиент из базы ${a.draft?.customerId}`}]`;
     });
-    this.msgs.push({ role: 'user', text: note ? `${text} [${note}]` : text, ...(image ? { image: img(image) } : {}) });
+    // Паспорт, по которому сразу сделан черновик, приложение больше не отправляет (toHistory)
+    const passportTaken = (d.actions || []).some(a => a.kind === 'contract_form' && a.draft?.newCustomer?.passportNumber);
+    this.msgs.push({ role: 'user', text: (note ? `${text} [${note}]` : text) + (image && passportTaken ? ' (было фото паспорта — данные в черновике договора)' : ''),
+      ...(image && !passportTaken ? { image: img(image) } : {}) });
     this.msgs.push({ role: 'assistant', text: [d.reply || '', ...notes].join('\n') });
     return d;
   }
@@ -70,8 +73,11 @@ const scenarios = [
     const d2 = await chat.say('и вот ещё клиентка, самсунг закуп 300 наценка 30 на 6 месяцев', { image: 'passport-ivanova.jpg' });
     const d3 = await chat.say('оформи на неё ещё один договор: наушники закуп 20 наценка 20 на 3 месяца');
     const d4 = await chat.say('а теперь первому клиенту ноутбук закуп 100 наценка 25 на 5 месяцев');
-    const who = (d) => String(action(d, 'contract_form')?.draft?.newCustomer?.name || '').toLowerCase();
-    return who(d2).includes('иванова') && who(d3).includes('иванова') && who(d4).includes('петров');
+    // Новый клиент из паспорта или он же, уже заведённый в базе (customerName подставляет сервер)
+    const who = (d) => { const c = action(d, 'contract_form')?.draft; return String(c?.newCustomer?.name || c?.customerName || '').toLowerCase(); };
+    const ok = who(d2).includes('иванова') && who(d3).includes('иванова') && who(d4).includes('петров');
+    if (!ok) console.log(`     шаги: 2=${who(d2) || '—'} | 3=${who(d3) || '—'} «${(d3.reply || '').slice(0, 300)}» | 4=${who(d4) || '—'} «${(d4.reply || '').slice(0, 60)}»`);
+    return ok;
   }],
   ['Фото без подписи → называет, кого распознал, ничего не делает', async () => {
     const d = await new Chat().say('', { image: 'passport-ivanova.jpg' });
@@ -184,6 +190,10 @@ const scenarios = [
     const d = await new Chat().say('пришли отчёт excel за октябрь 2026');
     const r = action(d, 'report');
     return r?.from === '2026-10-01' && r?.to === '2026-10-31';
+  }],
+  ['Список должников — по ФИО, без технических id', async () => {
+    const d = await new Chat().say('кто должен больше всех? перечисли пятерых');
+    return !/\b(cust|sale|acc|inv|pay)_[\w-]+/.test(d.reply || '') && /[А-ЯЁ][а-яё]+ [А-ЯЁ][а-яё]+/.test(d.reply || '');
   }],
   ['Обычный вопрос → ответ без карточек', async () => {
     const d = await new Chat().say('сколько у меня клиентов?');

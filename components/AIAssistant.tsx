@@ -97,15 +97,31 @@ const actionNote = (a: Action): string => {
   return '';
 };
 
-/** Прошлые реплики для агента: последние 12; фото — пока они есть в памяти (после перезапуска не сохраняются) */
+/**
+ * Прошлые реплики для агента: последние 12. Фото — пока они есть в памяти
+ * (после перезапуска не сохраняются) и пока нужны: паспорт, по которому в
+ * ответ сразу сделан черновик, больше не отправляем — его данные уже в пометке
+ * черновика, а каждое фото — 1–2 тысячи токенов на каждом шаге разговора.
+ */
 const toHistory = (messages: Msg[]) => messages
   .filter(m => !m.error && (m.text || m.image || m.actions?.length))
   .slice(-12)
-  .map(m => ({
-    role: m.role,
-    text: [m.text + (m.note ? ` [${m.note}]` : '') + (m.stopped ? ' [запрос остановлен человеком — не выполнять]' : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n'),
-    image: m.image && m.image.startsWith('data:image/') ? m.image : undefined,
-  }));
+  .map((m, i, list) => {
+    const next = list[i + 1];
+    const passportTaken = next?.role === 'assistant'
+      && !!next.actions?.some(a => a.kind === 'contract_form' && a.draft?.newCustomer?.passportNumber);
+    return {
+      role: m.role,
+      text: [m.text + (m.note ? ` [${m.note}]` : '') + (m.stopped ? ' [запрос остановлен человеком — не выполнять]' : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n')
+        + (m.image && passportTaken ? ' (было фото паспорта — данные в черновике договора)' : ''),
+      image: m.image && m.image.startsWith('data:image/') && !passportTaken ? m.image : undefined,
+    };
+  });
+
+/** Черновой текст во время печати — без служебных пометок, которые сервер всё равно уберёт в итоге */
+const livePreview = (t: string) => t
+  .replace(/\[(Черновик договора|Договор оформлен|Выполнено|Отменено|Отправлено|Не выполнено|Не отправлено|Ждёт подтверждения|Карточка|Кнопка)[^\]]*\]?/g, '')
+  .replace(/\[(Отменить|Подтвердить|Отправить|Открыть форму договора|Открыть договор)\]/g, '');
 
 const SUGGESTIONS = [
   'Кто должен больше всех?',
@@ -242,6 +258,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const [elapsed, setElapsed] = useState(0);
   // Что агент делает сейчас — приходит с сервера по шагам («Ищу клиента…»)
   const [stepLabel, setStepLabel] = useState('');
+  // Ответ, пока он печатается (до итога с карточками)
+  const [liveText, setLiveText] = useState('');
   useEffect(() => {
     if (!sending) { setElapsed(0); return; }
     const started = Date.now();
@@ -385,11 +403,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const req = { id: newId(), ctrl: new AbortController(), userMsgId: userMsg.id };
     running.current = req;
     setStepLabel('');
+    setLiveText('');
     try {
       const r = await api.aiAssistant.message({
         text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '),
         history, image: payload.image || undefined, audio: payload.audio, mode, requestId: req.id,
-      }, req.ctrl.signal, label => { if (running.current === req) setStepLabel(label); });
+      }, req.ctrl.signal,
+        label => { if (running.current === req) setStepLabel(label); },
+        piece => { if (running.current === req) setLiveText(t => piece === null ? '' : t + piece); });
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
       let actions: Action[] = r.actions || [];
       if (r.cancelled) {
@@ -419,6 +440,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     } finally {
       if (running.current === req) running.current = null;
       setSending(false);
+      setLiveText('');
       setStopping(false);
     }
   };
@@ -673,18 +695,26 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         {sending && (
           <div className="ai-msg-in flex gap-2">
             <AIOrb size={28} className="mt-1" />
-            <div className="rounded-3xl rounded-bl-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-4 py-3 flex gap-1.5 items-center">
-              <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
-              <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
-              <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
-              {/* Долгий ответ — видно, что не завис; после «Стоп» — что останавливаем */}
-              {stopping
-                ? <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">Останавливаем…</span>
-                : <>
-                    {stepLabel && <span key={stepLabel} className="ai-msg-in ml-1.5 text-xs text-slate-500 dark:text-slate-400">{stepLabel}</span>}
-                    {elapsed >= 4 && <span className="ml-1 text-xs tabular-nums text-slate-400 dark:text-slate-500">· {elapsed} с</span>}
-                  </>}
-            </div>
+            {/* Ответ печатается — пузырь с текстом; пока текста нет — точки и что делаю */}
+            {liveText.trim() && !stopping ? (
+              <div className="max-w-[85%] rounded-3xl rounded-bl-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 px-4 py-2.5 text-[15px] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]">
+                {renderRich(livePreview(liveText))}
+                <span aria-hidden className="ai-caret inline-block w-[2px] h-[1.05em] -mb-[0.15em] ml-0.5 bg-violet-500 rounded-full" />
+              </div>
+            ) : (
+              <div className="rounded-3xl rounded-bl-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-4 py-3 flex gap-1.5 items-center">
+                <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
+                <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
+                <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
+                {/* Долгий ответ — видно, что не завис; после «Стоп» — что останавливаем */}
+                {stopping
+                  ? <span className="ml-1.5 text-xs text-slate-500 dark:text-slate-400">Останавливаем…</span>
+                  : <>
+                      {stepLabel && <span key={stepLabel} className="ai-msg-in ml-1.5 text-xs text-slate-500 dark:text-slate-400">{stepLabel}</span>}
+                      {elapsed >= 4 && <span className="ml-1 text-xs tabular-nums text-slate-400 dark:text-slate-500">· {elapsed} с</span>}
+                    </>}
+              </div>
+            )}
           </div>
         )}
         {/* Место под полем ввода: последнее сообщение не прячется за ним */}

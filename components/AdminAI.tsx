@@ -75,7 +75,8 @@ const AdminAI: React.FC = () => {
         <Stat label="Пользовались" value={totals.active} hint={`с тарифом ИИ: ${totals.paid}`} />
         <Stat label="Расход на модель" value={usd(totals.cost)} hint={totals.requests ? `${usd(totals.cost / totals.requests)} за запрос` : ' '} tone="text-rose-600 dark:text-rose-400" />
         <Stat label="Выручка ИИ" value={rub(current?.revenueRub || 0)} hint={`оплат: ${current?.payments || 0}`} tone="text-emerald-600 dark:text-emerald-400" />
-        <Stat label="Месяцев в учёте" value={report?.months.length || 0} hint="по месяцам — кнопки выше" />
+        <Stat label="Подсказка из кэша" value={current?.prompt_tokens ? `${Math.round((current.cached_tokens / current.prompt_tokens) * 100)}%` : '—'}
+              hint="из кэша в ~10 раз дешевле" tone="text-violet-600 dark:text-violet-300" />
       </div>
 
       <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Поиск по имени или почте"
@@ -111,6 +112,7 @@ const AdminAI: React.FC = () => {
                 <td className="px-4 py-3 text-right tabular-nums text-xs text-slate-500 dark:text-slate-400">
                   {(u.promptTokens + u.completionTokens).toLocaleString('ru-RU')}
                   <div className="text-[11px] text-slate-400">ответ: {u.completionTokens.toLocaleString('ru-RU')}</div>
+                  {u.promptTokens > 0 && <div className="text-[11px] text-violet-500">кэш: {Math.round((u.cachedTokens / u.promptTokens) * 100)}%</div>}
                 </td>
                 <td className="px-4 py-3 text-right tabular-nums font-semibold text-slate-800 dark:text-white">{usd(u.costUsd)}</td>
                 <td className="px-4 py-3 text-xs text-slate-500 dark:text-slate-400">
