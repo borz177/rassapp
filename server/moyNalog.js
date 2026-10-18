@@ -233,7 +233,7 @@ function createMoyNalog({ pool, notifyAdmins, sendPaymentEmail }) {
 
   // ── Чеки ─────────────────────────────────────────────────────────────────
   const serviceName = (p) =>
-    `Подписка FinUchet — тариф «${PLAN_TITLES[p.plan] || p.plan}», ${p.months} мес.`;
+    `Подписка FinUchet — тариф «${PLAN_TITLES[p.plan] || p.plan}»${p.ai_addon ? ` + FinUchetGPT «${PLAN_TITLES[p.ai_addon] || p.ai_addon}»` : ''}, ${p.months} мес.`;
 
   /**
    * Выбить чек по оплате. Захват строки (issuing) — защита от двойного чека,
@@ -247,7 +247,7 @@ function createMoyNalog({ pool, notifyAdmins, sendPaymentEmail }) {
           SET receipt_status = 'issuing', receipt_attempts = receipt_attempts + 1
         WHERE id = $1 AND receipt_number IS NULL AND refunded_at IS NULL
           AND (receipt_status IS NULL OR receipt_status = 'error' ${manual ? "OR receipt_status = 'unknown'" : ''})
-        RETURNING id, amount, plan, months, paid_at::timestamptz AS paid_at`,
+        RETURNING id, amount, plan, months, ai_addon, paid_at::timestamptz AS paid_at`,
       [paymentId]
     );
     const p = claimed.rows[0];

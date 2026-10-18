@@ -96,6 +96,11 @@ const AITariffs: React.FC = () => {
         })}
       </div>
 
+      {!iosApp && (
+        <p className="mt-4 text-xs leading-relaxed text-center text-slate-500 dark:text-slate-400">
+          Здесь — на 1 месяц. Агента можно добавить и при оплате тарифа приложения: на тот же срок и с той же скидкой — до 10% за год.
+        </p>
+      )}
     </div>
   );
 };

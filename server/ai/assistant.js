@@ -47,6 +47,7 @@ const ACTION_TTL_MS = 15 * 60 * 1000;
 const UNDO_TTL_MS = 30 * 60 * 1000;
 
 // Черновик договора: модель собирает поля, приложение открывает форму
+const { wordsToDigits } = require('./ruNumbers');
 const IMAGE_RE = /^data:image\/(jpeg|png|webp);base64,/;
 
 const PREPARE_CONTRACT_TOOL = {
@@ -58,6 +59,7 @@ const PREPARE_CONTRACT_TOOL = {
     '(с фото паспорта перепиши поля паспорта точно, как написано). Суммы — в рублях: «закуп 500» почти всегда',
     'значит 500 000 ₽, но если по смыслу неясно — спроси. Обязательны: клиент, товар, закуп, срок (месяцев) и наценка или цена —',
     'чего-то нет, не придумывай: спроси (через ask_choice, если варианты известны), потом вызови снова.',
+    'У нового клиента спроси телефон, если его не назвали; без телефона — только если человек сам так сказал (noPhone).',
   ].join(' '),
   input: {
     customerId: { type: 'string', description: 'id существующего клиента' },
@@ -73,7 +75,7 @@ const PREPARE_CONTRACT_TOOL = {
         passportDivisionCode: { type: 'string' }, address: { type: 'string', description: 'Адрес регистрации' },
       },
     },
-    productName: { type: 'string', description: 'Товар' },
+    productName: { type: 'string', description: 'Товар — как его пишут в магазине: «айфон 16 про макс» → «iPhone 16 Pro Max», «самсунг с24» → «Samsung Galaxy S24»' },
     buyPrice: { type: 'number', description: 'Закуп, ₽' },
     markupPercent: { type: 'number', description: 'Наценка, %' },
     totalPrice: { type: 'number', description: 'Цена в рассрочку, ₽ — если назвали её, а не наценку' },
@@ -82,6 +84,7 @@ const PREPARE_CONTRACT_TOOL = {
     accountId: { type: 'string', description: 'Счёт из list_accounts, если назван' },
     sendToWhatsApp: { type: 'boolean', description: 'Просят сразу отправить договор клиенту в WhatsApp' },
     confirmedNewCustomer: { type: 'boolean', description: 'Человек сам подтвердил, что это новый клиент, а не похожий из базы' },
+    noPhone: { type: 'boolean', description: 'Новый клиент без телефона — только если человек сам так сказал' },
   },
   required: ['productName'],
 };
@@ -96,6 +99,14 @@ const missingContractFields = (a) => {
   const months = Number(a.months);
   if (!(Number.isInteger(months) && months >= 1 && months <= 120)) missing.push('срок в месяцах');
   if (!(a.markupPercent != null && Number(a.markupPercent) >= 0) && !(Number(a.totalPrice) > 0)) missing.push('наценка или цена в рассрочку');
+  // Без телефона новому клиенту не уйдут ни договор, ни напоминания — спрашиваем,
+  // пока человек сам не скажет «без телефона»
+  // Российский номер — 11 цифр: лишняя или потерянная цифра (часто из голосового) — переспросить
+  const ph = String(a.newCustomer?.phone || '').replace(/\D/g, '');
+  if (ph && /^[78]/.test(ph) && ph.length !== 11) missing.push(`телефон нового клиента — в номере ${ph.length} цифр вместо 11, переспроси его`);
+  if (!a.customerId && String(a.newCustomer?.name || '').trim() && !String(a.newCustomer?.phone || '').trim() && !a.noPhone) {
+    missing.push('телефон нового клиента (нет телефона — пусть скажет «без телефона»)');
+  }
   return missing;
 };
 
@@ -218,6 +229,31 @@ const EXCEL_REPORT_TOOL = {
 const CUSTOM_WRITE_NAMES = new Set(['update_customer', 'create_task', 'send_reminder', 'remind_all_overdue']);
 
 // Основа слова без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
+// Слова из команд и названий товаров — не имя, даже с заглавной
+const NOT_NAME_RE = /^(договор|оформ|прим|клиент|рассроч|товар|срок|наценк|закуп|взнос|сч[её]т|плат[её]ж|оплат|ещ[её]|нов[аоыу]|сдела|созда|добав|запиш|покаж|отправ|напомн|пожалуйст|привет|здравств|спасиб|ег[оу]|е[её]|ей|для|эт[аоуи]|мне|нужн|надо|сегодн|завтр|вчера|месяц|айфон|iphone|самсунг|телефон|смартфон|ноутбук|телевизор|холодильник|кондиционер|стиральн|диван|кухн|шкаф|машин|авто|час[ыа]|планшет|наушник|приставк|плейстейшн|пылесос|микроволнов|духов|плит[аы]|матрас|кроват|велосипед|самокат)/;
+// Не телефон: меньше 10 цифр («не знаю», «89») или заглушка вроде «+7 (000) 000-00-00».
+// Цифры считаем все, а не подряд: «+7 928 765-43-21» — настоящий номер
+const notAPhone = (p) => { const d = String(p || '').replace(/\D/g, ''); return d.length < 10 || /^[78]?0+$/.test(d); };
+// Срок, который человек правда назвал: «на 6 месяцев», «6 мес», «полгода», «год»,
+// «шесть месяцев», «срок 6», «на 6» или ответ одним числом на вопрос о сроке
+const MONTH_WORDS = { 1: 'один|одн', 2: 'два|двух', 3: 'три|тр[её]х', 4: 'четыр', 5: 'пят', 6: 'шест|полгод', 7: 'сем', 8: 'восем|восьм', 9: 'девят', 10: 'десят', 11: 'одиннадцат', 12: 'двенадцат|год|годик', 18: 'восемнадцат|полтора год', 24: 'двадцат[ьи] четыр|два года|двух лет', 36: 'тридцат[ьи] шест|три года|тр[её]х лет' };
+const monthsSaidIn = (texts, m) => {
+  const n = Number(m);
+  if (!Number.isInteger(n)) return false;
+  const words = MONTH_WORDS[n];
+  return texts.some(t => {
+    const s = String(t || '').toLowerCase().replace(/ё/g, 'е');
+    return new RegExp(`(^|\\D)${n}\\s*(-?\\s*(ти|х|и))?\\s*(мес|м\\.|мц)`).test(s)
+      || new RegExp(`(срок|на|рассрочк[уа]|по)\\s*${n}(\\D|$)`).test(s)
+      || new RegExp(`^\\s*${n}\\s*$`).test(s)
+      || (!!words && new RegExp(`(${words})`).test(s) && /(мес|год|лет)/.test(s));
+  });
+};
+// Телефон для человека: 8 965 777-70-27
+const prettyPhone = (p) => {
+  const d = String(p || '').replace(/\D/g, '');
+  return d.length === 11 ? `${d[0] === '7' ? '+7' : d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}` : String(p || '');
+};
 const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
 
 // «Записал», «провёл», «отправил»… — модель говорит, что сделала. Если в этом
@@ -841,6 +877,41 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * само сверит по паспорту (src/sameCustomer.ts).
    * Возвращает указание модели или null — можно готовить договор.
    */
+  /**
+   * Человек назвал «Фамилия Имя», а модель взяла из базы однофамильца — та же
+   * фамилия, другое имя («Орзумиев Сулумбек» → «Орзумиев Ислам»). Сверяем по
+   * сообщению: слово с заглавной, совпавшее с частью ФИО клиента, и соседнее
+   * слово с заглавной, которого в ФИО нет. Возвращает названное ФИО или null.
+   */
+  const namedOtherPerson = (userText, customerName) => {
+    const norm = (w) => w.toLowerCase().replace(/ё/g, 'е');
+    const parts = norm(String(customerName || '')).split(/[^а-я-]+/).filter(w => w.length >= 2).map(nameStem);
+    const inName = (w) => { const st = nameStem(norm(w)); return st.length >= 3 && parts.some(p => p.length >= 3 && (p.startsWith(st) || st.startsWith(p))); };
+    // С заглавной бывают и не имена: первое слово фразы, товар
+    const isName = (w) => w && /^[А-ЯЁ][а-яё]{2,}$/.test(w) && !NOT_NAME_RE.test(norm(w));
+    // По фразам: «…Орзумиев. Оформи…» — «Оформи» не имя
+    for (const clause of String(userText || '').split(/[.!?;:,\n()«»"]+/)) {
+      const words = clause.split(/[^А-Яа-яЁё-]+/).filter(Boolean);
+      for (let i = 0; i < words.length; i++) {
+        if (!isName(words[i]) || !inName(words[i])) continue;
+        const other = [words[i - 1], words[i + 1]].find(n => isName(n) && !inName(n));
+        if (other) return words[i - 1] === other ? `${other} ${words[i]}` : `${words[i]} ${other}`;
+      }
+    }
+    return null;
+  };
+
+  /** Клиент в базе, у которого в ФИО есть все слова названного (по основам) */
+  const findByFullName = async (userId, name) => {
+    const words = String(name).toLowerCase().replace(/ё/g, 'е').split(/[^а-я-]+/).filter(w => w.length >= 3).map(nameStem).filter(w => w.length >= 3);
+    if (words.length < 2) return [];
+    const { rows } = await pool.query(
+      `SELECT id, data->>'name' AS name FROM data_items
+       WHERE user_id = $1 AND type = 'customers' AND lower(replace(data->>'name', 'ё', 'е')) LIKE ALL($2::text[]) LIMIT 6`,
+      [userId, words.map(w => `%${w}%`)]);
+    return rows;
+  };
+
   const existingLookalikes = async (userId, args) => {
     const nc = args.newCustomer;
     if (args.customerId || !nc?.name || nc.passportNumber) return null;
@@ -854,6 +925,15 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
        WHERE user_id = $1 AND type = 'customers' AND lower(replace(data->>'name', 'ё', 'е')) LIKE $2 LIMIT 6`,
       [userId, `%${stem.length >= 3 ? stem : words[0]}%`]);
     if (args.confirmedNewCustomer) return 'Для нового клиента нужно ФИО полностью (хотя бы фамилия и имя) или фото паспорта — спроси одним вопросом.';
+    // Названо ФИО (фамилия и имя): однофамильцы с другим именем — не он.
+    // Спрашиваем, только если в базе есть человек со всеми этими словами
+    if (words.length >= 2) {
+      const full = await findByFullName(userId, nc.name);
+      if (!full.length) return null;
+      return full.length === 1
+        ? `В базе уже есть клиент «${full[0].name}» (id ${full[0].id}). Если это он — вызови prepare_contract с customerId, без newCustomer. Если не уверен — спроси через ask_choice: «${full[0].name}» или «Новый клиент» (тогда confirmedNewCustomer: true).`
+        : `В базе несколько клиентов с таким ФИО: ${full.map(r => `«${r.name}» (id ${r.id})`).join(', ')}. Спроси через ask_choice, какой из них, и вариант «Новый клиент» (тогда confirmedNewCustomer: true).`;
+    }
     if (rows.length === 1) return `В базе уже есть клиент «${rows[0].name}» (id ${rows[0].id}). Если человек имел в виду его — вызови prepare_contract с customerId, без newCustomer. Если не уверен — спроси через ask_choice: «${rows[0].name}» или «Новый клиент» (тогда confirmedNewCustomer: true).`;
     if (rows.length > 1) return `В базе несколько похожих клиентов: ${rows.map(r => `«${r.name}» (id ${r.id})`).join(', ')}. Спроси через ask_choice, какой из них, и вариант «Новый клиент» (тогда confirmedNewCustomer: true).`;
     if (words.length < 2) return 'Для нового клиента нужно ФИО полностью (хотя бы фамилия и имя) или фото паспорта — спроси одним вопросом.';
@@ -997,14 +1077,76 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * а начатая запись доводится до конца — и возвращается с «Отменить», а не
    * теряется молча.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false, onStream = null, silent = false }) => {
+  /**
+   * Голосовое → текст отдельным коротким запросом. Раньше модель разбирала голос
+   * сразу вместе с задачей и путала числа одной фразы: «айфон шестнадцать» → срок
+   * 16 мес, «закуп 50 000» → цена. С расшифровкой голос идёт тем же путём, что и
+   * текст, со всеми проверками (срок, телефон, однофамилец).
+   * Возвращает { text, usage } или null — тогда голос уходит модели как раньше.
+   */
+  const transcribe = async (audio, signal) => {
+    try {
+      const d = await callModel({
+        model: DEFAULT_MODEL, temperature: 0, max_tokens: 700, usage: { include: true },
+        messages: [
+          // Числа — словами: складывая их в цифры сама, модель ошибалась («девятьсот
+          // шестьдесят пять» → 9605, телефон терял цифры). Цифры собирает ruNumbers.js
+          { role: 'system', content: [
+            'Ты расшифровываешь голосовые сообщения продавца техники в рассрочку. Перепиши дословно, что сказано, по-русски.',
+            'Все числа, суммы, сроки и телефоны пиши словами — ровно так, как их произнесли, не переводи в цифры и не объединяй',
+            '(«восемь девятьсот шестьдесят пять семь семь…», «пятьдесят тысяч»). ФИО — с заглавных букв.',
+            'Ничего не добавляй, не исправляй и не отвечай на просьбу — только расшифровка. Нет речи — ответь пустой строкой.',
+          ].join(' ') },
+          { role: 'user', content: [{ type: 'input_audio', input_audio: { data: audio.data, format: audio.format } }] },
+        ],
+      }, signal);
+      const t = wordsToDigits(String(d.choices[0].message?.content || '').trim().replace(/^«|»$/g, ''));
+      return { text: t.slice(0, 4000), usage: d.usage };
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      console.warn('AI: голосовое не расшифровано:', e.message);
+      return null;
+    }
+  };
+
+  const reply = async (args) => {
+    const { audio, text = '', signal = null, onStep = null } = args;
+    if (!audio) return replyText(args);
+    try { if (onStep) onStep('Слушаю голосовое…'); } catch { /* шаги — только подсказка */ }
+    const t = await transcribe(audio, signal);
+    if (!t) return replyText(args);
+    if (!t.text) return { reply: 'Не расслышал — запишите ещё раз или напишите текстом.', actions: [], heard: '', usage: { prompt: t.usage?.prompt_tokens || 0, completion: t.usage?.completion_tokens || 0, cost: Number(t.usage?.cost) || 0, cached: 0 } };
+    // Подпись к голосовому (если была) + расшифровка
+    const out = await replyText({ ...args, audio: null, text: [text, t.text].filter(Boolean).join('\n'), voiceText: t.text });
+    const u = out.usage || (out.usage = { prompt: 0, completion: 0, cost: 0, cached: 0 });
+    u.prompt += t.usage?.prompt_tokens || 0;
+    u.completion += t.usage?.completion_tokens || 0;
+    u.cost += Number(t.usage?.cost) || 0;
+    return { ...out, heard: t.text };
+  };
+
+  const replyText = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false, onStream = null, silent = false, voiceText = '' }) => {
     const step = (label) => { try { if (label && onStep) onStep(label); } catch { /* шаги — только подсказка */ } };
     step(image ? 'Читаю фото…' : audio ? 'Слушаю голосовое…' : 'Думаю…');
+    // Сообщение человека: ниже text переопределяется ответом модели
+    const asked = text;
+    // Телефон, который человек правда называл (голос не проверить — верим модели)
+    const phoneSaid = (phone) => !!audio
+      || [asked, ...history.filter(m => m?.role !== 'assistant').map(m => m?.text)].join(' ').replace(/\D/g, '').includes(String(phone).replace(/\D/g, '').slice(-10));
     const auto = mode === 'auto';
     // Сигналы об ошибках — у автотестов (silent) не пишем: это не ошибки агента у людей
     const flag = silent ? () => {} : quality.signal;
     // Порог «Авто»: сумма от него — с подтверждением даже в «Авто» (настройки агента)
     const overLimit = (amount) => auto && autoLimit != null && (Number(amount) || 0) >= autoLimit;
+    // «Авто» и телефон, впервые прозвучавший в этом голосовом: расшифровка могла
+    // ошибиться в цифре, а сразу оформленный договор никто уже не проверит —
+    // такое ждёт «Оформить» / «Подтвердить», и агент зачитывает номер
+    const voicePhone = (phone) => {
+      const d = String(phone || '').replace(/\D/g, '').slice(-10);
+      if (!auto || !voiceText || d.length < 10 || !voiceText.replace(/\D/g, '').includes(d)) return null;
+      const typedBefore = history.filter(m => m?.role !== 'assistant').map(m => m?.text).join(' ').replace(/\D/g, '');
+      return typedBefore.includes(d) ? null : prettyPhone(phone);
+    };
     const stopped = (actions, usage) => ({
       cancelled: true, actions, usage,
       reply: actions.some(a => a.kind === 'done' || a.kind === 'contract_form' || a.kind === 'confirm' || a.kind === 'send_doc')
@@ -1096,11 +1238,17 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           .replace(/^\s*\[(Карточка|Кнопка)[^\]\n]{0,80}\]\s*$/gm, '').replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n').trim();
         // «Подтвердить» модель зовёт по привычке: у договора кнопка своя, а в
         // «Авто» подтверждать нечего — такие фразы убираем
-        if ((auto || actions.some(a => a.kind === 'contract_form')) && !actions.some(a => a.kind === 'confirm' || a.overLimit)) {
+        if ((auto || actions.some(a => a.kind === 'contract_form')) && !actions.some(a => a.kind === 'confirm' || a.overLimit || a.checkPhone)) {
           text = text.replace(/[^.!?\n]*«?Подтвердить»?[^.!?\n]*[.!?]?/g, '').trim();
         }
         if (!auto && actions.some(a => a.kind === 'contract_form' && !a.overLimit) && !/(Открыть|Откройте|открыть) форму договора/.test(text)) {
           text = `${text ? `${text}\n` : ''}Черновик договора готов — нажмите «Открыть форму договора», проверьте и сохраните.`;
+        }
+        // Номер из голосового агент обязан зачитать — даже если модель промолчала
+        for (const a of actions) {
+          if (a.checkPhone && !text.replace(/\D/g, '').includes(a.checkPhone.replace(/\D/g, '').slice(-10))) {
+            text = `${text ? `${text}\n` : ''}Телефон ${a.checkPhone} — верно? Если да, нажмите «${a.kind === 'confirm' ? 'Подтвердить' : 'Оформить'}».`;
+          }
         }
         // Пустой ответ: «Готово» — только если что-то правда сделано
         if (!text) text = auto && actions.some(a => a.kind === 'contract_form') ? 'Оформляю договор.'
@@ -1111,12 +1259,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           const nc = a.kind === 'contract_form' && a.draft?.newCustomer;
           if (nc) for (const k of Object.keys(nc)) if (typeof nc[k] === 'string' && /^(не\s*указан[аоы]?|нет|неизвестно|—|-)$/i.test(nc[k].trim())) delete nc[k];
           // Нет телефона или заглушка вроде «+7 (000) 000-00-00» — пусто, допишут в форме
-          if (nc?.phone && (!/\d{5,}/.test(nc.phone) || /^[78]?0+$/.test(nc.phone.replace(/\D/g, '')))) delete nc.phone;
+          if (nc?.phone && notAPhone(nc.phone)) delete nc.phone;
           // Телефон, которого человек не называл (на паспорте его нет), модель выдумала
-          if (nc?.phone) {
-            const said = [text, ...history.filter(m => m?.role !== 'assistant').map(m => m?.text)].join(' ').replace(/\D/g, '');
-            if (!said.includes(nc.phone.replace(/\D/g, '').slice(-10))) delete nc.phone;
-          }
+          if (nc?.phone && !phoneSaid(nc.phone)) delete nc.phone;
         }
         return { reply: text, actions, usage };
       }
@@ -1163,14 +1308,46 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
             const known = passportsFromHistory(history).reverse().find(p => sameName(p.name, args.newCustomer.name));
             if (known) args.newCustomer = { ...Object.fromEntries(Object.entries(known).filter(([, v]) => v)), ...args.newCustomer, ...{ passportSeries: known.passportSeries, passportNumber: known.passportNumber } };
           }
-          if (args.customerId && !(await loadItem(user.id, 'customers', args.customerId))) {
+          // Что человек сказал (голосовое к этому месту уже расшифровано в текст)
+          const saidTexts = [asked, ...history.filter(m => m?.role !== 'assistant').map(m => m?.text)];
+          // «Закуп 50 000», а модель положила сумму в цену рассрочки
+          if (!(Number(args.buyPrice) > 0) && Number(args.totalPrice) > 0 && saidTexts.some(t => /закуп/i.test(String(t || ''))) && !saidTexts.some(t => /(цен[аоуы]|стоимост|за\s+\d)/i.test(String(t || '')))) {
+            args.buyPrice = Number(args.totalPrice);
+            delete args.totalPrice;
+          }
+          // Срок, которого человек не называл, модель подставила сама («12») или взяла
+          // из названия товара («айфон 16» → 16 мес) — спросим. Голосовое, которое
+          // не удалось расшифровать, проверить не с чем — тогда верим модели
+          if (args.months != null && !audio && !monthsSaidIn(saidTexts, args.months)) {
+            flag(user.id, 'guard_months_unsaid', { tool: name, question: text });
+            delete args.months;
+          }
+          // Выдуманный или заглушка — телефона нет, и о нём спросят (missingContractFields)
+          const ncPhone = args.newCustomer?.phone;
+          if (ncPhone && (notAPhone(ncPhone) || !phoneSaid(ncPhone))) delete args.newCustomer.phone;
+          const picked = args.customerId ? await loadItem(user.id, 'customers', args.customerId) : null;
+          if (args.customerId && !picked) {
             if (args.newCustomer?.name) delete args.customerId; else badCustomer = true;
           }
+          // Однофамилец: назвали «Орзумиев Сулумбек», а взят «Орзумиев Ислам»
+          const named = picked ? namedOtherPerson(asked, picked.name) : null;
+          if (named) {
+            flag(user.id, 'guard_wrong_person', { tool: name, question: text });
+            const found = await findByFullName(user.id, named);
+            result = found.length === 1
+              ? `«${picked.name}» — другой человек: просили «${named}». В базе есть «${found[0].name}» (id ${found[0].id}) — вызови prepare_contract с этим customerId.`
+              : found.length > 1
+              ? `«${picked.name}» — другой человек: просили «${named}». В базе несколько таких: ${found.map(r => `«${r.name}» (id ${r.id})`).join(', ')} — спроси через ask_choice, какой.`
+              : `«${picked.name}» — другой человек: просили «${named}», а такого клиента в базе нет. Вызови prepare_contract снова с newCustomer: { name: ФИО в именительном падеже, как в паспорте («${named}» → «Фамилия Имя») } (без customerId) и confirmedNewCustomer: true — это новый клиент.`;
+          }
           const missing = missingContractFields(args);
-          const lookalikes = !missing.length && !badCustomer ? await existingLookalikes(user.id, args) : null;
+          // Похожий клиент в базе — раньше вопроса о телефоне: у клиента из базы телефон уже есть
+          const lookalikes = missing.every(m => m.startsWith('телефон')) && !badCustomer && !named ? await existingLookalikes(user.id, args) : null;
           if (badCustomer) flag(user.id, 'guard_bad_customer', { tool: name, question: text });
           if (lookalikes) flag(user.id, 'guard_lookalike', { tool: name, question: text });
-          if (badCustomer) {
+          if (named) {
+            // ответ уже собран выше
+          } else if (badCustomer) {
             // Подсказываем, кто был в разговоре: модели остаётся выбрать ФИО, паспорт подставим сами
             const people = [...new Map(passportsFromHistory(history).map(p => [p.name.toLowerCase(), p])).values()];
             result = people.length
@@ -1180,6 +1357,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
             result = lookalikes;
           } else if (missing.length) {
             result = `Договор не подготовлен — не хватает обязательного: ${missing.join(', ')}. Спроси у человека одним вопросом (если варианты известны — ask_choice), не подставляй сам, потом вызови prepare_contract снова со всеми полями.`;
+            // Клиента не указали, а в разговоре уже были люди: «первому», «на неё» — это они
+            const people = missing.includes('клиент') ? [...new Map(passportsFromHistory(history).map(p => [p.name.toLowerCase(), p])).values()] : [];
+            if (people.length) result += ` В этом разговоре были клиенты по порядку: ${people.map((p, i) => `${i + 1}) ${p.name}`).join('; ')}. Если человек говорит «первый», «второй», «он», «она», «тот же» — это кто-то из них: вызови prepare_contract с newCustomer: { name: ФИО } (паспорт подставится сам), не спрашивай.`;
           } else if (actions.some(a => a.kind === 'contract_form' && sameContract(a.draft, args))) {
             result = 'Этот договор в этом сообщении уже подготовлен — повторять не нужно.';
           } else {
@@ -1190,9 +1370,13 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
               if (why) { args.sendToWhatsApp = false; sendNote = ` Отправить договор не получится: ${why} Скажи об этом.`; }
             }
             const bigBuy = overLimit(args.buyPrice);
-            actions.push({ id: newActionId(), kind: 'contract_form', title: auto ? 'Договор' : 'Оформить договор', draft: args, auto: auto && !bigBuy, ...(bigBuy ? { overLimit: autoLimit } : {}) });
+            const checkPhone = !bigBuy && voicePhone(args.newCustomer?.phone);
+            actions.push({ id: newActionId(), kind: 'contract_form', title: auto ? 'Договор' : 'Оформить договор', draft: args, auto: auto && !bigBuy && !checkPhone,
+              ...(bigBuy ? { overLimit: autoLimit } : {}), ...(checkPhone ? { checkPhone } : {}) });
             result = bigBuy
               ? `Закуп не меньше порога «Авто» (${money(autoLimit)}) — договор не оформлен сразу: под ответом карточка с кнопкой «Оформить». Скажи об этом одной фразой.`
+              : checkPhone
+              ? `Телефон пришёл голосом — договор не оформлен сразу, под ответом карточка с кнопкой «Оформить». Спроси одной фразой: «Телефон ${checkPhone} — верно?»`
               : auto
               ? 'Режим «Авто»: приложение сразу оформит договор по этим данным и покажет результат в карточке. Скажи коротко, что договор оформляется.'
               : 'Черновик договора передан в приложение: человек увидит заполненную форму и сохранит её сам.';
@@ -1238,6 +1422,12 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
                 pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
                 actions.push({ id, kind: 'confirm', tool: name, title, summary, args, always: true });
                 result = 'Рассылка ждёт «Подтвердить» — её всегда подтверждает человек. Скажи об этом одной фразой.';
+              } else if ((name === 'update_customer' || name === 'create_customer') && voicePhone(args.phone)) {
+                // Телефон клиента из голосового в «Авто» — сначала проверить номер
+                const checkPhone = voicePhone(args.phone);
+                pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
+                actions.push({ id, kind: 'confirm', tool: name, title, summary, args, checkPhone });
+                result = `Телефон пришёл голосом — действие ждёт «Подтвердить». Спроси одной фразой: «Телефон ${checkPhone} — верно?»`;
               } else if (overLimit(args.amount)) {
                 pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
                 actions.push({ id, kind: 'confirm', tool: name, title, summary, args, overLimit: autoLimit,

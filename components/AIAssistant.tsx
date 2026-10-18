@@ -34,6 +34,7 @@ interface Msg {
   text: string;
   image?: string;
   voice?: number; // длительность голосового, с
+  heard?: string; // расшифровка голосового (сервер) — видна под ним и уходит в историю
   note?: string; // для агента, не показывается: id варианта, выбранного кнопкой
   stopped?: boolean; // человек нажал «Стоп», ответа не было
   actions?: Action[];
@@ -104,7 +105,7 @@ const actionNote = (a: Action): string => {
  * черновика, а каждое фото — 1–2 тысячи токенов на каждом шаге разговора.
  */
 const toHistory = (messages: Msg[]) => messages
-  .filter(m => !m.error && (m.text || m.image || m.actions?.length))
+  .filter(m => !m.error && (m.text || m.heard || m.image || m.actions?.length))
   .slice(-12)
   .map((m, i, list) => {
     const next = list[i + 1];
@@ -112,7 +113,7 @@ const toHistory = (messages: Msg[]) => messages
       && !!next.actions?.some(a => a.kind === 'contract_form' && a.draft?.newCustomer?.passportNumber);
     return {
       role: m.role,
-      text: [m.text + (m.note ? ` [${m.note}]` : '') + (m.stopped ? ' [запрос остановлен человеком — не выполнять]' : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n')
+      text: [[m.text, m.heard].filter(Boolean).join('\n') + (m.note ? ` [${m.note}]` : '') + (m.stopped ? ' [запрос остановлен человеком — не выполнять]' : ''), ...(m.actions || []).map(actionNote)].filter(Boolean).join('\n')
         + (m.image && passportTaken ? ' (было фото паспорта — данные в черновике договора)' : ''),
       image: m.image && m.image.startsWith('data:image/') && !passportTaken ? m.image : undefined,
     };
@@ -412,6 +413,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         label => { if (running.current === req) setStepLabel(label); },
         piece => { if (running.current === req) setLiveText(t => piece === null ? '' : t + piece); });
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
+      if (typeof r.heard === 'string' && r.heard) setMessages(ms => ms.map(m => m.id === userMsg.id ? { ...m, heard: r.heard } : m));
       let actions: Action[] = r.actions || [];
       if (r.cancelled) {
         // Остановили: сделанное сервером показываем (с «Отменить»), а то, что
@@ -656,6 +658,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   {m.image && m.image !== 'stripped' && <img src={m.image} alt="" className="mb-2 max-h-48 rounded-2xl" />}
                   {m.image === 'stripped' && <p className="text-xs opacity-75 mb-1">📷 Фото</p>}
                   {m.voice ? <p className="text-xs opacity-80 mb-0.5">🎙 Голосовое · {m.voice} с</p> : null}
+                  {m.heard ? <p className="text-[13px] leading-snug opacity-90 italic mb-0.5">«{m.heard}»</p> : null}
                   {m.role === 'assistant' && !m.error ? renderRich(m.text) : m.text}
                   {m.error && /тариф ИИ/.test(m.text) && !iosApp && (
                     <button onClick={onOpenTariffs} className="block mt-2 text-sm font-bold underline">Тарифы ИИ</button>

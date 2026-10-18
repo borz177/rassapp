@@ -1428,6 +1428,9 @@ await pool.query(`
   CREATE INDEX IF NOT EXISTS idx_partner_requests_partner ON partner_payout_requests(partner_id, status);
   ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_number TEXT;
   ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS receipt_url TEXT;
+  -- FinUchetGPT, добавленный к оплате основного тарифа (тот же срок), и его доля суммы
+  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS ai_addon TEXT;
+  ALTER TABLE subscription_payments ADD COLUMN IF NOT EXISTS ai_addon_amount NUMERIC(12,2);
 `);
 
 // 📈 Удержание: когда человек заходил, сколько дней в месяц работал, почему ушёл.
@@ -4436,8 +4439,34 @@ const PASSPORT_DAILY_LIMIT = 50;
 // одно сообщение человека (текст, голос или фото), сколько бы шагов ни сделал
 // агент внутри.
 const AI_PLANS = {
-  AI_START: { name: 'ИИ Старт', price: 490, monthly: 300 },
-  AI_PRO: { name: 'ИИ Про', price: 990, monthly: 1000 },
+  AI_START: { name: 'ИИ Старт', price: 890, monthly: 300 },
+  AI_PRO: { name: 'ИИ Про', price: 1690, monthly: 1000 },
+};
+
+/**
+ * FinUchetGPT вместе с основным тарифом: на тот же срок и с той же скидкой за
+ * срок, что и основной (Math.ceil на цене месяца — как calculateSubscriptionAmount).
+ * @returns {number|null} сумма в рублях либо null, если тариф ИИ/срок недопустимы
+ */
+const calculateAiAddonAmount = (aiPlan, months) => {
+  // hasOwn: ключ из запроса, «toString» и прочее из прототипа тарифом не считается
+  const p = Object.hasOwn(AI_PLANS, aiPlan) ? AI_PLANS[aiPlan] : null;
+  const discount = Object.hasOwn(DURATION_DISCOUNTS, months) ? DURATION_DISCOUNTS[months] : undefined;
+  if (!p || discount === undefined) return null;
+  return Math.ceil(p.price * (1 - discount)) * months;
+};
+
+/**
+ * Продлить FinUchetGPT на months. Тот же тариф — от конца текущего срока,
+ * другой (или истёкший) — с сегодняшнего дня.
+ */
+const extendAiSubscription = async (userId, aiPlan, months) => {
+  const cur = (await pool.query('SELECT ai_subscription FROM users WHERE id = $1', [userId])).rows[0]?.ai_subscription;
+  const from = cur?.plan === aiPlan && new Date(cur.expiresAt) > new Date() ? new Date(cur.expiresAt) : new Date();
+  const expiresAt = addMonthsClamped(from, months);
+  await pool.query('UPDATE users SET ai_subscription = $1 WHERE id = $2', [JSON.stringify({ plan: aiPlan, expiresAt: expiresAt.toISOString() }), userId]);
+  console.log(`🤖 Тариф ${AI_PLANS[aiPlan].name} для ${userId} до ${expiresAt.toISOString()}`);
+  return expiresAt;
 };
 const AI_TRIAL_REQUESTS = 20;
 const { createAssistant } = require('./ai/assistant');
@@ -4464,6 +4493,13 @@ const normalizeAiSettings = (raw) => {
   };
 };
 
+// FinUchetGPT пока открыт только админу: проверяем перед тем, как открыть всем.
+// Открыть владельцам аккаунтов — AI_AGENT_PUBLIC=1 в /var/www/env/rassapp.env и
+// перезапуск. Закрыт — у остальных нет кнопки, тарифов ИИ и блока в оплате, а
+// сервер отклоняет их запросы к агенту, даже если обратиться напрямую.
+const AI_AGENT_PUBLIC = process.env.AI_AGENT_PUBLIC === '1';
+const aiAgentAllowed = (role) => role === 'admin' || (AI_AGENT_PUBLIC && role === 'manager');
+
 const aiAssistantState = async (userId) => {
   const { rows } = await pool.query('SELECT role, ai_consent_at, ai_subscription, ai_trial_used, ai_settings FROM users WHERE id = $1', [userId]);
   const u = rows[0];
@@ -4474,7 +4510,7 @@ const aiAssistantState = async (userId) => {
   const admin = u.role === 'admin';
   const trialLeft = Math.max(0, AI_TRIAL_REQUESTS - (u.ai_trial_used || 0));
   return {
-    allowedRole: u.role === 'manager' || admin,
+    allowedRole: aiAgentAllowed(u.role),
     consent: !!u.ai_consent_at,
     plan: sub ? { key: sub.plan, name: plan?.name || sub.plan, expiresAt: sub.expiresAt, monthly: plan?.monthly || 0 } : null,
     used,
@@ -4490,6 +4526,12 @@ const aiAssistantState = async (userId) => {
     })(),
   };
 };
+
+// Пока агент закрыт — всё, кроме статуса (по нему приложение прячет кнопку), только админу
+app.use('/api/ai/assistant', auth, (req, res, next) => {
+  if (req.path === '/status' || aiAgentAllowed(req.user.role)) return next();
+  res.status(403).json({ msg: 'FinUchetGPT пока недоступен.' });
+});
 
 app.put('/api/ai/assistant/settings', auth, async (req, res) => {
   try {
@@ -4581,7 +4623,9 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
          cost_usd = ai_assistant_usage.cost_usd + EXCLUDED.cost_usd`,
       [req.user.id, aiMonth(), out.usage?.prompt || 0, out.usage?.completion || 0, out.usage?.cost || 0, counted ? 1 : 0, out.usage?.cached || 0]);
     if (st.trial && counted) await pool.query('UPDATE users SET ai_trial_used = ai_trial_used + 1 WHERE id = $1', [req.user.id]);
-    const result = { reply: out.reply, actions: out.actions, cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)) };
+    const result = { reply: out.reply, actions: out.actions, cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)),
+      // Расшифровка голосового — приложение покажет её под голосовым и сохранит в истории
+      ...(typeof out.heard === 'string' ? { heard: out.heard } : {}) };
     if (streaming) { send({ done: true, ...result }); res.end(); } else res.json(result);
   } catch (e) {
     console.error('AI assistant error:', e.message);
@@ -4594,9 +4638,9 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
 // Оплата тарифа ИИ: месяц, сумма считается здесь (как у основных тарифов)
 app.post('/api/ai/assistant/buy', auth, async (req, res) => {
   const { plan, method, returnUrl } = req.body || {};
-  const p = AI_PLANS[plan];
+  const p = Object.hasOwn(AI_PLANS, plan) ? AI_PLANS[plan] : null;
   if (!p) return res.status(400).json({ msg: 'Недопустимый тариф' });
-  if (method !== undefined && !PAYMENT_METHODS[method]) return res.status(400).json({ msg: 'Недопустимый способ оплаты' });
+  if (method !== undefined && !Object.hasOwn(PAYMENT_METHODS, method)) return res.status(400).json({ msg: 'Недопустимый способ оплаты' });
   const shopId = process.env.YOOKASSA_SHOP_ID;
   const secretKey = process.env.YOOKASSA_SECRET_KEY;
   if (!shopId || !secretKey) return res.status(503).json({ msg: 'Оплата не настроена' });
@@ -4629,7 +4673,7 @@ app.post('/api/ai/assistant/buy', auth, async (req, res) => {
  */
 const applyAiPayment = async (paymentId, payment) => {
   const { userId, aiPlan } = payment.metadata || {};
-  const p = AI_PLANS[aiPlan];
+  const p = Object.hasOwn(AI_PLANS, aiPlan) ? AI_PLANS[aiPlan] : null;
   const paid = Number(payment.amount?.value);
   if (!userId || !p || !(paid >= p.price)) {
     console.error(`🚨 Оплата ИИ не соответствует тарифу: ${userId}, ${aiPlan}, ${payment.amount?.value} ₽`);
@@ -4637,11 +4681,7 @@ const applyAiPayment = async (paymentId, payment) => {
   }
   const seen = await pool.query('SELECT 1 FROM subscription_payments WHERE id = $1', [paymentId]);
   if (seen.rowCount) return;
-  const cur = (await pool.query('SELECT ai_subscription FROM users WHERE id = $1', [userId])).rows[0]?.ai_subscription;
-  const from = cur?.plan === aiPlan && new Date(cur.expiresAt) > new Date() ? new Date(cur.expiresAt) : new Date();
-  const expiresAt = addMonthsClamped(from, 1);
-  await pool.query('UPDATE users SET ai_subscription = $1 WHERE id = $2', [JSON.stringify({ plan: aiPlan, expiresAt: expiresAt.toISOString() }), userId]);
-  console.log(`🤖 Тариф ${p.name} для ${userId} до ${expiresAt.toISOString()}`);
+  await extendAiSubscription(userId, aiPlan, 1);
   try {
     await recordSubscriptionPayment({ paymentId, userId, amount: paid, plan: aiPlan, months: 1 });
     await accruePartnerCommission({ paymentId, clientId: userId, amount: paid });
@@ -4678,8 +4718,9 @@ app.get('/api/admin/ai', adminAuth, async (req, res) => {
               sum(prompt_tokens)::float AS prompt_tokens, sum(cached_tokens)::float AS cached_tokens
          FROM ai_assistant_usage GROUP BY month ORDER BY month DESC LIMIT 6`)).rows;
     const revenue = (await pool.query(
-      `SELECT to_char(paid_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM') AS month, sum(amount)::float AS rub, count(*)::int AS payments
-         FROM subscription_payments WHERE plan = ANY($1) AND refunded_at IS NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 6`, [Object.keys(AI_PLANS)])).rows;
+      `SELECT to_char(paid_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM') AS month,
+              sum(CASE WHEN plan = ANY($1) THEN amount ELSE ai_addon_amount END)::float AS rub, count(*)::int AS payments
+         FROM subscription_payments WHERE (plan = ANY($1) OR ai_addon IS NOT NULL) AND refunded_at IS NULL GROUP BY 1 ORDER BY 1 DESC LIMIT 6`, [Object.keys(AI_PLANS)])).rows;
     const now = new Date();
     res.json({
       month,
@@ -5635,7 +5676,7 @@ const pluralMonths = (n) => {
   return 'месяцев';
 };
 
-const receiptEmailHtml = ({ name, plan, months, amount, paidAt, expiresAt, paymentId, receiptUrl }) => {
+const receiptEmailHtml = ({ name, plan, months, amount, paidAt, expiresAt, paymentId, receiptUrl, aiAddon, aiExpiresAt }) => {
   const planTitle = PLAN_TITLES[plan] || plan;
   const money = Number(amount).toLocaleString('ru-RU', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   const row = (label, value) => `
@@ -5663,6 +5704,7 @@ const receiptEmailHtml = ({ name, plan, months, amount, paidAt, expiresAt, payme
       ${row('Срок', `${months} ${pluralMonths(months)}`)}
       ${row('Дата оплаты', paidAt)}
       ${expiresAt ? row('Доступ до', expiresAt) : ''}
+      ${aiAddon ? row('FinUchetGPT', `${PLAN_TITLES[aiAddon] || aiAddon}${aiExpiresAt ? `, до ${aiExpiresAt}` : ''}`) : ''}
       ${row('Номер платежа', `<span style="font-family:ui-monospace,monospace;font-size:12px">${paymentId}</span>`)}
     </table>
 
@@ -5690,8 +5732,8 @@ const receiptEmailHtml = ({ name, plan, months, amount, paidAt, expiresAt, payme
 const sendPaymentReceiptEmail = async (paymentId) => {
   try {
     const { rows } = await pool.query(
-      `SELECT p.id, p.amount, p.plan, p.months, p.paid_at, p.receipt_url,
-              u.name, u.email, u.subscription
+      `SELECT p.id, p.amount, p.plan, p.months, p.paid_at, p.receipt_url, p.ai_addon,
+              u.name, u.email, u.subscription, u.ai_subscription
          FROM subscription_payments p
          JOIN users u ON u.id = p.user_id
         WHERE p.id = $1`,
@@ -5712,7 +5754,9 @@ const sendPaymentReceiptEmail = async (paymentId) => {
       paidAt: fmt(r.paid_at),
       expiresAt: fmt(r.subscription?.expiresAt),
       paymentId: r.id,
-      receiptUrl: r.receipt_url
+      receiptUrl: r.receipt_url,
+      aiAddon: r.ai_addon,
+      aiExpiresAt: r.ai_addon ? fmt(r.ai_subscription?.expiresAt) : null
     });
 
     const money = Number(r.amount).toLocaleString('ru-RU');
@@ -5721,7 +5765,7 @@ const sendPaymentReceiptEmail = async (paymentId) => {
       : `Оплата ${money} ₽ получена — FinUchet`;
     const text = [
       `${r.receipt_url ? 'Чек' : 'Подтверждение оплаты'}: ${money} ₽`,
-      `Тариф: ${PLAN_TITLES[r.plan] || r.plan}, ${r.months} ${pluralMonths(r.months)}`,
+      `Тариф: ${PLAN_TITLES[r.plan] || r.plan}${r.ai_addon ? ` + FinUchetGPT «${PLAN_TITLES[r.ai_addon] || r.ai_addon}»` : ''}, ${r.months} ${pluralMonths(r.months)}`,
       `Дата: ${fmt(r.paid_at)}`,
       r.subscription?.expiresAt ? `Доступ до: ${fmt(r.subscription.expiresAt)}` : null,
       `Номер платежа: ${r.id}`,
@@ -6275,8 +6319,9 @@ const ALLOWED_MONTHS = Object.keys(DURATION_DISCOUNTS).map(Number);
  * @returns {number|null} сумма в рублях либо null, если план/срок недопустимы
  */
 const calculateSubscriptionAmount = (plan, months) => {
-  const base = PLAN_PRICES[plan];
-  const discount = DURATION_DISCOUNTS[months];
+  // hasOwn: план приходит из запроса — ключи прототипа («toString») ценой не считаются
+  const base = Object.hasOwn(PLAN_PRICES, plan) ? PLAN_PRICES[plan] : undefined;
+  const discount = Object.hasOwn(DURATION_DISCOUNTS, months) ? DURATION_DISCOUNTS[months] : undefined;
   if (!base || discount === undefined) return null;
   return Math.ceil(base * (1 - discount)) * months;
 };
@@ -6287,7 +6332,12 @@ const calculateSubscriptionAmount = (plan, months) => {
 // на клиенте нельзя — предупреждение обязано совпадать с тем, что реально
 // применит сервер (PLAN_LIMITS выше).
 app.get('/api/payment/pricing', (req, res) => {
-  res.json({ prices: PLAN_PRICES, discounts: DURATION_DISCOUNTS, limits: PLAN_LIMITS });
+  res.json({
+    prices: PLAN_PRICES, discounts: DURATION_DISCOUNTS, limits: PLAN_LIMITS,
+    // FinUchetGPT можно добавить к оплате тарифа — на тот же срок и с той же скидкой
+    // Пока агент закрыт (AI_AGENT_PUBLIC), витрина тарифов его не показывает
+    ...(AI_AGENT_PUBLIC ? { aiPlans: Object.entries(AI_PLANS).map(([key, p]) => ({ key, name: p.name, price: p.price, monthly: p.monthly })) } : {}),
+  });
 });
 
 // Способ оплаты, выбранный в нашем окне: ЮKassa открывает свою страницу сразу
@@ -6297,8 +6347,8 @@ app.get('/api/payment/pricing', (req, res) => {
 const PAYMENT_METHODS = { sbp: 'sbp', card: 'bank_card' };
 
 app.post('/api/payment/create', auth, async (req, res) => {
-  const { description, returnUrl, plan, months, method } = req.body;
-  if (method !== undefined && !PAYMENT_METHODS[method]) {
+  const { description, returnUrl, plan, months, method, aiAddon } = req.body;
+  if (method !== undefined && !Object.hasOwn(PAYMENT_METHODS, method)) {
     return res.status(400).json({ msg: 'Недопустимый способ оплаты' });
   }
   const shopId = process.env.YOOKASSA_SHOP_ID;
@@ -6309,10 +6359,19 @@ app.post('/api/payment/create', auth, async (req, res) => {
   if (!ALLOWED_MONTHS.includes(monthsNum)) {
     return res.status(400).json({ msg: 'Недопустимый период подписки' });
   }
-  const amount = calculateSubscriptionAmount(plan, monthsNum);
-  if (amount === null) {
+  const planAmount = calculateSubscriptionAmount(plan, monthsNum);
+  if (planAmount === null) {
     return res.status(400).json({ msg: 'Недопустимый тариф' });
   }
+  // FinUchetGPT к тарифу — необязательно; старые сборки его не передают
+  if (aiAddon && !aiAgentAllowed(req.user.role)) {
+    return res.status(400).json({ msg: 'FinUchetGPT пока недоступен.' });
+  }
+  const addonAmount = aiAddon ? calculateAiAddonAmount(aiAddon, monthsNum) : 0;
+  if (addonAmount === null) {
+    return res.status(400).json({ msg: 'Недопустимый тариф FinUchetGPT' });
+  }
+  const amount = planAmount + addonAmount;
 
   if (!shopId || !secretKey) {
 
@@ -6339,11 +6398,13 @@ app.post('/api/payment/create', auth, async (req, res) => {
       },
       // Описание тоже собираем сами: оно попадает в чек, и подставлять туда
       // произвольный текст из запроса не стоит.
-      description: `Оплата тарифа ${plan} на ${monthsNum} мес.`,
+      description: `Оплата тарифа ${PLAN_TITLES[plan] || plan}${aiAddon ? ` + FinUchetGPT «${AI_PLANS[aiAddon].name}»` : ''} на ${monthsNum} мес.`,
+      // aiAddon — отдельный ключ: aiPlan в metadata означает оплату только ИИ
       metadata: {
         userId: req.user.id,
         plan: plan,
-        months: monthsNum
+        months: monthsNum,
+        ...(aiAddon ? { aiAddon } : {})
       }
     }, {
       headers: {
@@ -6406,12 +6467,12 @@ const REFERRAL_REWARD_DAYS = 10;
 
 // Записывает оплату в журнал. Ключ — id платежа ЮKassa, поэтому повторный
 // вебхук (а он в порядке вещей) не создаст второй строки.
-const recordSubscriptionPayment = async ({ paymentId, userId, amount, plan, months }) => {
+const recordSubscriptionPayment = async ({ paymentId, userId, amount, plan, months, aiAddon = null, aiAddonAmount = null }) => {
   await pool.query(
-    `INSERT INTO subscription_payments (id, user_id, amount, plan, months)
-     VALUES ($1, $2, $3, $4, $5)
+    `INSERT INTO subscription_payments (id, user_id, amount, plan, months, ai_addon, ai_addon_amount)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (id) DO NOTHING`,
-    [paymentId, userId, amount, plan, months]
+    [paymentId, userId, amount, plan, months, aiAddon, aiAddonAmount]
   );
 };
 
@@ -6772,13 +6833,16 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                 // 🤖 Тариф ИИ-агента — своя подписка, основную не трогаем
                 await applyAiPayment(object.id, verifyResp.data);
             } else if (verifyResp.data?.status === 'succeeded') {
-                const { userId, plan, months } = verifyResp.data.metadata || {};
+                const { userId, plan, months, aiAddon } = verifyResp.data.metadata || {};
                 if (userId && plan && months) {
                     // 🔒 Сверяем, что заплачено ровно столько, сколько стоит этот тариф
                     // на этот срок. Без проверки достаточно было создать платёж в обход
                     // интерфейса — метаданные с планом и сроком активировали подписку
                     // независимо от внесённой суммы.
-                    const expected = calculateSubscriptionAmount(plan, Number(months));
+                    // FinUchetGPT в той же оплате — его стоимость входит в ожидаемую сумму
+                    const planExpected = calculateSubscriptionAmount(plan, Number(months));
+                    const addonExpected = aiAddon ? calculateAiAddonAmount(aiAddon, Number(months)) : 0;
+                    const expected = planExpected === null || addonExpected === null ? null : planExpected + addonExpected;
                     const paid = Number(verifyResp.data.amount?.value);
                     if (expected === null || !(paid >= expected)) {
                         console.error(
@@ -6787,6 +6851,10 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                         );
                         return res.status(200).send('OK'); // 200, иначе ЮKassa будет слать вебхук повторно
                     }
+
+                    // Повторный вебхук: подписка уже продлена этим платежом
+                    const seenPayment = await pool.query('SELECT 1 FROM subscription_payments WHERE id = $1', [object.id]);
+                    if (seenPayment.rowCount) return res.status(200).send('OK');
 
                     const userResult = await pool.query('SELECT subscription FROM users WHERE id = $1', [userId]);
                     // Остаток другого тарифа пересчитывается в дни нового по цене —
@@ -6804,12 +6872,17 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
                         [JSON.stringify({ plan, expiresAt: newExpiresAt.toISOString() }), userId]
                     );
                     console.log(`✅ Subscription updated for user ${userId} to ${plan} for ${months} months`);
+                    if (aiAddon) {
+                        try { await extendAiSubscription(userId, aiAddon, Number(months)); }
+                        catch (e) { console.error(`🚨 Оплачен FinUchetGPT ${aiAddon} к тарифу, но не продлён (${userId}):`, e.message); }
+                    }
 
                     // 💳 Журнал оплат и доля партнёра. Обе операции идемпотентны по id
                     // платежа, поэтому повторный вебхук ничего не задваивает.
                     try {
                         await recordSubscriptionPayment({
-                            paymentId: object.id, userId, amount: paid, plan, months: Number(months)
+                            paymentId: object.id, userId, amount: paid, plan, months: Number(months),
+                            aiAddon: aiAddon || null, aiAddonAmount: aiAddon ? addonExpected : null
                         });
                         await accruePartnerCommission({ paymentId: object.id, clientId: userId, amount: paid });
                         // Письмо об оплате. Отправляем после записи платежа: письмо

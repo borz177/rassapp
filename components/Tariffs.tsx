@@ -11,6 +11,24 @@ import { termAfterPayment } from '../shared/subscriptionTerm.js';
 import { PAYMENT_RESOLVED_EVENT, rememberPendingPayment } from '../src/pendingPayment';
 import { SubscriptionPlan, User, PlanLimits } from '../types';
 
+/** Тариф FinUchetGPT для оплаты вместе с основным (AI_PLANS в server/index.js) */
+interface AiPlanOffer { key: string; name: string; price: number; monthly: number }
+// На случай, если запрос цен не прошёл; сумму всё равно считает сервер
+const FALLBACK_AI_PLANS: AiPlanOffer[] = [
+  { key: 'AI_START', name: 'ИИ Старт', price: 890, monthly: 300 },
+  { key: 'AI_PRO', name: 'ИИ Про', price: 1690, monthly: 1000 },
+];
+
+/** Прибавить месяцы, не перескакивая через короткий месяц (31 янв + 1 = 28/29 фев) — как addMonthsClamped на сервере */
+const addMonthsClamped = (from: Date, months: number) => {
+  const d = new Date(from);
+  const day = d.getDate();
+  d.setDate(1);
+  d.setMonth(d.getMonth() + months);
+  d.setDate(Math.min(day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate()));
+  return d;
+};
+
 const PLAN_NAMES: Record<string, string> = {
   TRIAL: 'Пробный',
   START: 'Старт',
@@ -122,13 +140,24 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
   // ломаться из-за сетевой ошибки. Считает деньги всё равно сервер, поэтому
   // расхождение может дать только неверную витрину, но не неверное списание.
   const FALLBACK_DISCOUNTS: Record<number, number> = { 1: 0, 3: 0.03, 6: 0.05, 12: 0.10 };
-  const [pricing, setPricing] = useState<{ prices: Record<string, number>; discounts: Record<string, number> } | null>(null);
+  const [pricing, setPricing] = useState<{ prices: Record<string, number>; discounts: Record<string, number>; limits?: Record<string, PlanLimits>; aiPlans?: AiPlanOffer[] } | null>(null);
+  // FinUchetGPT к оплате тарифа: null — без агента. Действующий тариф ИИ — чтобы
+  // сказать, до какого числа он продлится
+  const [aiAddon, setAiAddon] = useState<string | null>(null);
+  const [aiCurrent, setAiCurrent] = useState<{ key: string; name: string; expiresAt: string } | null>(null);
+  // Агент пока открыт не всем (AI_AGENT_PUBLIC на сервере) — блок в оплате только тем, кому можно
+  const [aiOpen, setAiOpen] = useState(false);
 
   useEffect(() => {
     api.getPricing()
        .then(setPricing)
        .catch(() => { /* останемся на встроенных значениях */ });
+    api.aiAssistant.status()
+       .then(s => { setAiCurrent(s?.plan || null); setAiOpen(!!s?.allowedRole); })
+       .catch(() => { /* без текущего тарифа ИИ — просто не покажем его срок */ });
   }, []);
+
+  const aiPlans = pricing?.aiPlans?.length ? pricing.aiPlans : FALLBACK_AI_PLANS;
 
   const getDiscount = (months: number) =>
     pricing?.discounts?.[months] ?? FALLBACK_DISCOUNTS[months] ?? 0;
@@ -154,8 +183,22 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
     return termAfterPayment({ current: user?.subscription, plan: confirmData.key, months: duration, prices });
   }, [confirmData, duration, user, pricing]);
 
+  /**
+   * FinUchetGPT в этой оплате: на тот же срок и с той же скидкой, что и тариф, —
+   * тем же расчётом, что calculateAiAddonAmount на сервере. Срок агента свой:
+   * тот же тариф ИИ продлевается от конца текущего, другой — с сегодняшнего дня.
+   */
+  const addon = useMemo(() => {
+    const p = aiAddon && aiOpen ? aiPlans.find(a => a.key === aiAddon) : null;
+    if (!p) return null;
+    const monthly = Math.ceil(p.price * (1 - getDiscount(duration)));
+    const active = aiCurrent && aiCurrent.key === p.key && new Date(aiCurrent.expiresAt) > new Date();
+    return { ...p, monthly, total: monthly * duration, expiresAt: addMonthsClamped(active ? new Date(aiCurrent!.expiresAt) : new Date(), duration) };
+  }, [aiAddon, aiOpen, aiPlans, duration, aiCurrent, pricing]);
+
   const handleSelectPlan = (name: string, key: string, monthlyPrice: number, basePrice: number) => {
       setDowngradeAccepted(false);
+      setAiAddon(null);
       setConfirmData({ name, key, monthlyPrice, basePrice });
   };
 
@@ -266,6 +309,7 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
           plan: planKey,
           months: duration,
           method,
+          ...(addon ? { aiAddon: addon.key } : {}),
       });
 
       if (data.confirmationUrl) {
@@ -663,6 +707,59 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                     </div>
                   )}
 
+                  {/* FinUchetGPT — по желанию, к той же оплате. По умолчанию выключен:
+                      сумма к оплате не должна расти без явного выбора */}
+                  {aiOpen && <div className="mb-5">
+                      <div className="flex items-baseline justify-between gap-3 mb-1">
+                          <p className="text-sm font-bold text-slate-800 dark:text-white">Добавить FinUchetGPT</p>
+                          <span className="text-[11px] text-slate-400 dark:text-slate-500">по желанию</span>
+                      </div>
+                      <p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400 mb-3">
+                          ИИ-агент: принимает платежи, оформляет договоры и напоминает клиентам по сообщению в чате. На тот же срок, что и тариф{getDiscount(duration) > 0 ? `, со скидкой ${getDiscount(duration) * 100}%` : ''}.
+                      </p>
+                      <div role="radiogroup" aria-label="FinUchetGPT" className="space-y-2">
+                          {[null, ...aiPlans].map(p => {
+                              const selected = (p?.key ?? null) === aiAddon;
+                              const monthly = p ? Math.ceil(p.price * (1 - getDiscount(duration))) : 0;
+                              return (
+                                  <button
+                                      key={p?.key ?? 'none'}
+                                      type="button"
+                                      role="radio"
+                                      aria-checked={selected}
+                                      disabled={!!loading}
+                                      onClick={() => setAiAddon(p?.key ?? null)}
+                                      className={`w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl border text-left transition-colors disabled:opacity-60 ${
+                                          selected
+                                              ? 'border-slate-900 dark:border-white bg-slate-900/[0.03] dark:bg-white/[0.06]'
+                                              : 'border-slate-200 dark:border-slate-700 hover:border-slate-300 dark:hover:border-slate-600'
+                                      }`}
+                                  >
+                                      <span className={`shrink-0 w-4 h-4 rounded-full border-2 grid place-items-center ${selected ? 'border-slate-900 dark:border-white' : 'border-slate-300 dark:border-slate-600'}`}>
+                                          {selected && <span className="w-2 h-2 rounded-full bg-slate-900 dark:bg-white" />}
+                                      </span>
+                                      <span className="min-w-0 flex-1">
+                                          <span className="block text-sm font-semibold text-slate-800 dark:text-white">{p ? p.name : 'Без агента'}</span>
+                                          {p && <span className="block text-[11px] text-slate-500 dark:text-slate-400">{rub(p.monthly)} запросов в месяц</span>}
+                                      </span>
+                                      {p && (
+                                          <span className="shrink-0 text-right">
+                                              <span className="block text-sm font-semibold tabular-nums text-slate-800 dark:text-white">+{rub(monthly * duration)} ₽</span>
+                                              {duration > 1 && <span className="block text-[11px] tabular-nums text-slate-400 dark:text-slate-500">{rub(monthly)} ₽/мес.</span>}
+                                          </span>
+                                      )}
+                                  </button>
+                              );
+                          })}
+                      </div>
+                      {aiCurrent && new Date(aiCurrent.expiresAt) > new Date() && (
+                          <p className="mt-2 text-[11px] leading-relaxed text-slate-500 dark:text-slate-400">
+                              Сейчас у вас «{aiCurrent.name}» до {new Date(aiCurrent.expiresAt).toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}.
+                              {' '}Тот же тариф продлится от этой даты, другой — начнётся сегодня.
+                          </p>
+                      )}
+                  </div>}
+
                   <div className="bg-slate-50 dark:bg-slate-900/40 p-4 rounded-2xl space-y-3 border border-slate-100 dark:border-slate-700 mb-6">
                       <div className="flex justify-between items-center">
                           <span className="text-slate-500 dark:text-slate-400 text-sm">Тариф</span>
@@ -686,23 +783,37 @@ const Tariffs: React.FC<TariffsProps> = ({ user, investorsCount = 0, contractsCo
                               как {Math.round(term.credit.toDays)} дн. тарифа «{confirmData.name}» — по разнице в цене.
                           </p>
                       )}
+                      {addon && (
+                          <div className="flex justify-between items-center gap-3">
+                              <span className="text-slate-500 dark:text-slate-400 text-sm">FinUchetGPT</span>
+                              <span className="font-medium text-slate-800 dark:text-white text-right">
+                                  {addon.name}<span className="text-slate-400 dark:text-slate-500 font-normal tabular-nums"> · до {addon.expiresAt.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}</span>
+                              </span>
+                          </div>
+                      )}
                       <div className="border-t border-slate-200 dark:border-slate-700 my-2"></div>
                       <div className="flex justify-between items-center text-xs text-slate-400 dark:text-slate-500">
-                          <span>Цена за месяц</span>
+                          <span>{addon ? `«${confirmData.name}» в месяц` : 'Цена за месяц'}</span>
                           <span className="tabular-nums">{confirmData.monthlyPrice.toLocaleString('ru-RU')} ₽</span>
                       </div>
+                      {addon && (
+                          <div className="flex justify-between items-center text-xs text-slate-400 dark:text-slate-500">
+                              <span>«{addon.name}» в месяц</span>
+                              <span className="tabular-nums">{rub(addon.monthly)} ₽</span>
+                          </div>
+                      )}
                       {confirmData.basePrice > confirmData.monthlyPrice && (
                           <div className="flex justify-between items-center text-xs text-slate-500 dark:text-slate-400 font-medium">
                               {/* Процент берём из тарифной сетки, а не пересчитываем обратно из цены:
                                   месячная цена округляется вверх (Math.ceil), и обратный расчёт давал
                                   дробь вида «4.94949494949495%» прямо в окне оплаты. */}
                               <span>Скидка ({getDiscount(duration) * 100}%)</span>
-                              <span className="tabular-nums">−{(confirmData.basePrice * duration - confirmData.monthlyPrice * duration).toLocaleString('ru-RU')} ₽</span>
+                              <span className="tabular-nums">−{((confirmData.basePrice - confirmData.monthlyPrice + (addon ? addon.price - addon.monthly : 0)) * duration).toLocaleString('ru-RU')} ₽</span>
                           </div>
                       )}
                       <div className="flex justify-between items-end pt-2">
                           <span className="text-slate-800 dark:text-white font-bold">Итого к оплате:</span>
-                          <span className="text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-white">{(confirmData.monthlyPrice * duration).toLocaleString('ru-RU')} ₽</span>
+                          <span className="text-2xl font-bold tracking-tight tabular-nums text-slate-900 dark:text-white">{(confirmData.monthlyPrice * duration + (addon?.total || 0)).toLocaleString('ru-RU')} ₽</span>
                       </div>
                   </div>
 

@@ -4247,7 +4247,17 @@ const handleQuickAddCustomer = async (data: {
   // Что ищем и куда переходим. Данные передаём те же, что уже на руках у этого
   // пользователя: у сотрудника они урезаны по его правам, значит и поиск урезан.
   // ── ИИ-агент: владельцу аккаунта, кнопка в шапке и в боковом меню ─────
-  const aiAvailable = !!user && (user.role === 'manager' || user.role === 'admin');
+  // Пока агент открыт не всем (AI_AGENT_PUBLIC на сервере), кнопку показываем,
+  // только если сервер говорит, что этому пользователю можно; админу — сразу
+  const [aiOpenForUser, setAiOpenForUser] = useState(false);
+  useEffect(() => {
+    setAiOpenForUser(false);
+    if (user?.role !== 'manager') return;
+    let alive = true;
+    api.aiAssistant.status().then(s => { if (alive) setAiOpenForUser(!!s?.allowedRole); }).catch(() => {});
+    return () => { alive = false; };
+  }, [user?.id, user?.role]);
+  const aiAvailable = !!user && (user.role === 'admin' || (user.role === 'manager' && aiOpenForUser));
   // Откуда открыли агента: «назад» возвращает туда, а не в тарифы ИИ,
   // открытые из него же
   const aiBackRef = useRef<ViewState>('DASHBOARD');

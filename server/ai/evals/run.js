@@ -38,16 +38,18 @@ const api = async (p, body, method = 'POST') => {
 // Разговор: история — как её собирает приложение (AIAssistant.tsx: toHistory)
 class Chat {
   constructor(mode = 'confirm') { this.mode = mode; this.msgs = []; }
-  async say(text, { image, note, requestId } = {}) {
+  async say(text, { image, audio, note, requestId } = {}) {
     const history = this.msgs.filter(m => m.text || m.image).slice(-12);
-    const d = await api('/message', { text: note ? `${text} [${note}]` : text, history, image: image && img(image), mode: this.mode, requestId });
+    const d = await api('/message', { text: note ? `${text} [${note}]` : text, history, image: image && img(image), mode: this.mode, requestId,
+      ...(audio ? { audio: { data: fs.readFileSync(path.join(__dirname, audio)).toString('base64'), format: 'wav' } } : {}) });
     const notes = (d.actions || []).filter(a => a.kind === 'contract_form').map(a => {
       const c = a.draft?.newCustomer;
       return `[Черновик договора: ${a.draft?.productName}; ${c ? `${c.name}, паспорт ${c.passportSeries || ''} ${c.passportNumber || ''} (новый клиент, в базе ещё нет)` : `клиент из базы ${a.draft?.customerId}`}]`;
     });
     // Паспорт, по которому сразу сделан черновик, приложение больше не отправляет (toHistory)
     const passportTaken = (d.actions || []).some(a => a.kind === 'contract_form' && a.draft?.newCustomer?.passportNumber);
-    this.msgs.push({ role: 'user', text: (note ? `${text} [${note}]` : text) + (image && passportTaken ? ' (было фото паспорта — данные в черновике договора)' : ''),
+    // Голосовое: в истории — его расшифровка (heard), как в приложении
+    this.msgs.push({ role: 'user', text: [note ? `${text} [${note}]` : text, d.heard].filter(Boolean).join('\n') + (image && passportTaken ? ' (было фото паспорта — данные в черновике договора)' : ''),
       ...(image && !passportTaken ? { image: img(image) } : {}) });
     this.msgs.push({ role: 'assistant', text: [d.reply || '', ...notes].join('\n') });
     return d;
@@ -64,14 +66,58 @@ const cancelAll = async (d) => { for (const a of d.actions || []) if (a.kind ===
 
 const scenarios = [
   ['Паспорт + «оформи договор» → черновик с паспортом', async () => {
-    const d = await new Chat().say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев', { image: 'passport-petrov.jpg' });
+    const d = await new Chat().say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев, телефон 89281234567', { image: 'passport-petrov.jpg' });
     const c = action(d, 'contract_form')?.draft;
     return c?.newCustomer?.passportNumber === '482913' && c.buyPrice === 500000 && c.markupPercent === 25 && c.months === 10;
   }],
+  ['Паспорт без телефона → спрашивает телефон, потом черновик с паспортом и телефоном', async () => {
+    const chat = new Chat();
+    const d1 = await chat.say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев', { image: 'passport-petrov.jpg' });
+    if (kinds(d1).includes('contract_form') || !/телефон|номер/i.test(d1.reply || '')) return false;
+    const d2 = await chat.say('+7 928 765-43-21');
+    const c = action(d2, 'contract_form')?.draft;
+    const ok = c?.newCustomer?.passportNumber === '482913' && String(c.newCustomer.phone || '').replace(/\D/g, '').endsWith('9287654321');
+    if (!ok) console.log(`     1: «${(d1.reply || '').slice(0, 160)}» | 2: «${(d2.reply || '').slice(0, 160)}» ${JSON.stringify(c?.newCustomer || null)}`);
+    return ok;
+  }],
+  ['Голосовое с фото: «айфон шестнадцать…» без срока → спрашивает срок, потом черновик', async () => {
+    // В фразе много чисел: модель брала «шестнадцать» из названия за срок, а «закуп» — за цену
+    const chat = new Chat();
+    const d1 = await chat.say('', { image: 'passport-petrov.jpg', audio: 'voice-iphone-no-term.wav' });
+    if (kinds(d1).includes('contract_form') || !/срок|месяц/i.test(d1.reply || '')) { console.log(`     1: «${d1.heard}» → «${(d1.reply || '').slice(0, 120)}»`); return false; }
+    const d2 = await chat.say('6 месяцев');
+    const c = action(d2, 'contract_form')?.draft;
+    const ok = c?.months === 6 && c.buyPrice === 50000 && c.markupPercent === 25 && /16 pro max/i.test(c.productName || '')
+      && String(c.newCustomer?.phone || '').replace(/\D/g, '').endsWith('9657777027') && c.newCustomer?.passportNumber === '482913';
+    if (!ok) console.log(`     2: ${JSON.stringify(c && { ...c, newCustomer: c.newCustomer && { phone: c.newCustomer.phone, pass: c.newCustomer.passportNumber } })}`);
+    return ok;
+  }],
+  ['«Авто» + телефон голосом → договор ждёт «Оформить», номер зачитан; текстом — оформляется сразу', async () => {
+    // Расшифровка могла ошибиться в цифре — сразу оформленный договор никто не проверит
+    const d1 = await new Chat('auto').say('', { image: 'passport-petrov.jpg', audio: 'voice-iphone-auto-phone.wav' });
+    const c1 = action(d1, 'contract_form');
+    const voiceOk = c1 && !c1.auto && !!c1.checkPhone && /965\D*777\D*70\D*27/.test(d1.reply || '');
+    const d2 = await new Chat('auto').say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев, телефон 89281234567', { image: 'passport-petrov.jpg' });
+    const c2 = action(d2, 'contract_form');
+    const textOk = c2 && c2.auto === true && !c2.checkPhone;
+    if (!voiceOk || !textOk) console.log(`     1: «${d1.heard}» → «${(d1.reply || '').slice(0, 140)}» ${JSON.stringify(c1 && { auto: c1.auto, checkPhone: c1.checkPhone })} | 2: ${JSON.stringify(c2 && { auto: c2.auto, checkPhone: c2.checkPhone })}`);
+    return voiceOk && textOk;
+  }],
+  ['Однофамилец: «Фамилия Имя», которого нет в базе → новый клиент, не тот, что в базе', async () => {
+    // В демо-базе есть «Ахмадов …» — просим Ахмадова с другим именем
+    const chat = new Chat();
+    const d1 = await chat.say('оформи договор на клиента Ахмадов Тамерлан, холодильник закуп 40 наценка 20 на 4 месяца');
+    if (kinds(d1).includes('contract_form')) return false;   // сначала телефон нового клиента
+    const d2 = await chat.say('89287770011');
+    const c = action(d2, 'contract_form')?.draft;
+    const ok = !c?.customerId && /тамерлан/i.test(c?.newCustomer?.name || '') && !!c?.newCustomer?.phone;
+    if (!ok) console.log(`     1: «${(d1.reply || '').slice(0, 140)}» ${kinds(d1)} | 2: «${(d2.reply || '').slice(0, 140)}» ${JSON.stringify(c ? { id: c.customerId, nc: c.newCustomer } : null)}`);
+    return ok;
+  }],
   ['Два паспорта подряд не путаются, «на неё» и «первому» — люди из разговора', async () => {
     const chat = new Chat();
-    await chat.say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев', { image: 'passport-petrov.jpg' });
-    const d2 = await chat.say('и вот ещё клиентка, самсунг закуп 300 наценка 30 на 6 месяцев', { image: 'passport-ivanova.jpg' });
+    await chat.say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев, телефон 89281234567', { image: 'passport-petrov.jpg' });
+    const d2 = await chat.say('и вот ещё клиентка, самсунг закуп 300 наценка 30 на 6 месяцев, тел 89287654321', { image: 'passport-ivanova.jpg' });
     const d3 = await chat.say('оформи на неё ещё один договор: наушники закуп 20 наценка 20 на 3 месяца');
     const d4 = await chat.say('а теперь первому клиенту ноутбук закуп 100 наценка 25 на 5 месяцев');
     // Новый клиент из паспорта или он же, уже заведённый в базе (customerName подставляет сервер)

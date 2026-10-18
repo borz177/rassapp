@@ -16,12 +16,12 @@ export type SendState = 'busy' | 'done' | 'error';
 
 export type AIAction =
   | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
-  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number; always?: boolean;
+  | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number; always?: boolean; checkPhone?: string;
       state?: 'busy' | 'done' | 'error' | 'cancelled' | 'undoing' | 'undone'; result?: string; undoable?: boolean;
       undoResult?: string; receipt?: SendState; receiptResult?: string }
   | { id: string; kind: 'done'; tool: string; title: string; summary: string; contractId?: string; ok: boolean; result: string; undoable?: boolean;
       state?: 'undoing' | 'undone'; undoResult?: string; receipt?: SendState; receiptResult?: string }
-  | { id: string; kind: 'contract_form'; title: string; draft: any; auto?: boolean; overLimit?: number;
+  | { id: string; kind: 'contract_form'; title: string; draft: any; auto?: boolean; overLimit?: number; checkPhone?: string;
       state?: 'done' | 'saving' | 'saved' | 'failed' | 'deleting' | 'deleted';
       saved?: { saleId: string; customerId?: string; number?: string; total?: number; monthly?: number; offline?: boolean };
       result?: string; send?: SendState; sendResult?: string }
@@ -65,6 +65,13 @@ interface Props {
 const OverLimit: React.FC<{ limit: number; what?: string }> = ({ limit, what = 'Сумма' }) => (
   <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
     <ShieldAlert size={13} /> {what} от {limit.toLocaleString('ru-RU')} ₽ — подтвердите (порог «Авто»)
+  </p>
+);
+
+/** «Авто», а телефон пришёл голосом: расшифровка могла ошибиться в цифре — проверить до записи */
+const CheckPhone: React.FC<{ phone: string }> = ({ phone }) => (
+  <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
+    <ShieldAlert size={13} /> Телефон из голосового — проверьте: <span className="tabular-nums">{phone}</span>
   </p>
 );
 
@@ -116,6 +123,7 @@ const AIActionCard: React.FC<Props> = (p) => {
         {title}
         <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100">{a.summary}</p>
         {a.kind === 'confirm' && !a.state && a.overLimit != null && <OverLimit limit={a.overLimit} />}
+        {a.kind === 'confirm' && !a.state && a.checkPhone && <CheckPhone phone={a.checkPhone} />}
         {a.kind === 'confirm' && !a.state && a.always && (
           <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
             <ShieldAlert size={13} /> Рассылку всегда подтверждаете вы — отменить её нельзя
@@ -271,9 +279,10 @@ const AIActionCard: React.FC<Props> = (p) => {
         <p className="mt-2 text-xs text-slate-500">Паспорт {d.newCustomer.passportSeries} {d.newCustomer.passportNumber} — новый клиент будет заведён с этими данными</p>
       )}
       {a.state === 'failed' && <p className={errLine}>Сразу не оформил: {a.result}</p>}
-      {a.overLimit != null && !a.state ? (
+      {(a.overLimit != null || a.checkPhone) && !a.state ? (
         <>
-          <OverLimit limit={a.overLimit} what="Закуп" />
+          {a.overLimit != null && <OverLimit limit={a.overLimit} what="Закуп" />}
+          {a.checkPhone && <CheckPhone phone={a.checkPhone} />}
           <div className="mt-3 flex gap-2">
             <button onClick={p.onSaveContract} className={primary}>Оформить</button>
             <button onClick={p.onOpenForm} className={secondary}>Форма</button>

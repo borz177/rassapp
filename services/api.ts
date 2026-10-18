@@ -769,7 +769,7 @@ export const api = {
     // Сумма здесь намеренно не передаётся: её считает сервер по plan + months.
     // Раньше amount приходил с клиента и не проверялся — можно было оплатить рубль
     // и получить год максимального тарифа.
-    createPayment: async (paymentData: { returnUrl: string, plan: SubscriptionPlan, months: number, method?: 'sbp' | 'card' }): Promise<any> => {
+    createPayment: async (paymentData: { returnUrl: string, plan: SubscriptionPlan, months: number, method?: 'sbp' | 'card', aiAddon?: string }): Promise<any> => {
         // Сервер сам обращается к платёжной системе — на слабом интернете 8 секунд мало
         const res = await fetchWithAuth(`${API_URL}/payment/create`, {
             method: 'POST',
@@ -2015,6 +2015,8 @@ export const api = {
         prices: Record<string, number>;
         discounts: Record<string, number>;
         limits: Record<string, PlanLimits>;
+        /** Тарифы FinUchetGPT, которые можно добавить к оплате (нет у старого сервера) */
+        aiPlans?: { key: string; name: string; price: number; monthly: number }[];
     }> => {
         return api.get('/payment/pricing');
     },
@@ -2144,7 +2146,7 @@ export const api = {
         onStep?: (label: string) => void,
         /** Текст ответа по мере появления: кусок; null — начать заново */
         onDelta?: (piece: string | null) => void,
-      ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean }> => {
+      ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean; heard?: string }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, {
           method: 'POST', body: JSON.stringify(onStep ? { ...body, stream: true } : body), timeout: 120000, signal,
         });

@@ -84,6 +84,8 @@ Express + `pg` (PostgreSQL) + JWT auth (`jsonwebtoken`), bcrypt password hashing
 - Role/tenant model: `role` is one of `admin|manager|investor|employee`. Managers own the data; `employee`/`investor` accounts scope reads/writes back to their `managerId` via `getTargetUserId`; `filterDataForEmployee` further restricts an employee's view to their `allowedInvestorIds`. `PLAN_LIMITS` enforces per-`SubscriptionPlan` (`TRIAL|START|STANDARD|BUSINESS`) contract/investor/employee/WhatsApp/AI caps server-side.
 
 ### AI integration
+FinUchetGPT (server/ai/assistant.js) is admin-only until `AI_AGENT_PUBLIC=1` is set in `/var/www/env/rassapp.env`: the server gates every `/api/ai/assistant/*` route except `/status` (`aiAgentAllowed` in `server/index.js`), drops `aiPlans` from `/api/payment/pricing` and rejects `aiAddon` in `/api/payment/create`; the client shows the orb, sidebar entry and the tariff add-on only when `status.allowedRole` is true.
+
 `services/geminiService.ts` uses `@google/genai` (Gemini) for generating WhatsApp collection messages and other AI features gated by `PLAN_LIMITS.ai`/`AppSettings`. Requires `GEMINI_API_KEY` in `.env.local`; Vite exposes it as both `process.env.API_KEY` and `process.env.GEMINI_API_KEY` via the `define` block in `vite.config.ts`.
 
 ### Styling
