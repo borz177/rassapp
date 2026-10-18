@@ -1,4 +1,4 @@
-import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
@@ -321,11 +321,17 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     while (el && !(el.scrollHeight > el.clientHeight && /auto|scroll/.test(getComputedStyle(el).overflowY))) el = el.parentElement;
     return el;
   };
+  // Пустой чат (приветствие и подсказки) — держим вверху: прокрутка «к концу»
+  // на невысоком экране телефона уводила заголовок и тариф под верхнюю панель
+  const emptyRef = useRef(true);
+  const shortScreen = useMemo(() => typeof window !== 'undefined' && window.innerHeight < 720, []);
+  emptyRef.current = !messages.length && !sending;
   const scrollToEnd = (smooth: boolean) => {
     const el = scroller();
     const behavior: ScrollBehavior = smooth ? 'smooth' : 'auto';
-    if (el) el.scrollTo({ top: el.scrollHeight, behavior });
-    else window.scrollTo({ top: document.documentElement.scrollHeight, behavior });
+    const top = emptyRef.current ? 0 : el ? el.scrollHeight : document.documentElement.scrollHeight;
+    if (el) el.scrollTo({ top, behavior });
+    else window.scrollTo({ top, behavior });
   };
   // При открытии — сразу внизу, без анимации: плавная прокрутка во время
   // въезда страницы обрывалась, и длинный чат открывался посередине.
@@ -620,13 +626,15 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       {/* Лента */}
       <div className="flex-1 space-y-3 pb-4">
         {empty && (
-          <div className="ai-msg-in flex flex-col items-center text-center pt-6 pb-2">
-            <AIOrb size={76} />
-            <p className="mt-4 text-lg font-bold text-slate-900 dark:text-white">Чем помочь?</p>
+          // Невысокий экран телефона (адресная строка, маленький iPhone) — приветствие
+          // плотнее, чтобы подсказки не уходили под переключатель режима
+          <div className={`ai-msg-in flex flex-col items-center text-center ${shortScreen ? 'pt-1' : 'pt-6'} pb-2`}>
+            <AIOrb size={shortScreen ? 52 : 76} />
+            <p className={`${shortScreen ? 'mt-2' : 'mt-4'} text-lg font-bold text-slate-900 dark:text-white`}>Чем помочь?</p>
             <p className="mt-1 text-sm text-slate-500 dark:text-slate-400 max-w-sm">
               Спросите про долги и платежи, попросите принять платёж или оформить договор. Можно голосом и с фото паспорта.
             </p>
-            <div className="mt-5 flex flex-wrap justify-center gap-2">
+            <div className={`${shortScreen ? 'mt-3' : 'mt-5'} flex flex-wrap justify-center gap-2`}>
               {SUGGESTIONS.map((s, i) => (
                 <button key={s} onClick={() => send({ text: s })} style={{ animationDelay: `${80 + i * 60}ms` }}
                         className="ai-msg-in px-3.5 py-2 rounded-2xl text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-500/50 active:scale-[.97] transition">
@@ -858,14 +866,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             <AIOrb size={56} />
             <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Перед началом</h3>
           </div>
-          <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-            <p>Чтобы отвечать и выполнять поручения, агент передаёт текст запросов, голос, фото и нужные для ответа данные учёта (клиенты, договоры, платежи) провайдеру модели искусственного интеллекта через сервис OpenRouter. Обработка может проходить за пределами России.</p>
-            <p>Данные используются только для ответа на ваш запрос. Действия с деньгами и записями выполняются, только когда вы нажмёте «Подтвердить».</p>
-            <p>Если отправляете фото паспорта клиента — у вас должно быть его согласие на обработку персональных данных.</p>
+          {/* Коротко: кому и что уходит — подробно в политике (LegalDocs.tsx) */}
+          <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed text-center">
+            <p>Ваш запрос — текст, голос, фото — и нужные для ответа данные учёта передаются ИИ-модели. Обработка может проходить за пределами России.</p>
+            <p>Фото паспорта клиента — только с его согласия.</p>
           </div>
           <label className="mt-4 flex items-start gap-3 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
             <input type="checkbox" checked={consentChecked} onChange={e => setConsentChecked(e.target.checked)} className="mt-0.5 w-5 h-5 accent-violet-600" />
-            <span>Согласен на передачу и обработку данных, в том числе трансграничную, на условиях <a href={`${publicOrigin()}/privacy`} target="_blank" rel="noreferrer" className="text-violet-600 underline">политики обработки данных</a></span>
+            <span>Согласен на обработку данных, в том числе трансграничную, по <a href={`${publicOrigin()}/privacy`} target="_blank" rel="noreferrer" className="text-violet-600 underline">политике обработки данных</a></span>
           </label>
           <div className="mt-5 flex gap-2">
             <button onClick={onBack} className="px-4 py-3 rounded-2xl text-sm font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700">Не сейчас</button>

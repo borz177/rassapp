@@ -4304,10 +4304,10 @@ app.use('/uploads/products', express.static(productImageDir, {
 /**
  * Поля паспорта из фотографии.
  *
- * Провайдер выбирается ключом в окружении, а не переписыванием кода: сегодня
- * это Claude через OpenRouter, завтра может быть российский OCR — вызов
- * распознавания меняется в одном месте, а всё, что вокруг (тариф, уменьшение
- * снимка, чистка полей), остаётся общим.
+ * Провайдер выбирается ключом в окружении, а не переписыванием кода: сейчас
+ * это Яндекс Vision OCR (YANDEX_VISION_API_KEY) — вызов распознавания меняется в
+ * одном месте, а всё, что вокруг (тариф, уменьшение снимка, чистка полей),
+ * остаётся общим.
  *
  * Запрашиваем ровно те поля, которые есть в карточке клиента: место рождения и
  * код подразделения не спрашиваем вовсе, чтобы не гонять через чужой сервис
@@ -4332,33 +4332,6 @@ const parseModelJson = (text) => {
   const m = cleaned.match(/\{[\s\S]*\}/);
   if (m) { try { return JSON.parse(m[0]); } catch (e2) { /* сдаёмся */ } }
   return {};
-};
-
-const recognizePassportViaOpenRouter = async (base64Jpeg) => {
-  const model = process.env.OPENROUTER_MODEL || 'anthropic/claude-opus-5';
-  const { data } = await axios.post('https://openrouter.ai/api/v1/chat/completions', {
-    model,
-    max_tokens: 1000,
-    messages: [{
-      role: 'user',
-      content: [
-        { type: 'text', text: PASSPORT_PROMPT },
-        { type: 'image_url', image_url: { url: `data:image/jpeg;base64,${base64Jpeg}` } },
-      ],
-    }],
-  }, {
-    timeout: 60000,
-    headers: {
-      Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-      'Content-Type': 'application/json',
-      // OpenRouter просит назвать приложение — по этим заголовкам он показывает
-      // расход в личном кабинете и отличает наш трафик от чужого.
-      'HTTP-Referer': process.env.APP_PUBLIC_URL || 'https://rassrochka.pro',
-      'X-Title': 'FinUchet',
-    },
-  });
-  return parseModelJson(data && data.choices && data.choices[0]
-    && data.choices[0].message && data.choices[0].message.content);
 };
 
 const recognizePassportViaGemini = async (base64Jpeg) => {
@@ -4781,7 +4754,6 @@ app.post('/api/ai/assistant/actions/:id/cancel', auth, (req, res) => {
 app.post('/api/ai/passport', auth, async (req, res) => {
   try {
     const recognize = process.env.YANDEX_VISION_API_KEY ? recognizePassportViaYandex
-      : process.env.OPENROUTER_API_KEY ? recognizePassportViaOpenRouter
       : process.env.GEMINI_API_KEY ? recognizePassportViaGemini
       : null;
     if (!recognize) {
