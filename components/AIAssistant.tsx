@@ -347,7 +347,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       // делает с полем у нижнего края) — вместе с ней уезжали вверх шапка и
       // лента. Возвращаем на место: над клавиатурой поднимается только панель
       if (focusedRef.current && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);
-      const k = Math.max(0, Math.round(window.innerHeight - vv.height - vv.offsetTop));
+      // От высоты макета, а не innerHeight: в Safari на iPhone innerHeight сам
+      // сжимается до видимой области при открытой клавиатуре — разница выходила
+      // нулевой, и панель оставалась под клавиатурой. Где окно под клавиатуру
+      // сжимается целиком (Android), обе высоты меньше — и поднимать не нужно
+      const layoutH = Math.max(window.innerHeight, document.documentElement.clientHeight);
+      const k = Math.max(0, Math.round(layoutH - vv.height - vv.offsetTop));
       // Меньше 80 px — не клавиатура (адресная строка, панель браузера)
       setKeyboard(k > 80 ? k : 0);
     };
