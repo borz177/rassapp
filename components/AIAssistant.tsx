@@ -873,7 +873,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           </div>
           {/* Коротко: кому и что уходит — подробно в политике (LegalDocs.tsx) */}
           <div className="mt-3 space-y-2 text-sm text-slate-600 dark:text-slate-300 leading-relaxed text-center">
-            <p>Ваш запрос — текст, голос, фото — и нужные для ответа данные учёта передаются ИИ-модели. Обработка может проходить за пределами России.</p>
+            <p>Ваш запрос — текст, голос, фото — и нужные для ответа данные учёта передаются ИИ-модели.</p>
             <p>Фото паспорта клиента — только с его согласия.</p>
           </div>
           <label className="mt-4 flex items-start gap-3 text-sm text-slate-700 dark:text-slate-200 cursor-pointer">
