@@ -376,6 +376,15 @@ export interface AdminWhatsAppRow {
     lastError: string | null;
 }
 
+/** Админ: самоулучшение агента (GET /api/admin/ai/quality) */
+export interface AdminAiQuality {
+    kinds: Record<string, string>;
+    byDay: { day: string; kind: string; n: number }[];
+    recent: { kind: string; tool: string | null; question: string | null; answer: string | null; detail: string | null; created_at: string }[];
+    lessons: { id: number; rule: string; why: string | null; kinds: string | null; cases: number; status: 'proposed' | 'active' | 'rejected'; created_at: string; decided_at: string | null }[];
+    autoApply: boolean; lastReviewAt: string | null; pendingReview: number;
+}
+
 /** Админ: расход и доход FinUchetGPT (GET /api/admin/ai) */
 export interface AdminAiUser {
     id: string; email: string; name: string;
@@ -1482,6 +1491,27 @@ export const api = {
         const res = await fetchWithAuth(`${API_URL}/admin/whatsapp`, { timeout: 30000 });
         if (!res.ok) throw new Error('Не удалось загрузить WhatsApp-подключения');
         return res.json();
+    },
+    /** Админ: самоулучшение агента — сигналы, выводы, разбор */
+    adminGetAiQuality: async (): Promise<AdminAiQuality> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/ai/quality`, { timeout: 30000 });
+        if (!res.ok) throw new Error('Не удалось загрузить');
+        return res.json();
+    },
+    adminAiReview: async (): Promise<{ proposed: number; cases: number; skipped?: boolean }> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/ai/quality/review`, { method: 'POST', timeout: 120000 });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Разбор не получился');
+        return data;
+    },
+    adminAiLesson: async (id: number, action: 'apply' | 'reject' | 'remove'): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/ai/lessons/${id}/${action}`, { method: 'POST' });
+        const data = await res.json().catch(() => ({}));
+        if (!res.ok) throw new Error(data.msg || 'Не получилось');
+    },
+    adminAiAutoApply: async (autoApply: boolean): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/admin/ai/quality/settings`, { method: 'PUT', body: JSON.stringify({ autoApply }) });
+        if (!res.ok) throw new Error('Не удалось сохранить');
     },
     /** Админ: запросы, токены и стоимость ИИ по пользователям за месяц (ГГГГ-ММ) */
     adminGetAi: async (month?: string): Promise<AdminAiReport> => {

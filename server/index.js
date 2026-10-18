@@ -923,7 +923,7 @@ app.use(cors({
   origin: [...(process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro']), IOS_APP_ORIGIN],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key', 'x-ai-eval'],
   // Иначе iOS-приложение (другой origin) не увидит продлённый токен
   exposedHeaders: ['x-renewed-token']
 }));
@@ -4554,6 +4554,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       signal: stop.signal,
       onStep: streaming ? (label) => send({ step: label }) : null,
       onStream: streaming ? (ev) => send(ev) : null,
+      silent: req.get('x-ai-eval') === '1',
       user: me,
       text: String(text || '').slice(0, 4000),
       history: Array.isArray(history) ? history : [],
@@ -4697,18 +4698,36 @@ app.get('/api/admin/ai', adminAuth, async (req, res) => {
   } catch (e) { console.error('admin ai error:', e.message); res.status(500).json({ msg: 'Не удалось загрузить' }); }
 });
 
+// Админ: самоулучшение агента — сигналы об ошибках, выводы, ночной разбор (server/ai/quality.js)
+app.get('/api/admin/ai/quality', adminAuth, async (req, res) => {
+  try { res.json(await aiAssistant.quality.report()); }
+  catch (e) { console.error('admin ai quality:', e.message); res.status(500).json({ msg: 'Не удалось загрузить' }); }
+});
+app.post('/api/admin/ai/quality/review', adminAuth, async (req, res) => {
+  try { res.json(await aiAssistant.selfReview(true)); }
+  catch (e) { console.error('admin ai review:', e.message); res.status(500).json({ msg: 'Разбор не получился — попробуйте позже.' }); }
+});
+app.post('/api/admin/ai/lessons/:id/:action', adminAuth, async (req, res) => {
+  try { await aiAssistant.quality.decide(Number(req.params.id), req.params.action); res.json({ ok: true }); }
+  catch (e) { res.status(400).json({ msg: e.message }); }
+});
+app.put('/api/admin/ai/quality/settings', adminAuth, async (req, res) => {
+  try { await aiAssistant.quality.setAutoApply(req.body?.autoApply === true); res.json({ ok: true }); }
+  catch (e) { res.status(500).json({ msg: 'Не удалось сохранить' }); }
+});
+
 // «Стоп» в чате: запрос остановится в ближайшей безопасной точке и вернёт,
 // что успел сделать (см. reply в server/ai/assistant.js)
 app.post('/api/ai/assistant/requests/:id/cancel', auth, (req, res) => {
   const c = aiRunning.get(`${req.user.id}:${String(req.params.id).slice(0, 64)}`);
-  if (c) c.abort();
+  if (c) { c.abort(); if (req.get('x-ai-eval') !== '1') aiAssistant.quality.signal(req.user.id, 'stop'); }
   res.json({ ok: true, running: !!c });
 });
 
 // «Отменить» у выполненного действия (по «Подтвердить» или в режиме «Авто»)
 app.post('/api/ai/assistant/actions/:id/undo', auth, async (req, res) => {
   try {
-    const r = await aiAssistant.undoAction(req.user.id, req.params.id);
+    const r = await aiAssistant.undoAction(req.user.id, req.params.id, { silent: req.get('x-ai-eval') === '1' });
     res.status(r.ok ? 200 : 400).json({ ok: r.ok, text: r.text });
   } catch (e) { console.error('AI undo error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось отменить — попробуйте ещё раз.' }); }
 });

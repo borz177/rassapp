@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { api, type AdminAiReport } from '../services/api';
 import { friendlyError } from '../src/friendlyError';
+import AdminAIQuality from './AdminAIQuality';
 
 /**
  * FinUchetGPT в админке: сколько запросов и денег на модель уходит по каждому
@@ -30,6 +31,7 @@ const AdminAI: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [search, setSearch] = useState('');
+  const [view, setView] = useState<'usage' | 'quality'>('usage');
 
   const load = async (m = month) => {
     setLoading(true);
@@ -51,8 +53,21 @@ const AdminAI: React.FC = () => {
   const q = search.trim().toLowerCase();
   const shown = q ? users.filter(u => `${u.name} ${u.email}`.toLowerCase().includes(q)) : users;
 
+  const tabs = (
+    <div className="flex gap-1 p-1 rounded-xl bg-slate-100 dark:bg-slate-800 w-max">
+      {([['usage', 'Расход'], ['quality', 'Качество']] as const).map(([k, label]) => (
+        <button key={k} onClick={() => setView(k)}
+                className={`px-4 py-1.5 rounded-lg text-sm font-semibold transition ${view === k ? 'bg-white dark:bg-slate-700 text-slate-900 dark:text-white shadow-sm' : 'text-slate-500 dark:text-slate-400'}`}>
+          {label}
+        </button>
+      ))}
+    </div>
+  );
+  if (view === 'quality') return <div className="space-y-4">{tabs}<AdminAIQuality /></div>;
+
   return (
     <div className="space-y-4">
+      {tabs}
       <div className="flex flex-wrap items-center gap-2">
         {(report?.months || []).map(m => (
           <button key={m.month} onClick={() => { setMonth(m.month); load(m.month); }}

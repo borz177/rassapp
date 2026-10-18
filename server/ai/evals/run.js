@@ -29,7 +29,8 @@ const only = process.env.AI_EVAL_ONLY ? new Set(process.env.AI_EVAL_ONLY.split('
 const img = (f) => `data:image/jpeg;base64,${fs.readFileSync(path.join(__dirname, f)).toString('base64')}`;
 const api = async (p, body, method = 'POST') => {
   const r = await fetch(`${BASE}/api/ai/assistant${p}`, {
-    method, headers: { 'x-auth-token': token, 'Content-Type': 'application/json' }, ...(body ? { body: JSON.stringify(body) } : {}),
+    // x-ai-eval — проверка, а не человек: сервер не считает её отмены и «Стоп» ошибками агента
+    method, headers: { 'x-auth-token': token, 'Content-Type': 'application/json', 'x-ai-eval': '1' }, ...(body ? { body: JSON.stringify(body) } : {}),
   });
   return r.json().catch(() => ({}));
 };

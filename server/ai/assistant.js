@@ -307,6 +307,8 @@ const compact = (v) => {
 
 function createAssistant({ pool, jwt, jwtSecret, port }) {
   const v1Base = `http://127.0.0.1:${port}/api/v1`;
+  // Самоулучшение: сигналы об ошибках, ночной разбор, выводы в подсказку (server/ai/quality.js)
+  const quality = require('./quality')({ pool });
   const pending = new Map(); // id → { userId, tool, args, summary, at }
   const done = new Map(); // id → { userId, tool, ref, summary, at } — для «Отменить»
 
@@ -680,11 +682,13 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return execute(userId, actionId, a.tool, a.args, a.summary);
   };
 
-  const undoAction = async (userId, actionId) => {
+  const undoAction = async (userId, actionId, { silent = false } = {}) => {
     sweep();
     const d = done.get(actionId);
     if (!d || d.userId !== userId) return { ok: false, text: 'Отменить уже нельзя — прошло больше 30 минут. Исправьте запись в приложении.' };
     if (d.undone) return { ok: false, text: 'Уже отменено.' };
+    // Отменили в первые 5 минут — похоже, агент сделал не то
+    if (!silent && Date.now() - d.at < 5 * 60 * 1000) quality.signal(userId, 'undo_soon', { tool: d.tool, answer: d.summary });
     const id = encodeURIComponent(d.ref || '');
     let r;
     if (d.undo?.kind === 'customer') {
@@ -738,6 +742,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     } catch (e) {
       if (signal?.aborted || e.status === 503 || !FALLBACK_MODEL || body.model === FALLBACK_MODEL || e.clientError) throw e;
       console.warn(`AI: основная модель не ответила (${e.message}) — повтор запасной ${FALLBACK_MODEL}`);
+      quality.signal(null, 'model_fallback', { detail: e.message });
       live?.onReset();
       return callModelOnce({ ...body, model: FALLBACK_MODEL }, signal, live);
     }
@@ -992,10 +997,12 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
    * а начатая запись доводится до конца — и возвращается с «Отменить», а не
    * теряется молча.
    */
-  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false, onStream = null }) => {
+  const reply = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false, onStream = null, silent = false }) => {
     const step = (label) => { try { if (label && onStep) onStep(label); } catch { /* шаги — только подсказка */ } };
     step(image ? 'Читаю фото…' : audio ? 'Слушаю голосовое…' : 'Думаю…');
     const auto = mode === 'auto';
+    // Сигналы об ошибках — у автотестов (silent) не пишем: это не ошибки агента у людей
+    const flag = silent ? () => {} : quality.signal;
     // Порог «Авто»: сумма от него — с подтверждением даже в «Авто» (настройки агента)
     const overLimit = (amount) => auto && autoLimit != null && (Number(amount) || 0) >= autoLimit;
     const stopped = (actions, usage) => ({
@@ -1016,7 +1023,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     const messages = [
       // Общая часть — с пометкой кэша (cache_control): у Gemini через OpenRouter
       // без неё не кэшируется вовсе
-      { role: 'system', content: [{ type: 'text', text: STATIC_PROMPT, cache_control: { type: 'ephemeral' } }] },
+      { role: 'system', content: [{ type: 'text', text: [STATIC_PROMPT, await quality.lessonsPrompt()].filter(Boolean).join('\n'), cache_control: { type: 'ephemeral' } }] },
       { role: 'system', content: contextPrompt({ userName: user.name, companyName, today, auto, readOnly }) },
       ...historyMessages(history),
       { role: 'user', content },
@@ -1053,6 +1060,10 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
         // выключенными инструментами: модель может только переписать ответ
         // честно — повторить действие (например, на «что ты сделал?») она не сможет
         claimChecked = true;
+        // Рассказ о прошлом действии из истории — не ошибка; сигнал — только если в разговоре ничего не выполнялось
+        if (!history.some(m => /\[(Выполнено|Договор оформлен|Отправлено):/.test(String(m?.text || '')))) {
+          flag(user.id, 'honesty_fix', { question: text, answer: msg.content });
+        }
         try {
           const check = await callModel({
             model: DEFAULT_MODEL, tools, tool_choice: 'none', temperature: 0, max_tokens: 600, usage: { include: true },
@@ -1157,6 +1168,8 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           }
           const missing = missingContractFields(args);
           const lookalikes = !missing.length && !badCustomer ? await existingLookalikes(user.id, args) : null;
+          if (badCustomer) flag(user.id, 'guard_bad_customer', { tool: name, question: text });
+          if (lookalikes) flag(user.id, 'guard_lookalike', { tool: name, question: text });
           if (badCustomer) {
             // Подсказываем, кто был в разговоре: модели остаётся выбрать ФИО, паспорт подставим сами
             const people = [...new Map(passportsFromHistory(history).map(p => [p.name.toLowerCase(), p])).values()];
@@ -1206,6 +1219,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
             const cs = custom ? await customSummary(user.id, name, args) : null;
             const payoff = name === 'create_payment' ? await unaskedPayoff(user.id, args, text) : null;
             if (payoff) {
+              flag(user.id, 'guard_payoff', { tool: name, question: text });
               result = payoff;
             } else if (writes.has(key)) {
               result = 'Это действие в этом сообщении уже есть — повторять не нужно.';
@@ -1234,6 +1248,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
                 actions.push({ id, kind: 'done', tool: name, title, summary, ok: r.ok, result: r.text, undoable: !!r.undoable,
                   ...(name === 'create_payment' && args.contractId ? { contractId: String(args.contractId) } : {}) });
                 result = r.ok ? `Выполнено: ${r.text}` : `Не выполнено: ${r.text}. Скажи человеку, что не так.`;
+                if (!r.ok) flag(user.id, 'tool_error', { tool: name, question: text, detail: r.text });
               } else {
                 pending.set(id, { userId: user.id, tool: name, args, summary, at: Date.now() });
                 actions.push({ id, kind: 'confirm', tool: name, title, summary, args,
@@ -1244,6 +1259,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           } else {
             const r = await callV1(user.id, tool, args);
             result = r.ok && NAMED_TOOLS.has(name) ? await withCustomerNames(user.id, r.data) : r.text;
+            if (!r.ok) flag(user.id, 'tool_error', { tool: name, question: text, detail: r.text });
           }
         }
         // Ответ инструмента помечен как данные: в заметке клиента или названии
@@ -1254,7 +1270,11 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return { reply: 'Не успел закончить — попробуйте сформулировать короче.', actions, usage };
   };
 
-  return { reply, confirmAction, cancelAction, undoAction, verifyAgentToken, model: DEFAULT_MODEL, query };
+  // Ночной разбор ошибок — той же связью с моделью
+  quality.start({ callModel: (body) => callModel(body), staticPrompt: STATIC_PROMPT });
+  const selfReview = (force = true) => quality.review({ callModel: (body) => callModel(body), staticPrompt: STATIC_PROMPT, force });
+
+  return { reply, confirmAction, cancelAction, undoAction, verifyAgentToken, model: DEFAULT_MODEL, query, quality, selfReview };
 }
 
 module.exports = { createAssistant };
