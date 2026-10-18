@@ -2677,7 +2677,7 @@ app.post(
         const lastMsg = customerData.lastNoContractsMessage || 0;
         if (!customerData.lastNoContractsMessage || (now - lastMsg) > (24 * 60 * 60 * 1000)) {
           await sendMessage(parsedSettings.idInstance, parsedSettings.apiTokenInstance, chatId,
-            `Здравствуйте 👋 Я агент ${managerName}. У вас нет активных договоров.`);
+            `Здравствуйте 👋 Я ассистент ${managerName}. У вас нет активных договоров.`);
           customerData.lastNoContractsMessage = now;
           await pool.query(`UPDATE data_items SET data = $1 WHERE id = $2`, [JSON.stringify({ ...customerData, lastNoContractsMessage: now }), customerId]);
         }
