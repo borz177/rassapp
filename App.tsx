@@ -2749,7 +2749,7 @@ const handleAddInvestor = async (
   amount: number,
   profitPercentage: number,
   permissions: InvestorPermissions,
-  poolChoice?: { mode: 'EXISTING'; accountId: string } | { mode: 'NEW'; name: string },
+  poolChoice?: { mode: 'EXISTING'; accountId: string } | { mode: 'NEW'; name: string } | { mode: 'ACCOUNT'; accountId: string },
   joinedDate?: string,
   leftPoolDate?: string
 ) => {
@@ -2760,7 +2760,7 @@ const handleAddInvestor = async (
     return;
   }
 
-  if (poolChoice && !checkAccess('INVESTOR_POOLS')) {
+  if (poolChoice && poolChoice.mode !== 'ACCOUNT' && !checkAccess('INVESTOR_POOLS')) {
     showUpgradeAlert("Общий инвестиционный пул доступен только на тарифе Бизнес Pro.");
     return;
   }
@@ -2804,6 +2804,16 @@ const handleAddInvestor = async (
         poolMemberIds: [investorId],
         currency: 'RUB',
         isArchived: false
+      };
+    } else if (poolChoice?.mode === 'ACCOUNT') {
+      // Привязка к уже существующему обычному счёту (например, перенесённому из
+      // FinPay): договоры остаются на нём, инвестор получает долю всей прибыли счёта
+      const existingAcc = accounts.find(a => a.id === poolChoice.accountId) as Account;
+      targetAccount = {
+        ...existingAcc,
+        type: 'INVESTOR',
+        ownerId: investorId,
+        typeBeforeInvestor: existingAcc.type,
       };
     } else if (poolChoice?.mode === 'EXISTING') {
       const existingPool = accounts.find(a => a.id === poolChoice.accountId);
@@ -3238,6 +3248,11 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
       const updatedPool = { ...acc, poolMemberIds: (acc.poolMemberIds || []).filter(memberId => memberId !== id) };
       const savedPool = await api.saveItem('accounts', updatedPool);
       updateList(setAccounts, savedPool);
+    } else if (acc?.typeBeforeInvestor) {
+      // Счёт был до инвестора и на нём договоры — не удаляем, а отвязываем
+      const { ownerId, typeBeforeInvestor, ...rest } = acc;
+      const restored = await api.saveItem('accounts', { ...rest, type: typeBeforeInvestor });
+      updateList(setAccounts, restored);
     } else if (acc) {
       await api.deleteItem('accounts', acc.id);
       removeFromList(setAccounts, acc.id);

@@ -227,6 +227,12 @@ export interface Account {
    * См. getAccountShares в shared/profit.js.
    */
   managerShareSplit?: { investorId: string; percent: number }[];
+  /**
+   * Счёт был обычным, и инвестора привязали к нему при создании (а не завели
+   * новый счёт): здесь его прежний тип. При удалении инвестора счёт с его
+   * договорами не удаляется, а возвращается к этому типу.
+   */
+  typeBeforeInvestor?: Account['type'];
 }
 
 export interface Partnership {

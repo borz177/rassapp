@@ -3,6 +3,8 @@ import Sheet from './Sheet';
 import { api } from '@/services/api';
 import { Customer, Sale, Account, Investor, Payment, Expense } from '../types';
 import { addMonthsClamped } from '../src/utils';
+import { FinpayExport, isFinpayExport } from '../src/finpayImport';
+import FinpayImport from './FinpayImport';
 
 declare const XLSX: any;
 
@@ -16,12 +18,23 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess, curre
     const [file, setFile] = useState<File | null>(null);
     const [isProcessing, setIsProcessing] = useState(false);
     const [logs, setLogs] = useState<string[]>([]);
+    // Выгрузка FinPay (JSON) — свой экран с сопоставлением счетов
+    const [finpay, setFinpay] = useState<FinpayExport | null>(null);
     const fileInputRef = useRef<HTMLInputElement>(null);
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
-            setFile(e.target.files[0]);
+            const picked = e.target.files[0];
+            setFile(picked);
             setLogs([]);
+            setFinpay(null);
+            if (/\.json$/i.test(picked.name)) {
+                picked.text().then(text => {
+                    const parsed = JSON.parse(text);
+                    if (isFinpayExport(parsed)) setFinpay(parsed);
+                    else addLog('❌ Этот JSON не похож на выгрузку FinPay (нужны clients, installments, payments).');
+                }).catch(() => addLog('❌ Файл не читается как JSON.'));
+            }
         }
     };
 
@@ -676,15 +689,23 @@ if (duplicatesFound.length > 0) {
     return (
         <Sheet onClose={onClose} className="sm:max-w-lg p-6 space-y-5 overflow-y-auto overscroll-contain">
                 <div className="flex justify-between items-center border-b border-slate-100 dark:border-slate-700 pb-4">
-                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Импорт данных (Excel)</h3>
+                    <h3 className="text-xl font-bold text-slate-800 dark:text-white">Импорт данных</h3>
                     <button onClick={onClose} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-2xl">✕</button>
                 </div>
 
+                {finpay ? (
+                    <FinpayImport
+                        data={finpay}
+                        currentUserId={currentUserId}
+                        onDone={() => setTimeout(onImportSuccess, 1500)}
+                    />
+                ) : (
                 <div className="space-y-4">
                     <div className="bg-indigo-50 dark:bg-indigo-900/30 p-4 rounded-xl border border-indigo-100 dark:border-indigo-900/50 text-sm text-indigo-800 dark:text-indigo-400">
                         <p className="font-bold mb-2">📋 Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                             <li>Файл должен содержать листы: <b>Обзор клиентов</b> и <b>История платежей</b></li>
+                            <li>Или выгрузка из <b>FinPay</b> (файл .json)</li>
                             <li>После импорта в конце, проверьте нет ли дубли платежей</li>
                             <li>Если данные и цифры сходится, потом пополните счет чтоб совпало с вашим наличными деньгами, пополнить счет можно через приход</li>
                             <li>Если есть инвестор создайте ему профиль(по желанию)после создания профиля старую карточку инвестора удалите он будет без email</li>
@@ -697,14 +718,14 @@ if (duplicatesFound.length > 0) {
                             type="file"
                             ref={fileInputRef}
                             onChange={handleFileChange}
-                            accept=".xlsx, .xls"
+                            accept=".xlsx, .xls, .json"
                             className="hidden"
                         />
                         <div className="text-4xl mb-2">📄</div>
                         {file ? (
                             <p className="font-bold text-slate-800 dark:text-white text-sm break-all">{file.name}</p>
                         ) : (
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">Нажмите для выбора файла Excel</p>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm">Нажмите для выбора файла Excel или FinPay (.json)</p>
                         )}
                     </div>
 
@@ -730,6 +751,7 @@ if (duplicatesFound.length > 0) {
                         </button>
                     </div>
                 </div>
+                )}
             </Sheet>
     );
 };

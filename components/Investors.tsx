@@ -11,7 +11,8 @@ import { appConfirm } from '../src/dialogs';
 
 export type InvestorPoolChoice =
   | { mode: 'EXISTING'; accountId: string }
-  | { mode: 'NEW'; name: string };
+  | { mode: 'NEW'; name: string }
+  | { mode: 'ACCOUNT'; accountId: string };
 
 interface InvestorsProps {
   investors: Investor[];
@@ -60,12 +61,20 @@ const Investors: React.FC<InvestorsProps> = ({
 
   // 🔹 Общий пул (BUSINESS_PRO) — только при создании нового инвестора
   const [poolMode, setPoolMode] = useState<'OWN' | 'EXISTING' | 'NEW'>('OWN');
+  // Свой счёт: пусто — завести новый, иначе привязать к существующему обычному (на любом тарифе)
+  const [selectedAccountId, setSelectedAccountId] = useState('');
+  const isPoolMode = poolMode === 'EXISTING' || poolMode === 'NEW';
   const [selectedPoolAccountId, setSelectedPoolAccountId] = useState('');
   const [newPoolName, setNewPoolName] = useState('');
   const [formJoinedDate, setFormJoinedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [formLeftPoolDate, setFormLeftPoolDate] = useState('');
 
   const poolAccounts = useMemo(() => accounts.filter(a => a.type === 'POOL'), [accounts]);
+  // Свободные счета: без инвестора, не пул и не совместный. Основной (MAIN) не отдаём —
+  // это касса менеджера.
+  const freeAccounts = useMemo(() => accounts.filter(a =>
+    !a.isArchived && !a.ownerId && (a.type === 'CUSTOM' || a.type === 'INVESTOR')
+  ), [accounts]);
 
   // Редактируем инвестора, который сейчас состоит в общем пуле — только тогда показываем поле "Дата выхода".
   const editingAccount = editingId ? getInvestorAccount(editingId, accounts) : undefined;
@@ -91,6 +100,7 @@ const Investors: React.FC<InvestorsProps> = ({
       setFormPermissions({ canViewContracts: false, canViewHistory: false });
       setPoolMode('OWN');
       setSelectedPoolAccountId('');
+      setSelectedAccountId('');
       setNewPoolName('');
       setFormJoinedDate(new Date().toISOString().split('T')[0]);
       setFormLeftPoolDate('');
@@ -185,7 +195,9 @@ const Investors: React.FC<InvestorsProps> = ({
     }
 
     let poolChoice: InvestorPoolChoice | undefined;
-    if (showPools && poolMode === 'EXISTING') {
+    if (poolMode === 'OWN' && selectedAccountId) {
+        poolChoice = { mode: 'ACCOUNT', accountId: selectedAccountId };
+    } else if (showPools && poolMode === 'EXISTING') {
         if (!selectedPoolAccountId) {
             alert("Выберите пул");
             return;
@@ -220,7 +232,7 @@ const Investors: React.FC<InvestorsProps> = ({
   // Что было в форме при открытии — переспрашиваем при закрытии, только если что-то поменяли
   const formSnapshot = JSON.stringify({
     formName, formPhone, formEmail, formPassword, formAmount, formProfitPercentage, formPermissions,
-    poolMode, selectedPoolAccountId, newPoolName, formJoinedDate, formLeftPoolDate,
+    poolMode, selectedPoolAccountId, selectedAccountId, newPoolName, formJoinedDate, formLeftPoolDate,
   });
   const openedWith = useRef('');
   useEffect(() => { if (isAdding) openedWith.current = formSnapshot; }, [isAdding, editingId]);
@@ -307,14 +319,14 @@ const Investors: React.FC<InvestorsProps> = ({
             </SheetSection>
 
             <SheetSection title="Условия"
-                          hint={!editingId && poolMode !== 'OWN'
+                          hint={!editingId && isPoolMode
                             ? 'Для общего пула сумма обязательна: прибыль сначала делится между участниками по вложенным суммам, затем к части каждого применяется его процент.'
                             : editingId ? 'Сумму здесь не меняют: пополнение — через «Приход», возврат — расходом «Из инвестиций».' : undefined}>
               {!editingId && (
                 <SheetField label="Сумма вложения">
                   <span className="flex items-baseline gap-1">
                     <input className={`${sheetInputClass} font-semibold`} value={formAmount} onChange={e => setFormAmount(e.target.value)}
-                           type="number" inputMode="decimal" placeholder="0" required={poolMode !== 'OWN'} />
+                           type="number" inputMode="decimal" placeholder="0" required={isPoolMode} />
                     <span className="text-[16px] text-slate-400">₽</span>
                   </span>
                 </SheetField>
@@ -336,7 +348,7 @@ const Investors: React.FC<InvestorsProps> = ({
                        type="date" value={formJoinedDate} onChange={e => setFormJoinedDate(e.target.value)}
                        max={new Date().toISOString().split('T')[0]} required />
               </SheetField>
-              {((!editingId && poolMode !== 'OWN') || (editingId && isEditingPoolMember)) && (
+              {((!editingId && isPoolMode) || (editingId && isEditingPoolMember)) && (
                 <SheetField label="Дата выхода из пула"
                             hint={editingId
                               ? 'С этой даты инвестор не получает долю будущей прибыли пула; история до неё сохранится. Пусто — ещё активен.'
@@ -352,14 +364,28 @@ const Investors: React.FC<InvestorsProps> = ({
               )}
             </SheetSection>
 
-            {/* Общий инвестиционный пул — только на BUSINESS_PRO и только при создании */}
-            {showPools && !editingId && (
+            {/* Счёт инвестора — только при создании. Пулы — только на BUSINESS_PRO */}
+            {!editingId && (
               <SheetSection title="Счёт инвестора"
-                            hint={poolMode !== 'OWN' ? 'Остаток прибыли после долей участников каждый раз достаётся вам как менеджеру.' : 'У инвестора будет свой отдельный счёт.'}>
-                <div className="px-4 py-3">
-                  <SheetSegmented value={poolMode} onChange={setPoolMode}
-                                  options={[{ id: 'OWN', label: 'Отдельный' }, { id: 'EXISTING', label: 'В пул' }, { id: 'NEW', label: 'Новый пул' }]} />
-                </div>
+                            hint={isPoolMode ? 'Остаток прибыли после долей участников каждый раз достаётся вам как менеджеру.'
+                              : selectedAccountId ? 'Счёт станет счётом инвестора вместе с договорами на нём: его процент считается от всей прибыли счёта. Сумма вложения запишется приходом — если деньги уже на счёте, оставьте 0.'
+                              : 'У инвестора будет свой отдельный счёт.'}>
+                {showPools && (
+                  <div className="px-4 py-3">
+                    <SheetSegmented value={poolMode} onChange={setPoolMode}
+                                    options={[{ id: 'OWN', label: 'Счёт' }, { id: 'EXISTING', label: 'В пул' }, { id: 'NEW', label: 'Новый пул' }]} />
+                  </div>
+                )}
+                {poolMode === 'OWN' && (
+                  <SheetField label="Счёт"
+                              hint={freeAccounts.length === 0 ? 'Привязать к существующему можно обычный счёт без инвестора — сейчас таких нет (основной счёт и пулы не подходят).' : undefined}>
+                    <select className={`${sheetInputClass} h-7 appearance-none`} value={selectedAccountId}
+                            onChange={e => setSelectedAccountId(e.target.value)}>
+                      <option value="">Новый счёт</option>
+                      {freeAccounts.map(acc => <option key={acc.id} value={acc.id}>{acc.name}</option>)}
+                    </select>
+                  </SheetField>
+                )}
                 {poolMode === 'EXISTING' && (
                   <SheetField label="Пул"
                               hint={selectedPoolAccountId ? `Уже вложено другими: ${selectedPoolTotalCapital.toLocaleString('ru-RU')} ₽. Процент инвестора применяется к части прибыли на его вложение.` : undefined}>
