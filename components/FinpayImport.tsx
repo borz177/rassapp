@@ -71,7 +71,7 @@ const FinpayImport: React.FC<FinpayImportProps> = ({ data, currentUserId, onDone
                 const acc: Account = {
                     id: `acc_finpay_${f.id}`,
                     userId: currentUserId,
-                    name: `FinPay: счёт ${n}`,
+                    name: `FinUchet: счёт ${n}`,
                     type: 'CUSTOM',
                     balance: 0,
                     currency: 'RUB',
@@ -125,7 +125,7 @@ const FinpayImport: React.FC<FinpayImportProps> = ({ data, currentUserId, onDone
     return (
         <div className="space-y-4">
             <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 text-sm text-slate-700 dark:text-slate-300 space-y-1">
-                <p className="font-bold text-slate-800 dark:text-white">FinPay · {analysis.companyName}</p>
+                <p className="font-bold text-slate-800 dark:text-white">FinUchet · {analysis.companyName}</p>
                 <p>Клиентов: <b>{analysis.clients}</b> · договоров: <b>{analysis.contracts}</b> (активных {analysis.activeContracts})</p>
                 <p>Поступлений: <b>{analysis.payments}</b> на {money(analysis.receivedTotal)}</p>
                 <p>Остаток долга клиентов: <b>{money(analysis.remainingTotal)}</b></p>
@@ -139,7 +139,7 @@ const FinpayImport: React.FC<FinpayImportProps> = ({ data, currentUserId, onDone
             )}
 
             <div className="space-y-2">
-                <p className="text-sm font-bold text-slate-800 dark:text-white">Счета FinPay → ваши счета</p>
+                <p className="text-sm font-bold text-slate-800 dark:text-white">Счета из файла → ваши счета</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">В выгрузке нет названий счетов — узнайте их по договорам.</p>
                 {analysis.fundingAccounts.map(f => (
                     <div key={f.id} className="rounded-xl border border-slate-200 dark:border-slate-700 p-3 space-y-2">

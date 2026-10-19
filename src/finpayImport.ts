@@ -128,7 +128,7 @@ export const analyzeFinpay = (data: FinpayExport): FinpayAnalysis => {
   if (noPayments) warnings.push(`${noPayments} договоров без графика платежей — будут пропущены.`);
 
   const future = data.payments.filter(p => p.paid_amount_cents > 0 && p.paid_date && p.paid_date > exportDay).length;
-  if (future) warnings.push(`${future} платежей отмечены оплаченными датой позже выгрузки (FinPay ставит дату по графику) — запишем их датой выгрузки.`);
+  if (future) warnings.push(`${future} платежей отмечены оплаченными датой позже выгрузки (в файле дата стоит по графику) — запишем их датой выгрузки.`);
 
   const unpaidDp = data.installments.filter(i => {
     const z = byInst.get(i.id)?.find(p => p.payment_number === 0);
@@ -139,7 +139,7 @@ export const analyzeFinpay = (data: FinpayExport): FinpayAnalysis => {
   const nums = new Map<number, number>();
   for (const i of data.installments) nums.set(i.installment_number, (nums.get(i.installment_number) || 0) + 1);
   const dupNums = [...nums.values()].filter(n => n > 1).length;
-  if (dupNums) warnings.push(`${dupNums} номеров договоров повторяются в FinPay — номер сохраним в примечании, договоры не склеиваем.`);
+  if (dupNums) warnings.push(`${dupNums} номеров договоров повторяются в файле — номер сохраним в примечании, договоры не склеиваем.`);
 
   const names = new Map<string, number>();
   for (const c of data.clients) {
@@ -147,7 +147,7 @@ export const analyzeFinpay = (data: FinpayExport): FinpayAnalysis => {
     names.set(k, (names.get(k) || 0) + 1);
   }
   const dupNames = [...names.values()].filter(n => n > 1).length;
-  if (dupNames) warnings.push(`${dupNames} ФИО встречаются дважды — это разные карточки в FinPay, перенесём обе.`);
+  if (dupNames) warnings.push(`${dupNames} ФИО встречаются дважды — это разные карточки в файле, перенесём обе.`);
 
   const withoutContracts = data.clients.filter(c => !data.installments.some(i => i.client_id === c.id)).length;
   if (withoutContracts) warnings.push(`${withoutContracts} клиентов без договоров — перенесём только карточки.`);
@@ -156,7 +156,7 @@ export const analyzeFinpay = (data: FinpayExport): FinpayAnalysis => {
   const remaining = data.installments.reduce((s, i) => s + Math.max(0, rub(i.total_price_cents) - rub(i.paid_amount_cents)), 0);
 
   return {
-    companyName: data.company?.name || 'FinPay',
+    companyName: data.company?.name || 'FinUchet',
     exportedAt: data.exported_at,
     clients: data.clients.length,
     contracts: data.installments.length,
@@ -212,7 +212,7 @@ export const buildFinpayRecords = (data: FinpayExport, opts: FinpayBuildOptions)
       email: emails[0] || '',
       passportNumber: c.passport?.number?.trim() || undefined,
       trustScore: 100,
-      notes: ['Импорт из FinPay', ...extra].join('\n'),
+      notes: ['Импорт FinUchet', ...extra].join('\n'),
     };
   });
 
@@ -265,8 +265,8 @@ export const buildFinpayRecords = (data: FinpayExport, opts: FinpayBuildOptions)
           importedAt,
           recordedByUserId: opts.userId,
           note: p.paid_date && p.paid_date !== paidDay
-            ? `FinPay: платёж №${p.payment_number}, оплачен ${p.paid_date}`
-            : `FinPay: платёж №${p.payment_number}`,
+            ? `Импорт: платёж №${p.payment_number}, оплачен ${p.paid_date}`
+            : `Импорт: платёж №${p.payment_number}`,
         } as Payment;
       })
       .filter((p): p is Payment => !!p);
@@ -274,7 +274,7 @@ export const buildFinpayRecords = (data: FinpayExport, opts: FinpayBuildOptions)
     const guarantors = (inst.guarantors || []).filter(g => g.full_name?.trim());
     const g0 = guarantors[0];
     const notes = [
-      `Импорт из FinPay, договор №${inst.installment_number}`,
+      `Импорт FinUchet, договор №${inst.installment_number}`,
       ...guarantors.slice(1).map(g => `Поручитель: ${g.full_name}${g.phones?.length ? `, ${g.phones.join(', ')}` : ''}`),
     ].join('\n');
 
@@ -307,7 +307,7 @@ export const buildFinpayRecords = (data: FinpayExport, opts: FinpayBuildOptions)
 
     const finpayRemaining = Math.max(0, total - rub(inst.paid_amount_cents));
     if (Math.abs(finpayRemaining - sale.remainingAmount) > 1) {
-      mismatches.push(`№${inst.installment_number} ${inst.product_name}: у нас долг ${fmt(sale.remainingAmount)}, в FinPay ${fmt(finpayRemaining)}`);
+      mismatches.push(`№${inst.installment_number} ${inst.product_name}: у нас долг ${fmt(sale.remainingAmount)}, в файле ${fmt(finpayRemaining)}`);
     }
 
     if (opts.withPurchaseExpenses && sale.buyPrice > 0 && accountId) {

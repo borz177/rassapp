@@ -32,7 +32,7 @@ const DataImport: React.FC<DataImportProps> = ({ onClose, onImportSuccess, curre
                 picked.text().then(text => {
                     const parsed = JSON.parse(text);
                     if (isFinpayExport(parsed)) setFinpay(parsed);
-                    else addLog('❌ Этот JSON не похож на выгрузку FinPay (нужны clients, installments, payments).');
+                    else addLog('❌ Этот JSON не похож на выгрузку FinUchet (нужны clients, installments, payments).');
                 }).catch(() => addLog('❌ Файл не читается как JSON.'));
             }
         }
@@ -705,7 +705,7 @@ if (duplicatesFound.length > 0) {
                         <p className="font-bold mb-2">📋 Инструкция:</p>
                         <ul className="list-disc list-inside space-y-1 text-xs">
                             <li>Файл должен содержать листы: <b>Обзор клиентов</b> и <b>История платежей</b></li>
-                            <li>Или выгрузка из <b>FinPay</b> (файл .json)</li>
+                            <li>Или выгрузка <b>FinUchet</b> (файл .json)</li>
                             <li>После импорта в конце, проверьте нет ли дубли платежей</li>
                             <li>Если данные и цифры сходится, потом пополните счет чтоб совпало с вашим наличными деньгами, пополнить счет можно через приход</li>
                             <li>Если есть инвестор создайте ему профиль(по желанию)после создания профиля старую карточку инвестора удалите он будет без email</li>
@@ -725,7 +725,7 @@ if (duplicatesFound.length > 0) {
                         {file ? (
                             <p className="font-bold text-slate-800 dark:text-white text-sm break-all">{file.name}</p>
                         ) : (
-                            <p className="text-slate-500 dark:text-slate-400 text-sm">Нажмите для выбора файла Excel или FinPay (.json)</p>
+                            <p className="text-slate-500 dark:text-slate-400 text-sm">Нажмите для выбора файла Excel или FinUchet (.json)</p>
                         )}
                     </div>
 
