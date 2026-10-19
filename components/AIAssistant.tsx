@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
-import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check } from 'lucide-react';
+import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check, FileText } from 'lucide-react';
 import AIAssistantSettings, { type AISettings } from './AIAssistantSettings';
 import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
@@ -174,6 +174,9 @@ const livePreview = (t: string) => t
   .replace(/\[(Черновик договора|Договор оформлен|Выполнено|Отменено|Отправлено|Не выполнено|Не отправлено|Ждёт подтверждения|Карточка|Кнопка)[^\]]*\]?/g, '')
   .replace(/\[(Отменить|Подтвердить|Отправить|Открыть форму договора|Открыть договор)\]/g, '');
 
+// Первая — «Оформить договор», выделенная: так узнают, что агент оформляет договоры
+// (по нажатию он спросит клиента, товар, закуп, наценку и срок)
+const CONTRACT_SUGGESTION = { label: 'Оформить договор', text: 'Оформи договор' };
 const SUGGESTIONS = [
   'Кто должен больше всех?',
   'Какие платежи сегодня и завтра?',
@@ -758,6 +761,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               Спросите про долги и платежи, попросите принять платёж или оформить договор. Можно голосом и с фото паспорта.
             </p>
             <div className={`${shortScreen ? 'mt-3' : 'mt-5'} flex flex-wrap justify-center gap-2`}>
+              <button onClick={() => send({ text: CONTRACT_SUGGESTION.text })} style={{ animationDelay: '40ms' }}
+                      className="ai-msg-in inline-flex items-center gap-1.5 px-3.5 py-2 rounded-2xl text-sm font-semibold bg-violet-600 text-white shadow-sm shadow-violet-500/30 hover:bg-violet-700 active:scale-[.97] transition">
+                <FileText size={15} /> {CONTRACT_SUGGESTION.label}
+              </button>
               {SUGGESTIONS.map((s, i) => (
                 <button key={s} onClick={() => send({ text: s })} style={{ animationDelay: `${80 + i * 60}ms` }}
                         className="ai-msg-in px-3.5 py-2 rounded-2xl text-sm bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:border-violet-300 dark:hover:border-violet-500/50 active:scale-[.97] transition">
