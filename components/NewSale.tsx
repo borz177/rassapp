@@ -1313,14 +1313,20 @@ if (mode === 'CASH') {
             {mode === 'INSTALLMENT' && (
                 <div>
                   <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Наценка (%)</label>
+                  {/* Дробная наценка (25,5 %): текстовое поле с десятичной клавиатурой —
+                      у type="number" шаг 1 не пускал дробь, а запятую браузер не понимал.
+                      В поле — запятая, как привыкли; в расчёт — число с точкой */}
                   <input
-                      type="number"
-                      min="0"
+                      type="text"
+                      inputMode="decimal"
                       className={`w-full p-3 border rounded-lg outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white ${isFinancialLocked ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-700 cursor-not-allowed' : 'border-slate-300 dark:border-slate-600'}`}
-                      value={formData.interestRate === 0 ? '' : formData.interestRate}
+                      value={formData.interestRate === 0 ? '' : String(formData.interestRate).replace('.', ',')}
                       onChange={e => {
                         if (isFinancialLocked) return;
-                        setFormData(prev => ({ ...prev, interestRate: e.target.value }));
+                        const v = e.target.value.replace(/\s/g, '').replace(',', '.');
+                        // Цифры и не больше двух знаков после запятой
+                        if (v !== '' && !/^\d{0,4}(\.\d{0,2})?$/.test(v)) return;
+                        setFormData(prev => ({ ...prev, interestRate: v as any }));
                         setIsPriceManual(false);
                       }}
                       placeholder="0"

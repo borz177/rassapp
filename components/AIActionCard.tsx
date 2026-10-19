@@ -41,6 +41,8 @@ const mutedLine = 'mt-2 text-sm text-slate-500';
 
 interface Props {
   action: AIAction;
+  /** Договор: счёт, с которого он оформится (агент не назвал — основной, как в форме) */
+  accountName?: string;
   /** Варианты нажимаются только у последнего сообщения и пока агент не занят */
   choicesActive: boolean;
   sending: boolean;
@@ -207,7 +209,7 @@ const AIActionCard: React.FC<Props> = (p) => {
       <span className="text-slate-500">Срок</span><span className="text-slate-800 dark:text-slate-100 text-right">{d.months ? `${d.months} мес.` : 'уточните в форме'}</span>
       {a.saved?.monthly ? <><span className="text-slate-500">Платёж</span><span className="text-slate-800 dark:text-slate-100 text-right">{fmt(a.saved.monthly)} / мес</span></> : null}
       <span className="text-slate-500">Взнос</span><span className="text-slate-800 dark:text-slate-100 text-right">{d.downPayment ? fmt(d.downPayment) : 'без взноса'}</span>
-      {d.accountName && <><span className="text-slate-500">Счёт</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{d.accountName}</span></>}
+      {(d.accountName || p.accountName) && <><span className="text-slate-500">Счёт</span><span className="text-slate-800 dark:text-slate-100 text-right truncate">{d.accountName || p.accountName}</span></>}
     </div>
   );
 

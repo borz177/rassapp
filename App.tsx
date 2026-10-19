@@ -4285,9 +4285,32 @@ const handleQuickAddCustomer = async (data: {
   // с фото паспорта) заводится сразу, чтобы форма открылась уже с ним.
   // ── FinUchetGPT: договор и документы ─────────────────────────────────────
   // Клиент черновика: из базы, тот же по паспорту/ФИО или новый (заводим)
-  const resolveDraftCustomer = async (draft: any): Promise<string> => {
-    let customerId = draft.customerId && customers.some((c: Customer) => c.id === draft.customerId) ? draft.customerId : '';
-    if (!customerId && draft.newCustomer?.name) customerId = findSameCustomer(customers, draft.newCustomer)?.id || '';
+  // Черновик → клиент, которого уже завели по нему: повторное «Открыть форму»,
+  // двойное нажатие или «Авто» после формы не заводят того же человека снова.
+  // Ключ — паспорт, иначе ФИО и телефон; в памяти до перезапуска приложения
+  const draftCustomerMemo = useRef(new Map<string, Promise<string>>());
+  // Заведённые по черновикам: в списке клиентов они появляются со следующей отрисовкой
+  const draftCreated = useRef(new Map<string, number>());
+  const resolveDraftCustomer = (draft: any): Promise<string> => {
+    const nc = draft.newCustomer || {};
+    const key = draft.customerId ? '' : (`${nc.passportSeries || ''}${nc.passportNumber || ''}`.replace(/\D/g, '')
+      || `${String(nc.name || '').toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim()}|${String(nc.phone || '').replace(/\D/g, '').slice(-10)}`);
+    if (key && draftCustomerMemo.current.has(key)) {
+      // Клиента с тех пор удалили — подбираем заново
+      return draftCustomerMemo.current.get(key)!.then(id => id && (aiDataRef.current.customers.some((c: Customer) => c.id === id)
+        || Date.now() - (draftCreated.current.get(id) || 0) < 60_000)
+        ? id : (draftCustomerMemo.current.delete(key), resolveDraftCustomer(draft)));
+    }
+    const job = resolveDraftCustomerNow(draft).then(id => { if (!id && key) draftCustomerMemo.current.delete(key); return id; });
+    if (key) draftCustomerMemo.current.set(key, job);
+    return job;
+  };
+  const resolveDraftCustomerNow = async (draft: any): Promise<string> => {
+    // Свежий список, а не тот, что был при отрисовке: клиент, заведённый
+    // по прошлому черновику, в замыкании ещё мог не появиться
+    const list: Customer[] = aiDataRef.current.customers;
+    let customerId = draft.customerId && list.some((c: Customer) => c.id === draft.customerId) ? draft.customerId : '';
+    if (!customerId && draft.newCustomer?.name) customerId = findSameCustomer(list, draft.newCustomer)?.id || '';
     if (!customerId && draft.newCustomer?.name) {
       const nc = draft.newCustomer;
       const issued = [nc.passportIssuedBy, nc.passportIssueDate ? `дата выдачи ${nc.passportIssueDate}` : '', nc.passportDivisionCode ? `код ${nc.passportDivisionCode}` : ''].filter(Boolean).join(', ');
@@ -4296,7 +4319,7 @@ const handleQuickAddCustomer = async (data: {
         passportSeries: nc.passportSeries, passportNumber: nc.passportNumber,
         passportIssuedBy: issued || undefined, birthDate: nc.birthDate,
       });
-      if (saved?.id) customerId = saved.id;
+      if (saved?.id) { customerId = saved.id; draftCreated.current.set(saved.id, Date.now()); }
     }
     return customerId;
   };
@@ -5401,6 +5424,7 @@ if (!user && !showSplash) {
                         onShowContract={openContractById}
                         onExportReport={exportReportFromAssistant}
                         whatsappEnabled={!!assistantWhatsApp?.enabled}
+                        contractAccountName={(draft: any) => accounts.find((x: Account) => x.id === draftAccountId(draft))?.name || ''}
                       />
                     </Suspense>
                   )}

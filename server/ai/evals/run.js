@@ -59,6 +59,11 @@ class Chat {
     return this.say(o.label, { note: o.ref });
   }
 }
+// Клиент с паспорта Петрова: новый из фото или он же, уже заведённый в демо-базе
+// прошлыми проверками (тогда сервер сам берёт его по паспорту — customerId)
+const petrov = (c) => !!c && (c.newCustomer?.passportNumber === '482913' || /петров/i.test(c.customerName || ''));
+// Телефон нового клиента; у клиента из базы он уже записан
+const phoneOk = (c, tail) => !!c && (!!c.customerId || String(c.newCustomer?.phone || '').replace(/\D/g, '').endsWith(tail));
 const kinds = (d) => (d.actions || []).map(a => a.kind);
 const action = (d, kind) => (d.actions || []).find(a => a.kind === kind);
 const undoAll = async (d) => { for (const a of d.actions || []) if (a.undoable) await api(`/actions/${a.id}/undo`); };
@@ -68,7 +73,7 @@ const scenarios = [
   ['Паспорт + «оформи договор» → черновик с паспортом', async () => {
     const d = await new Chat().say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев, телефон 89281234567', { image: 'passport-petrov.jpg' });
     const c = action(d, 'contract_form')?.draft;
-    return c?.newCustomer?.passportNumber === '482913' && c.buyPrice === 500000 && c.markupPercent === 25 && c.months === 10;
+    return petrov(c) && c.buyPrice === 500000 && c.markupPercent === 25 && c.months === 10;
   }],
   ['Паспорт без телефона → спрашивает телефон, потом черновик с паспортом и телефоном', async () => {
     const chat = new Chat();
@@ -76,7 +81,7 @@ const scenarios = [
     if (kinds(d1).includes('contract_form') || !/телефон|номер/i.test(d1.reply || '')) return false;
     const d2 = await chat.say('+7 928 765-43-21');
     const c = action(d2, 'contract_form')?.draft;
-    const ok = c?.newCustomer?.passportNumber === '482913' && String(c.newCustomer.phone || '').replace(/\D/g, '').endsWith('9287654321');
+    const ok = petrov(c) && phoneOk(c, '9287654321');
     if (!ok) console.log(`     1: «${(d1.reply || '').slice(0, 160)}» | 2: «${(d2.reply || '').slice(0, 160)}» ${JSON.stringify(c?.newCustomer || null)}`);
     return ok;
   }],
@@ -88,7 +93,7 @@ const scenarios = [
     const d2 = await chat.say('6 месяцев');
     const c = action(d2, 'contract_form')?.draft;
     const ok = c?.months === 6 && c.buyPrice === 50000 && c.markupPercent === 25 && /16 pro max/i.test(c.productName || '')
-      && String(c.newCustomer?.phone || '').replace(/\D/g, '').endsWith('9657777027') && c.newCustomer?.passportNumber === '482913';
+      && phoneOk(c, '9285554433') && petrov(c);
     if (!ok) console.log(`     2: ${JSON.stringify(c && { ...c, newCustomer: c.newCustomer && { phone: c.newCustomer.phone, pass: c.newCustomer.passportNumber } })}`);
     return ok;
   }],
@@ -96,12 +101,25 @@ const scenarios = [
     // Расшифровка могла ошибиться в цифре — сразу оформленный договор никто не проверит
     const d1 = await new Chat('auto').say('', { image: 'passport-petrov.jpg', audio: 'voice-iphone-auto-phone.wav' });
     const c1 = action(d1, 'contract_form');
-    const voiceOk = c1 && !c1.auto && !!c1.checkPhone && /965\D*777\D*70\D*27/.test(d1.reply || '');
+    const voiceOk = c1 && !c1.auto && !!c1.checkPhone && /928\D*555\D*44\D*33/.test(d1.reply || '');
     const d2 = await new Chat('auto').say('оформи договор айфон 15 закуп 500 наценка 25% без взноса на 10 месяцев, телефон 89281234567', { image: 'passport-petrov.jpg' });
     const c2 = action(d2, 'contract_form');
     const textOk = c2 && c2.auto === true && !c2.checkPhone;
     if (!voiceOk || !textOk) console.log(`     1: «${d1.heard}» → «${(d1.reply || '').slice(0, 140)}» ${JSON.stringify(c1 && { auto: c1.auto, checkPhone: c1.checkPhone })} | 2: ${JSON.stringify(c2 && { auto: c2.auto, checkPhone: c2.checkPhone })}`);
     return voiceOk && textOk;
+  }],
+  ['Новый клиент с телефоном, который уже есть у клиента в базе → спрашивает «это он?», не заводит второго', async () => {
+    // В демо-базе +7 900 000-14-32 — у «Байсаровой Ольги Петровны»
+    const chat = new Chat();
+    const d1 = await chat.say('оформи договор новому клиенту Петрова Ольга, утюг закуп 5000 наценка 20 на 2 месяца, телефон 89000001432');
+    const ch = action(d1, 'choices');
+    const asked = !!ch && ch.options.some(o => /байсарова/i.test(o.label)) && !kinds(d1).includes('contract_form');
+    if (!asked) { console.log(`     1: «${(d1.reply || '').slice(0, 160)}» ${kinds(d1)}`); return false; }
+    const d2 = await chat.pick(d1, ch.options.findIndex(o => /байсарова/i.test(o.label)));
+    const c = action(d2, 'contract_form')?.draft;
+    const ok = !!c?.customerId && !c.newCustomer;
+    if (!ok) console.log(`     2: «${(d2.reply || '').slice(0, 160)}» ${JSON.stringify(c && { id: c.customerId, nc: c.newCustomer })}`);
+    return ok;
   }],
   ['Однофамилец: «Фамилия Имя», которого нет в базе → новый клиент, не тот, что в базе', async () => {
     // В демо-базе есть «Ахмадов …» — просим Ахмадова с другим именем
@@ -191,7 +209,7 @@ const scenarios = [
     return d.cancelled === true && !kinds(d).includes('done');
   }],
   ['Правка клиента в «Авто» и отмена', async () => {
-    const d = await new Chat('auto').say('поменяй адрес Петрову Алексею на г. Грозный, ул. Тестовая, 1');
+    const d = await new Chat('auto').say('поменяй адрес Байсаровой Ольге на г. Грозный, ул. Тестовая, 1');
     const done = action(d, 'done');
     const u = done?.undoable ? await api(`/actions/${done.id}/undo`) : {};
     return !!done?.ok && u.ok;

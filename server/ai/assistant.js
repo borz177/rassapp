@@ -254,6 +254,24 @@ const prettyPhone = (p) => {
   const d = String(p || '').replace(/\D/g, '');
   return d.length === 11 ? `${d[0] === '7' ? '+7' : d[0]} ${d.slice(1, 4)} ${d.slice(4, 7)}-${d.slice(7, 9)}-${d.slice(9)}` : String(p || '');
 };
+// Закуп, названный человеком: «закуп 40000», «закуп 40 000», «закуп 40к», «закуп 40 тыс».
+// texts — [текущее сообщение, ...история по порядку]: важнее текущее, затем самое
+// свежее из истории; 0 — не называли
+const buyPriceSaid = (texts) => {
+  const [current, ...past] = texts;
+  for (const t of [current, ...past.slice().reverse()]) {
+    let found = 0;
+    for (const m of String(t || '').toLowerCase().matchAll(/закуп[а-яё]*\s*(?:за\s*)?(\d{1,3}(?:[ \u00a0]\d{3})+|\d+(?:[.,]\d+)?)\s*(к|тыс[а-яё]*|т\.?р|млн)?/g)) {
+      let n = Number(m[1].replace(/\s+/g, '').replace(',', '.'));
+      if (!Number.isFinite(n) || n <= 0) continue;
+      if (m[2] && /^(к|тыс|т\.?р)/.test(m[2])) n *= 1000;
+      if (m[2] && /^млн/.test(m[2])) n *= 1_000_000;
+      found = Math.round(n);
+    }
+    if (found) return found;
+  }
+  return 0;
+};
 const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
 
 // «Записал», «провёл», «отправил»… — модель говорит, что сделала. Если в этом
@@ -912,9 +930,39 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return rows;
   };
 
+  /**
+   * «Новый» клиент, который уже есть в базе под другим ФИО: тот же паспорт —
+   * точно он (агент берёт его сам), тот же телефон — спрашиваем. Без этого фото
+   * паспорта «ОРЗУМИЕВ ИСЛАМ СУПЬЯНОВИЧ» заводило второго клиента рядом с
+   * «Islam» с тем же номером.
+   */
+  const samePassportOrPhone = async (userId, nc) => {
+    const passport = String(nc.passportSeries || '').replace(/\D/g, '') + String(nc.passportNumber || '').replace(/\D/g, '');
+    if (passport.length >= 10) {
+      const { rows } = await pool.query(
+        `SELECT id, data->>'name' AS name FROM data_items WHERE user_id = $1 AND type = 'customers'
+           AND regexp_replace(coalesce(data->>'passportSeries', '') || coalesce(data->>'passportNumber', ''), '\\D', '', 'g') = $2 LIMIT 1`,
+        [userId, passport]);
+      if (rows[0]) return `Клиент с этим паспортом уже есть в базе — «${rows[0].name}» (id ${rows[0].id}). Это он: сразу вызови prepare_contract с customerId: "${rows[0].id}", без newCustomer и без вопроса, а в ответе одной фразой скажи, что клиент уже есть в базе как «${rows[0].name}».`;
+    }
+    const phone = String(nc.phone || '').replace(/\D/g, '').slice(-10);
+    if (phone.length === 10 && !nc.confirmedSamePhone) {
+      const { rows } = await pool.query(
+        `SELECT id, data->>'name' AS name FROM data_items WHERE user_id = $1 AND type = 'customers'
+           AND right(regexp_replace(coalesce(data->>'phone', ''), '\\D', '', 'g'), 10) = $2 LIMIT 3`,
+        [userId, phone]);
+      if (rows.length) return `С телефоном ${nc.phone} в базе уже есть: ${rows.map(r => `«${r.name}» (id ${r.id})`).join(', ')}. Спроси через ask_choice, это он или новый клиент: варианты — ${rows.map(r => `«${r.name}»`).join(', ')} (тогда prepare_contract с этим customerId) и «Новый клиент» (тогда снова с newCustomer и confirmedNewCustomer: true).`;
+    }
+    return null;
+  };
+
   const existingLookalikes = async (userId, args) => {
     const nc = args.newCustomer;
-    if (args.customerId || !nc?.name || nc.passportNumber) return null;
+    if (args.customerId || !nc?.name) return null;
+    // Тот же паспорт — всегда он; тот же телефон — спросить (если ещё не подтвердили новым)
+    const same = await samePassportOrPhone(userId, { ...nc, confirmedSamePhone: args.confirmedNewCustomer });
+    if (same) return same;
+    if (nc.passportNumber) return null;
     const fullName = String(nc.name).trim().split(/\s+/).length >= 2;
     if (args.confirmedNewCustomer && fullName) return null;
     const words = String(nc.name).toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(w => w.length >= 3);
@@ -1308,10 +1356,29 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
             const known = passportsFromHistory(history).reverse().find(p => sameName(p.name, args.newCustomer.name));
             if (known) args.newCustomer = { ...Object.fromEntries(Object.entries(known).filter(([, v]) => v)), ...args.newCustomer, ...{ passportSeries: known.passportSeries, passportNumber: known.passportNumber } };
           }
+          // Серия и номер паспорта одной строкой в номере («96 15 482913») — разделяем:
+          // у паспорта РФ 10 цифр, первые четыре — серия
+          const ncp = args.newCustomer;
+          if (ncp?.passportNumber) {
+            const dg = String(ncp.passportNumber).replace(/\D/g, '');
+            if (dg.length === 10 && (!ncp.passportSeries || String(ncp.passportSeries).replace(/\D/g, '') === dg.slice(0, 4))) {
+              ncp.passportSeries = `${dg.slice(0, 2)} ${dg.slice(2, 4)}`;
+              ncp.passportNumber = dg.slice(4);
+            }
+          }
           // Что человек сказал (голосовое к этому месту уже расшифровано в текст)
           const saidTexts = [asked, ...history.filter(m => m?.role !== 'assistant').map(m => m?.text)];
-          // «Закуп 50 000», а модель положила сумму в цену рассрочки
-          if (!(Number(args.buyPrice) > 0) && Number(args.totalPrice) > 0 && saidTexts.some(t => /закуп/i.test(String(t || ''))) && !saidTexts.some(t => /(цен[аоуы]|стоимост|за\s+\d)/i.test(String(t || '')))) {
+          // «Закуп 40 000» — закуп берём из слов человека: модель иногда клала туда
+          // цену с наценкой (48 000). «Закуп 500» → 500 000 — правило модели, не трогаем
+          const saidBuy = buyPriceSaid(saidTexts);
+          if (saidBuy >= 1000 && Number(args.buyPrice) !== saidBuy && Number(args.buyPrice) !== saidBuy * 1000) {
+            if (Number(args.buyPrice) > 0) flag(user.id, 'guard_buy_price', { tool: name, question: text });
+            args.buyPrice = saidBuy;
+            // Цена, выведенная из неверного закупа, тоже неверна — считает форма по наценке
+            if (args.markupPercent != null) delete args.totalPrice;
+          }
+          // «Закуп 50 000» без наценки, а модель положила сумму в цену рассрочки
+          if (!(Number(args.buyPrice) > 0) && Number(args.totalPrice) > 0 && args.markupPercent == null && saidTexts.some(t => /закуп/i.test(String(t || ''))) && !saidTexts.some(t => /(цен[аоуы]|стоимост|за\s+\d)/i.test(String(t || '')))) {
             args.buyPrice = Number(args.totalPrice);
             delete args.totalPrice;
           }

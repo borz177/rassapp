@@ -57,6 +57,8 @@ interface Props {
   /** Отчёт Excel за период — собрать и сохранить (по нажатию «Скачать») */
   onExportReport: (opts: { from: string | null; to: string | null; onlyActive?: boolean }) => Promise<{ ok: boolean; text: string }>;
   whatsappEnabled: boolean;
+  /** Счёт, на который ляжет договор: названный агентом или по умолчанию (как при оформлении) */
+  contractAccountName?: (draft: any) => string;
   /** После подтверждённого действия — подтянуть свежие данные */
   onDataChanged: () => void;
   onOpenTariffs: () => void;
@@ -263,7 +265,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -795,6 +797,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               )}
               {m.actions?.map(a => (
                 <AIActionCard key={a.id} action={a} sending={sending} whatsappEnabled={whatsappEnabled}
+                              accountName={a.kind === 'contract_form' ? contractAccountName?.(a.draft) : undefined}
                   choicesActive={m.id === messages[messages.length - 1]?.id}
                   onChoose={i => { if (a.kind !== 'choices') return; patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: a.options[i].label, note: a.options[i].ref }); }}
                   onConfirm={() => confirm(m.id, a)}
