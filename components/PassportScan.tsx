@@ -12,6 +12,8 @@ export interface PassportFields {
   birthDate: string;
   /** Место рождения — в карточке идёт в «Адрес», если адрес не распознан */
   birthPlace?: string;
+  /** Пробный период: сколько распознаваний ещё осталось (сервер, PASSPORT_TRIAL_SCANS) */
+  trialLeft?: number;
 }
 
 interface PassportScanProps {
@@ -22,7 +24,7 @@ interface PassportScanProps {
   className?: string;
 }
 
-const LABELS: { key: keyof PassportFields; label: string }[] = [
+const LABELS: { key: Exclude<keyof PassportFields, 'trialLeft'>; label: string }[] = [
   { key: 'name', label: 'ФИО' },
   { key: 'series', label: 'Серия' },
   { key: 'number', label: 'Номер' },
@@ -149,6 +151,11 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
             </button>
           )}
         </div>
+      )}
+      {result && typeof result.trialLeft === 'number' && (
+        <p className="mt-1.5 text-[11px] text-slate-400 dark:text-slate-500">
+          Пробный период: {result.trialLeft > 0 ? `осталось ${result.trialLeft} распознаваний` : 'это было последнее пробное распознавание'}
+        </p>
       )}
     </div>
   );

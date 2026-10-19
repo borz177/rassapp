@@ -1464,6 +1464,8 @@ await pool.query(`
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_consent_at TIMESTAMPTZ;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_subscription JSONB;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_trial_used INTEGER NOT NULL DEFAULT 0;
+  -- Сколько паспортов распознано в пробном периоде (на аккаунт менеджера, с сотрудниками)
+  ALTER TABLE users ADD COLUMN IF NOT EXISTS passport_trial_used INTEGER NOT NULL DEFAULT 0;
   ALTER TABLE users ADD COLUMN IF NOT EXISTS ai_settings JSONB;
   CREATE TABLE IF NOT EXISTS ai_assistant_usage (
     user_id TEXT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -1676,6 +1678,17 @@ const toDateString = (value) => {
 };
 
 const generateCode = () => Math.floor(100000 + Math.random() * 900000).toString();
+
+// E-mail как его вводят на телефоне: с невидимыми символами направления текста
+// (U+200E/U+200F — приходят при копировании адреса и из подсказок клавиатуры),
+// неразрывными пробелами и заглавными. С ними письмо не доставлялось, а сервер
+// отвечал «Код отправлен». Чистим везде, где адрес приходит снаружи
+const normalizeEmail = (email) => typeof email === 'string'
+  ? email.replace(/[\u200B-\u200F\u202A-\u202E\u2060-\u2064\uFEFF\u00A0\s]/g, '').toLowerCase()
+  : '';
+// Один «@», латиница, точка в домене — иначе почта адрес не примет
+const isValidEmail = (email) => /^[a-z0-9._%+'-]+@[a-z0-9-]+(\.[a-z0-9-]+)*\.[a-z]{2,}$/.test(email) && email.length <= 254;
+const BAD_EMAIL_MSG = 'Проверьте e-mail: в адресе ошибка. Нужен вид name@mail.ru — латиницей, один знак @.';
 
 const sendEmail = async (email, subject, text, html = null) => {
   // 🔐 Если SMTP не настроен — симулируем успех (для разработки)
@@ -2883,9 +2896,10 @@ app.post(
 app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
   const { email, type } = req.body;
 
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
+  if (!isValidEmail(normalizedEmail)) return res.status(400).json({ msg: BAD_EMAIL_MSG });
   try {
-    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
+    const userCheck = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [normalizedEmail]);
     const userExists = userCheck.rows.length > 0;
 
     if (type === 'REGISTER' && userExists) {
@@ -2966,8 +2980,12 @@ app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
     // Текстовая версия для фолбэка
     const text = `Ваш код подтверждения для FinUchet: ${code}. Код действителен 15 минут.`;
 
-    // 📧 Отправка с поддержкой HTML
-    await sendEmail(normalizedEmail, subject, text, html);
+    // 📧 Отправка с поддержкой HTML. Почта отвергла адрес — говорим сразу, а не
+    // «Код отправлен»: иначе человек ждёт письмо, которого не будет
+    const sent = await sendEmail(normalizedEmail, subject, text, html);
+    if (!sent) {
+      return res.status(502).json({ msg: 'Не удалось отправить письмо на этот адрес. Проверьте e-mail или попробуйте другой.' });
+    }
 
     res.json({ msg: 'Код отправлен' });
 
@@ -2979,7 +2997,8 @@ app.post('/api/auth/send-code', sendCodeLimiter, async (req, res) => {
 
 app.post('/api/auth/register', registerLimiter, async (req, res) => {
   const { name, email, password, code, permissions, allowedInvestorIds } = req.body;
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
+  if (!isValidEmail(normalizedEmail)) return res.status(400).json({ msg: BAD_EMAIL_MSG });
 
   // 🔒 Открытая регистрация создаёт ТОЛЬКО менеджера — role и managerId из тела запроса
   // игнорируются. Сотрудники и инвесторы заводятся авторизованным менеджером через
@@ -3007,7 +3026,7 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
     }
 
     // 2. Check User Existence
-    const userCheck = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
+    const userCheck = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [normalizedEmail]);
     if (userCheck.rows.length > 0) {
       return res.status(400).json({ msg: 'Пользователь уже существует' });
     }
@@ -3091,7 +3110,8 @@ app.post('/api/auth/register', registerLimiter, async (req, res) => {
 
 app.post('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => {
   const { email, code, newPassword } = req.body;
-  const normalizedEmail = email.toLowerCase().trim();
+  const normalizedEmail = normalizeEmail(email);
+  if (!normalizedEmail) return res.status(400).json({ msg: BAD_EMAIL_MSG });
   try {
     // 1. Verify Code
     const codeCheck = await pool.query('SELECT * FROM verification_codes WHERE email = $1', [normalizedEmail]);
@@ -3109,7 +3129,7 @@ app.post('/api/auth/reset-password', resetPasswordLimiter, async (req, res) => {
     // 2. Update Password
     const salt = await bcrypt.genSalt(10);
     const hashedPassword = await bcrypt.hash(newPassword, salt);
-    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE email = $2', [hashedPassword, normalizedEmail]);
+    await pool.query('UPDATE users SET password = $1, updated_at = NOW() WHERE LOWER(email) = $2', [hashedPassword, normalizedEmail]);
     
     // Clean up code
     await pool.query('DELETE FROM verification_codes WHERE email = $1', [normalizedEmail]);
@@ -3126,10 +3146,12 @@ app.post('/api/auth/login', loginLimiter, async (req, res) => {
     if (!email || !password || typeof email !== 'string' || typeof password !== 'string') {
         return res.status(400).json({ msg: 'Email и пароль обязательны' });
     }
-    const normalizedEmail = email.toLowerCase().trim();
+    const normalizedEmail = normalizeEmail(email);
 
     try {
-        const result = await pool.query('SELECT * FROM users WHERE email = $1', [normalizedEmail]);
+        // Без учёта регистра: сотрудников и инвесторов раньше сохраняли с адресом как набрали
+        // («Sher…@») — и они не могли войти, вход искал строку в нижнем регистре
+        const result = await pool.query('SELECT * FROM users WHERE LOWER(email) = $1', [normalizedEmail]);
         if (result.rows.length === 0) return res.status(400).json({ msg: 'Неверные учетные данные' });
         
         const user = result.rows[0];
@@ -4410,6 +4432,9 @@ const recognizePassportViaYandex = async (base64Jpeg) => {
 };
 
 const PASSPORT_DAILY_LIMIT = 50;
+// Пробный период: распознавание паспорта можно попробовать — столько раз на аккаунт
+// за весь пробный период (дальше — тарифы с ИИ). Зеркало — PASSPORT_TRIAL_SCANS в App.tsx
+const PASSPORT_TRIAL_SCANS = 20;
 
 // ==========================================================
 // 🤖 ИИ-АССИСТЕНТ (server/ai/assistant.js)
@@ -4791,7 +4816,9 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     const subRaw = subRes.rows[0] && subRes.rows[0].subscription;
     const sub = typeof subRaw === 'string' ? JSON.parse(subRaw) : subRaw;
     const plan = getEffectivePlan(sub) || 'TRIAL';
-    if (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].ai) {
+    // Пробный период (действующий) — PASSPORT_TRIAL_SCANS раз, чтобы попробовать
+    const trialScan = !(PLAN_LIMITS[plan] && PLAN_LIMITS[plan].ai) && getEffectivePlan(sub) === 'TRIAL';
+    if (!trialScan && (!PLAN_LIMITS[plan] || !PLAN_LIMITS[plan].ai)) {
       return res.status(403).json({
         error: 'Недоступно на вашем тарифе',
         msg: 'Распознавание паспорта входит в тарифы «Бизнес» и «Бизнес Pro».',
@@ -4820,6 +4847,26 @@ app.post('/api/ai/passport', auth, async (req, res) => {
       return res.status(413).json({ error: 'Файл слишком большой' });
     }
 
+    // Пробная попытка — занимаем до распознавания (одним запросом: два одновременных
+    // снимка не проскочат за предел); не вышло распознать — возвращаем ниже
+    if (trialScan) {
+      const took = await pool.query(
+        `UPDATE users SET passport_trial_used = passport_trial_used + 1
+          WHERE id = $1 AND passport_trial_used < $2 RETURNING passport_trial_used`, [targetUserId, PASSPORT_TRIAL_SCANS]);
+      if (!took.rows.length) {
+        return res.status(403).json({
+          error: 'Пробные распознавания закончились',
+          msg: `В пробном периоде распознано уже ${PASSPORT_TRIAL_SCANS} паспортов. Дальше распознавание — в тарифах «Бизнес» и «Бизнес Pro», а пока заполните поля вручную.`,
+        });
+      }
+      req.passportTrialLeft = PASSPORT_TRIAL_SCANS - took.rows[0].passport_trial_used;
+    }
+    // Неудача не должна съедать пробную попытку: размытое фото или сбой сервиса
+    const giveBackTrial = () => trialScan && req.passportTrialLeft != null
+      ? pool.query('UPDATE users SET passport_trial_used = GREATEST(0, passport_trial_used - 1) WHERE id = $1', [targetUserId]).catch(() => {})
+      : null;
+    req.giveBackTrial = giveBackTrial;
+
     // Уменьшаем на сервере, а не доверяем клиенту: фотография с телефона весит
     // мегабайты, а для чтения текста паспорта хватает 2000 точек по длинной
     // стороне (при 1600 мелкие номер и «кем выдан» уже путались). Яндекс берёт
@@ -4847,16 +4894,19 @@ app.post('/api/ai/passport', auth, async (req, res) => {
     };
 
     if (Object.values(result).filter(Boolean).length === 0) {
+      await giveBackTrial();
       return res.status(422).json({
         error: 'Ничего не распознано',
         msg: 'Снимите паспорт целиком при хорошем освещении, без бликов.',
       });
     }
 
-    res.json(result);
+    // Пробный период — сколько ещё попыток (приложение покажет)
+    res.json(trialScan ? { ...result, trialLeft: req.passportTrialLeft } : result);
   } catch (e) {
     const status = e.response && e.response.status;
     console.error('❌ Passport OCR:', status || '', e.message);
+    if (req.giveBackTrial) await req.giveBackTrial();
     res.status(502).json({
       error: 'Распознавание не удалось',
       msg: status === 429 ? 'Сервис распознавания перегружен, попробуйте через минуту.'
@@ -5006,10 +5056,13 @@ app.post('/api/users/manage', auth, async (req, res) => {
     }
   }
 
-      // 🔹 Проверка email (регистронезависимая)
+      // 🔹 Проверка email (регистронезависимая). Храним очищенным: с заглавными
+      // («Sher…@») сотрудник потом не мог войти — вход искал адрес в нижнем регистре
+      const subEmail = normalizeEmail(email);
+      if (!isValidEmail(subEmail)) return res.status(400).json({ msg: BAD_EMAIL_MSG });
       const userCheck = await pool.query(
-        'SELECT * FROM users WHERE LOWER(email) = LOWER($1)',
-        [email]
+        'SELECT * FROM users WHERE LOWER(email) = $1',
+        [subEmail]
       );
       if (userCheck.rows.length > 0) {
         return res.status(400).json({
@@ -5032,7 +5085,7 @@ app.post('/api/users/manage', auth, async (req, res) => {
         [
           id,
           name,
-          email,
+          subEmail,
           hashedPassword,
           role,
           req.user.id,

@@ -1493,13 +1493,22 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
-  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'WHATSAPP' | 'WHATSAPP_GREEN' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API' | 'COFUND'): boolean => {
+  const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'PASSPORT_SCAN' | 'WHATSAPP' | 'WHATSAPP_GREEN' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API' | 'COFUND'): boolean => {
     if (!user) return false;
 
     // 🔒 ИИ (распознавание паспорта) решается до общего пропуска: строкой ниже
     // сотрудник и инвестор получают доступ ко всему. Сотруднику приходит тариф
     // менеджера (/api/auth/me), инвестор клиентов не заводит. Тарифы — «Бизнес» и
     // «Бизнес Pro», как PLAN_LIMITS.ai на сервере, который проверяет его ещё раз.
+    // Скан паспорта: тарифы с ИИ — без ограничений, действующий пробный период —
+    // PASSPORT_TRIAL_SCANS раз (считает и останавливает сервер, /api/ai/passport)
+    if (feature === 'PASSPORT_SCAN') {
+      if (checkAccess('AI')) return true;
+      if (isInvestor) return false;
+      const s = user.subscription;
+      return !!s && s.plan === 'TRIAL' && new Date() <= new Date(s.expiresAt);
+    }
+
     if (feature === 'AI') {
       if (isInvestor) return false;
       if (user.role === 'admin') return true;
@@ -5266,7 +5275,7 @@ if (!user && !showSplash) {
                       customers={customers}
                       sales={sales}
                       segmentOf={shopAvailable ? customerSegments.of : undefined}
-                      canScanPassport={checkAccess('AI')}
+                      canScanPassport={checkAccess('PASSPORT_SCAN')}
                       onAddCustomer={handleAddCustomer}
                       onSelectCustomer={handleSelectCustomer}
                       isActive={currentView === 'CUSTOMERS'}
@@ -5400,7 +5409,7 @@ if (!user && !showSplash) {
                   id: c.id,
                   title: c.name,
                   subtitle: c.phone
-              }))} canScanPassport={checkAccess('AI')} onSelect={(id) => handleSelection('customerId', id)}
+              }))} canScanPassport={checkAccess('PASSPORT_SCAN')} onSelect={(id) => handleSelection('customerId', id)}
                                                                    secondaryIds={notInstallmentIds} secondaryLabel="Покупатели розницы"
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
                                                                    onAddNew={handleQuickAddCustomer}/>}
@@ -5496,7 +5505,7 @@ if (!user && !showSplash) {
                       receipt={{ company: appSettings.companyName || 'Магазин', phone: appSettings.sellerPhone, cashier: user?.name }}
                       onSubmit={handleRetailSale}
                       allowNegativeStock={!!appSettings.shopAllowNegativeStock}
-                      canScanPassport={checkAccess('AI')}
+                      canScanPassport={checkAccess('PASSPORT_SCAN')}
                       // Заведённый в кассе — покупатель розницы, пока у него нет договоров
                       onQuickAddCustomer={data => createCustomerQuick({ ...data, segment: 'RETAIL' })}
                       customerSecondaryIds={notRetailIds}
