@@ -19,6 +19,7 @@ import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
 import { openPrintPreview } from './PrintPreview';
 import { isIOSApp } from '../src/platform';
+import { appConfirm } from '../src/dialogs';
 
 interface NewSaleProps {
   initialData: any;
@@ -306,17 +307,25 @@ const impliedOriginalPaymentDate = useMemo(() => {
     return markupPrice(formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice);
   }, [formData.buyPrice, formData.downPayment, formData.interestRate, appSettings.markupFromNetBuyPrice]);
 
-  // 🔹 1.5. Фактическая наценка. Когда цену вписали руками или включили округление,
-  // итоговая сумма перестаёт соответствовать проценту в поле «Наценка» — считаем
-  // обратной формулой от той же базы, что и прямой расчёт выше.
-  const actualMarkupPercent = useMemo(() => {
-    const bp = Number(formData.buyPrice) || 0;
-    const dp = Number(formData.downPayment) || 0;
-    if (bp <= 0) return null;
+  // 🔹 1.5. Наценка по цене, вписанной руками: обратная формула от той же базы,
+  // что и прямой расчёт выше, до сотых. Её пишем прямо в поле «Наценка», чтобы
+  // процент в форме и в договоре был настоящим, а не прежним. null — считать не от чего
+  const markupForPrice = (buyPrice: any, downPayment: any, price: number): number | null => {
+    const bp = Number(buyPrice) || 0;
+    const dp = Number(downPayment) || 0;
+    if (bp <= 0 || !(price > 0)) return null;
     const markupBase = appSettings.markupFromNetBuyPrice ? Math.max(0, bp - dp) : bp;
     if (markupBase <= 0) return null; // взнос покрыл весь закуп — процент считать не от чего
-    return ((Number(formData.price) || 0) - bp) / markupBase * 100;
-  }, [formData.buyPrice, formData.downPayment, formData.price, appSettings.markupFromNetBuyPrice]);
+    return Math.round((price - bp) / markupBase * 10000) / 100;
+  };
+
+  // Цена «Вручную», а наценка считается от закупа за вычетом взноса: поменяли взнос —
+  // процент в поле пересчитываем (сама цена остаётся той, что вписали)
+  useEffect(() => {
+    if (!isPriceManual || !appSettings.markupFromNetBuyPrice) return;
+    const rate = markupForPrice(formData.buyPrice, formData.downPayment, Number(formData.price));
+    if (rate !== null && rate !== Number(formData.interestRate)) setFormData(prev => ({ ...prev, interestRate: rate }));
+  }, [formData.downPayment]);
 
   // 🔹 2. Расчёт итоговых значений с учётом округления
   const calculatedValues = useMemo(() => {
@@ -381,6 +390,8 @@ const impliedOriginalPaymentDate = useMemo(() => {
     initialData.totalAmount,
     preservedPaymentsInfo.amount
   ]);
+  // Закуп больше цены — убыток; чаще всего опечатка в закупе (см. handleFormSubmit)
+  const buyOverPrice = Number(formData.buyPrice) > 0 && Number(formData.buyPrice) > calculatedValues.totalAmount + 0.5;
 
   useEffect(() => {
     if (mode !== 'INSTALLMENT' || initialData.id) return;
@@ -498,7 +509,7 @@ const impliedOriginalPaymentDate = useMemo(() => {
     }));
   };
 
-  const handleFormSubmit = (e: React.FormEvent) => {
+  const handleFormSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
     if (isSubscriptionExpired) {
@@ -543,6 +554,21 @@ const impliedOriginalPaymentDate = useMemo(() => {
     if (!isFinancialLocked && !(Number(formData.buyPrice) > 0)) {
       alert("Укажите цену закупа.\n\nБез неё договор не будет учитываться в прибыли — ни в вашей, ни в доле инвесторов.");
       return;
+    }
+
+    // Закуп больше цены — почти всегда опечатка (лишний ноль: 1 700 000 вместо
+    // 170 000), а закуп сразу уходит расходом со счёта. В убыток продают и
+    // намеренно — поэтому вопрос, а не запрет. У старого договора спрашиваем,
+    // только если закуп или цену сейчас меняли
+    if (!isFinancialLocked && (mode === 'INSTALLMENT' || mode === 'CASH') && buyOverPrice
+        && (!formData.id || Number(formData.buyPrice) !== Number(initialData.buyPrice) || calculatedValues.totalAmount !== Number(initialData.totalAmount))) {
+      const ok = await appConfirm({
+        title: 'Закуп больше цены',
+        message: `Закуп ${Number(formData.buyPrice).toLocaleString('ru-RU')} ₽ больше цены ${mode === 'INSTALLMENT' ? 'договора' : 'продажи'} ${calculatedValues.totalAmount.toLocaleString('ru-RU')} ₽ — убыток ${(Number(formData.buyPrice) - calculatedValues.totalAmount).toLocaleString('ru-RU')} ₽. Закуп сразу спишется со счёта. Проверьте, нет ли лишнего нуля.`,
+        confirmLabel: 'Сохранить так',
+        cancelLabel: 'Исправить',
+      });
+      if (!ok) return;
     }
 
     // 🔍 ПРОВЕРКА НА ДУБЛИКАТ (только для новых договоров)
@@ -1309,6 +1335,11 @@ if (mode === 'CASH') {
                   Сумма товаров со склада
                 </p>
               )}
+              {buyOverPrice && !isFinancialLocked && (
+                <p className="text-[11px] font-medium text-rose-600 dark:text-rose-400 mt-1">
+                  Больше цены {mode === 'INSTALLMENT' ? 'договора' : 'продажи'} ({calculatedValues.totalAmount.toLocaleString('ru-RU')} ₽) — нет ли лишнего нуля?
+                </p>
+              )}
             </div>
             {mode === 'INSTALLMENT' && (
                 <div>
@@ -1336,14 +1367,6 @@ if (mode === 'CASH') {
                         Справочно: не пересчитывает цену автоматически при редактировании
                       </p>
                   )}
-                  {/* Цену вписали руками — процент в поле выше больше не отражает
-                      реальную наценку, показываем фактическую */}
-                  {actualMarkupPercent !== null
-                    && Math.abs(actualMarkupPercent - (Number(formData.interestRate) || 0)) >= 0.1 && (
-                      <p className="text-[11px] font-semibold text-indigo-600 dark:text-indigo-400 mt-1">
-                        Фактически: {actualMarkupPercent.toFixed(1)}%
-                      </p>
-                  )}
                 </div>
             )}
           </div>
@@ -1368,7 +1391,13 @@ if (mode === 'CASH') {
                   onChange={e => {
                     if (isFinancialLocked) return;
                     const val = e.target.value;
-                    setFormData(prev => ({ ...prev, price: val === '' ? 0 : Number(val) }));
+                    const price = val === '' ? 0 : Number(val);
+                    // Цена вручную — наценка в поле становится настоящей: цену она не пересчитывает,
+                    // пока цена «Вручную» (isPriceManual)
+                    setFormData(prev => {
+                      const rate = markupForPrice(prev.buyPrice, prev.downPayment, price);
+                      return { ...prev, price, ...(rate !== null ? { interestRate: rate } : {}) };
+                    });
                     setIsPriceManual(true);
                   }}
                   placeholder="0"
@@ -1500,8 +1529,8 @@ if (mode === 'CASH') {
           {mode === 'INSTALLMENT' && (
               <>
                 <div className="flex justify-between text-sm"><span
-                    className="text-slate-500 dark:text-slate-400">Чистая прибыль</span><span
-                    className="font-medium text-emerald-600 dark:text-emerald-400">+{Math.round(calculatedValues.totalAmount - Number(formData.buyPrice)).toLocaleString()} ₽</span>
+                    className="text-slate-500 dark:text-slate-400">{buyOverPrice ? 'Убыток' : 'Чистая прибыль'}</span><span
+                    className={`font-medium ${buyOverPrice ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{buyOverPrice ? '−' : '+'}{Math.abs(Math.round(calculatedValues.totalAmount - Number(formData.buyPrice))).toLocaleString()} ₽</span>
                 </div>
                 {!formData.id && (
                     <div className="flex flex-col gap-2 text-sm pt-3 border-t border-indigo-100 dark:border-indigo-900/50">
