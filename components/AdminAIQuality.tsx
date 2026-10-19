@@ -14,6 +14,7 @@ import { toast } from '../src/toast';
 const TONE: Record<string, string> = {
   undo_soon: 'bg-amber-400', stop: 'bg-slate-400', honesty_fix: 'bg-rose-500', guard_payoff: 'bg-orange-500',
   guard_bad_customer: 'bg-fuchsia-500', guard_lookalike: 'bg-violet-400', tool_error: 'bg-red-600', model_fallback: 'bg-sky-500',
+  cant_do: 'bg-emerald-500',
 };
 const when = (iso: string | null) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
 
@@ -124,6 +125,23 @@ const AdminAIQuality: React.FC = () => {
             </div>
             <button disabled={!!busy} onClick={() => act(`x${l.id}`, () => api.adminAiLesson(l.id, 'remove'), 'Вывод убран')}
                     className="shrink-0 px-3 py-1.5 rounded-lg text-xs font-semibold text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-500/10 disabled:opacity-50">Убрать</button>
+          </div>
+        ))}
+      </div>
+
+      {/* Не ошибки, а просьбы о новых умениях: в разбор не идут, по ним решают, что добавить агенту */}
+      <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-2">
+        <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">Просили, но агент не умеет · {(q?.wishes || []).length}</div>
+        <div className="text-[11px] text-slate-400">За полгода, данные клиентов скрыты. Повторяется — кандидат в новое умение</div>
+        {!(q?.wishes || []).length && <p className="text-sm text-slate-400">Пока не было</p>}
+        {(q?.wishes || []).map((w, i) => (
+          <div key={i} className="py-2 border-t border-slate-100 dark:border-slate-700 first:border-0 text-xs">
+            <div className="flex items-baseline justify-between gap-3">
+              <span className="text-slate-800 dark:text-slate-100">«{w.question || '—'}»</span>
+              <span className="shrink-0 text-slate-400 tabular-nums">{when(w.created_at)}</span>
+            </div>
+            {w.answer && <div className="text-slate-400 mt-0.5">→ {w.answer}</div>}
+            {w.tool && <div className="text-emerald-600 dark:text-emerald-400 mt-0.5">искал умение: {w.tool}</div>}
           </div>
         ))}
       </div>

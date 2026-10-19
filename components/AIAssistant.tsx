@@ -404,17 +404,26 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     showDigest(s.digest);
   }).catch(() => {});
 
+  // Кнопки под сводкой — по её цифрам: нет просрочки — нет «Кто просрочил?».
+  // Старая сводка без цифр — прежние три кнопки
+  const digestOptions = (st?: { dueCount: number; overdueCount: number; remindable: number; muted: number }) => {
+    if (!st) return [{ label: 'Кто просрочил?' }, { label: 'Какие платежи сегодня?' }, { label: 'Напомни всем должникам' }];
+    const opts: { label: string }[] = [];
+    if (st.overdueCount) opts.push({ label: `Кто просрочил? (${st.overdueCount})` });
+    if (st.dueCount) opts.push({ label: `Какие платежи сегодня? (${st.dueCount})` });
+    if (st.remindable) opts.push({ label: `Напомни всем должникам (${st.remindable})` });
+    opts.push({ label: 'Сколько получено за неделю?' });
+    return opts;
+  };
   // Утренняя сводка (server/ai/digest.js) — один раз за день сообщением в чате,
   // с кнопками самых частых следующих шагов
-  const showDigest = (digest?: { date: string; text: string } | null) => {
+  const showDigest = (digest?: { date: string; text: string; stats?: { dueCount: number; overdueCount: number; remindable: number; muted: number } } | null) => {
     if (!digest) return;
     const key = `finuchet_ai_digest_seen_${userId}`;
     try { if (localStorage.getItem(key) === digest.date) return; localStorage.setItem(key, digest.date); } catch { /* приватный режим */ }
     setMessages(ms => [...ms, {
       id: newId(), role: 'assistant', text: `☀️ **План на сегодня**\n${digest.text.replace(/ — спросите FinUchetGPT.*$/, '.')}`,
-      actions: [{ id: newId(), kind: 'choices', title: 'Что дальше?', options: [
-        { label: 'Кто просрочил?' }, { label: 'Какие платежи сегодня?' }, { label: 'Напомни всем должникам' },
-      ] }],
+      actions: [{ id: newId(), kind: 'choices', title: 'Что дальше?', options: digestOptions(digest.stats) }],
     }]);
   };
   useEffect(() => { loadStatus(); }, []);
@@ -954,7 +963,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       {/* Согласие на передачу данных */}
       {settingsOpen && (
         <AIAssistantSettings
-          settings={status?.settings || { autoLimit: null, morningDigest: false }}
+          settings={status?.settings || { autoLimit: null, morningDigest: false, digestHour: 9, digestWeekdays: false }}
           onClose={() => setSettingsOpen(false)}
           onSaved={(st: AISettings) => setStatus((x: any) => x ? { ...x, settings: st } : x)}
         />

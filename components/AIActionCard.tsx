@@ -17,6 +17,8 @@ export type SendState = 'busy' | 'done' | 'error';
 export type AIAction =
   | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
   | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number; always?: boolean; checkPhone?: string;
+      /** Сумма прочитана с фото чека — сверить */
+      fromPhoto?: boolean;
       state?: 'busy' | 'done' | 'error' | 'cancelled' | 'undoing' | 'undone'; result?: string; undoable?: boolean;
       undoResult?: string; receipt?: SendState; receiptResult?: string }
   | { id: string; kind: 'done'; tool: string; title: string; summary: string; contractId?: string; ok: boolean; result: string; undoable?: boolean;
@@ -71,6 +73,12 @@ const OverLimit: React.FC<{ limit: number; what?: string }> = ({ limit, what = '
 );
 
 /** «Авто», а телефон пришёл голосом: расшифровка могла ошибиться в цифре — проверить до записи */
+const FromPhoto: React.FC = () => (
+  <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
+    <ShieldAlert size={13} /> Сумма с фото — сверьте с чеком
+  </p>
+);
+
 const CheckPhone: React.FC<{ phone: string }> = ({ phone }) => (
   <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
     <ShieldAlert size={13} /> Телефон из голосового — проверьте: <span className="tabular-nums">{phone}</span>
@@ -126,6 +134,7 @@ const AIActionCard: React.FC<Props> = (p) => {
         <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100">{a.summary}</p>
         {a.kind === 'confirm' && !a.state && a.overLimit != null && <OverLimit limit={a.overLimit} />}
         {a.kind === 'confirm' && !a.state && a.checkPhone && <CheckPhone phone={a.checkPhone} />}
+        {a.kind === 'confirm' && !a.state && a.fromPhoto && <FromPhoto />}
         {a.kind === 'confirm' && !a.state && a.always && (
           <p className="mt-2 inline-flex items-center gap-1.5 text-xs font-semibold text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-500/10 rounded-full px-2.5 py-1">
             <ShieldAlert size={13} /> Рассылку всегда подтверждаете вы — отменить её нельзя

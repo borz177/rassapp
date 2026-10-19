@@ -26,7 +26,11 @@ self.addEventListener('notificationclick', (event) => {
   event.waitUntil(
     clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
       for (const client of clientList) {
-        if ('focus' in client) return client.focus();
+        if ('focus' in client) {
+          // Приложение уже открыто — пусть само перейдёт куда надо, без перезагрузки (App.tsx)
+          if (url !== '/') client.postMessage({ type: 'finuchet-open', url });
+          return client.focus();
+        }
       }
       if (clients.openWindow) return clients.openWindow(url);
     })

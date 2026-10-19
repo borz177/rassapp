@@ -172,9 +172,11 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   // ?open=tariffs — ссылка «Оплатить» из письма о конце подписки: сразу тарифы,
   // а если человек не вошёл, то они же после входа (экран при входе не сбрасывается).
   // В iOS-приложении витрины тарифов нет (src/platform.ts) — там обычная главная.
-  const [currentView, setCurrentView] = useState<ViewState>(() =>
-    new URLSearchParams(window.location.search).get('open') === 'tariffs' && !isIOSApp()
-      ? 'TARIFFS' : 'DASHBOARD');
+  // ?open=ai — пуш утренней сводки FinUchetGPT: сразу чат агента
+  const [currentView, setCurrentView] = useState<ViewState>(() => {
+    const open = new URLSearchParams(window.location.search).get('open');
+    return open === 'tariffs' && !isIOSApp() ? 'TARIFFS' : open === 'ai' ? 'AI_ASSISTANT' : 'DASHBOARD';
+  });
 
   // По умолчанию — все договоры по дате оформления; статус выбирают в заголовке страницы
   const [activeContractTab, setActiveContractTab] = useState<'ALL' | 'ACTIVE' | 'OVERDUE' | 'ARCHIVE'>('ALL');
@@ -4267,9 +4269,12 @@ const handleQuickAddCustomer = async (data: {
   const [aiOpenForUser, setAiOpenForUser] = useState(false);
   useEffect(() => {
     setAiOpenForUser(false);
+    // Открыли по ссылке ?open=ai, а агент этому пользователю недоступен — на Главную
+    const leaveAi = () => setCurrentView(v => v === 'AI_ASSISTANT' ? 'DASHBOARD' : v);
+    if (user && user.role !== 'manager' && user.role !== 'admin') leaveAi();
     if (user?.role !== 'manager') return;
     let alive = true;
-    api.aiAssistant.status().then(s => { if (alive) setAiOpenForUser(!!s?.allowedRole); }).catch(() => {});
+    api.aiAssistant.status().then(s => { if (!alive) return; setAiOpenForUser(!!s?.allowedRole); if (!s?.allowedRole) leaveAi(); }).catch(() => {});
     return () => { alive = false; };
   }, [user?.id, user?.role]);
   const aiAvailable = !!user && (user.role === 'admin' || (user.role === 'manager' && aiOpenForUser));
@@ -4281,6 +4286,17 @@ const handleQuickAddCustomer = async (data: {
     setPreviousView(currentView);
     setCurrentView('AI_ASSISTANT');
   };
+  // Нажали пуш сводки, а приложение уже открыто: сервис-воркер просит перейти (public/push-sw.js)
+  const openAssistantRef = useRef(openAssistant);
+  openAssistantRef.current = openAssistant;
+  useEffect(() => {
+    if (!('serviceWorker' in navigator)) return;
+    const onMessage = (e: MessageEvent) => {
+      if (e.data?.type === 'finuchet-open' && /[?&]open=ai\b/.test(String(e.data.url || ''))) openAssistantRef.current();
+    };
+    navigator.serviceWorker.addEventListener('message', onMessage);
+    return () => navigator.serviceWorker.removeEventListener('message', onMessage);
+  }, []);
   // Черновик договора от агента → форма договора. Новый клиент (например,
   // с фото паспорта) заводится сразу, чтобы форма открылась уже с ним.
   // ── FinUchetGPT: договор и документы ─────────────────────────────────────

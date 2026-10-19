@@ -16,31 +16,42 @@ export interface AISettings {
   autoLimit: number | null;
   /** Утренняя сводка уведомлением */
   morningDigest: boolean;
+  /** В котором часу по Москве (6–22) */
+  digestHour?: number;
+  /** Только по будням */
+  digestWeekdays?: boolean;
 }
+
+// Час сводки — с 6 до 22 по Москве; самые частые — кнопками, остальные в списке
+const QUICK_HOURS = [7, 8, 9, 10];
+const ALL_HOURS = Array.from({ length: 17 }, (_, i) => i + 6);
 
 
 const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void; onSaved: (s: AISettings) => void }> = ({ settings, onClose, onSaved }) => {
   const [limitChoice, setLimitChoice] = useState<'none' | 'custom'>(settings.autoLimit == null ? 'none' : 'custom');
   const [custom, setCustom] = useState(settings.autoLimit != null ? settings.autoLimit.toLocaleString('ru-RU') : '');
   const [digest, setDigest] = useState(settings.morningDigest);
+  const [hour, setHour] = useState(settings.digestHour ?? 9);
+  const [weekdays, setWeekdays] = useState(!!settings.digestWeekdays);
   const [saving, setSaving] = useState(false);
 
   const customValue = Math.round(Number(custom.replace(/\s/g, '').replace(',', '.')));
   const customValid = Number.isFinite(customValue) && customValue > 0;
   const nextLimit = limitChoice === 'none' ? null : customValid ? customValue : NaN;
   const valid = !(limitChoice === 'custom' && !customValid);
-  const dirty = nextLimit !== settings.autoLimit || digest !== settings.morningDigest;
+  const dirty = nextLimit !== settings.autoLimit || digest !== settings.morningDigest
+    || hour !== (settings.digestHour ?? 9) || weekdays !== !!settings.digestWeekdays;
 
   const save = async (close: () => void) => {
     if (!valid || saving) return;
     setSaving(true);
     try {
-      const r = await api.aiAssistant.saveSettings({ autoLimit: nextLimit as number | null, morningDigest: digest });
+      const r = await api.aiAssistant.saveSettings({ autoLimit: nextLimit as number | null, morningDigest: digest, digestHour: hour, digestWeekdays: weekdays });
       onSaved(r.settings);
       toast.success('Настройки сохранены');
       close();
-    } catch {
-      toast.error('Не удалось сохранить', { message: 'Проверьте связь и попробуйте ещё раз.' });
+    } catch (e: any) {
+      toast.error('Не удалось сохранить', { message: e?.message && e.message !== 'Не удалось сохранить' ? e.message : 'Проверьте связь и попробуйте ещё раз.' });
       setSaving(false);
     }
   };
@@ -71,13 +82,37 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
           )}
         </SheetSection>
 
-        <SheetSection title="Уведомления">
+        <SheetSection title="Уведомления"
+                      hint={digest ? 'Время — московское. Сводка приходит раз в день; поменяли время сегодня — придёт в новое, если ещё не приходила.' : undefined}>
           <SheetToggle
             label="Утренняя сводка"
-            description="В 9:00 по Москве — сообщением в чате агента и уведомлением: сколько платежей ждём сегодня и кто просрочил"
+            description={`${weekdays ? 'По будням' : 'Каждый день'} в ${hour}:00 — сообщением в чате агента и уведомлением: сколько платежей ждём сегодня, кто просрочил, сколько получено вчера`}
             checked={digest}
             onChange={setDigest}
           />
+          {digest && (
+            <>
+              <div className="px-4 py-3 space-y-2">
+                <div className="text-[13px] text-slate-500 dark:text-slate-400">Во сколько</div>
+                <div className="grid grid-cols-5 gap-1.5">
+                  {QUICK_HOURS.map(h => (
+                    <button key={h} type="button" onClick={() => setHour(h)}
+                            className={`py-2 rounded-xl text-sm font-semibold tabular-nums ${hour === h ? 'bg-violet-600 text-white' : 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200'}`}>
+                      {h}:00
+                    </button>
+                  ))}
+                  {/* Другое время — списком, чтобы не держать на экране 17 кнопок */}
+                  <select value={QUICK_HOURS.includes(hour) ? '' : hour} onChange={e => e.target.value && setHour(Number(e.target.value))}
+                          aria-label="Другое время"
+                          className={`py-2 rounded-xl text-sm font-semibold text-center appearance-none ${QUICK_HOURS.includes(hour) ? 'bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-200' : 'bg-violet-600 text-white'}`}>
+                    <option value="">Другое</option>
+                    {ALL_HOURS.filter(h => !QUICK_HOURS.includes(h)).map(h => <option key={h} value={h}>{h}:00</option>)}
+                  </select>
+                </div>
+              </div>
+              <SheetToggle label="Только по будням" description="В субботу и воскресенье сводки не будет" checked={weekdays} onChange={setWeekdays} />
+            </>
+          )}
         </SheetSection>
       </div>
     </GlassSheet>

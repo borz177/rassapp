@@ -628,7 +628,8 @@ const sendNativePushToUser = async (userId, title, body) => {
 };
 
 // 🔔 Отправка Web Push всем подпискам пользователя (с автоочисткой протухших подписок)
-const sendPushToUser = async (userId, title, body) => {
+// url — что открыть по нажатию (свой адрес приложения, например /app?open=ai); без него — главная
+const sendPushToUser = async (userId, title, body, url = null) => {
   await sendNativePushToUser(userId, title, body);
   if (!PUSH_ENABLED) return;
   try {
@@ -636,7 +637,9 @@ const sendPushToUser = async (userId, title, body) => {
       `SELECT id, endpoint, p256dh, auth FROM push_subscriptions WHERE user_id = $1`,
       [userId]
     );
-    const payload = JSON.stringify({ title, body });
+    // Только адрес внутри приложения: из данных уведомления не уводим на чужой сайт
+    const safeUrl = typeof url === 'string' && /^\/(?!\/)/.test(url) ? url : undefined;
+    const payload = JSON.stringify({ title, body, ...(safeUrl ? { url: safeUrl } : {}) });
     for (const sub of subsResult.rows) {
       try {
         await webpush.sendNotification(
@@ -674,7 +677,7 @@ const createNotification = async (userId, type, title, body, data = null) => {
     );
 
     if (notifSettings.pushEnabled !== false) {
-      await sendPushToUser(userId, title, body);
+      await sendPushToUser(userId, title, body, data?.url || null);
     }
   } catch (e) {
     console.error('❌ createNotification error:', e);
@@ -2230,7 +2233,10 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
       overdueAmount,      // Реальный долг (после частичных оплат)
       monthlyPayment,     // Фиксированный платёж из графика
       monthsOverdue,
-      template = 'overdue'
+      template = 'overdue',
+      // Человек явно решил отправить, хотя у клиента напоминания отключены
+      // (FinUchetGPT спрашивает «Всё равно отправить?» кнопками)
+      sendDespiteMuted = false
       // 🔹 totalToPay больше не нужен — ИТОГО = только долг
     } = req.body;
 
@@ -2250,7 +2256,7 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
         [customerId, userId]
       );
       const customerData = customerRes.rows[0]?.data;
-      if (customerData?.allowWhatsappNotification === false) {
+      if (customerData?.allowWhatsappNotification === false && sendDespiteMuted !== true) {
         return res.status(403).json({ error: 'Клиент отключил WhatsApp-уведомления', code: 'NOTIFICATIONS_DISABLED' });
       }
     }
@@ -4453,16 +4459,25 @@ const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe
 // действует на всех устройствах, и соблюдает его сам сервер.
 //  autoLimit — в «Авто» сумма от этой и больше всё равно ждёт «Подтвердить»;
 //              null — без порога (по умолчанию);
-//  morningDigest — утренняя сводка уведомлением (server/ai/digest.js).
-const AI_SETTINGS_DEFAULTS = { autoLimit: null, morningDigest: false };
+//  morningDigest — утренняя сводка уведомлением (server/ai/digest.js);
+//  digestHour — в котором часу по Москве (6–22, по умолчанию 9);
+//  digestWeekdays — только по будням.
+const AI_SETTINGS_DEFAULTS = { autoLimit: null, morningDigest: false, digestHour: 9, digestWeekdays: false };
+const DIGEST_STAT_KEYS = ['dueCount', 'overdueCount', 'remindable', 'muted'];
 const normalizeAiSettings = (raw) => {
   const s = { ...AI_SETTINGS_DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
   const limit = s.autoLimit === null || s.autoLimit === '' ? null : Math.round(Number(s.autoLimit));
   return {
     autoLimit: limit === null || !Number.isFinite(limit) || limit < 0 ? null : Math.min(limit, 100_000_000),
     morningDigest: s.morningDigest === true,
+    digestHour: Number.isInteger(Number(s.digestHour)) && Number(s.digestHour) >= 6 && Number(s.digestHour) <= 22 ? Number(s.digestHour) : 9,
+    digestWeekdays: s.digestWeekdays === true,
     ...(typeof s.digestSentOn === 'string' ? { digestSentOn: s.digestSentOn } : {}),
-    ...(s.digest && typeof s.digest.text === 'string' ? { digest: { date: String(s.digest.date), text: s.digest.text } } : {}),
+    ...(s.digest && typeof s.digest.text === 'string' ? { digest: {
+      date: String(s.digest.date), text: s.digest.text,
+      // Цифры для кнопок в чате — только числа
+      ...(s.digest.stats && typeof s.digest.stats === 'object' ? { stats: Object.fromEntries(DIGEST_STAT_KEYS.map(k => [k, Math.max(0, Math.round(Number(s.digest.stats[k]) || 0))])) } : {}),
+    } } : {}),
   };
 };
 
@@ -4514,11 +4529,18 @@ app.put('/api/ai/assistant/settings', auth, async (req, res) => {
     if ('autoLimit' in body && body.autoLimit !== null && !(Number.isFinite(Number(body.autoLimit)) && Number(body.autoLimit) >= 0)) {
       return res.status(400).json({ msg: 'Порог — сумма в рублях, не меньше нуля.' });
     }
+    if ('digestHour' in body && !(Number.isInteger(Number(body.digestHour)) && Number(body.digestHour) >= 6 && Number(body.digestHour) <= 22)) {
+      return res.status(400).json({ msg: 'Время сводки — час с 6 до 22.' });
+    }
     const next = normalizeAiSettings({
       ...normalizeAiSettings(cur),
       ...('autoLimit' in body ? { autoLimit: body.autoLimit } : {}),
       ...('morningDigest' in body ? { morningDigest: body.morningDigest === true } : {}),
+      ...('digestHour' in body ? { digestHour: body.digestHour } : {}),
+      ...('digestWeekdays' in body ? { digestWeekdays: body.digestWeekdays === true } : {}),
     });
+    // Время сводки поменяли — сегодняшняя (если ещё не ушла) придёт в новый час;
+    // уже ушедшую повторно не шлём (digestSentOn остаётся)
     await pool.query('UPDATE users SET ai_settings = $1 WHERE id = $2', [JSON.stringify(next), req.user.id]);
     const { digestSentOn, digest, ...pub } = next;
     res.json({ settings: pub });

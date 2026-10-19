@@ -381,6 +381,8 @@ export interface AdminAiQuality {
     kinds: Record<string, string>;
     byDay: { day: string; kind: string; n: number }[];
     recent: { kind: string; tool: string | null; question: string | null; answer: string | null; detail: string | null; created_at: string }[];
+    /** Что просили, а агент не умеет (cant_do) — за полгода */
+    wishes?: { kind: string; tool: string | null; question: string | null; answer: string | null; created_at: string }[];
     lessons: { id: number; rule: string; why: string | null; kinds: string | null; cases: number; status: 'proposed' | 'active' | 'rejected'; created_at: string; decided_at: string | null }[];
     autoApply: boolean; lastReviewAt: string | null; pendingReview: number;
 }
@@ -2187,9 +2189,9 @@ export const api = {
         return res.json().catch(() => ({ ok: false, text: 'Не удалось отменить' }));
       },
       /** Настройки агента (порог «Авто», утренняя сводка) */
-      saveSettings: async (patch: { autoLimit?: number | null; morningDigest?: boolean }): Promise<{ settings: { autoLimit: number | null; morningDigest: boolean } }> => {
+      saveSettings: async (patch: { autoLimit?: number | null; morningDigest?: boolean; digestHour?: number; digestWeekdays?: boolean }): Promise<{ settings: { autoLimit: number | null; morningDigest: boolean; digestHour?: number; digestWeekdays?: boolean } }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/settings`, { method: 'PUT', body: JSON.stringify(patch) });
-        if (!res.ok) throw new Error('Не удалось сохранить');
+        if (!res.ok) throw new Error((await res.json().catch(() => null))?.msg || 'Не удалось сохранить');
         return res.json();
       },
       /** «Стоп»: сервер остановит запрос в безопасной точке и вернёт, что успел сделать */

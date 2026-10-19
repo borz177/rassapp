@@ -111,6 +111,8 @@ const Payment = {
     date: { type: 'string', format: 'date-time' },
     kind: { type: 'string', enum: ['down_payment', 'payment'], description: 'Первый взнос или платёж' },
     note: { type: ['string', 'null'] },
+    accountId: { type: ['string', 'null'], description: 'Счёт, на который пришли деньги (счёт договора)' },
+    accountName: { type: ['string', 'null'] },
   },
 };
 
@@ -138,6 +140,8 @@ const Account = {
     type: { type: 'string', enum: ['MAIN', 'INVESTOR', 'POOL', 'SHARED'] },
     isMain: { type: 'boolean' },
     ownerInvestorId: { type: ['string', 'null'] },
+    ownerInvestorName: { type: ['string', 'null'], description: 'Имя инвестора — владельца счёта' },
+    poolMembers: { type: 'array', description: 'Участники пула (type = POOL)', items: { type: 'object', properties: { id: str('Инвестор'), name: str('Имя') } } },
     balance: money('Остаток по счёту', 125000),
   },
 };

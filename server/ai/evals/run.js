@@ -270,6 +270,47 @@ const scenarios = [
     const d = await chat.say('и вот ещё клиентка, самсунг закуп 300 наценка 30 на 6 месяцев', { image: 'passport-ivanova.jpg' });
     return !/\[(Черновик договора|Карточка|Отменить|Подтвердить)/.test(d.reply || '');
   }],
+  // Руслан Алиев — участник пула «Общая касса» в демо-базе: его ищут среди счетов, а не клиентов
+  ['«Счёт <инвестор>» → счёт пула с этим инвестором, а не поиск клиента', async () => {
+    const d = await new Chat().say('а счёт Руслан Алиев');
+    const r = d.reply || '';
+    return /Общ(ая|ей|ую) касс/i.test(r) && !/клиент[а-яё]* .{0,20}нет в базе/i.test(r) && !/\b(pool|acc|inv)_[\w-]+/.test(r);
+  }],
+  // Исправления: только карточка «Подтвердить» — её отменяем, в учёте ничего не меняется
+  ['«Удали последний платёж …» → карточка удаления платежа', async () => {
+    const d = await new Chat().say('удали последний платёж Орзумиева Ислама, записали по ошибке');
+    const a = (d.actions || []).find(x => x.kind === 'confirm' && x.tool === 'delete_payment');
+    await cancelAll(d);
+    return !!a && /Орзумиев/.test(a.summary || '');
+  }],
+  ['«Исправь расход: не …, а …» → карточка исправления расхода', async () => {
+    const d = await new Chat().say('исправь расход на связь и интернет: не 2500, а 3000');
+    const a = (d.actions || []).find(x => x.kind === 'confirm' && x.tool === 'update_expense');
+    await cancelAll(d);
+    return !!a && /3 000/.test(a.summary || '');
+  }],
+  ['Закуп по договору агент не удаляет', async () => {
+    const d = await new Chat().say('удали расход «Закуп: iPhone 16 Pro Max»');
+    await cancelAll(d);
+    return !(d.actions || []).some(x => x.tool === 'delete_expense') && /приложени/i.test(d.reply || '');
+  }],
+  ['«Стоит ли давать …» → оценка по истории платежей', async () => {
+    const d = await new Chat().say('стоит ли давать Орзумиеву Исламу ещё в рассрочку?');
+    return !kinds(d).length && /договор/i.test(d.reply || '') && /(просроч|опозда|вовремя|аккуратн)/i.test(d.reply || '');
+  }],
+  // Голос исказил фамилию — точного совпадения нет, похожий клиент предлагается кнопкой
+  ['Искажённая фамилия → кнопка «Возможно, вы имели в виду» с похожим клиентом', async () => {
+    const d = await new Chat().say('сколько должен Арзумиев Ислам?');
+    const c = action(d, 'choices');
+    return !!c && c.options.some(o => /Орзумиев/.test(o.label) && o.ref) && c.options.length >= 2;
+  }],
+  ['«По каким счетам» → названия счетов, без id', async () => {
+    const chat = new Chat();
+    await chat.say('сколько я получил за этот год?');
+    const d = await chat.say('по каким счетам?');
+    const r = d.reply || '';
+    return /сч[её]т|касс/i.test(r) && !/\b(pool|acc|inv|cust|sale)_[\w-]+/.test(r);
+  }],
 ];
 
 (async () => {

@@ -30,7 +30,11 @@ const KIND_LABELS = {
   guard_lookalike: '«Новый» клиент похож на клиента из базы',
   tool_error: 'Ошибка инструмента',
   model_fallback: 'Основная модель не ответила',
+  cant_do: 'Не умеет — просили новое умение',
 };
+// Не ошибки агента, а просьбы о том, чего он пока не умеет: в разбор ошибок не идут
+// (иначе разбор придумал бы «не отказывай») и хранятся дольше — их считают за месяцы
+const WISH_KINDS = ['cant_do'];
 
 /**
  * Обезличить пример: ФИО (2–3 слова с заглавной), телефоны, паспорта, суммы и
@@ -108,7 +112,7 @@ module.exports = ({ pool }) => {
   const review = async ({ callModel, staticPrompt, force = false }) => {
     await ready;
     const { rows: cases } = await pool.query(
-      `SELECT id, kind, tool, question, answer, detail FROM ai_signals WHERE NOT reviewed ORDER BY id DESC LIMIT 60`);
+      `SELECT id, kind, tool, question, answer, detail FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1) ORDER BY id DESC LIMIT 60`, [WISH_KINDS]);
     if (!cases.length || (!force && cases.length < 3)) return { proposed: 0, cases: cases.length, skipped: true };
     const { rows: lessons } = await pool.query(`SELECT rule, status FROM ai_lessons WHERE status IN ('active', 'proposed', 'rejected') ORDER BY id DESC LIMIT 40`);
     const prompt = [
@@ -156,12 +160,15 @@ module.exports = ({ pool }) => {
       `SELECT to_char(created_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD') AS day, kind, count(*)::int AS n
          FROM ai_signals WHERE created_at > NOW() - INTERVAL '14 days' GROUP BY 1, 2 ORDER BY 1`)).rows;
     const recent = (await pool.query(
-      `SELECT kind, tool, question, answer, detail, created_at FROM ai_signals ORDER BY id DESC LIMIT 50`)).rows;
+      `SELECT kind, tool, question, answer, detail, created_at FROM ai_signals WHERE kind <> ALL($1) ORDER BY id DESC LIMIT 50`, [WISH_KINDS])).rows;
+    // Чего агент не умеет — за полгода: по ним решают, какие умения добавлять
+    const wishes = (await pool.query(
+      `SELECT kind, tool, question, answer, created_at FROM ai_signals WHERE kind = ANY($1) ORDER BY id DESC LIMIT 100`, [WISH_KINDS])).rows;
     const lessons = (await pool.query(
       `SELECT id, rule, why, kinds, cases, status, created_at, decided_at FROM ai_lessons WHERE status <> 'removed' ORDER BY (status = 'proposed') DESC, id DESC LIMIT 50`)).rows;
     const settings = (await pool.query('SELECT auto_apply, last_review_at FROM ai_quality_settings WHERE id = 1')).rows[0] || {};
-    const pendingReview = (await pool.query('SELECT count(*)::int AS n FROM ai_signals WHERE NOT reviewed')).rows[0].n;
-    return { kinds: KIND_LABELS, byDay, recent, lessons, autoApply: !!settings.auto_apply, lastReviewAt: settings.last_review_at, pendingReview };
+    const pendingReview = (await pool.query('SELECT count(*)::int AS n FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1)', [WISH_KINDS])).rows[0].n;
+    return { kinds: KIND_LABELS, byDay, recent, wishes, lessons, autoApply: !!settings.auto_apply, lastReviewAt: settings.last_review_at, pendingReview };
   };
 
   const decide = async (id, action) => {
@@ -183,7 +190,8 @@ module.exports = ({ pool }) => {
   };
 
   // Хранение: сигналы — 30 дней
-  const cleanup = () => ready.then(() => pool.query(`DELETE FROM ai_signals WHERE created_at < NOW() - INTERVAL '30 days'`)).catch(() => {});
+  const cleanup = () => ready.then(() => pool.query(
+    `DELETE FROM ai_signals WHERE created_at < NOW() - CASE WHEN kind = ANY($1) THEN INTERVAL '180 days' ELSE INTERVAL '30 days' END`, [WISH_KINDS])).catch(() => {});
 
   /** Ночной разбор: раз в сутки около 03:00 по Москве */
   const start = ({ callModel, staticPrompt }) => {

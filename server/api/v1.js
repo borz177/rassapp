@@ -114,12 +114,18 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     payoutType: e.payoutType || null,
   });
 
-  const mapAccount = (a, balance) => ({
+  // investorNames — id → имя: чей это счёт и кто в пуле, чтобы «счёт Гагаева»
+  // находился по имени инвестора, а не только по названию счёта
+  const mapAccount = (a, balance, investorNames = new Map()) => ({
     id: a.id,
     name: a.name || '',
     type: a.type || 'MAIN',
     isMain: !!a.isMain,
     ownerInvestorId: a.ownerId || null,
+    ownerInvestorName: (a.ownerId && investorNames.get(a.ownerId)) || null,
+    poolMembers: a.type === 'POOL'
+      ? (a.poolMemberIds || []).map(id => ({ id, name: investorNames.get(id) || '' }))
+      : [],
     balance: num(balance),
   });
 
@@ -220,12 +226,14 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
   // ── счета ────────────────────────────────────────────────────────────────
   router.get('/accounts', requireScope('read'), route(async (req, res) => {
     const userId = tenant(req);
-    const [accounts, sales, expenses, retail] = await Promise.all([
+    const [accounts, sales, expenses, retail, investors] = await Promise.all([
       loadAll(userId, 'accounts'), loadAll(userId, 'sales'),
       loadAll(userId, 'expenses'), loadAll(userId, 'retailSales'),
+      loadAll(userId, 'investors'),
     ]);
     const balances = domain.accountBalances(accounts, sales, expenses, retail);
-    ok(res, accounts.map(a => mapAccount(a, balances[a.id] || 0)));
+    const investorNames = new Map(investors.map(i => [i.id, i.name || '']));
+    ok(res, accounts.map(a => mapAccount(a, balances[a.id] || 0, investorNames)));
   }));
 
   // ── клиенты ──────────────────────────────────────────────────────────────
@@ -480,16 +488,20 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
   // ── платежи ──────────────────────────────────────────────────────────────
   router.get('/payments', requireScope('read'), route(async (req, res) => {
     const p = paging(req, res); if (!p) return;
-    const { contractId, from, to } = req.query;
-    const sales = await loadAll(tenant(req), 'sales');
+    const { contractId, from, to, accountId } = req.query;
+    const [sales, accounts] = await Promise.all([loadAll(tenant(req), 'sales'), loadAll(tenant(req), 'accounts')]);
+    // Счёт договора — куда пришли деньги (у совместного финансирования — основной)
+    const accountNames = new Map(accounts.map(a => [a.id, a.name || '']));
     const rows = [];
     sales.forEach(s => {
       if (contractId && s.id !== contractId) return;
+      if (accountId && s.accountId !== accountId) return;
+      const acc = { accountId: s.accountId || null, accountName: accountNames.get(s.accountId) || null };
       if (String(s.customerId || '').startsWith('system_')) return;
       if (num(s.downPayment) > 0 && inRange(s.startDate, from, to)) {
         rows.push({
           id: `${s.id}_dp`, contractId: s.id, customerId: s.customerId,
-          amount: num(s.downPayment), date: s.startDate, kind: 'down_payment', note: null,
+          amount: num(s.downPayment), date: s.startDate, kind: 'down_payment', note: null, ...acc,
         });
       }
       (s.paymentPlan || []).filter(pm => pm.isPaid && pm.isRealPayment !== false).forEach(pm => {
@@ -497,7 +509,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
         rows.push({
           id: pm.id, contractId: s.id, customerId: s.customerId,
           amount: num(pm.amount), date: pm.actualDate || pm.date,
-          kind: 'payment', note: pm.note || null,
+          kind: 'payment', note: pm.note || null, ...acc,
         });
       });
     });

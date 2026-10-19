@@ -65,10 +65,11 @@ const TOOLS = [
   {
     name: 'list_payments',
     title: 'Полученные платежи',
-    description: 'Деньги, полученные по договорам за период: первый взнос и платежи.',
+    description: 'Деньги, полученные по договорам за период: первый взнос и платежи; у каждого — счёт, на который пришли.',
     scope: 'read',
     input: {
       contractId: { type: 'string' },
+      accountId: { type: 'string', description: 'Только по одному счёту' },
       from: { type: 'string', description: 'С даты, YYYY-MM-DD' },
       to: { type: 'string', description: 'По дату, YYYY-MM-DD' },
       limit: { type: 'integer' },
@@ -78,7 +79,7 @@ const TOOLS = [
   {
     name: 'list_accounts',
     title: 'Счета и остатки',
-    description: 'Счета кассы с текущими остатками.',
+    description: 'Счета кассы с текущими остатками; у счёта инвестора — его имя (ownerInvestorName), у пула — участники (poolMembers).',
     scope: 'read',
     input: {},
     request: () => ({ method: 'GET', path: '/accounts' }),
@@ -174,6 +175,7 @@ const TOOLS = [
       title: { type: 'string', description: 'Назначение' },
       amount: { type: 'number', description: 'Сумма в рублях' },
       category: { type: 'string' }, date: { type: 'string' },
+      description: { type: 'string', description: 'Подробности: магазин, что куплено' },
     },
     required: ['accountId', 'title', 'amount'],
     request: args => ({ method: 'POST', path: '/expenses', body: args }),
