@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
-import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check, FileText } from 'lucide-react';
+import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check, FileText, Image as ImageIcon, Camera } from 'lucide-react';
 import AIAssistantSettings, { type AISettings } from './AIAssistantSettings';
 import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
@@ -65,8 +65,6 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
-  /** ВРЕМЕННО (плавный подъём ленты): только админу — новый способ (CSS-сдвиг) и запись на сервер */
-  traceKeyboard?: boolean;
 }
 
 /**
@@ -157,6 +155,51 @@ const ModeMenu: React.FC<{ mode: Mode; onChange: (m: Mode) => void }> = ({ mode,
                 <span className="block text-xs text-slate-500 dark:text-slate-400">{m.hint}</span>
               </span>
               {mode === m.key && <Check size={16} className="mt-0.5 shrink-0 text-violet-600 dark:text-violet-300" />}
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+/**
+ * «+» — меню над полем, как в нативных мессенджерах: открывается, не закрывая
+ * клавиатуру (кнопка не забирает фокус у поля — см. onMouseDown панели).
+ * Клавиатура уходит, только когда выбран пункт и открывается выбор фото или камера
+ */
+const AttachMenu: React.FC<{ onGallery: () => void; onCamera: () => void }> = ({ onGallery, onCamera }) => {
+  const [open, setOpen] = useState(false);
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!open) return;
+    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
+    document.addEventListener('pointerdown', away);
+    document.addEventListener('keydown', esc);
+    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
+  }, [open]);
+  const items = [
+    { key: 'gallery', label: 'Фото из галереи', hint: 'Паспорт, чек, документ', Icon: ImageIcon, tone: 'text-violet-600 dark:text-violet-300', run: onGallery },
+    { key: 'camera', label: 'Сделать фото', hint: 'Камера телефона', Icon: Camera, tone: 'text-emerald-600 dark:text-emerald-400', run: onCamera },
+  ];
+  return (
+    <div ref={ref} className="relative">
+      <button onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} aria-label="Добавить фото" title="Добавить"
+              className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition">
+        <Plus size={24} strokeWidth={1.8} className={`transition-transform duration-200 ${open ? 'rotate-45' : ''}`} />
+      </button>
+      {open && (
+        <div role="menu" className="ai-pop absolute bottom-full left-0 mb-2 w-60 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl" style={{ transformOrigin: 'bottom left' }}>
+          {items.map(it => (
+            // data-blur: на выборе пункта клавиатура уходит — открывается выбор фото / камера
+            <button key={it.key} data-blur role="menuitem" onClick={() => { setOpen(false); it.run(); }}
+                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 active:bg-slate-100 dark:active:bg-slate-700 transition">
+              <it.Icon size={20} className={`shrink-0 ${it.tone}`} />
+              <span className="flex-1 min-w-0">
+                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{it.label}</span>
+                <span className="block text-xs text-slate-500 dark:text-slate-400">{it.hint}</span>
+              </span>
             </button>
           ))}
         </div>
@@ -279,7 +322,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, traceKeyboard }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -508,9 +551,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const feed = scroller();
     window.clearTimeout(shrinkTimer.current);
     if (opened || closed) feedAnimUntil.current = Date.now() + KEYBOARD_MS + 80;
-    if ((opened || closed) && traceKeyboard) startTrace(opened ? 'open' : 'close', { prevLift, lift, atBottom: atBottom.current, empty: emptyRef.current, hasFeed: !!feed });
-    // ВРЕМЕННО, только админ: новый способ — прокрутка сразу в конечное положение,
-    // видимое движение ведёт CSS-сдвиг ленты (feedRef). Остальным — как раньше
+    // Лента едет вместе с полем CSS-сдвигом (feedRef) — на видеочипе, как само
+    // поле; покадровая прокрутка на iPhone пропускала кадры, пока выезжает клавиатура
     // Слой ищем по стилю (overflow auto), а не по «есть что листать»: в коротком
     // чате до клавиатуры листать нечего — слой не находился, и подъём не шёл
     const list = feedRef.current;
@@ -520,23 +562,20 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // записи: 452 → 831), и последние сообщения на долю секунды уходили вверх.
     // Лента опускается CSS-сдвигом вместе с полем; в конце в одном кадре сдвиг
     // меняем на прокрутку — картинка та же, скачка нет
-    if (traceKeyboard && closed && layer && list && atBottom.current && !emptyRef.current) {
+    if (closed && layer && list && atBottom.current && !emptyRef.current) {
       const from = layer.scrollTop;
-      traceEv('slide-down', { from, d: prevLift });
       slideDown(list, prevLift, () => {
         if (listEnd.current) listEnd.current.style.height = `${space}px`;
         setEndSpace(space);
         layer.scrollTop = Math.max(0, from - prevLift);
-        traceEv('swap', { top: layer.scrollTop, max: layer.scrollHeight - layer.clientHeight });
       });
       return;
     }
-    if (traceKeyboard && opened && layer && list && atBottom.current && !emptyRef.current) {
+    if (opened && layer && list && atBottom.current && !emptyRef.current) {
       const from = layer.scrollTop;
       if (listEnd.current) listEnd.current.style.height = `${space}px`;
       setEndSpace(space);
       layer.scrollTop = opened ? layer.scrollHeight : Math.max(0, from - prevLift);
-      traceEv('slide', { from, to: layer.scrollTop, max: layer.scrollHeight - layer.clientHeight });
       slideFeed(list, layer.scrollTop - from);
       return;
     }
@@ -556,7 +595,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       });
     }
   }, [lift]);
-  // ВРЕМЕННО: CSS-сдвиг ленты (только админ) и запись того, что с ней происходит
+  // Лента едет вместе с полем ввода: CSS-сдвиг той же кривой и длительности, что у поля
   const feedRef = useRef<HTMLDivElement>(null);
   const slideFeed = (list: HTMLElement, shift: number) => {
     stopFeedAnim.current();
@@ -567,8 +606,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     list.style.transition = `transform ${KEYBOARD_MS}ms cubic-bezier(.38, .7, .125, 1)`;
     list.style.transform = 'translate3d(0, 0, 0)';
     const clear = () => { list.style.transition = ''; list.style.transform = ''; };
-    const t = window.setTimeout(() => { traceEv('slide-end'); clear(); }, KEYBOARD_MS + 40);
-    stopFeedAnim.current = () => { traceEv('slide-stop'); window.clearTimeout(t); clear(); };
+    const t = window.setTimeout(() => { clear(); }, KEYBOARD_MS + 40);
+    stopFeedAnim.current = () => { window.clearTimeout(t); clear(); };
   };
   // Прокручиваемый слой ленты — по стилю, даже когда листать пока нечего
   const feedLayer = (): HTMLElement | null => {
@@ -592,32 +631,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     if (prefersReducedMotion()) { finish(); return; }
     list.style.transition = `transform ${KEYBOARD_MS}ms cubic-bezier(.38, .7, .125, 1)`;
     list.style.transform = `translate3d(0, ${d}px, 0)`;
-    t = window.setTimeout(() => { traceEv('slide-end'); finish(); }, KEYBOARD_MS + 20);
+    t = window.setTimeout(() => { finish(); }, KEYBOARD_MS + 20);
     // Палец на ленте — сразу в конечное положение
-    stopFeedAnim.current = () => { traceEv('slide-stop'); finish(); };
-  };
-  const trace = useRef<any[] | null>(null);
-  const traceT0 = useRef(0);
-  const traceEv = (ev: string, data: Record<string, unknown> = {}) => { trace.current?.push({ t: Date.now() - traceT0.current, ev, ...data }); };
-  const startTrace = (kind: string, data: Record<string, unknown>) => {
-    if (!traceKeyboard || trace.current) return;
-    const rec: any[] = [{ t: 0, ev: kind, ...data }];
-    trace.current = rec;
-    traceT0.current = Date.now();
-    const timer = setInterval(() => {
-      const f = feedLayer();
-      const end = listEnd.current?.getBoundingClientRect();
-      const comp = composerRef.current?.getBoundingClientRect();
-      rec.push({ t: Date.now() - traceT0.current, ev: 'pos',
-        top: f ? Math.round(f.scrollTop) : null, max: f ? Math.round(f.scrollHeight - f.clientHeight) : null,
-        lastMsg: end ? Math.round(end.top) : null, field: comp ? Math.round(comp.top) : null,
-        tf: feedRef.current?.style.transform || '', liftNow: liftRef.current, atBottom: atBottom.current,
-        sy: Math.round(window.scrollY), ot: Math.round(window.visualViewport?.offsetTop || 0) });
-    }, 33);
-    setTimeout(() => { clearInterval(timer); trace.current = null; api.aiAssistant.kbTrace(rec).catch(() => {}); }, 1200);
+    stopFeedAnim.current = () => { finish(); };
   };
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const cameraRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const loadStatus = () => api.aiAssistant.status().then(s => {
@@ -694,14 +714,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // лента переставала ехать вместе с полем
     const touched = (e: Event) => {
       if (composerRef.current?.contains(e.target as Node)) return;
-      traceEv('touched', { type: e.type });
       userAt = Date.now();
       // Человек сам повёл ленту — наше движение уступает ему
       stopFeedAnim.current();
       feedAnimUntil.current = 0;
     };
     const onScroll = () => {
-      if (trace.current && el) traceEv('scroll', { top: Math.round(el.scrollTop), max: Math.round(el.scrollHeight - el.clientHeight) });
       if (Date.now() - userAt > 1000) return;
       // Ленту двигаем мы (вслед за клавиатурой) — это не прокрутка человека
       if (Date.now() < feedAnimUntil.current) return;
@@ -1176,12 +1194,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               <button onClick={cancelRecording} aria-label="Отменить запись"
                       className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-lg">✕</button>
             ) : (
-              <button data-blur onClick={() => fileRef.current?.click()} aria-label="Добавить фото" title="Фото"
-                      className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition">
-                <Plus size={24} strokeWidth={1.8} />
-              </button>
+              <AttachMenu onGallery={() => fileRef.current?.click()} onCamera={() => cameraRef.current?.click()} />
             )}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
             <div className="flex-1" />
             {!recording && <ModeMenu mode={mode} onChange={setMode} />}
           {/* Идёт ответ — на месте отправки «Стоп» с бегущим кольцом */}
