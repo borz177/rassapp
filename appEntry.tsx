@@ -9,6 +9,7 @@ import AppDialogs from './components/AppDialogs';
 import Toaster from './components/Toaster';
 import { installAlertOverride } from './src/dialogs';
 import { installViewportFix } from './src/viewportFix';
+import { installKeyboardClass } from './src/keyboard';
 import { registerSW } from 'virtual:pwa-register';
 import { isDesktopShell } from './src/platform';
 
@@ -61,6 +62,7 @@ installStaleBundleGuard();
 // Подтверждения (confirm) переписаны на appConfirm в местах вызова.
 installAlertOverride();
 installViewportFix();
+installKeyboardClass();
 
 const root = ReactDOM.createRoot(rootElement);
 root.render(

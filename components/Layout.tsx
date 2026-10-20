@@ -994,7 +994,7 @@ const counts = useMemo(() => {
       {/* На странице ИИ-агента панель уезжает вниз: внизу там поле ввода,
           и чату нужен весь экран, как в мессенджерах */}
       <div
-        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none vv-anchor transition-[transform,opacity] duration-300 ease-out ${
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 px-5 pointer-events-none vv-anchor kb-hide transition-[transform,opacity] duration-300 ease-out ${
           currentView === 'AI_ASSISTANT' ? 'translate-y-[130%] opacity-0' : ''}`}
         style={{ paddingBottom: 'max(0.25rem, env(safe-area-inset-bottom, 0px))' }}
         aria-hidden={currentView === 'AI_ASSISTANT' || undefined}

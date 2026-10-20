@@ -1733,6 +1733,9 @@ html.dark:not(.shell-floating) :is(.rounded-xl, .rounded-2xl, .rounded-3xl)[clas
 
 /* iOS PWA: нижние панели держим у реального низа экрана (src/viewportFix.ts) */
 html.vv-fix .vv-anchor { transform: translate3d(0, var(--vv-shift, 0px), 0); }
+/* Открыта клавиатура (src/keyboard.ts): нижняя навигация уезжает вниз, как панель
+   вкладок в нативных приложениях, — иначе iPhone тянул её вверх при прокрутке */
+html.kb-open .kb-hide { transform: translate3d(0, 130%, 0) !important; opacity: 0; pointer-events: none; }
 /* Принудительная перерисовка после возврата из свёрнутого состояния */
 html.vv-reflow body { padding-bottom: 1px; }
 

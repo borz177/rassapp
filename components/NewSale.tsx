@@ -20,6 +20,7 @@ import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } fr
 import { openPrintPreview } from './PrintPreview';
 import { isIOSApp } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
+import { useKeyboardAvoidance } from '../src/keyboard';
 
 interface NewSaleProps {
   initialData: any;
@@ -328,6 +329,10 @@ const impliedOriginalPaymentDate = useMemo(() => {
   }, [formData.downPayment]);
 
   // 🔹 2. Расчёт итоговых значений с учётом округления
+  // Клавиатура телефона: поле встаёт над ней плавно, без рывка iPhone (src/keyboard.ts)
+  const formRootRef = useRef<HTMLDivElement>(null);
+  useKeyboardAvoidance(formRootRef);
+
   const calculatedValues = useMemo(() => {
     const downPayment = Number(formData.downPayment) || 0;
     const installments = Number(formData.installments) || 1;
@@ -1027,7 +1032,7 @@ if (mode === 'CASH') {
   };
 
   return (
-    <div className="space-y-4 animate-fade-in pb-20">
+    <div ref={formRootRef} className="space-y-4 animate-fade-in pb-20">
       {/* === СКРЫТЫЙ КОНТРАКТ ДЛЯ PDF === */}
       {renderContractContent()}
 
