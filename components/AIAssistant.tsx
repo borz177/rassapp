@@ -8,7 +8,7 @@ import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
-import { animateScrollTop, KEYBOARD_MS } from '../src/easing';
+import { KEYBOARD_MS, prefersReducedMotion } from '../src/easing';
 
 /**
  * ИИ-агент: чат, голос и фото. Ответы и действия — server/ai/assistant.js.
@@ -504,24 +504,37 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const closed = !lifted && wasLifted.current;
     wasLifted.current = lifted;
     const feed = scroller();
+    const list = feedRef.current;
     window.clearTimeout(shrinkTimer.current);
     if (opened || closed) feedAnimUntil.current = Date.now() + KEYBOARD_MS + 80;
-    if (closed && feed && atBottom.current && !emptyRef.current) {
-      stopFeedAnim.current();
-      stopFeedAnim.current = animateScrollTop(feed, feed.scrollTop - prevLift);
-      shrinkTimer.current = window.setTimeout(() => setEndSpace(space), KEYBOARD_MS + 20);
-      return;
-    }
+    // Место под лентой — сразу в DOM (и в состояние): прокрутку ставим в конечное
+    // положение в этом же кадре, а ленту плавно ведёт CSS (slideFeed)
+    if (listEnd.current) listEnd.current.style.height = `${space}px`;
     setEndSpace(space);
-    if (opened && atBottom.current) {
-      requestAnimationFrame(() => {
-        const f = scroller();
-        stopFeedAnim.current();
-        if (f && !emptyRef.current) stopFeedAnim.current = animateScrollTop(f, f.scrollHeight);
-        else scrollToEnd(false);
-      });
-    }
+    if (!feed || !list || emptyRef.current || !(opened || closed) || !atBottom.current) return;
+    const from = feed.scrollTop;
+    feed.scrollTop = opened ? feed.scrollHeight : Math.max(0, from - prevLift);
+    slideFeed(list, feed.scrollTop - from);
   }, [lift]);
+  // Лента едет вместе с полем «как одно целое»: прокрутка уже в конечном
+  // положении, а саму ленту сдвигаем назад на разницу и плавно возвращаем CSS-
+  // переходом — той же кривой и длительностью, что у поля (.ai-composer). Оба
+  // движения стартуют в одном кадре и идут на видеочипе; программная прокрутка
+  // по кадрам на iPhone подтормаживала
+  const feedRef = useRef<HTMLDivElement>(null);
+  const slideFeed = (list: HTMLElement, shift: number) => {
+    stopFeedAnim.current();
+    if (Math.abs(shift) < 2 || prefersReducedMotion()) return;
+    list.style.transition = 'none';
+    list.style.transform = `translate3d(0, ${shift}px, 0)`;
+    list.getBoundingClientRect(); // зафиксировать начальное положение до перехода
+    list.style.transition = `transform ${KEYBOARD_MS}ms cubic-bezier(.38, .7, .125, 1)`;
+    list.style.transform = 'translate3d(0, 0, 0)';
+    const clear = () => { list.style.transition = ''; list.style.transform = ''; };
+    const t = window.setTimeout(clear, KEYBOARD_MS + 40);
+    // Палец на ленте — движение останавливается там, где лента сейчас
+    stopFeedAnim.current = () => { window.clearTimeout(t); clear(); };
+  };
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -894,7 +907,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       </div>
 
       {/* Лента. Касание ленты на телефоне закрывает клавиатуру — как в мессенджерах */}
-      <div className="flex-1 space-y-3 pb-4"
+      <div ref={feedRef} className="flex-1 space-y-3 pb-4"
            onPointerDown={e => { if (phone && focused && e.pointerType !== 'mouse' && !(e.target as HTMLElement).closest('button, a, input, textarea')) inputRef.current?.blur(); }}>
         {empty && (
           // Невысокий экран телефона (адресная строка, маленький iPhone) — приветствие
