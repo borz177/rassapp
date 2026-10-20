@@ -66,6 +66,8 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
+  /** ВРЕМЕННО (поле наверху после сворачивания): запись после возврата — только админу */
+  traceResume?: boolean;
 }
 
 /**
@@ -323,7 +325,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, traceResume }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -493,16 +495,52 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       }
     };
     const onVv = () => { snapBack(); sync(); };
+    // Вернулись в приложение (свернули и открыли): iPhone прятал клавиатуру, а
+    // события об этом не приходило — поле оставалось поднятым над сообщениями.
+    // Сверяемся заново, несколько раз: первые доли секунды размеры бывают старыми.
+    // Поле не в фокусе — клавиатуры точно нет
+    const resync = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (document.activeElement !== inputRef.current) setKeyboard(0);
+      else apply();
+      measureRef.current();
+      syncPpComp.current();
+    };
+    const onVisible = () => {
+      if (document.visibilityState !== 'visible') return;
+      if (traceResume) startResumeTrace();
+      [0, 150, 400, 800].forEach(t => setTimeout(resync, t));
+    };
     apply();
     vv.addEventListener('resize', onVv);
     vv.addEventListener('scroll', onVv);
     window.addEventListener('scroll', snapBack, { passive: true });
+    document.addEventListener('visibilitychange', onVisible);
+    window.addEventListener('pageshow', onVisible);
     return () => {
       cancelAnimationFrame(frame);
       vv.removeEventListener('resize', onVv); vv.removeEventListener('scroll', onVv);
       window.removeEventListener('scroll', snapBack);
+      document.removeEventListener('visibilitychange', onVisible);
+      window.removeEventListener('pageshow', onVisible);
     };
   }, [phone]);
+  // ВРЕМЕННО: что происходит в первую секунду после возврата в приложение (только админ)
+  const startResumeTrace = () => {
+    const vv = window.visualViewport;
+    const rec: any[] = [];
+    const t0 = performance.now();
+    const snap = () => {
+      const r = composerRef.current?.getBoundingClientRect();
+      rec.push({ t: Math.round(performance.now() - t0), field: r ? Math.round(r.top) : null, lift: liftRef.current,
+        vh: vv ? Math.round(vv.height) : null, ot: vv ? Math.round(vv.offsetTop) : null, ih: window.innerHeight, ch: document.documentElement.clientHeight,
+        sy: Math.round(window.scrollY), focused: document.activeElement === inputRef.current, focusedState: focusedRef.current,
+        comp: composerRef.current?.style.getPropertyValue('--pp-comp') || '' });
+    };
+    snap();
+    const timer = setInterval(snap, 60);
+    setTimeout(() => { clearInterval(timer); api.aiAssistant.kbTrace(rec).catch(() => {}); }, 1200);
+  };
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
     // Высота панели + её отступ от низа экрана — а не «высота окна минус верх
