@@ -619,9 +619,17 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       feedAnimUntil.current = 0;
     };
     const onScroll = () => {
+      // Пока клавиатура выезжает/уезжает, лента держится внизу: iPhone, показывая
+      // поле, сам прокручивал ленту и сбрасывал её положение — сообщения не
+      // поднимались. Сдвинул — сразу возвращаем (видимое движение ведёт CSS)
+      if (Date.now() < feedAnimUntil.current) {
+        if (el && atBottom.current && !emptyRef.current) {
+          const max = el.scrollHeight - el.clientHeight;
+          if (max - el.scrollTop > 2) el.scrollTop = max;
+        }
+        return;
+      }
       if (Date.now() - userAt > 1000) return;
-      // Ленту двигаем мы (вслед за клавиатурой) — это не прокрутка человека
-      if (Date.now() < feedAnimUntil.current) return;
       const top = el ? el.scrollTop : window.scrollY;
       const max = el ? el.scrollHeight - el.clientHeight : document.documentElement.scrollHeight - window.innerHeight;
       atBottom.current = max - top < 80;
@@ -1063,7 +1071,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       onFocus={() => {
                         focusedRef.current = true;
                         setFocused(true);
-                        if (phone) { measureRef.current(); predictKeyboard(); keyboardResync.current(); }
+                        if (phone) {
+                          // Ленту держим внизу и на время, пока выезжает клавиатура (см. onScroll)
+                          feedAnimUntil.current = Math.max(feedAnimUntil.current, Date.now() + 800);
+                          measureRef.current(); predictKeyboard(); keyboardResync.current();
+                        }
                         // Сдвиг области бывает и после фокуса — пока клавиатура выезжает
                         if (phone) [0, 60, 180, 320].forEach(t => setTimeout(() => { if (focusedRef.current && (window.scrollY > 0 || (window.visualViewport?.offsetTop || 0) > 0)) window.scrollTo(0, 0); }, t));
                       }}
