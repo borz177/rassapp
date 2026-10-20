@@ -64,6 +64,8 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
+  /** ВРЕМЕННО (разбор рывка поля на iPhone): записывать клавиатуру после касания — только админу */
+  traceKeyboard?: boolean;
 }
 
 /**
@@ -276,7 +278,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, traceKeyboard }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -359,6 +361,25 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const kbKey = () => `finuchet_ai_kb_${window.innerWidth > window.innerHeight ? 'l' : 'p'}`;
   const predicted = useRef(0);
   const focusAt = useRef(0);
+  // ВРЕМЕННО: запись того, что происходит в первые 1,5 с после касания поля
+  // (рывок поля в PWA на iPhone) — уходит на сервер, только админу
+  const kbTrace = useRef<any[] | null>(null);
+  const startKbTrace = () => {
+    if (!traceKeyboard || kbTrace.current) return;
+    const vv = window.visualViewport;
+    const trace: any[] = [{ t: 0, ev: 'start', standalone: (navigator as any).standalone === true || window.matchMedia('(display-mode: standalone)').matches, safeBottom: safeBottom.current, ua: navigator.userAgent.slice(0, 160) }];
+    kbTrace.current = trace;
+    const t0 = Date.now();
+    const timer = setInterval(() => {
+      const r = composerRef.current?.getBoundingClientRect();
+      trace.push({ t: Date.now() - t0, ev: 'pos', fieldBottom: r ? Math.round(r.bottom) : null, visibleBottom: vv ? Math.round(vv.offsetTop + vv.height) : null, ot: vv ? Math.round(vv.offsetTop) : null, sy: Math.round(window.scrollY), lift: liftRef.current, tf: composerRef.current ? getComputedStyle(composerRef.current).transform : '' });
+    }, 50);
+    setTimeout(() => {
+      clearInterval(timer);
+      kbTrace.current = null;
+      api.aiAssistant.kbTrace(trace).catch(() => {});
+    }, 1500);
+  };
   const predictKeyboard = () => {
     focusAt.current = Date.now();
     let saved = 0;
@@ -386,7 +407,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       if (focusedRef.current && (window.scrollY > 0 || vv.offsetTop > 0)) {
         const now = Date.now();
         if (now - lastReset > 1000) resets = 0;
-        if (now - lastReset > 150 && resets < 3) { lastReset = now; resets++; window.scrollTo(0, 0); }
+        if (now - lastReset > 150 && resets < 3) { lastReset = now; resets++; kbTrace.current?.push({ t: now - focusAt.current, ev: 'reset', ot: Math.round(vv.offsetTop), sy: Math.round(window.scrollY) }); window.scrollTo(0, 0); }
       }
       // От высоты макета, а не innerHeight: в Safari на iPhone innerHeight сам
       // сжимается до видимой области при открытой клавиатуре — разница выходила
@@ -400,6 +421,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       // поднималось в два шага (рывок). Первые 650 мс после касания ниже
       // запомненной высоты не опускаем; дальше — как есть
       const opening = focusedRef.current && Date.now() - focusAt.current < 650;
+      kbTrace.current?.push({ t: Date.now() - focusAt.current, ev: 'apply', ih: window.innerHeight, ch: document.documentElement.clientHeight, vh: Math.round(vv.height), ot: Math.round(vv.offsetTop), sy: Math.round(window.scrollY), k, pred: predicted.current, skip: opening && k < predicted.current });
       if (opening && k < predicted.current) return;
       setKeyboard(prev => (Math.abs(prev - k) < 6 && (prev > 0) === (k > 0) ? prev : k));
       // Устоявшаяся высота — запоминаем на устройстве (отдельно для ориентации)
@@ -972,7 +994,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       onFocus={() => {
                         focusedRef.current = true;
                         setFocused(true);
-                        if (phone) { measureRef.current(); predictKeyboard(); keyboardResync.current(); }
+                        if (phone) { startKbTrace(); measureRef.current(); predictKeyboard(); keyboardResync.current(); }
                         // Сдвиг области бывает и после фокуса — пока клавиатура выезжает
                         if (phone) [0, 60, 180, 320].forEach(t => setTimeout(() => { if (focusedRef.current && (window.scrollY > 0 || (window.visualViewport?.offsetTop || 0) > 0)) window.scrollTo(0, 0); }, t));
                       }}
