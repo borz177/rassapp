@@ -8,6 +8,7 @@ import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
+import { animateScrollTop, KEYBOARD_MS } from '../src/easing';
 
 /**
  * ИИ-агент: чат, голос и фото. Ответы и действия — server/ai/assistant.js.
@@ -380,7 +381,25 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       api.aiAssistant.kbTrace(trace).catch(() => {});
     }, 1500);
   };
+  // Подъём при касании (до фокуса) — см. onTouchStart у поля
+  const preLifted = useRef(false);
+  const touchY = useRef(0);
+  const preLift = () => {
+    let saved = 0;
+    try { saved = Number(localStorage.getItem(kbKey())) || 0; } catch { /* без хранилища */ }
+    if (saved <= 80) return;
+    preLifted.current = true;
+    setKeyboard(prev => (prev > 0 ? prev : saved));
+    // Касание не стало фокусом (отпустили мимо, системный жест) — вернуть
+    setTimeout(() => { if (preLifted.current && !focusedRef.current) { preLifted.current = false; setKeyboard(0); } }, 600);
+  };
+  const cancelPreLift = () => {
+    if (!preLifted.current || focusedRef.current) return;
+    preLifted.current = false;
+    setKeyboard(0);
+  };
   const predictKeyboard = () => {
+    preLifted.current = false;
     focusAt.current = Date.now();
     let saved = 0;
     try { saved = Number(localStorage.getItem(kbKey())) || 0; } catch { /* без хранилища */ }
@@ -436,10 +455,28 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // панель вставала чуть ниже, «за» клавиатурой; во второй раз было верно.
     // После фокуса перепроверяем, когда клавиатура уже точно на месте
     keyboardResync.current = () => [120, 350, 700].forEach(t => setTimeout(sync, t));
+    // Первое касание после входа на страницу: iPhone сам прокручивает всю
+    // страницу на высоту клавиатуры (~100 мс), «показывая» поле, — запись с
+    // телефона: scrollY 413 на 100–190 мс. Ждать кадра или 150 мс нельзя — это и
+    // был рывок. Первые 700 мс после касания возвращаем сразу, в самом событии
+    // (высота клавиатуры от прокрутки не зависит — «качелей» это не вернёт)
+    const snapBack = () => {
+      if (!focusedRef.current || Date.now() - focusAt.current > 700) return;
+      if (window.scrollY > 0 || vv.offsetTop > 0) {
+        kbTrace.current?.push({ t: Date.now() - focusAt.current, ev: 'snap', ot: Math.round(vv.offsetTop), sy: Math.round(window.scrollY) });
+        window.scrollTo(0, 0);
+      }
+    };
+    const onVv = () => { snapBack(); sync(); };
     apply();
-    vv.addEventListener('resize', sync);
-    vv.addEventListener('scroll', sync);
-    return () => { cancelAnimationFrame(frame); vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
+    vv.addEventListener('resize', onVv);
+    vv.addEventListener('scroll', onVv);
+    window.addEventListener('scroll', snapBack, { passive: true });
+    return () => {
+      cancelAnimationFrame(frame);
+      vv.removeEventListener('resize', onVv); vv.removeEventListener('scroll', onVv);
+      window.removeEventListener('scroll', snapBack);
+    };
   }, [phone]);
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
@@ -468,15 +505,45 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // Клавиатура открылась/закрылась: место под лентой меняется вместе с панелью,
   // а последнее сообщение остаётся над ней (если человек был внизу). Доматываем
   // ленту только на открытии/закрытии — не на каждой подвижке высоты
+  // Как в нативных чатах: лента едет вместе с полем — той же кривой и с той же
+  // длительностью (src/easing.ts), а не браузерной прокруткой со своей скоростью.
+  // На закрытии место под лентой убираем после движения: иначе браузер сразу
+  // прижимал прокрутку, и лента прыгала вниз раньше, чем опускалось поле
   const wasLifted = useRef(false);
+  const lastLift = useRef(0);
+  const stopFeedAnim = useRef<() => void>(() => {});
+  const shrinkTimer = useRef(0);
+  // Пока лента едет вслед за клавиатурой, мгновенное «прилипание к низу» не мешает
+  const feedAnimUntil = useRef(0);
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
     const cs = getComputedStyle(el);
     if (cs.position !== 'fixed') return;
-    setEndSpace(Math.max(0, Math.round(el.offsetHeight + (parseFloat(cs.bottom) || 0) + lift)));
+    const space = Math.max(0, Math.round(el.offsetHeight + (parseFloat(cs.bottom) || 0) + lift));
     const lifted = lift > 0;
-    if (lifted !== wasLifted.current && atBottom.current) requestAnimationFrame(() => scrollToEnd(true));
+    const prevLift = lastLift.current;
+    lastLift.current = lift;
+    const opened = lifted && !wasLifted.current;
+    const closed = !lifted && wasLifted.current;
     wasLifted.current = lifted;
+    const feed = scroller();
+    window.clearTimeout(shrinkTimer.current);
+    if (opened || closed) feedAnimUntil.current = Date.now() + KEYBOARD_MS + 80;
+    if (closed && feed && atBottom.current && !emptyRef.current) {
+      stopFeedAnim.current();
+      stopFeedAnim.current = animateScrollTop(feed, feed.scrollTop - prevLift);
+      shrinkTimer.current = window.setTimeout(() => setEndSpace(space), KEYBOARD_MS + 20);
+      return;
+    }
+    setEndSpace(space);
+    if (opened && atBottom.current) {
+      requestAnimationFrame(() => {
+        const f = scroller();
+        stopFeedAnim.current();
+        if (f && !emptyRef.current) stopFeedAnim.current = animateScrollTop(f, f.scrollHeight);
+        else scrollToEnd(false);
+      });
+    }
   }, [lift]);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
@@ -550,14 +617,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // свою прокрутку, догоняющую выросшую ленту, раньше принимали за «пролистал
     // вверх» — и длинный чат с карточками открывался посередине
     let userAt = 0;
-    const touched = () => { userAt = Date.now(); };
+    const touched = () => { userAt = Date.now(); stopFeedAnim.current(); };
     const onScroll = () => {
       if (Date.now() - userAt > 1000) return;
       const top = el ? el.scrollTop : window.scrollY;
       const max = el ? el.scrollHeight - el.clientHeight : document.documentElement.scrollHeight - window.innerHeight;
       atBottom.current = max - top < 80;
     };
-    const ro = new ResizeObserver(() => { if (atBottom.current) scrollToEnd(false); });
+    const ro = new ResizeObserver(() => { if (atBottom.current && Date.now() > feedAnimUntil.current) scrollToEnd(false); });
     ro.observe(root);
     target.addEventListener('scroll', onScroll, { passive: true });
     const intent = ['wheel', 'touchmove', 'pointerdown', 'keydown'] as const;
@@ -1001,6 +1068,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       onBlur={() => setFocused(false)}
                       // Первое касание: фокус без прокрутки к полю — иначе браузер
                       // уводит страницу вверх. Дальше касания как обычно (курсор, выделение)
+                      // Палец коснулся — поле начинает подниматься на запомненную высоту
+                      // клавиатуры уже сейчас: к моменту, когда iPhone решает, прокручивать
+                      // ли страницу к полю (~100 мс после фокуса), поле уже над клавиатурой.
+                      // Палец повёл (прокрутка) или фокуса не случилось — опускаем
+                      onTouchStart={e => { touchY.current = e.touches[0]?.clientY ?? 0; if (phone && document.activeElement !== e.currentTarget) preLift(); }}
+                      // Дрожь пальца при нажатии — не прокрутка: отменяем, только если повёл заметно
+                      onTouchMove={e => { if (Math.abs((e.touches[0]?.clientY ?? 0) - touchY.current) > 10) cancelPreLift(); }}
+                      onTouchCancel={() => cancelPreLift()}
                       onTouchEnd={e => {
                         const el = e.currentTarget;
                         if (document.activeElement === el) return;
