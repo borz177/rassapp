@@ -350,24 +350,37 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   useEffect(() => {
     const vv = window.visualViewport;
     if (!vv || !phone) return;
-    const sync = () => {
-      // Система сдвинула видимую область, чтобы показать поле (iPhone так
-      // делает с полем у нижнего края) — вместе с ней уезжали вверх шапка и
-      // лента. Возвращаем на место: над клавиатурой поднимается только панель
-      if (focusedRef.current && (window.scrollY > 0 || vv.offsetTop > 0)) window.scrollTo(0, 0);
+    // Панель «качалась» вверх-вниз несколько секунд: в момент фокуса она ещё под
+    // клавиатурой, iPhone сдвигает видимую область к курсору, мы считали высоту
+    // С учётом сдвига (меньше), тут же сдвиг гасили (больше), панель ехала с
+    // анимацией — и iPhone сдвигал снова. Теперь: высота — без сдвига (сразу
+    // итоговая и не зависит от него), события одного кадра — одним обновлением,
+    // мелочь (< 6 px) не трогает панель, а гасим сдвиг не чаще раза в 150 мс и не
+    // больше трёх раз подряд — дальше не спорим с системой
+    let frame = 0;
+    let lastReset = 0, resets = 0;
+    const apply = () => {
+      frame = 0;
+      if (focusedRef.current && (window.scrollY > 0 || vv.offsetTop > 0)) {
+        const now = Date.now();
+        if (now - lastReset > 1000) resets = 0;
+        if (now - lastReset > 150 && resets < 3) { lastReset = now; resets++; window.scrollTo(0, 0); }
+      }
       // От высоты макета, а не innerHeight: в Safari на iPhone innerHeight сам
       // сжимается до видимой области при открытой клавиатуре — разница выходила
       // нулевой, и панель оставалась под клавиатурой. Где окно под клавиатуру
       // сжимается целиком (Android), обе высоты меньше — и поднимать не нужно
       const layoutH = Math.max(window.innerHeight, document.documentElement.clientHeight);
-      const k = Math.max(0, Math.round(layoutH - vv.height - vv.offsetTop));
+      const raw = Math.max(0, Math.round(layoutH - vv.height));
       // Меньше 80 px — не клавиатура (адресная строка, панель браузера)
-      setKeyboard(k > 80 ? k : 0);
+      const k = raw > 80 ? raw : 0;
+      setKeyboard(prev => (Math.abs(prev - k) < 6 && (prev > 0) === (k > 0) ? prev : k));
     };
-    sync();
+    const sync = () => { if (!frame) frame = requestAnimationFrame(apply); };
+    apply();
     vv.addEventListener('resize', sync);
     vv.addEventListener('scroll', sync);
-    return () => { vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
+    return () => { cancelAnimationFrame(frame); vv.removeEventListener('resize', sync); vv.removeEventListener('scroll', sync); };
   }, [phone]);
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
@@ -389,13 +402,17 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
   // Клавиатура открылась/закрылась: место под лентой меняется вместе с панелью,
-  // а последнее сообщение остаётся над ней (если человек был внизу)
+  // а последнее сообщение остаётся над ней (если человек был внизу). Доматываем
+  // ленту только на открытии/закрытии — не на каждой подвижке высоты
+  const wasLifted = useRef(false);
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
     const cs = getComputedStyle(el);
     if (cs.position !== 'fixed') return;
     setEndSpace(Math.max(0, Math.round(el.offsetHeight + (parseFloat(cs.bottom) || 0) + lift)));
-    if (atBottom.current) requestAnimationFrame(() => scrollToEnd(true));
+    const lifted = lift > 0;
+    if (lifted !== wasLifted.current && atBottom.current) requestAnimationFrame(() => scrollToEnd(true));
+    wasLifted.current = lifted;
   }, [lift]);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
