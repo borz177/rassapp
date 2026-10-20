@@ -354,6 +354,18 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const safeBottom = useRef(0);
   // Перепроверить высоту клавиатуры (см. ниже) — из фокуса поля
   const keyboardResync = useRef<() => void>(() => {});
+  // Высота клавиатуры с прошлого раза (на этом устройстве, в этой ориентации):
+  // по касанию поле сразу едет на неё — одним движением вместе с клавиатурой
+  const kbKey = () => `finuchet_ai_kb_${window.innerWidth > window.innerHeight ? 'l' : 'p'}`;
+  const predicted = useRef(0);
+  const focusAt = useRef(0);
+  const predictKeyboard = () => {
+    focusAt.current = Date.now();
+    let saved = 0;
+    try { saved = Number(localStorage.getItem(kbKey())) || 0; } catch { /* без хранилища */ }
+    predicted.current = saved > 80 ? saved : 0;
+    if (predicted.current) setKeyboard(prev => (prev > 0 ? prev : predicted.current));
+  };
   const lift = keyboard > 0 ? Math.max(0, keyboard - safeBottom.current) : 0;
   const liftRef = useRef(0);
   liftRef.current = lift;
@@ -384,7 +396,17 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       const raw = Math.max(0, Math.round(layoutH - vv.height));
       // Меньше 80 px — не клавиатура (адресная строка, панель браузера)
       const k = raw > 80 ? raw : 0;
+      // Пока клавиатура выезжает, iPhone присылает неполную высоту — поле
+      // поднималось в два шага (рывок). Первые 650 мс после касания ниже
+      // запомненной высоты не опускаем; дальше — как есть
+      const opening = focusedRef.current && Date.now() - focusAt.current < 650;
+      if (opening && k < predicted.current) return;
       setKeyboard(prev => (Math.abs(prev - k) < 6 && (prev > 0) === (k > 0) ? prev : k));
+      // Устоявшаяся высота — запоминаем на устройстве (отдельно для ориентации)
+      if (k > 0 && !opening) {
+        predicted.current = k;
+        try { localStorage.setItem(kbKey(), String(k)); } catch { /* без хранилища — без памяти */ }
+      }
     };
     const sync = () => { if (!frame) frame = requestAnimationFrame(apply); };
     // Первое открытие клавиатуры в PWA на iPhone: высоту она сообщает, ещё не
@@ -950,7 +972,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       onFocus={() => {
                         focusedRef.current = true;
                         setFocused(true);
-                        if (phone) { measureRef.current(); keyboardResync.current(); }
+                        if (phone) { measureRef.current(); predictKeyboard(); keyboardResync.current(); }
                         // Сдвиг области бывает и после фокуса — пока клавиатура выезжает
                         if (phone) [0, 60, 180, 320].forEach(t => setTimeout(() => { if (focusedRef.current && (window.scrollY > 0 || (window.visualViewport?.offsetTop || 0) > 0)) window.scrollTo(0, 0); }, t));
                       }}
