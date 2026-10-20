@@ -511,14 +511,17 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     if ((opened || closed) && traceKeyboard) startTrace(opened ? 'open' : 'close', { prevLift, lift, atBottom: atBottom.current, empty: emptyRef.current, hasFeed: !!feed });
     // ВРЕМЕННО, только админ: новый способ — прокрутка сразу в конечное положение,
     // видимое движение ведёт CSS-сдвиг ленты (feedRef). Остальным — как раньше
+    // Слой ищем по стилю (overflow auto), а не по «есть что листать»: в коротком
+    // чате до клавиатуры листать нечего — слой не находился, и подъём не шёл
     const list = feedRef.current;
-    if (traceKeyboard && (opened || closed) && feed && list && atBottom.current && !emptyRef.current) {
+    const layer = feedLayer();
+    if (traceKeyboard && (opened || closed) && layer && list && atBottom.current && !emptyRef.current) {
+      const from = layer.scrollTop;
       if (listEnd.current) listEnd.current.style.height = `${space}px`;
       setEndSpace(space);
-      const from = feed.scrollTop;
-      feed.scrollTop = opened ? feed.scrollHeight : Math.max(0, from - prevLift);
-      traceEv('slide', { from, to: feed.scrollTop, max: feed.scrollHeight - feed.clientHeight });
-      slideFeed(list, feed.scrollTop - from);
+      layer.scrollTop = opened ? layer.scrollHeight : Math.max(0, from - prevLift);
+      traceEv('slide', { from, to: layer.scrollTop, max: layer.scrollHeight - layer.clientHeight });
+      slideFeed(list, layer.scrollTop - from);
       return;
     }
     if (closed && feed && atBottom.current && !emptyRef.current) {
@@ -551,6 +554,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const t = window.setTimeout(() => { traceEv('slide-end'); clear(); }, KEYBOARD_MS + 40);
     stopFeedAnim.current = () => { traceEv('slide-stop'); window.clearTimeout(t); clear(); };
   };
+  // Прокручиваемый слой ленты — по стилю, даже когда листать пока нечего
+  const feedLayer = (): HTMLElement | null => {
+    let el: HTMLElement | null = listEnd.current?.parentElement || null;
+    while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    return el;
+  };
   const trace = useRef<any[] | null>(null);
   const traceT0 = useRef(0);
   const traceEv = (ev: string, data: Record<string, unknown> = {}) => { trace.current?.push({ t: Date.now() - traceT0.current, ev, ...data }); };
@@ -560,7 +569,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     trace.current = rec;
     traceT0.current = Date.now();
     const timer = setInterval(() => {
-      const f = scroller();
+      const f = feedLayer();
       const end = listEnd.current?.getBoundingClientRect();
       const comp = composerRef.current?.getBoundingClientRect();
       rec.push({ t: Date.now() - traceT0.current, ev: 'pos',
