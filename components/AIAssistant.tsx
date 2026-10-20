@@ -641,7 +641,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // и едет вместе с его прокруткой: чат открыт внизу, и поле на долю секунды
   // оказывалось посреди экрана, а потом падало вниз. Пока сдвиг есть, опускаем
   // поле на прокрутку слоя; сдвиг снят — поправку убираем в том же кадре, без анимации
-  useEffect(() => {
+  useLayoutEffect(() => {
     const comp = composerRef.current;
     if (!phone || !comp) return;
     let layer: HTMLElement | null = comp.parentElement;
@@ -661,11 +661,16 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       if (!moving) requestAnimationFrame(() => { comp.style.transition = ''; });
     };
     update();
+    // Чат прокручивается к последним сообщениям в другом эффекте — пересчитываем
+    // ещё раз перед первой отрисовкой (rAF из эффекта — до неё)
+    const raf = requestAnimationFrame(update);
+    syncPpComp.current = update;
     const mo = new MutationObserver(update);
     mo.observe(L, { attributes: true, attributeFilter: ['style'] });
     L.addEventListener('scroll', update, { passive: true });
-    return () => { mo.disconnect(); L.removeEventListener('scroll', update); comp.style.removeProperty('--pp-comp'); comp.style.transition = ''; };
+    return () => { cancelAnimationFrame(raf); mo.disconnect(); L.removeEventListener('scroll', update); comp.style.removeProperty('--pp-comp'); comp.style.transition = ''; syncPpComp.current = () => {}; };
   }, [phone]);
+  const syncPpComp = useRef<() => void>(() => {});
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -726,6 +731,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   useLayoutEffect(() => {
     scrollToEnd(opened.current);
     opened.current = true;
+    // Страница ещё въезжает — поле должно остаться у низа и после этой прокрутки
+    syncPpComp.current();
   }, [messages.length, sending]);
   // Прилипание к низу: пока человек внизу, а лента подросла (догрузились
   // тариф в шапке, фото, карточка действия) — остаёмся внизу. Пролистал
@@ -893,7 +900,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // и держала экран — отмена ощущалась как зависание. Сначала интерфейс: запись
   // уходит, поле плавно возвращается; тяжёлое — в следующем кадре, после отрисовки
   const [fromRec, setFromRec] = useState(false);
-  const afterPaint = () => new Promise<void>(res => requestAnimationFrame(() => setTimeout(res, 0)));
+  // После отрисовки и мягкого возврата поля (~0,22 с) — тогда остановка микрофона
+  // уже ничего не задерживает на экране
+  const afterPaint = () => new Promise<void>(res => requestAnimationFrame(() => setTimeout(res, 240)));
   const leaveRecording = () => {
     setRecording(null);
     setFromRec(true);
@@ -1260,7 +1269,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           {/* Микрофон — всегда, пока не набран текст: к фото можно сказать задание голосом */}
           {!text.trim() && (
             <button key="mic" data-blur onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
-                    className={`ai-swap relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
+                    // Цвет — сразу, плавно только нажатие: переход цвета шёл в основном потоке
+                    // и замирал на красном, пока останавливался микрофон
+                    className={`ai-swap relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
               {recording && <span className="ai-mic-ring absolute inset-0 rounded-full bg-rose-400" />}
               {recording ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
