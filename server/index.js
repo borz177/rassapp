@@ -4793,12 +4793,6 @@ app.post('/api/ai/assistant/actions/:id/undo', auth, async (req, res) => {
   } catch (e) { console.error('AI undo error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось отменить — попробуйте ещё раз.' }); }
 });
 
-// ВРЕМЕННО: запись поля агента после возврата в приложение (iPhone админа) — только в журнал
-app.post('/api/ai/assistant/kbtrace', auth, (req, res) => {
-  if (req.user.role === 'admin' && Array.isArray(req.body?.trace)) console.log('KBTRACE', JSON.stringify(req.body.trace).slice(0, 30000));
-  res.status(204).end();
-});
-
 app.post('/api/ai/assistant/actions/:id/cancel', auth, (req, res) => {
   aiAssistant.cancelAction(req.user.id, req.params.id);
   res.json({ ok: true });

@@ -2,7 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
 import Sheet from './Sheet';
-import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check, FileText, Image as ImageIcon, Camera } from 'lucide-react';
+import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check, FileText } from 'lucide-react';
 import AIAssistantSettings, { type AISettings } from './AIAssistantSettings';
 import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
@@ -66,8 +66,6 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
-  /** ВРЕМЕННО (поле наверху после сворачивания): запись после возврата — только админу */
-  traceResume?: boolean;
 }
 
 /**
@@ -158,51 +156,6 @@ const ModeMenu: React.FC<{ mode: Mode; onChange: (m: Mode) => void }> = ({ mode,
                 <span className="block text-xs text-slate-500 dark:text-slate-400">{m.hint}</span>
               </span>
               {mode === m.key && <Check size={16} className="mt-0.5 shrink-0 text-violet-600 dark:text-violet-300" />}
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-};
-
-/**
- * «+» — меню над полем, как в нативных мессенджерах: открывается, не закрывая
- * клавиатуру (кнопка не забирает фокус у поля — см. onMouseDown панели).
- * Клавиатура уходит, только когда выбран пункт и открывается выбор фото или камера
- */
-const AttachMenu: React.FC<{ onGallery: () => void; onCamera: () => void }> = ({ onGallery, onCamera }) => {
-  const [open, setOpen] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    const away = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setOpen(false); };
-    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setOpen(false); };
-    document.addEventListener('pointerdown', away);
-    document.addEventListener('keydown', esc);
-    return () => { document.removeEventListener('pointerdown', away); document.removeEventListener('keydown', esc); };
-  }, [open]);
-  const items = [
-    { key: 'gallery', label: 'Фото из галереи', hint: 'Паспорт, чек, документ', Icon: ImageIcon, tone: 'text-violet-600 dark:text-violet-300', run: onGallery },
-    { key: 'camera', label: 'Сделать фото', hint: 'Камера телефона', Icon: Camera, tone: 'text-emerald-600 dark:text-emerald-400', run: onCamera },
-  ];
-  return (
-    <div ref={ref} className="relative">
-      <button onClick={() => setOpen(o => !o)} aria-haspopup="menu" aria-expanded={open} aria-label="Добавить фото" title="Добавить"
-              className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition">
-        <Plus size={24} strokeWidth={1.8} className={`transition-transform duration-200 ${open ? 'rotate-45' : ''}`} />
-      </button>
-      {open && (
-        <div role="menu" className="ai-pop absolute bottom-full left-0 mb-2 w-60 p-1.5 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-xl" style={{ transformOrigin: 'bottom left' }}>
-          {items.map(it => (
-            // data-blur: на выборе пункта клавиатура уходит — открывается выбор фото / камера
-            <button key={it.key} data-blur role="menuitem" onClick={() => { setOpen(false); it.run(); }}
-                    className="w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-left hover:bg-slate-50 dark:hover:bg-slate-700/60 active:bg-slate-100 dark:active:bg-slate-700 transition">
-              <it.Icon size={20} className={`shrink-0 ${it.tone}`} />
-              <span className="flex-1 min-w-0">
-                <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{it.label}</span>
-                <span className="block text-xs text-slate-500 dark:text-slate-400">{it.hint}</span>
-              </span>
             </button>
           ))}
         </div>
@@ -325,7 +278,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, traceResume }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -508,7 +461,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     };
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
-      if (traceResume) startResumeTrace();
       // Поле в фокусе — клавиатура сейчас вернётся (по записи — через ~0,1 с). Держим
       // поле на месте, как при открытии (первые 650 мс «пустой» размер не принимаем),
       // иначе оно опускалось и поднималось обратно. Не вернулась — опустится на 800 мс
@@ -529,22 +481,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       window.removeEventListener('pageshow', onVisible);
     };
   }, [phone]);
-  // ВРЕМЕННО: что происходит в первую секунду после возврата в приложение (только админ)
-  const startResumeTrace = () => {
-    const vv = window.visualViewport;
-    const rec: any[] = [];
-    const t0 = performance.now();
-    const snap = () => {
-      const r = composerRef.current?.getBoundingClientRect();
-      rec.push({ t: Math.round(performance.now() - t0), field: r ? Math.round(r.top) : null, lift: liftRef.current,
-        vh: vv ? Math.round(vv.height) : null, ot: vv ? Math.round(vv.offsetTop) : null, ih: window.innerHeight, ch: document.documentElement.clientHeight,
-        sy: Math.round(window.scrollY), focused: document.activeElement === inputRef.current, focusedState: focusedRef.current,
-        comp: composerRef.current?.style.getPropertyValue('--pp-comp') || '' });
-    };
-    snap();
-    const timer = setInterval(snap, 60);
-    setTimeout(() => { clearInterval(timer); api.aiAssistant.kbTrace(rec).catch(() => {}); }, 1200);
-  };
   useLayoutEffect(() => {
     const el = composerRef.current; if (!el) return;
     // Высота панели + её отступ от низа экрана — а не «высота окна минус верх
@@ -729,7 +665,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const syncPpComp = useRef<() => void>(() => {});
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-  const cameraRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
   const loadStatus = () => api.aiAssistant.status().then(s => {
@@ -1335,10 +1270,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               <button onClick={cancelRecording} aria-label="Отменить запись"
                       className="ai-rec-in w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 dark:active:bg-slate-700 transition text-lg">✕</button>
             ) : (
-              <AttachMenu onGallery={() => fileRef.current?.click()} onCamera={() => cameraRef.current?.click()} />
+              // «+» — сразу окно iPhone «Медиатека / Снять фото / Выбрать файл»: открыть
+              // медиатеку напрямую веб-страница не может, а своё меню перед ним давало два окна подряд
+              <button onClick={() => fileRef.current?.click()} aria-label="Добавить фото" title="Фото"
+                      className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-95 transition">
+                <Plus size={24} strokeWidth={1.8} />
+              </button>
             )}
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
-            <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
             <div className="flex-1" />
             {!recUi && <ModeMenu mode={mode} onChange={setMode} />}
           {/* Идёт ответ — на месте отправки «Стоп» с бегущим кольцом */}

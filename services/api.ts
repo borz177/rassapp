@@ -2194,10 +2194,6 @@ export const api = {
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.msg || 'Не удалось сохранить');
         return res.json();
       },
-      /** ВРЕМЕННО: запись поля агента после возврата в приложение (только админ) */
-      kbTrace: async (trace: any[]): Promise<void> => {
-        await fetchWithAuth(`${API_URL}/ai/assistant/kbtrace`, { method: 'POST', body: JSON.stringify({ trace }), timeout: 10000 });
-      },
       /** «Стоп»: сервер остановит запрос в безопасной точке и вернёт, что успел сделать */
       stop: async (requestId: string): Promise<void> => {
         await fetchWithAuth(`${API_URL}/ai/assistant/requests/${encodeURIComponent(requestId)}/cancel`, { method: 'POST', timeout: 10000 }).catch(() => {});
