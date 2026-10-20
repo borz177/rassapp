@@ -304,6 +304,19 @@ const scenarios = [
     const c = action(d, 'choices');
     return !!c && c.options.some(o => /Орзумиев/.test(o.label) && o.ref) && c.options.length >= 2;
   }],
+  ['«Удали договор …» → карточка «Удалить», без удаления сервером', async () => {
+    const d = await new Chat('auto').say('удали договор Ахмадова на телевизор, оформили по ошибке');
+    return (d.actions || []).some(x => x.kind === 'delete_contract') || /платеж|нельзя/i.test(d.reply || '');
+  }],
+  ['Отчёт только по инвестору → карточка с его счетами', async () => {
+    const d = await new Chat().say('отчёт excel только по инвестору Руслан Алиев');
+    const r = (d.actions || []).find(x => x.kind === 'report');
+    return !!r && Array.isArray(r.accountIds) && r.accountIds.length > 0;
+  }],
+  ['Вопрос о статистике не получает «⚠️ ничего не записано»', async () => {
+    const d = await new Chat().say('сколько договоров я оформил в этом месяце?');
+    return !/ничего не записано/i.test(d.reply || '');
+  }],
   ['«По каким счетам» → названия счетов, без id', async () => {
     const chat = new Chat();
     await chat.say('сколько я получил за этот год?');

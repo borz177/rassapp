@@ -55,13 +55,15 @@ interface Props {
   /** Карточка договора у клиента */
   onShowContract: (saleId: string, customerId?: string) => void;
   /** Отчёт Excel за период — собрать и сохранить (по нажатию «Скачать») */
-  onExportReport: (opts: { from: string | null; to: string | null; onlyActive?: boolean }) => Promise<{ ok: boolean; text: string }>;
+  onExportReport: (opts: { from: string | null; to: string | null; onlyActive?: boolean; accountIds?: string[]; scopeLabel?: string }) => Promise<{ ok: boolean; text: string }>;
   whatsappEnabled: boolean;
   /** Счёт, на который ляжет договор: названный агентом или по умолчанию (как при оформлении) */
   contractAccountName?: (draft: any) => string;
   /** После подтверждённого действия — подтянуть свежие данные */
   onDataChanged: () => void;
   onOpenTariffs: () => void;
+  /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
+  onOpenWhatsApp?: () => void;
 }
 
 /**
@@ -91,6 +93,12 @@ const actionNote = (a: Action): string => {
   if (a.kind === 'done') {
     if (!a.ok) return `[Не выполнено: ${a.result}]`;
     return a.state === 'undone' ? `[Отменено: ${a.summary}]` : `[Выполнено: ${a.summary}]`;
+  }
+  if (a.kind === 'delete_contract') {
+    if (a.state === 'done') return `[Выполнено: договор удалён — ${a.summary}]`;
+    if (a.state === 'cancelled') return `[Отменено человеком, не удалён: ${a.summary}]`;
+    if (a.state === 'error') return `[Не выполнено: ${a.result}]`;
+    return `[Ждёт подтверждения: удалить договор — ${a.summary}]`;
   }
   if (a.kind === 'send_doc') {
     if (a.state === 'done') return `[Отправлено: ${a.title.toLowerCase()} — ${a.summary}]`;
@@ -268,7 +276,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -344,6 +352,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // не прийти, а клавиатура уже закрыта
   useEffect(() => { if (recording) setFocused(false); }, [recording]);
   const safeBottom = useRef(0);
+  // Перепроверить высоту клавиатуры (см. ниже) — из фокуса поля
+  const keyboardResync = useRef<() => void>(() => {});
   const lift = keyboard > 0 ? Math.max(0, keyboard - safeBottom.current) : 0;
   const liftRef = useRef(0);
   liftRef.current = lift;
@@ -377,6 +387,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       setKeyboard(prev => (Math.abs(prev - k) < 6 && (prev > 0) === (k > 0) ? prev : k));
     };
     const sync = () => { if (!frame) frame = requestAnimationFrame(apply); };
+    // Первое открытие клавиатуры в PWA на iPhone: высоту она сообщает, ещё не
+    // выехав до конца (без строки подсказок), а финального события иногда нет —
+    // панель вставала чуть ниже, «за» клавиатурой; во второй раз было верно.
+    // После фокуса перепроверяем, когда клавиатура уже точно на месте
+    keyboardResync.current = () => [120, 350, 700].forEach(t => setTimeout(sync, t));
     apply();
     vv.addEventListener('resize', sync);
     vv.addEventListener('scroll', sync);
@@ -390,17 +405,22 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // её верх уходил далеко вверх, и под лентой появлялись тысячи пикселей
     // пустоты — лента «уезжала вверх» при открытии и при каждой отправке
     const measure = () => {
+      if (!el.isConnected) return;
       const cs = getComputedStyle(el);
       const bottom = parseFloat(cs.bottom) || 0;
       safeBottom.current = Math.max(0, bottom - 12); // bottom = 0.75rem + safe-area
       setEndSpace(cs.position === 'fixed' ? Math.max(0, Math.round(el.offsetHeight + bottom + liftRef.current)) : 0);
     };
     measure();
+    measureRef.current = measure;
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     window.addEventListener('resize', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, []);
+  // Нижний отступ (полоска «Домой») мог прочитаться до того, как страница встала
+  // на место, — перемеряем при фокусе вместе с высотой клавиатуры
+  const measureRef = useRef<() => void>(() => {});
   // Клавиатура открылась/закрылась: место под лентой меняется вместе с панелью,
   // а последнее сообщение остаётся над ней (если человек был внизу). Доматываем
   // ленту только на открытии/закрытии — не на каждой подвижке высоты
@@ -693,10 +713,18 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     patchAction(msgId, a.id, r.ok ? { state: 'deleted', result: r.text } : { state: 'saved', result: r.text });
   };
 
+  // Удаление договора по просьбе — как вручную (handleDeleteSale в App.tsx)
+  const deleteContractConfirmed = async (msgId: string, a: Action) => {
+    if (a.kind !== 'delete_contract') return;
+    patchAction(msgId, a.id, { state: 'busy' });
+    const r = await onDeleteContract(a.saleId);
+    patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.ok ? 'Договор удалён.' : r.text });
+    if (r.ok) onDataChanged();
+  };
   const downloadReport = async (msgId: string, a: Action) => {
     if (a.kind !== 'report') return;
     patchAction(msgId, a.id, { state: 'busy' });
-    const r = await onExportReport({ from: a.from, to: a.to, onlyActive: a.onlyActive });
+    const r = await onExportReport({ from: a.from, to: a.to, onlyActive: a.onlyActive, accountIds: a.accountIds, scopeLabel: a.scopeLabel });
     patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
   };
 
@@ -845,6 +873,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onSendDoc={() => sendDoc(m.id, a)}
                   onDownloadReport={() => downloadReport(m.id, a)}
                   onCancelDoc={() => patchAction(m.id, a.id, { state: 'cancelled' })}
+                  onConfirmDelete={() => deleteContractConfirmed(m.id, a)}
+                  onCancelDelete={() => patchAction(m.id, a.id, { state: 'cancelled' })}
+                  onOpenView={() => onOpenWhatsApp?.()}
                 />
               ))}
             </div>
@@ -919,6 +950,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       onFocus={() => {
                         focusedRef.current = true;
                         setFocused(true);
+                        if (phone) { measureRef.current(); keyboardResync.current(); }
                         // Сдвиг области бывает и после фокуса — пока клавиатура выезжает
                         if (phone) [0, 60, 180, 320].forEach(t => setTimeout(() => { if (focusedRef.current && (window.scrollY > 0 || (window.visualViewport?.offsetTop || 0) > 0)) window.scrollTo(0, 0); }, t));
                       }}

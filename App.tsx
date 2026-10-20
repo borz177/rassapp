@@ -4430,7 +4430,7 @@ const handleQuickAddCustomer = async (data: {
    * системным «Поделиться». Вызывается из нажатия «Скачать» — иначе телефон
    * «Поделиться» не покажет.
    */
-  const exportReportFromAssistant = async (opts: { from: string | null; to: string | null; onlyActive?: boolean }): Promise<{ ok: boolean; text: string }> => {
+  const exportReportFromAssistant = async (opts: { from: string | null; to: string | null; onlyActive?: boolean; accountIds?: string[]; scopeLabel?: string }): Promise<{ ok: boolean; text: string }> => {
     try {
       const [xlsxModule, { buildExcelReport }, { saveFile }] = await Promise.all([
         import('xlsx'), import('./shared/excelReport.js'), import('./src/contractPdf'),
@@ -4439,12 +4439,15 @@ const handleQuickAddCustomer = async (data: {
       const data = await api.fetchAllData();
       const { base64, salesCount } = buildExcelReport(XLSX, data, {
         startDate: opts.from || undefined, endDate: opts.to || undefined, onlyActive: !!opts.onlyActive, includePlanned: false,
+        accountIds: opts.accountIds,
       });
-      if (!base64) return { ok: false, text: 'За этот период данных нет.' };
+      if (!base64) return { ok: false, text: opts.accountIds?.length ? 'По этому инвестору или счёту за период договоров нет.' : 'За этот период данных нет.' };
       const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
       const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
       const today = new Date().toISOString().slice(0, 10);
-      const fileName = opts.from ? `Отчёт ${opts.from} — ${opts.to || today}.xlsx` : `Отчёт за всё время ${today}.xlsx`;
+      // «инвестор Иван Петров», «счёт «Касса»» — в имя файла, без кавычек и слэшей
+      const scope = opts.scopeLabel ? ` — ${opts.scopeLabel.replace(/[«»"/\\:*?<>|]/g, '').trim()}` : '';
+      const fileName = opts.from ? `Отчёт ${opts.from} — ${opts.to || today}${scope}.xlsx` : `Отчёт за всё время ${today}${scope}.xlsx`;
       await saveFile(new Blob([bytes], { type: mime }), fileName, mime);
       return { ok: true, text: `Отчёт готов: договоров — ${salesCount}` };
     } catch (e: any) {
@@ -5442,6 +5445,7 @@ if (!user && !showSplash) {
                         onBack={requestClose}
                         onDataChanged={() => { handleSync(); }}
                         onOpenTariffs={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('AI_TARIFFS'); }}
+                        onOpenWhatsApp={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('INTEGRATIONS'); }}
                         onOpenContract={openContractFromAssistant}
                         onCreateContract={createContractFromAssistant}
                         onSendDocument={sendDocumentFromAssistant}

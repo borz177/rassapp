@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Download, FileSpreadsheet, FileText, Receipt, RotateCcw, Send, ShieldAlert, Undo2 } from 'lucide-react';
+import { Check, Download, FileSpreadsheet, FileText, MessageCircle, Receipt, RotateCcw, Send, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
 
 /**
  * Карточки действий FinUchetGPT под ответом агента. Поведение (запросы,
@@ -28,7 +28,14 @@ export type AIAction =
       saved?: { saleId: string; customerId?: string; number?: string; total?: number; monthly?: number; offline?: boolean };
       result?: string; send?: SendState; sendResult?: string }
   | { id: string; kind: 'report'; title: string; summary: string; from: string | null; to: string | null; onlyActive?: boolean;
+      /** Отчёт по одному инвестору или счёту */
+      accountIds?: string[]; scopeLabel?: string;
       state?: 'busy' | 'done' | 'error'; result?: string }
+  /** Удалить договор — по нажатию, всё делает приложение (handleDeleteSale) */
+  | { id: string; kind: 'delete_contract'; title: string; summary: string; saleId: string; note?: string;
+      state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string }
+  /** Кнопка перехода в раздел приложения (например, подключить WhatsApp) */
+  | { id: string; kind: 'open_view'; title: string; summary?: string; view: 'whatsapp' }
   | { id: string; kind: 'send_doc'; title: string; summary: string; doc: 'contract' | 'receipt'; saleId: string; auto?: boolean;
       state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string };
 
@@ -63,6 +70,11 @@ interface Props {
   onSendDoc: () => void;
   onDownloadReport: () => void;
   onCancelDoc: () => void;
+  /** Удалить договор (карточка delete_contract) / отказаться */
+  onConfirmDelete: () => void;
+  onCancelDelete: () => void;
+  /** Открыть раздел приложения (карточка open_view) */
+  onOpenView: () => void;
 }
 
 /** Пояснение, почему в «Авто» всё же просят подтвердить */
@@ -180,6 +192,37 @@ const AIActionCard: React.FC<Props> = (p) => {
         <button onClick={p.onDownloadReport} disabled={a.state === 'busy'} className={`${primary} mt-3 w-full`}>
           <Download size={16} /> {a.state === 'busy' ? 'Собираем отчёт…' : a.state === 'done' ? 'Скачать ещё раз' : 'Скачать'}
         </button>
+      </div>
+    );
+  }
+
+  if (a.kind === 'delete_contract') {
+    return (
+      <div className="ai-card-in rounded-3xl border border-rose-200 dark:border-rose-500/30 bg-rose-50/70 dark:bg-rose-500/10 p-4">
+        {title}
+        <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100 flex items-start gap-2"><Trash2 size={18} className="mt-0.5 shrink-0 text-rose-500" />{a.summary}</p>
+        {!a.state && <p className={mutedLine}>{a.note ? `${a.note} ` : ''}Удаление не отменить.</p>}
+        {a.state === 'done' && <p className={okLine}>✓ {a.result}</p>}
+        {a.state === 'cancelled' && <p className={mutedLine}>Не удалён</p>}
+        {a.state === 'error' && <p className={errLine}>{a.result}</p>}
+        {(!a.state || a.state === 'busy') && (
+          <div className="mt-3 flex gap-2">
+            <button onClick={p.onConfirmDelete} disabled={a.state === 'busy'}
+                    className="flex-1 inline-flex items-center justify-center gap-1.5 py-2.5 rounded-2xl bg-rose-600 text-white text-sm font-bold active:scale-[.98] transition disabled:opacity-60">
+              <Trash2 size={16} /> {a.state === 'busy' ? 'Удаляем…' : 'Удалить'}
+            </button>
+            {!a.state && <button onClick={p.onCancelDelete} className={secondary}>Отмена</button>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (a.kind === 'open_view') {
+    return (
+      <div className={shell}>
+        {a.summary && <p className="text-sm text-slate-600 dark:text-slate-300 flex items-start gap-2"><MessageCircle size={18} className="mt-0.5 shrink-0 text-emerald-600" />{a.summary}</p>}
+        <button onClick={p.onOpenView} className={`${primary} mt-3 w-full`}>{a.title}</button>
       </div>
     );
   }

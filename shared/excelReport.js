@@ -102,6 +102,9 @@ export function buildReportRows(data, options = {}) {
     const accounts = data.accounts || [];
     const investors = data.investors || [];
     const { startDate, endDate, onlyActive = false, includePlanned = false } = options;
+    // Только эти счета (отчёт по одному инвестору или счёту). Договор с
+    // совместным финансированием попадает, если в нём есть хотя бы один из них
+    const onlyAccounts = Array.isArray(options.accountIds) && options.accountIds.length ? new Set(options.accountIds) : null;
     const nowTs = options.now || Date.now();
 
     // Пустые даты означают «весь период»: 0 <= saleDate <= Infinity истинно всегда.
@@ -135,6 +138,8 @@ export function buildReportRows(data, options = {}) {
         if (String(sale.customerId || '').startsWith('system_')) continue;
         if (investorIds.has(sale.customerId)) continue;
         if (onlyActive && sale.status === 'COMPLETED') continue;
+        if (onlyAccounts && !onlyAccounts.has(sale.accountId)
+            && !(Array.isArray(sale.funding) && sale.funding.some(f => onlyAccounts.has(f.accountId)))) continue;
 
         const saleDate = new Date(sale.startDate).getTime();
         if (saleDate < filterStart || saleDate > filterEnd) continue;

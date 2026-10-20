@@ -232,7 +232,17 @@ const EXCEL_REPORT_TOOL = {
     from: { type: 'string', description: 'С какой даты, ГГГГ-ММ-ДД; не задано — за всё время' },
     to: { type: 'string', description: 'По какую дату, ГГГГ-ММ-ДД' },
     onlyActive: { type: 'boolean', description: 'Только действующие договоры' },
+    investor: { type: 'string', description: 'Только по инвестору: имя или id (его счёт или пул, где он участник)' },
+    account: { type: 'string', description: 'Только по счёту: название или id из list_accounts' },
   },
+};
+// Удаление договора — по нажатию «Удалить», и делает его приложение (тем же
+// handleDeleteSale, что вручную: возврат взноса, закуп, склад, совместные счета)
+const DELETE_CONTRACT_TOOL = {
+  name: 'delete_contract',
+  description: 'Удалить договор (ошибочный, дубль, отказ клиента). Договор — через customer_overview. Под ответом карточка «Удалить» — удаляет приложение по нажатию, всегда с подтверждением. Договор с платежами по графику удалить нельзя.',
+  input: { contractId: { type: 'string', description: 'id договора' } },
+  required: ['contractId'],
 };
 // Исправление ошибок — и старше получаса, когда «Отменить» уже нет
 const DELETE_PAYMENT_TOOL = {
@@ -308,8 +318,12 @@ const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|о
 // «Записал», «провёл», «отправил»… — модель говорит, что сделала. Если в этом
 // ответе действия не было, это неправда (бывает, когда она отказалась от части
 // просьбы и по инерции отчиталась за всё)
-const CLAIMS_DONE_RE = /черновик[а-яё ]{0,12} (?<!не )готов|договор[а-яё ]{0,12} (?<!не )(оформлен|готов)|(^|[^а-яё])(?<!не )(записал[аи]?|сохранил[аи]?|провёл|провел|провела|принял[аи]?|добавил[аи]?|изменил[аи]?|обновил[аи]?|оформил[аи]?|отправил[аи]?|поставил[аи]?|завёл|завел|удалил[аи]?)([^а-яё]|$)/i;
-const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report']);
+// Только о себе: глагол в единственном числе («записал», «оформила»), не после
+// «вы/он/клиент…» — «вы оформили 9 договоров» и «клиент отправил» не про агента.
+// «Договор оформлен/готов» — не когда дальше дата или время («оформлен 26 сентября»):
+// это рассказ о данных. Раньше на такие ответы приписывалось «⚠️ ничего не записано»
+const CLAIMS_DONE_RE = /черновик[а-яё ]{0,12} (?<!не )готов|договор[а-яё ]{0,12} (?<!не )(оформлен|готов)(?![а-яё]*,?\s+(\d|в\s|во\s|от\s|с\s|на\s|у\s|по\s|ещё|еще|уже|раньше|ранее|давно))|(^|[^а-яё])(?<!(не|вы|вами|он|она|они|клиент|клиентка|сотрудник|менеджер)\s)(записал[а]?|сохранил[а]?|провёл|провел|провела|принял[а]?|добавил[а]?|изменил[а]?|обновил[а]?|оформил[а]?|отправил[а]?|поставил[а]?|завёл|завел|удалил[а]?)([^а-яё]|$)/i;
+const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'delete_contract']);
 // Агент отказал: не умеет или отправил делать в приложении — это просьба о новом
 // умении, а не ошибка. Пишем отдельно (cant_do), чтобы видеть, что добавлять
 const CANT_DO_RE = /(не умею|не могу|недоступн|не поддержива|нет (такой |этой )?возможност|пока нельзя|нельзя (сделать|изменить|удалить)|(делается|правят|правится|меняется|меняют|исправ[а-яё]+) в (самом )?приложени|в приложении вручную|не входит в мои)/i;
@@ -323,7 +337,7 @@ const STEP_LABELS = {
   list_expenses: 'Смотрю расходы…', list_products: 'Смотрю склад…', list_investors: 'Смотрю инвесторов…',
   get_summary: 'Считаю итоги…', whoami: 'Смотрю аккаунт…',
   update_customer: 'Меняю карточку клиента…', create_task: 'Добавляю задачу…', send_reminder: 'Готовлю напоминание…',
-  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…',
+  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…', delete_contract: 'Смотрю договор…',
   delete_payment: 'Готовлю удаление платежа…', update_expense: 'Исправляю расход…', delete_expense: 'Готовлю удаление расхода…',
   create_payment: 'Провожу платёж…', create_expense: 'Записываю расход…', create_income: 'Записываю приход…',
   create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…',
@@ -1047,9 +1061,9 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     'СЧЕТА И ИНВЕСТОРЫ. «Счёт <имя>», «<имя> счёт», «по счёту Гагаева» — это счёт, а не клиент: list_accounts, ищи имя в названии счёта, во владельце (ownerInvestorName) и в участниках пула (poolMembers); инвестор в пуле — значит, его счёт этот пул, так и скажи. Нет среди счетов и инвесторов — тогда уже клиенты. Сколько получено/потрачено по счёту за период — get_summary с accountId; «по каким счетам» — list_payments за период и сложи по accountName (или get_summary по каждому счёту). Прибыль инвестора — investor_profit.',
     'ЗАПИСИ (платёж, расход, приход, клиент, задача, напоминание). «Подтверждать»: под ответом карточка «Подтвердить» — скажи одной фразой «Проверьте и нажмите «Подтвердить»», без слов про формы и окна. «Авто»: выполняется сразу — скажи коротко, что сделано (под ответом «Отменить»), ничего не проси подтверждать, но сначала убедись, что клиент, договор, сумма и счёт верные. Каждую запись — один вызов. Платёж без суммы — не бери сам и не бери весь остаток (остаток в подписи кнопки договора — не сумма платежа): ask_choice «Платёж по графику — N ₽» (ближайший неоплаченный из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму». Расход и приход — по счёту: не назван и счетов несколько — спроси (list_accounts), один — бери его.',
     'ДОГОВОР — prepare_contract. Обязательны клиент, товар, закуп, срок в месяцах, наценка или цена: чего-то нет — спроси до вызова, в любом режиме, не подставляй. «Закуп 100», «закуп 500» без единиц — это тысячи (100 000 ₽, 500 000 ₽), не переспрашивай. Телефон, адрес и счёт не обязательны — не задерживай ими. Паспорт с фото — в newCustomer буква в букву. «Подтверждать»: скажи «Черновик готов — нажмите «Открыть форму договора»» (не «форма открыта», не «откройте приложение»). «Авто»: скажи «Оформляю договор». «Оформи и отправь» — sendToWhatsApp; договор или чек клиенту в WhatsApp — send_document.',
-    'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении.',
+    'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении. «Удали договор» — delete_contract (договор через customer_overview; несколько — ask_choice): под ответом карточка «Удалить», скажи «Проверьте и нажмите «Удалить» — удаление не отменить».',
     'ПРОВЕРКА КЛИЕНТА. «Стоит ли давать …», «надёжный ли …», «как платит …» — customer_overview, ответ по history: сколько договоров и закрыто, сколько платежей с опозданием и самое долгое, есть ли просрочка сейчас. Вывод одной фразой (платит аккуратно / бывают опоздания / сейчас должник), решение — за человеком. Клиента нет в базе — скажи, что истории нет.',
-    'ЕЩЁ: update_customer (телефон, адрес, заметка, паспорт), create_task («напомни завтра позвонить» — даты считай от сегодняшней), send_reminder (просрочка в WhatsApp), remind_all_overdue (всем должникам, всегда с подтверждением), investor_profit, list_products (склад), excel_report.',
+    'ЕЩЁ: update_customer (телефон, адрес, заметка, паспорт), create_task («напомни завтра позвонить» — даты считай от сегодняшней), send_reminder (просрочка в WhatsApp), remind_all_overdue (всем должникам, всегда с подтверждением), investor_profit, list_products (склад), excel_report (можно только по инвестору или счёту — investor / account).',
     'ЛЮДИ ИЗ РАЗГОВОРА («он», «она», «первый клиент», «тот, что на фото») — по фото паспортов и пометкам [Черновик договора …] в истории; нет в базе — снова передай данные в newCustomer. Клиента из базы по порядку или наугад не бери — не уверен, спроси. Фото паспорта без задания — назови, кого распознал, и спроси, что оформить.',
     'ФОТО ЧЕКА (кассовый чек, квитанция, накладная, скрин оплаты) — это расход: create_expense. Сумма — ИТОГ к оплате (не строка товара и не сдача), дата — с чека (нет — сегодня), title — коротко что это («Бензин», «Аренда офиса», «Чехлы для телефонов»), description — магазин и главное из покупки, category — из тех, что уже есть в расходах (list_expenses), не подходит ни одна — «Прочее». Счёт — по правилу расходов. Итог не читается или чек — не оплата (паспорт, договор, просто фото) — не выдумывай, спроси. Такой расход всегда ждёт «Подтвердить» — одной фразой назови сумму, дату и что куплено.',
     'ПОХОЖИЕ ИМЕНА. Инструмент вернул suggestions (точного совпадения нет) — не проси написать заново, а сразу ask_choice «Возможно, вы имели в виду:» с этими вариантами (label — ФИО и последние 4 цифры телефона, ref — id) и последним вариантом «Другой — напишу сам». Так же со счетами и инвесторами из list_accounts / list_investors: названное не совпало дословно, но есть похожее — варианты кнопками.',
@@ -1223,6 +1237,65 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     }
     if (String(p || '').replace(/\D/g, '').length < 10) return 'у клиента нет телефона.';
     return null;
+  };
+
+  /**
+   * Отчёт по одному инвестору или счёту: какие счета в него входят. Инвестор —
+   * его счёт и пулы, где он участник; счёт — по id или названию
+   */
+  const reportScope = async (userId, args) => {
+    const [accounts, investors] = await Promise.all([loadItems(userId, 'accounts'), loadItems(userId, 'investors')]);
+    const norm = (v) => String(v || '').toLowerCase().replace(/ё/g, 'е').trim();
+    if (args.investor) {
+      const q = norm(args.investor);
+      const stems = q.split(/\s+/).filter(Boolean).map(w => { const st = nameStem(w); return st.length >= 3 ? st : w; });
+      const found = investors.filter(i => i.id === args.investor || stems.every(st => norm(i.name).includes(st)));
+      if (found.length !== 1) {
+        const near = similar(args.investor, investors).map(({ item }) => item.name);
+        return { error: found.length > 1
+          ? `Инвесторов с таким именем несколько: ${found.map(i => i.name).join(', ')} — спроси через ask_choice, какой.`
+          : `Инвестор «${args.investor}» не найден${near.length ? ` — похожие: ${near.join(', ')} (предложи через ask_choice)` : `; есть: ${investors.map(i => i.name).join(', ') || 'инвесторов нет'}`}.` };
+      }
+      const inv = found[0];
+      const own = accounts.filter(a => a.ownerId === inv.id || (a.type === 'POOL' && (a.poolMemberIds || []).includes(inv.id)));
+      if (!own.length) return { error: `У инвестора ${inv.name} нет счёта — отчёт по нему пустой.` };
+      return { accountIds: own.map(a => a.id), label: `инвестор ${inv.name}${own.some(a => a.type === 'POOL') ? ' (с общей кассой)' : ''}` };
+    }
+    const q = norm(args.account);
+    const found = accounts.filter(a => !a.isArchived && (a.id === args.account || norm(a.name) === q || norm(a.name).includes(q)));
+    if (found.length !== 1) {
+      return { error: found.length > 1
+        ? `Подходит несколько счетов: ${found.map(a => a.name).join(', ')} — спроси через ask_choice, какой.`
+        : `Счёт «${args.account}» не найден; есть: ${accounts.filter(a => !a.isArchived).map(a => a.name).join(', ')}.` };
+    }
+    return { accountIds: [found[0].id], label: `счёт «${found[0].name}»` };
+  };
+
+  /**
+   * Удаление договора: сервер проверяет то же, что приложение (нет платежей по
+   * графику и оплаты поставщику), и готовит карточку «Удалить» — удаляет само
+   * приложение по нажатию, всегда с подтверждением, даже в «Авто»
+   */
+  const prepareDeleteContract = async (userId, args, actions) => {
+    const { rows } = await pool.query(
+      `SELECT s.data AS sale, c.data AS customer FROM data_items s
+       LEFT JOIN data_items c ON c.user_id = s.user_id AND c.type = 'customers' AND c.id = s.data->>'customerId'
+       WHERE s.user_id = $1 AND s.type = 'sales' AND s.id = $2`, [userId, String(args.contractId || '')]);
+    const sale = rows[0]?.sale, customer = rows[0]?.customer;
+    if (!sale || String(sale.customerId || '').startsWith('system_')) return 'Договор не найден — найди его через customer_overview.';
+    const paid = (sale.paymentPlan || []).filter(p => p.isPaid && p.isRealPayment !== false).reduce((n, p) => n + (Number(p.amount) || 0), 0);
+    if (paid > 0) return `Удалить нельзя: по договору уже есть платежи на ${money(paid)} — приложение такие договоры не удаляет (история денег). Скажи об этом; если платёж записан по ошибке — его можно удалить (delete_payment).`;
+    if (sale.supplierId && !sale.isPartnerDebtPaid && (Number(sale.partnerDebtPaidAmount) || 0) > 0) {
+      return `Удалить нельзя: долг поставщику по договору частично оплачен (${money(sale.partnerDebtPaidAmount)}). Скажи об этом.`;
+    }
+    if (actions.some(a => a.kind === 'delete_contract' && a.saleId === sale.id)) return 'Удаление этого договора уже подготовлено.';
+    const dp = Number(sale.downPayment) || 0;
+    actions.push({
+      id: newActionId(), kind: 'delete_contract', title: 'Удалить договор', saleId: sale.id,
+      summary: `${customer?.name || 'Клиент'}, ${sale.productName || 'договор'} — ${money(sale.totalAmount)}${sale.startDate ? `, от ${dayRu(sale.startDate)}` : ''}`,
+      note: dp > 0 ? `Первый взнос ${money(dp)} вернётся расходом «Возврат клиенту».` : '',
+    });
+    return 'Под ответом карточка «Удалить» — удалит приложение по нажатию, отменить удаление нельзя. Скажи одной фразой: «Проверьте и нажмите «Удалить»». Не говори, что удалил.';
   };
 
   /**
@@ -1427,7 +1500,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     ];
     const tools = [...TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL),
       ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL,
-        DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL].map(toOpenAiTool)];
+        DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL].map(toOpenAiTool)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
     const writes = new Set();
     let claimChecked = false;
@@ -1673,9 +1746,17 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
           result = await investorProfit(user.id, args);
         } else if (name === 'excel_report') {
           const period = [args.from, args.to].filter(d => /^\d{4}-\d{2}-\d{2}$/.test(d || '')).map(d => d.split('-').reverse().join('.'));
-          actions.push({ id: newActionId(), kind: 'report', title: 'Отчёт Excel', from: args.from || null, to: args.to || null, onlyActive: !!args.onlyActive,
-            summary: period.length ? `За ${period.join(' — ')}${args.onlyActive ? ', только действующие договоры' : ''}` : `За всё время${args.onlyActive ? ', только действующие договоры' : ''}` });
-          result = 'Под ответом карточка «Скачать» — отчёт соберёт приложение. Скажи коротко, что отчёт готов к скачиванию.';
+          const scope = (args.investor || args.account) ? await reportScope(user.id, args) : null;
+          if (scope?.error) {
+            result = scope.error;
+          } else {
+            actions.push({ id: newActionId(), kind: 'report', title: 'Отчёт Excel', from: args.from || null, to: args.to || null, onlyActive: !!args.onlyActive,
+              ...(scope ? { accountIds: scope.accountIds, scopeLabel: scope.label } : {}),
+              summary: `${period.length ? `За ${period.join(' — ')}` : 'За всё время'}${scope ? ` · ${scope.label}` : ''}${args.onlyActive ? ', только действующие договоры' : ''}` });
+            result = 'Под ответом карточка «Скачать» — отчёт соберёт приложение. Скажи коротко, что отчёт готов к скачиванию.';
+          }
+        } else if (name === 'delete_contract') {
+          result = readOnly ? READ_ONLY_TEXT : await prepareDeleteContract(user.id, args, actions);
         } else {
           const tool = TOOLS.find(t => t.name === name);
           const custom = CUSTOM_WRITE_NAMES.has(name);
@@ -1744,6 +1825,13 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
             result = r.ok && NAMED_TOOLS.has(name) ? await withCustomerNames(user.id, r.data) : r.text;
             if (!r.ok) flag(user.id, 'tool_error', { tool: name, question: text, detail: r.text });
           }
+        }
+        // WhatsApp не подключён (напоминание, документ, «оформи и отправь») — не тупик:
+        // под ответом кнопка, которая открывает подключение
+        if (typeof result === 'string' && /WhatsApp не подключён/.test(result) && !actions.some(a => a.kind === 'open_view')) {
+          actions.push({ id: newActionId(), kind: 'open_view', view: 'whatsapp', title: 'Подключить WhatsApp',
+            summary: 'Напоминания и документы уходят клиентам с вашего номера' });
+          result += ' Под ответом кнопка «Подключить WhatsApp» — скажи, что подключить можно по ней.';
         }
         // Ответ инструмента помечен как данные: в заметке клиента или названии
         // товара может оказаться «команда» для модели
