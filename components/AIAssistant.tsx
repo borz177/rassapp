@@ -66,8 +66,6 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
-  /** ВРЕМЕННО (поле в центре при входе): запись первых кадров — только админу */
-  traceEntry?: boolean;
 }
 
 /**
@@ -325,7 +323,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, traceEntry }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -651,24 +649,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     if (!layer) return;
     const L = layer;
     let last = 0;
-    // ВРЕМЕННО: запись каждого кадра первых 0,8 с после входа (только админ)
-    if (traceEntry && !entryTrace.current) {
-      const rec: any[] = [];
-      entryTrace.current = rec;
-      const t0 = performance.now();
-      const snap = (ev: string) => {
-        const r = comp.getBoundingClientRect();
-        rec.push({ t: Math.round(performance.now() - t0), ev, fieldTop: Math.round(r.top), fieldBottom: Math.round(r.bottom),
-          ih: window.innerHeight, layerTf: L.style.transform || '', layerWc: L.style.willChange || '', layerCs: getComputedStyle(L).transform.slice(0, 40),
-          top: Math.round(L.scrollTop), max: Math.round(L.scrollHeight - L.clientHeight),
-          comp: comp.style.getPropertyValue('--pp-comp'), compCs: getComputedStyle(comp).transform.slice(0, 50), pos: getComputedStyle(comp).position });
-      };
-      entrySnap.current = snap;
-      snap('layout');
-      let frames = 0;
-      const tick = () => { snap('frame'); if (++frames < 50 && performance.now() - t0 < 800) requestAnimationFrame(tick); else { entrySnap.current = null; api.aiAssistant.kbTrace(rec).catch(() => {}); } };
-      requestAnimationFrame(tick);
-    }
     // Въезд идёт, пока у слоя есть фактический сдвиг: PagePush снимает transform со
     // стиля на ~35-й мс, а дальше слой доезжает CSS-переходом ещё ~270 мс (по записи:
     // стиль пуст, а сдвиг 440 → 0). Смотреть только на стиль — поправка снималась
@@ -684,7 +664,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       const moving = styled || getComputedStyle(L).transform !== 'none';
       if (moving && !styled && !watchRaf) watchRaf = requestAnimationFrame(watch);
       const off = moving ? Math.round(L.scrollTop) : 0;
-      entrySnap.current?.(`update moving=${moving} off=${off} last=${last}`);
       if (off === last) return;
       last = off;
       comp.style.transition = 'none';
@@ -704,8 +683,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     return () => { cancelAnimationFrame(raf); cancelAnimationFrame(watchRaf); mo.disconnect(); L.removeEventListener('scroll', update); comp.style.removeProperty('--pp-comp'); comp.style.transition = ''; syncPpComp.current = () => {}; };
   }, [phone]);
   const syncPpComp = useRef<() => void>(() => {});
-  const entryTrace = useRef<any[] | null>(null);
-  const entrySnap = useRef<((ev: string) => void) | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);

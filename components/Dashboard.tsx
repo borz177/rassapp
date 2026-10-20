@@ -1168,7 +1168,8 @@ const currentMonthName = useMemo(() => {
 
         // Исключаем и системные, и инвесторские транзакции
         if (!isSystemTransaction && !isInvestorTransaction) {
-            const collected = sale.downPayment + sale.paymentPlan
+            // «Собрано» без первых взносов — если так выбрано в настройках (Отображение)
+            const collected = (appSettings.collectedWithoutDownPayment ? 0 : sale.downPayment) + sale.paymentPlan
                 .filter(p => p.isPaid && p.isRealPayment !== false)
                 .reduce((sum, p) => sum + p.amount, 0);
 
@@ -1181,7 +1182,7 @@ const currentMonthName = useMemo(() => {
     });
 
     return { totalRevenue, totalOutstanding, installmentSalesTotal };
-}, [sales, selectedAccountId, investors]); // ← добавили investors в зависимости
+}, [sales, selectedAccountId, investors, appSettings.collectedWithoutDownPayment]); // ← добавили investors в зависимости
 
 
 
@@ -1866,6 +1867,9 @@ useEffect(() => {
         {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
       </p>
+      {appSettings.collectedWithoutDownPayment && (
+        <p className="mt-1 text-[10px] sm:text-[11px] text-slate-400 leading-tight">без первых взносов</p>
+      )}
     </div>
   </div>
 

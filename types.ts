@@ -835,6 +835,8 @@ export interface AppSettings {
   calculator?: CalculatorSettings;
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
+  /** Главная, карточка «Собрано»: только платежи клиентов, без первых взносов (по умолчанию — со взносами) */
+  collectedWithoutDownPayment?: boolean;
   markupFromNetBuyPrice?: boolean;
   /**
    * Прибыль начисляется только с платежей графика, а первый взнос её не несёт:
