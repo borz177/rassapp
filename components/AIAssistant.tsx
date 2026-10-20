@@ -669,8 +669,20 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       const tick = () => { snap('frame'); if (++frames < 50 && performance.now() - t0 < 800) requestAnimationFrame(tick); else { entrySnap.current = null; api.aiAssistant.kbTrace(rec).catch(() => {}); } };
       requestAnimationFrame(tick);
     }
+    // Въезд идёт, пока у слоя есть фактический сдвиг: PagePush снимает transform со
+    // стиля на ~35-й мс, а дальше слой доезжает CSS-переходом ещё ~270 мс (по записи:
+    // стиль пуст, а сдвиг 440 → 0). Смотреть только на стиль — поправка снималась
+    // посреди въезда, и поле улетало в центр. Пока переход идёт — следим по кадрам
+    let watchRaf = 0;
+    const watch = () => {
+      watchRaf = 0;
+      if (getComputedStyle(L).transform !== 'none') watchRaf = requestAnimationFrame(watch);
+      else update();
+    };
     const update = () => {
-      const moving = !!(L.style.transform || L.style.willChange);
+      const styled = !!(L.style.transform || L.style.willChange);
+      const moving = styled || getComputedStyle(L).transform !== 'none';
+      if (moving && !styled && !watchRaf) watchRaf = requestAnimationFrame(watch);
       const off = moving ? Math.round(L.scrollTop) : 0;
       entrySnap.current?.(`update moving=${moving} off=${off} last=${last}`);
       if (off === last) return;
@@ -689,7 +701,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const mo = new MutationObserver(update);
     mo.observe(L, { attributes: true, attributeFilter: ['style'] });
     L.addEventListener('scroll', update, { passive: true });
-    return () => { cancelAnimationFrame(raf); mo.disconnect(); L.removeEventListener('scroll', update); comp.style.removeProperty('--pp-comp'); comp.style.transition = ''; syncPpComp.current = () => {}; };
+    return () => { cancelAnimationFrame(raf); cancelAnimationFrame(watchRaf); mo.disconnect(); L.removeEventListener('scroll', update); comp.style.removeProperty('--pp-comp'); comp.style.transition = ''; syncPpComp.current = () => {}; };
   }, [phone]);
   const syncPpComp = useRef<() => void>(() => {});
   const entryTrace = useRef<any[] | null>(null);
