@@ -8,6 +8,7 @@ import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
+import { haptic } from './feedback';
 import { animateScrollTop, KEYBOARD_MS, prefersReducedMotion } from '../src/easing';
 
 /**
@@ -635,6 +636,36 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // Палец на ленте — сразу в конечное положение
     stopFeedAnim.current = () => { finish(); };
   };
+  // Поле у низа экрана, пока страница въезжает или уезжает свайпом. Тогда у слоя
+  // PagePush стоит transform, и «fixed»-поле считается не от экрана, а от слоя —
+  // и едет вместе с его прокруткой: чат открыт внизу, и поле на долю секунды
+  // оказывалось посреди экрана, а потом падало вниз. Пока сдвиг есть, опускаем
+  // поле на прокрутку слоя; сдвиг снят — поправку убираем в том же кадре, без анимации
+  useEffect(() => {
+    const comp = composerRef.current;
+    if (!phone || !comp) return;
+    let layer: HTMLElement | null = comp.parentElement;
+    while (layer && !/auto|scroll/.test(getComputedStyle(layer).overflowY)) layer = layer.parentElement;
+    if (!layer) return;
+    const L = layer;
+    let last = 0;
+    const update = () => {
+      const moving = !!(L.style.transform || L.style.willChange);
+      const off = moving ? Math.round(L.scrollTop) : 0;
+      if (off === last) return;
+      last = off;
+      comp.style.transition = 'none';
+      comp.style.setProperty('--pp-comp', `${off}px`);
+      comp.getBoundingClientRect();
+      // Сдвига больше нет — обычная плавность поля снова включена
+      if (!moving) requestAnimationFrame(() => { comp.style.transition = ''; });
+    };
+    update();
+    const mo = new MutationObserver(update);
+    mo.observe(L, { attributes: true, attributeFilter: ['style'] });
+    L.addEventListener('scroll', update, { passive: true });
+    return () => { mo.disconnect(); L.removeEventListener('scroll', update); comp.style.removeProperty('--pp-comp'); comp.style.transition = ''; };
+  }, [phone]);
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const cameraRef = useRef<HTMLInputElement>(null);
@@ -858,16 +889,33 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       setMicError(e?.name === 'NotAllowedError' ? 'Нет доступа к микрофону — разрешите его в настройках.' : e.message || 'Микрофон недоступен');
     }
   };
+  // Остановка микрофона на iPhone тяжёлая (дорожки, аудиоконтекст, перекодирование)
+  // и держала экран — отмена ощущалась как зависание. Сначала интерфейс: запись
+  // уходит, поле плавно возвращается; тяжёлое — в следующем кадре, после отрисовки
+  const [fromRec, setFromRec] = useState(false);
+  const afterPaint = () => new Promise<void>(res => requestAnimationFrame(() => setTimeout(res, 0)));
+  const leaveRecording = () => {
+    setRecording(null);
+    setFromRec(true);
+    window.setTimeout(() => setFromRec(false), 320);
+  };
   const finishRecording = async () => {
     const r = recording; if (!r) return;
-    setRecording(null);
+    leaveRecording();
+    await afterPaint();
     try {
       const audio = await r.stop();
       if (audio.seconds < 0.6) return; // случайное касание
       send({ audio: { data: audio.data, format: audio.format }, voice: Math.round(audio.seconds), image, text: text.trim() || undefined });
     } catch (e: any) { setMicError(e.message); }
   };
-  const cancelRecording = () => { recording?.cancel(); setRecording(null); };
+  const cancelRecording = async () => {
+    const r = recording; if (!r) return;
+    haptic(8);
+    leaveRecording();
+    await afterPaint();
+    r.cancel();
+  };
 
   const pickPhoto = async (f?: File | null) => {
     if (!f) return;
@@ -1128,7 +1176,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       {/* Ввод */}
       {/* На телефоне поле ввода прижато к низу экрана (нижней панели здесь нет), на компьютере — к низу колонки */}
       <div ref={composerRef} className="ai-composer fixed md:sticky left-4 right-4 md:left-auto md:right-auto bottom-[calc(0.75rem+env(safe-area-inset-bottom))] md:bottom-4 z-20"
-           style={lift ? { transform: `translate3d(0, ${-lift}px, 0)` } : undefined}>
+           // --pp-comp — поправка, пока страница въезжает/уезжает (см. эффект «Поле у низа экрана»)
+           style={{ transform: `translate3d(0, calc(var(--pp-comp, 0px) - ${lift}px), 0)` }}>
         {micError && <p className="ai-msg-in mb-2 text-xs text-rose-600 dark:text-rose-400 text-center">{micError}</p>}
         {/* Карточка ввода, как в нативных чатах: сверху поле во всю ширину (и фото),
             снизу «+», режим агента и микрофон / «Отправить» */}
@@ -1147,7 +1196,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             </div>
           )}
           {recording ? (
-            <div className="flex items-center gap-3 h-[52px] px-4 pt-1">
+            <div className="ai-rec-in flex items-center gap-3 h-[52px] px-4 pt-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
                 <span className="text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200">
                   {Math.floor(recSeconds / 60)}:{String(Math.floor(recSeconds % 60)).padStart(2, '0')}
@@ -1187,12 +1236,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); submit(); } }}
                       placeholder={image ? 'Что сделать?' : 'Спросите или попросите…'}
-                      className="ai-input block w-full resize-none bg-transparent outline-none px-4 pt-3.5 pb-1 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36" />
+                      className={`${fromRec ? 'ai-field-back ' : ''}ai-input block w-full resize-none bg-transparent outline-none px-4 pt-3.5 pb-1 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36`} />
           )}
           <div className="flex items-center gap-1 px-2 pb-2 pt-0.5">
             {recording ? (
               <button onClick={cancelRecording} aria-label="Отменить запись"
-                      className="w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 transition text-lg">✕</button>
+                      className="ai-rec-in w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 dark:active:bg-slate-700 transition text-lg">✕</button>
             ) : (
               <AttachMenu onGallery={() => fileRef.current?.click()} onCamera={() => cameraRef.current?.click()} />
             )}

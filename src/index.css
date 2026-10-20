@@ -1778,10 +1778,15 @@ html.vv-reflow body { padding-bottom: 1px; }
 @keyframes ai-pop { from { opacity: 0; transform: translateY(6px) scale(.96); } to { opacity: 1; transform: none; } }
 .ai-pop { animation: ai-pop .2s cubic-bezier(.32, .72, 0, 1) both; transform-origin: bottom right; }
 @keyframes ai-swap { from { opacity: 0; transform: scale(.6) rotate(-12deg); } to { opacity: 1; transform: none; } }
+/* Голосовое: запись появляется, а после отмены/отправки поле мягко возвращается */
+@keyframes ai-rec-in { from { opacity: 0; transform: translateY(4px) scale(.98); } to { opacity: 1; transform: none; } }
+.ai-rec-in { animation: ai-rec-in .2s cubic-bezier(.32, .72, 0, 1) both; }
+@keyframes ai-field-back { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ai-field-back { animation: ai-field-back .22s cubic-bezier(.32, .72, 0, 1) both; }
 .ai-swap { animation: ai-swap .26s cubic-bezier(.32, .72, 0, 1) both; }
 @media (prefers-reduced-motion: reduce) {
   .ai-composer, .ai-field, .ai-input { transition: none; }
-  .ai-swap { animation: none; }
+  .ai-swap, .ai-rec-in, .ai-field-back { animation: none; }
 }
 
 /* Курсор в конце печатающегося ответа агента */
