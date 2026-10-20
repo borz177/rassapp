@@ -515,7 +515,23 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // чате до клавиатуры листать нечего — слой не находился, и подъём не шёл
     const list = feedRef.current;
     const layer = feedLayer();
-    if (traceKeyboard && (opened || closed) && layer && list && atBottom.current && !emptyRef.current) {
+    // Закрытие: прокрутку и место под лентой не трогаем, пока лента едет вниз, —
+    // иначе iPhone, убирая клавиатуру, возвращал прокрутку слоя к прежней (по
+    // записи: 452 → 831), и последние сообщения на долю секунды уходили вверх.
+    // Лента опускается CSS-сдвигом вместе с полем; в конце в одном кадре сдвиг
+    // меняем на прокрутку — картинка та же, скачка нет
+    if (traceKeyboard && closed && layer && list && atBottom.current && !emptyRef.current) {
+      const from = layer.scrollTop;
+      traceEv('slide-down', { from, d: prevLift });
+      slideDown(list, prevLift, () => {
+        if (listEnd.current) listEnd.current.style.height = `${space}px`;
+        setEndSpace(space);
+        layer.scrollTop = Math.max(0, from - prevLift);
+        traceEv('swap', { top: layer.scrollTop, max: layer.scrollHeight - layer.clientHeight });
+      });
+      return;
+    }
+    if (traceKeyboard && opened && layer && list && atBottom.current && !emptyRef.current) {
       const from = layer.scrollTop;
       if (listEnd.current) listEnd.current.style.height = `${space}px`;
       setEndSpace(space);
@@ -559,6 +575,26 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     let el: HTMLElement | null = listEnd.current?.parentElement || null;
     while (el && !/auto|scroll/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
     return el;
+  };
+  // Опустить ленту на d по кривой клавиатуры, затем done() — в том же кадре, что и снятие сдвига
+  const slideDown = (list: HTMLElement, d: number, done: () => void) => {
+    stopFeedAnim.current();
+    let finished = false;
+    let t = 0;
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      window.clearTimeout(t);
+      list.style.transition = 'none';
+      list.style.transform = '';
+      done();
+    };
+    if (prefersReducedMotion()) { finish(); return; }
+    list.style.transition = `transform ${KEYBOARD_MS}ms cubic-bezier(.38, .7, .125, 1)`;
+    list.style.transform = `translate3d(0, ${d}px, 0)`;
+    t = window.setTimeout(() => { traceEv('slide-end'); finish(); }, KEYBOARD_MS + 20);
+    // Палец на ленте — сразу в конечное положение
+    stopFeedAnim.current = () => { traceEv('slide-stop'); finish(); };
   };
   const trace = useRef<any[] | null>(null);
   const traceT0 = useRef(0);
