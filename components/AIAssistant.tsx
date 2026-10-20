@@ -1236,6 +1236,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               </div>
             </div>
           )}
+          {/* Набранное во время записи уйдёт вместе с голосовым — показываем его (конец,
+              если длинный), иначе буквы вводились бы вслепую */}
+          {recUi && text.trim() && (
+            <p className="ai-rec-in px-4 pt-2.5 -mb-1 text-[13px] leading-snug text-slate-500 dark:text-slate-400 truncate">
+              <span className="font-semibold text-violet-600 dark:text-violet-300">+ текст:</span>{' '}
+              {text.length > 48 ? `…${text.slice(-48)}` : text}<span className="ai-caret">▍</span>
+            </p>
+          )}
           {recUi && (
             <div className="ai-rec-in flex items-center gap-3 h-[52px] px-4 pt-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
