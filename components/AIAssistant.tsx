@@ -397,7 +397,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   focusedRef.current = focused;
   // Запись голоса: поле уступает место записи и пропадает — blur от него может
   // не прийти, а клавиатура уже закрыта
-  useEffect(() => { if (recording) setFocused(false); }, [recording]);
+  // Клавиатура при записи остаётся (как в Telegram): поле в фокусе, лишь спрятано под
+  // полосой записи. Фокуса нет — значит, клавиатура закрыта
+  useEffect(() => { if (recording && document.activeElement !== inputRef.current) setFocused(false); }, [recording]);
   const safeBottom = useRef(0);
   // Перепроверить высоту клавиатуры (см. ниже) — из фокуса поля
   const keyboardResync = useRef<() => void>(() => {});
@@ -897,14 +899,30 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     if (focusedRef.current) requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   };
 
+  // Нажатие на микрофон: полоса записи — сразу, а микрофон (и в первый раз —
+  // вопрос о разрешении) включается параллельно. Раньше экран ждал, пока он
+  // включится, — нажатие ощущалось как зависание
+  const [starting, setStarting] = useState(false);
+  const cancelStart = useRef(false);
+  const recUi = !!recording || starting;
   const toggleMic = async () => {
     setMicError(null);
     if (recording) { finishRecording(); return; }
+    if (starting) return;
+    cancelStart.current = false;
+    setRecSeconds(0);
+    setStarting(true);
+    haptic(10);
     try {
       const r = await startRecording();
-      setRecSeconds(0);
+      // Пока включался — нажали «✕»
+      if (cancelStart.current) { cancelStart.current = false; setStarting(false); await afterPaint(); r.cancel(); return; }
       setRecording(r);
+      setStarting(false);
     } catch (e: any) {
+      setStarting(false);
+      setFromRec(true);
+      window.setTimeout(() => setFromRec(false), 320);
       setMicError(e?.name === 'NotAllowedError' ? 'Нет доступа к микрофону — разрешите его в настройках.' : e.message || 'Микрофон недоступен');
     }
   };
@@ -931,6 +949,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     } catch (e: any) { setMicError(e.message); }
   };
   const cancelRecording = async () => {
+    // Микрофон ещё включается — запись не начнётся
+    if (!recording && starting) { cancelStart.current = true; setStarting(false); haptic(8); setFromRec(true); window.setTimeout(() => setFromRec(false), 320); return; }
     const r = recording; if (!r) return;
     haptic(8);
     leaveRecording();
@@ -1206,7 +1226,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             «Отправить» и выборе режима (как в нативных чатах). «+» и микрофон
             закрывают её сами: открывается выбор фото / поле уступает записи */}
         <div onMouseDown={e => { if ((e.target as HTMLElement).closest('button:not([data-blur])')) e.preventDefault(); }}
-             className={`ai-field rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border shadow-lg ${focused ? 'border-violet-300 dark:border-violet-500/50 is-focused' : 'border-slate-200 dark:border-slate-700'}`}>
+             className={`ai-field relative rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border shadow-lg ${focused ? 'border-violet-300 dark:border-violet-500/50 is-focused' : 'border-slate-200 dark:border-slate-700'}`}>
           {image && (
             <div className="ai-msg-in px-3 pt-3">
               <div className="relative inline-block">
@@ -1216,7 +1236,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               </div>
             </div>
           )}
-          {recording ? (
+          {recUi && (
             <div className="ai-rec-in flex items-center gap-3 h-[52px] px-4 pt-1">
                 <span className="w-2.5 h-2.5 rounded-full bg-rose-500 animate-pulse" />
                 <span className="text-sm font-semibold tabular-nums text-slate-700 dark:text-slate-200">
@@ -1229,8 +1249,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   ))}
                 </div>
             </div>
-          ) : (
-            <textarea ref={inputRef} value={text} onChange={e => setText(e.target.value)} rows={1}
+          )}
+          {/* Поле не убираем на время записи — прячем под полосой, оставляя в фокусе:
+              так клавиатура не закрывается, и после записи можно печатать дальше */}
+            <textarea ref={inputRef} aria-hidden={recUi || undefined} tabIndex={recUi ? -1 : undefined} value={text} onChange={e => setText(e.target.value)} rows={1}
                       onFocus={() => {
                         focusedRef.current = true;
                         setFocused(true);
@@ -1257,10 +1279,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       }}
                       onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey && !('ontouchstart' in window)) { e.preventDefault(); submit(); } }}
                       placeholder={image ? 'Что сделать?' : 'Спросите или попросите…'}
-                      className={`${fromRec ? 'ai-field-back ' : ''}ai-input block w-full resize-none bg-transparent outline-none px-4 pt-3.5 pb-1 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36`} />
-          )}
+                      className={`${recUi ? 'absolute inset-x-0 top-0 h-[52px] opacity-0 pointer-events-none ' : fromRec ? 'ai-field-back ' : ''}ai-input block w-full resize-none bg-transparent outline-none px-4 pt-3.5 pb-1 text-[16px] text-slate-900 dark:text-white placeholder:text-slate-400 max-h-36`} />
           <div className="flex items-center gap-1 px-2 pb-2 pt-0.5">
-            {recording ? (
+            {recUi ? (
               <button onClick={cancelRecording} aria-label="Отменить запись"
                       className="ai-rec-in w-10 h-10 shrink-0 rounded-full flex items-center justify-center text-slate-500 hover:bg-slate-100 dark:hover:bg-slate-700 active:scale-90 active:bg-slate-100 dark:active:bg-slate-700 transition text-lg">✕</button>
             ) : (
@@ -1269,9 +1290,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
             <input ref={cameraRef} type="file" accept="image/*" capture="environment" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
             <div className="flex-1" />
-            {!recording && <ModeMenu mode={mode} onChange={setMode} />}
+            {!recUi && <ModeMenu mode={mode} onChange={setMode} />}
           {/* Идёт ответ — на месте отправки «Стоп» с бегущим кольцом */}
-          {sending && !recording ? (
+          {sending && !recUi ? (
             <button onClick={stopRequest} disabled={stopping} aria-label={stopping ? 'Останавливаем' : 'Остановить ответ'} title="Остановить"
                     className="ai-msg-in relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center bg-slate-900 dark:bg-white active:scale-95 transition">
               <span aria-hidden className={`ai-busy-ring absolute -inset-[3px] rounded-full ${stopping ? 'opacity-40' : ''}`} />
@@ -1280,19 +1301,20 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           ) : <>
           {/* Микрофон — всегда, пока не набран текст: к фото можно сказать задание голосом */}
           {!text.trim() && (
-            <button key="mic" data-blur onClick={toggleMic} disabled={sending} aria-label={recording ? 'Отправить голосовое' : 'Сказать голосом'}
+            // Без data-blur: микрофон не забирает фокус у поля — клавиатура остаётся открытой
+            <button key="mic" onClick={toggleMic} disabled={sending} aria-label={recUi ? 'Отправить голосовое' : 'Сказать голосом'}
                     // Цвет — сразу, плавно только нажатие: переход цвета шёл в основном потоке
                     // и замирал на красном, пока останавливался микрофон
-                    className={`ai-swap relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60 ${recording ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
+                    className={`ai-swap relative w-10 h-10 shrink-0 rounded-full flex items-center justify-center active:scale-95 transition-transform disabled:opacity-60 ${recUi ? 'bg-rose-500 text-white shadow-md' : image ? 'text-slate-500 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-700' : 'bg-gradient-to-br from-indigo-500 to-violet-600 text-white shadow-md'}`}>
               {recording && <span className="ai-mic-ring absolute inset-0 rounded-full bg-rose-400" />}
-              {recording ? (
+              {recUi ? (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
               ) : (
                 <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect x="9" y="2" width="6" height="12" rx="3" /><path d="M5 10v1a7 7 0 0 0 14 0v-1M12 18v4" /></svg>
               )}
             </button>
           )}
-          {(text.trim() || image) && !recording && (
+          {(text.trim() || image) && !recUi && (
             <button key="send" onClick={submit} disabled={sending} aria-label="Отправить"
                     className="ai-swap w-10 h-10 shrink-0 rounded-full bg-gradient-to-br from-indigo-500 to-violet-600 text-white flex items-center justify-center shadow-md active:scale-95 transition disabled:opacity-60">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5M5 12l7-7 7 7" /></svg>
