@@ -509,6 +509,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const onVisible = () => {
       if (document.visibilityState !== 'visible') return;
       if (traceResume) startResumeTrace();
+      // Поле в фокусе — клавиатура сейчас вернётся (по записи — через ~0,1 с). Держим
+      // поле на месте, как при открытии (первые 650 мс «пустой» размер не принимаем),
+      // иначе оно опускалось и поднималось обратно. Не вернулась — опустится на 800 мс
+      if (document.activeElement === inputRef.current) predictKeyboard();
       [0, 150, 400, 800].forEach(t => setTimeout(resync, t));
     };
     apply();
