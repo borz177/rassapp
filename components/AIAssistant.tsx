@@ -8,7 +8,7 @@ import AIActionCard, { type AIAction } from './AIActionCard';
 import { api } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
-import { animateScrollTop, KEYBOARD_MS } from '../src/easing';
+import { animateScrollTop, KEYBOARD_MS, prefersReducedMotion } from '../src/easing';
 
 /**
  * ИИ-агент: чат, голос и фото. Ответы и действия — server/ai/assistant.js.
@@ -65,6 +65,8 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
+  /** ВРЕМЕННО (плавный подъём ленты): только админу — новый способ (CSS-сдвиг) и запись на сервер */
+  traceKeyboard?: boolean;
 }
 
 /**
@@ -277,7 +279,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, traceKeyboard }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -506,6 +508,19 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const feed = scroller();
     window.clearTimeout(shrinkTimer.current);
     if (opened || closed) feedAnimUntil.current = Date.now() + KEYBOARD_MS + 80;
+    if ((opened || closed) && traceKeyboard) startTrace(opened ? 'open' : 'close', { prevLift, lift, atBottom: atBottom.current, empty: emptyRef.current, hasFeed: !!feed });
+    // ВРЕМЕННО, только админ: новый способ — прокрутка сразу в конечное положение,
+    // видимое движение ведёт CSS-сдвиг ленты (feedRef). Остальным — как раньше
+    const list = feedRef.current;
+    if (traceKeyboard && (opened || closed) && feed && list && atBottom.current && !emptyRef.current) {
+      if (listEnd.current) listEnd.current.style.height = `${space}px`;
+      setEndSpace(space);
+      const from = feed.scrollTop;
+      feed.scrollTop = opened ? feed.scrollHeight : Math.max(0, from - prevLift);
+      traceEv('slide', { from, to: feed.scrollTop, max: feed.scrollHeight - feed.clientHeight });
+      slideFeed(list, feed.scrollTop - from);
+      return;
+    }
     if (closed && feed && atBottom.current && !emptyRef.current) {
       stopFeedAnim.current();
       stopFeedAnim.current = animateScrollTop(feed, feed.scrollTop - prevLift);
@@ -522,6 +537,40 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       });
     }
   }, [lift]);
+  // ВРЕМЕННО: CSS-сдвиг ленты (только админ) и запись того, что с ней происходит
+  const feedRef = useRef<HTMLDivElement>(null);
+  const slideFeed = (list: HTMLElement, shift: number) => {
+    stopFeedAnim.current();
+    if (Math.abs(shift) < 2 || prefersReducedMotion()) return;
+    list.style.transition = 'none';
+    list.style.transform = `translate3d(0, ${shift}px, 0)`;
+    list.getBoundingClientRect();
+    list.style.transition = `transform ${KEYBOARD_MS}ms cubic-bezier(.38, .7, .125, 1)`;
+    list.style.transform = 'translate3d(0, 0, 0)';
+    const clear = () => { list.style.transition = ''; list.style.transform = ''; };
+    const t = window.setTimeout(() => { traceEv('slide-end'); clear(); }, KEYBOARD_MS + 40);
+    stopFeedAnim.current = () => { traceEv('slide-stop'); window.clearTimeout(t); clear(); };
+  };
+  const trace = useRef<any[] | null>(null);
+  const traceT0 = useRef(0);
+  const traceEv = (ev: string, data: Record<string, unknown> = {}) => { trace.current?.push({ t: Date.now() - traceT0.current, ev, ...data }); };
+  const startTrace = (kind: string, data: Record<string, unknown>) => {
+    if (!traceKeyboard || trace.current) return;
+    const rec: any[] = [{ t: 0, ev: kind, ...data }];
+    trace.current = rec;
+    traceT0.current = Date.now();
+    const timer = setInterval(() => {
+      const f = scroller();
+      const end = listEnd.current?.getBoundingClientRect();
+      const comp = composerRef.current?.getBoundingClientRect();
+      rec.push({ t: Date.now() - traceT0.current, ev: 'pos',
+        top: f ? Math.round(f.scrollTop) : null, max: f ? Math.round(f.scrollHeight - f.clientHeight) : null,
+        lastMsg: end ? Math.round(end.top) : null, field: comp ? Math.round(comp.top) : null,
+        tf: feedRef.current?.style.transform || '', liftNow: liftRef.current, atBottom: atBottom.current,
+        sy: Math.round(window.scrollY), ot: Math.round(window.visualViewport?.offsetTop || 0) });
+    }, 33);
+    setTimeout(() => { clearInterval(timer); trace.current = null; api.aiAssistant.kbTrace(rec).catch(() => {}); }, 1200);
+  };
   const rootRef = useRef<HTMLDivElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -600,12 +649,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // лента переставала ехать вместе с полем
     const touched = (e: Event) => {
       if (composerRef.current?.contains(e.target as Node)) return;
+      traceEv('touched', { type: e.type });
       userAt = Date.now();
       // Человек сам повёл ленту — наше движение уступает ему
       stopFeedAnim.current();
       feedAnimUntil.current = 0;
     };
     const onScroll = () => {
+      if (trace.current && el) traceEv('scroll', { top: Math.round(el.scrollTop), max: Math.round(el.scrollHeight - el.clientHeight) });
       if (Date.now() - userAt > 1000) return;
       // Ленту двигаем мы (вслед за клавиатурой) — это не прокрутка человека
       if (Date.now() < feedAnimUntil.current) return;
@@ -894,7 +945,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       </div>
 
       {/* Лента. Касание ленты на телефоне закрывает клавиатуру — как в мессенджерах */}
-      <div className="flex-1 space-y-3 pb-4"
+      <div ref={feedRef} className="flex-1 space-y-3 pb-4"
            onPointerDown={e => { if (phone && focused && e.pointerType !== 'mouse' && !(e.target as HTMLElement).closest('button, a, input, textarea')) inputRef.current?.blur(); }}>
         {empty && (
           // Невысокий экран телефона (адресная строка, маленький iPhone) — приветствие

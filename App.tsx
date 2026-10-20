@@ -5446,6 +5446,7 @@ if (!user && !showSplash) {
                         onDataChanged={() => { handleSync(); }}
                         onOpenTariffs={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('AI_TARIFFS'); }}
                         onOpenWhatsApp={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('INTEGRATIONS'); }}
+                        traceKeyboard={user?.role === 'admin'}
                         onOpenContract={openContractFromAssistant}
                         onCreateContract={createContractFromAssistant}
                         onSendDocument={sendDocumentFromAssistant}
