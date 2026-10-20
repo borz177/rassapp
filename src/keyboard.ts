@@ -62,6 +62,17 @@ export function installKeyboardClass() {
       if (!isTextField(document.activeElement)) root.classList.remove('kb-open');
     }, 120);
   });
+  // Страховка: страницу закрыли, пока поле было в фокусе, — iPhone не присылает
+  // focusout для удалённого поля, и навигация оставалась спрятанной. Ни одно поле
+  // не в фокусе (касание, смена размера экрана) — значит, клавиатуры нет
+  const settle = () => {
+    if (root.classList.contains('kb-open') && !isTextField(document.activeElement) && !(document.activeElement as HTMLElement)?.isContentEditable) {
+      root.classList.remove('kb-open');
+    }
+  };
+  document.addEventListener('touchstart', settle, { capture: true, passive: true });
+  window.visualViewport?.addEventListener('resize', settle);
+  window.addEventListener('popstate', () => window.setTimeout(settle, 50));
 }
 
 const scrollParent = (el: HTMLElement | null): HTMLElement | null => {

@@ -193,8 +193,15 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [closing]);
 
+  // Уходим со страницы — поле ввода отпускает фокус сразу: клавиатура уезжает вместе
+  // с жестом, а не после закрытия (и класс kb-open снимается, навигация возвращается)
+  const releaseKeyboard = () => {
+    const el = document.activeElement as HTMLElement | null;
+    if (el && rootRef.current?.contains(el) && (el.tagName === 'INPUT' || el.tagName === 'TEXTAREA' || el.isContentEditable)) el.blur();
+  };
   const requestClose = () => {
     if (closingRef.current) return;
+    releaseKeyboard();
     // Внутренний шаг важнее: если в странице открыт документ, «назад» должно
     // вернуть к списку, а не выбросить из раздела.
     if (consumeBack()) return;
@@ -322,6 +329,8 @@ const PagePush: React.FC<PagePushProps> = ({ onClose, showBackButton = false, ba
         s.active = false;
         return;
       }
+      // Пошёл свайп назад — клавиатура уходит вместе с жестом, как в нативных приложениях
+      if (!s.intercepted) releaseKeyboard();
     }
     if (!s.locked) return;
     // Страница никуда не уезжает — уезжает только её содержимое, и тащить весь
