@@ -317,6 +317,13 @@ const scenarios = [
     const d = await new Chat().say('сколько договоров я оформил в этом месяце?');
     return !/ничего не записано/i.test(d.reply || '');
   }],
+  // Было: «оплатил 16 700» → «нажмите «Подтвердить»», а карточки нет (инструмент не вызван)
+  ['«… оплатил N» → карточка платежа, а не одни слова про «Подтвердить»', async () => {
+    const d = await new Chat().say('Орзумиев Ислам оплатил 5000');
+    const card = (d.actions || []).find(x => x.kind === 'confirm' && x.tool === 'create_payment');
+    await cancelAll(d);
+    return !!card || (d.actions || []).some(x => x.kind === 'choices');
+  }],
   ['«По каким счетам» → названия счетов, без id', async () => {
     const chat = new Chat();
     await chat.say('сколько я получил за этот год?');
