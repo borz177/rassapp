@@ -594,9 +594,21 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     // свою прокрутку, догоняющую выросшую ленту, раньше принимали за «пролистал
     // вверх» — и длинный чат с карточками открывался посередине
     let userAt = 0;
-    const touched = () => { userAt = Date.now(); stopFeedAnim.current(); };
+    // Касание поля ввода и кнопок панели — не прокрутка ленты. Раньше и оно
+    // считалось касанием ленты, и её собственная плавная прокрутка вслед за
+    // клавиатурой принималась за «пролистал вверх»: после нескольких открытий
+    // лента переставала ехать вместе с полем
+    const touched = (e: Event) => {
+      if (composerRef.current?.contains(e.target as Node)) return;
+      userAt = Date.now();
+      // Человек сам повёл ленту — наше движение уступает ему
+      stopFeedAnim.current();
+      feedAnimUntil.current = 0;
+    };
     const onScroll = () => {
       if (Date.now() - userAt > 1000) return;
+      // Ленту двигаем мы (вслед за клавиатурой) — это не прокрутка человека
+      if (Date.now() < feedAnimUntil.current) return;
       const top = el ? el.scrollTop : window.scrollY;
       const max = el ? el.scrollHeight - el.clientHeight : document.documentElement.scrollHeight - window.innerHeight;
       atBottom.current = max - top < 80;
