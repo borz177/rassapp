@@ -4524,6 +4524,7 @@ const aiAssistantState = async (userId) => {
   const trialLeft = Math.max(0, AI_TRIAL_REQUESTS - (u.ai_trial_used || 0));
   return {
     allowedRole: aiAgentAllowed(u.role),
+    aliceEnabled: !!(process.env.ALICE_SKILL_ID && process.env.ALICE_OAUTH_CLIENT_ID),
     consent: !!u.ai_consent_at,
     plan: sub ? { key: sub.plan, name: plan?.name || sub.plan, expiresAt: sub.expiresAt, monthly: plan?.monthly || 0 } : null,
     used,
@@ -4585,74 +4586,49 @@ app.post('/api/ai/assistant/consent', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ msg: 'Не удалось сохранить' }); }
 });
 
+const runAssistantTurn = require('./ai/runAssistant').createAssistantRunner({
+  pool, assistant: aiAssistant, state: aiAssistantState,
+  subscriptionState: getSubscriptionState, month: aiMonth,
+});
+
 app.post('/api/ai/assistant/message', auth, async (req, res) => {
+  const { text, history, image, audio, mode, requestId, stream } = req.body || {};
+  if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
+  if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
+  const stop = new AbortController();
+  const reqKey = requestId ? `${req.user.id}:${String(requestId).slice(0, 64)}` : null;
+  const send = obj => res.write(`${JSON.stringify(obj)}\n`);
+  let streaming = false;
   try {
+    // Не начинаем поток до проверки доступа: старые клиенты ждут HTTP 402/403.
     const st = await aiAssistantState(req.user.id);
     if (!st?.allowedRole) return res.status(403).json({ msg: 'Агент доступен владельцу аккаунта.' });
     if (!st.consent) return res.status(403).json({ code: 'AI_CONSENT_REQUIRED', msg: 'Нужно согласие на обработку данных агентом.' });
-    if (st.left <= 0) {
-      return res.status(402).json({ code: 'AI_LIMIT', msg: st.plan ? 'Запросы на этот месяц закончились.' : 'Пробные запросы закончились.' });
-    }
-    const { text, history, image, audio, mode, requestId, stream } = req.body || {};
-    if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
-    if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
-    const me = (await pool.query('SELECT id, name FROM users WHERE id = $1', [req.user.id])).rows[0];
-    const settingsRow = await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'settings' LIMIT 1`, [req.user.id]);
-    // «Стоп» из чата находит запрос по его номеру (только свой)
-    const stop = new AbortController();
-    const reqKey = requestId ? `${req.user.id}:${String(requestId).slice(0, 64)}` : null;
+    if (st.left <= 0) return res.status(402).json({ code: 'AI_LIMIT', msg: 'Запросы к агенту закончились.' });
     if (reqKey) aiRunning.set(reqKey, stop);
-    // stream: ответ строками JSON (NDJSON) — сначала шаги «Ищу клиента…», в конце
-    // итог. Без него — один JSON, как понимают сборки приложения постарше.
-    // no-transform — чтобы compression() не копил поток; X-Accel-Buffering — то же для nginx
-    let streaming = false;
-    const send = (obj) => { res.write(`${JSON.stringify(obj)}\n`); };
     if (stream === true) {
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });
       streaming = true;
-      res.locals.aiStreaming = true;
     }
-    const out = await aiAssistant.reply({
-      signal: stop.signal,
-      onStep: streaming ? (label) => send({ step: label }) : null,
-      onStream: streaming ? (ev) => send(ev) : null,
+    const result = await runAssistantTurn({
+      userId: req.user.id, text, history, image, audio, mode, verifiedState: st, signal: stop.signal,
+      onStep: streaming ? label => send({ step: label }) : null,
+      onStream: streaming ? ev => send(ev) : null,
       silent: req.get('x-ai-eval') === '1',
-      user: me,
-      text: String(text || '').slice(0, 4000),
-      history: Array.isArray(history) ? history : [],
-      image: image || null,
-      audio: audio || null,
-      companyName: settingsRow.rows[0]?.data?.companyName || '',
-      // «Авто» — действия выполняются сразу, без «Подтвердить» (выбор в чате);
-      // от порога суммы — всё равно с подтверждением
-      mode: mode === 'auto' ? 'auto' : 'confirm',
-      autoLimit: st.settings.autoLimit,
-      // Подписка приложения кончилась (тариф ИИ может действовать) — только чтение, как в приложении
-      readOnly: req.user.role !== 'admin' && !!(await getSubscriptionState(req.user.id)).expired,
-    }).finally(() => { if (reqKey) aiRunning.delete(reqKey); });
-    // Остановленный до первого ответа модели в лимит не идёт; потраченное — в учёт
-    const counted = !out.cancelled || (out.usage?.completion || 0) > 0;
-    // Учёт: запрос засчитывается, когда агент ответил
-    await pool.query(
-      `INSERT INTO ai_assistant_usage (user_id, month, requests, prompt_tokens, completion_tokens, cost_usd, cached_tokens)
-       VALUES ($1, $2, $6, $3, $4, $5, $7)
-       ON CONFLICT (user_id, month) DO UPDATE SET requests = ai_assistant_usage.requests + EXCLUDED.requests,
-         prompt_tokens = ai_assistant_usage.prompt_tokens + EXCLUDED.prompt_tokens,
-         cached_tokens = ai_assistant_usage.cached_tokens + EXCLUDED.cached_tokens,
-         completion_tokens = ai_assistant_usage.completion_tokens + EXCLUDED.completion_tokens,
-         cost_usd = ai_assistant_usage.cost_usd + EXCLUDED.cost_usd`,
-      [req.user.id, aiMonth(), out.usage?.prompt || 0, out.usage?.completion || 0, out.usage?.cost || 0, counted ? 1 : 0, out.usage?.cached || 0]);
-    if (st.trial && counted) await pool.query('UPDATE users SET ai_trial_used = ai_trial_used + 1 WHERE id = $1', [req.user.id]);
-    const result = { reply: out.reply, actions: out.actions, cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)),
-      // Расшифровка голосового — приложение покажет её под голосовым и сохранит в истории
-      ...(typeof out.heard === 'string' ? { heard: out.heard } : {}) };
+    });
     if (streaming) { send({ done: true, ...result }); res.end(); } else res.json(result);
   } catch (e) {
     console.error('AI assistant error:', e.message);
-    const msg = e.status === 503 ? 'Агент ещё не настроен.' : 'Агент сейчас не ответил — попробуйте ещё раз.';
-    if (res.locals.aiStreaming) { res.write(`${JSON.stringify({ error: true, status: e.status || 500, msg })}\n`); res.end(); }
-    else res.status(e.status || 500).json({ msg });
+    const msg = e.status === 503 ? 'Агент ещё не настроен.' : e.code ? e.message : 'Агент сейчас не ответил — попробуйте ещё раз.';
+    if (streaming) { send({ error: true, status: e.status || 500, code: e.code, msg }); res.end(); }
+    else res.status(e.status || 500).json({ code: e.code, msg });
+  } finally {
+    if (reqKey && aiRunning.get(reqKey) === stop) aiRunning.delete(reqKey);
   }
+});
+
+require('./alice/routes').registerAliceRoutes(app, {
+  pool, auth, runAssistantTurn, aiAssistantState, getEffectivePlan, planLimits: PLAN_LIMITS,
 });
 
 // Оплата тарифа ИИ: месяц, сумма считается здесь (как у основных тарифов)

@@ -2128,6 +2128,15 @@ export const api = {
 
     /** ИИ-агент (server/ai/assistant.js) */
     aiAssistant: {
+      aliceInbox: async (): Promise<{ messages: { id: string; question: string; reply: string; actions: any[]; expired?: boolean }[] }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/alice/inbox`);
+        if (!res.ok) throw new Error('Не удалось получить ответы Алисы');
+        return res.json();
+      },
+      acknowledgeAlice: async (ids: string[]): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/alice/inbox/ack`, { method: 'POST', body: JSON.stringify({ ids }) });
+        if (!res.ok) throw new Error('Не удалось отметить ответы Алисы');
+      },
       status: async (): Promise<any> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/status`);
         if (!res.ok) throw new Error('Не удалось загрузить агента');

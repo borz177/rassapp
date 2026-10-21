@@ -1081,7 +1081,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     'Контекст:',
     `сегодня ${today} (Москва);`,
     `владелец — ${userName || 'пользователь'}${companyName ? `, компания «${companyName}»` : ''};`,
-    `режим — ${auto ? '«Авто» (записи выполняются сразу)' : '«Подтверждать» (записи ждут «Подтвердить»)'}${readOnly ? ';\nсрок подписки приложения истёк — только чтение' : ''}.`,
+    `режим — ${auto ? '«Авто» (записи выполняются сразу)' : '«Подтверждать» (записи ждут «Подтвердить»)'}${readOnly ? ';\nдоступно только чтение, запись отключена' : ''}.`,
     ...(voice ? ['Последнее сообщение — расшифровка голосового: слова могут быть расслышаны неверно. Странную, бессвязную или грубую фразу понимай по смыслу разговора как ослышку («а пошол ты, Гагаев» — скорее «а по счёту Гагаев»), замечаний о тоне не делай. Не уверен, как понять, — не переспрашивай текстом, а ask_choice «Вы имели в виду:» с 1–2 вариантами прочтения (label — исправленная фраза целиком, как её сказал бы человек) и последним «Нет, другое».'] : []),
   ].join('\n');
 
@@ -1458,7 +1458,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
     return { ...out, heard: t.text };
   };
 
-  const replyText = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false, onStream = null, silent = false, voiceText = '' }) => {
+  const replyText = async ({ user, history = [], text = '', image = null, audio = null, companyName = '', mode = 'confirm', signal = null, autoLimit = null, onStep = null, readOnly = false, onStream = null, silent = false, voiceText = '', channel = 'app' }) => {
     const step = (label) => { try { if (label && onStep) onStep(label); } catch { /* шаги — только подсказка */ } };
     step(image ? 'Читаю фото…' : audio ? 'Слушаю голосовое…' : 'Думаю…');
     // Сообщение человека: ниже text переопределяется ответом модели
@@ -1500,6 +1500,7 @@ function createAssistant({ pool, jwt, jwtSecret, port }) {
       // без неё не кэшируется вовсе
       { role: 'system', content: [{ type: 'text', text: [STATIC_PROMPT, await quality.lessonsPrompt()].filter(Boolean).join('\n'), cache_control: { type: 'ephemeral' } }] },
       { role: 'system', content: contextPrompt({ userName: user.name, companyName, today, auto, readOnly, voice: !!voiceText }) },
+      ...(channel === 'alice' ? [{ role: 'system', content: 'КАНАЛ АЛИСА: человек говорит через колонку. Отвечай коротко, без Markdown и длинных списков. Изменения, договоры и отправку документов только готовь: подтверждение будет в чате FinUchet на телефоне. Не проси нажать кнопку на колонке. Для ask_choice назови варианты и попроси ответить названием. Никогда не утверждай, что деньги уже проведены, если подготовлено подтверждение.' }] : []),
       ...historyMessages(history),
       { role: 'user', content },
     ];

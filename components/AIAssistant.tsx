@@ -35,6 +35,7 @@ interface Msg {
   role: 'user' | 'assistant';
   text: string;
   image?: string;
+  aliceJobId?: string; // ответ с колонки, подтверждается только здесь
   voice?: number; // длительность голосового, с
   heard?: string; // расшифровка голосового (сервер) — видна под ним и уходит в историю
   note?: string; // для агента, не показывается: id варианта, выбранного кнопкой
@@ -201,10 +202,11 @@ const readStore = (userId: string, prev = false): Msg[] => {
 };
 const writeStore = (userId: string, msgs: Msg[], prev = false) => {
   try {
-    if (prev && !msgs.length) { localStorage.removeItem(storeKey(userId, true)); return; }
+    if (prev && !msgs.length) { localStorage.removeItem(storeKey(userId, true)); return true; }
     // Без фото: они тяжёлые и это паспорта
     localStorage.setItem(storeKey(userId, prev), JSON.stringify(msgs.slice(-40).map(m => ({ ...m, image: m.image ? 'stripped' : undefined }))));
-  } catch { /* место кончилось или приватный режим — история просто не сохранится */ }
+    return true;
+  } catch { return false; /* Не подтверждаем доставку Алисы, пока история не сохранена. */ }
 };
 const newId = () => `m_${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
 
@@ -696,7 +698,47 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     }]);
   };
   useEffect(() => { loadStatus(); }, []);
-  useEffect(() => { writeStore(userId, messages); }, [messages, userId]);
+  useEffect(() => {
+    if (writeStore(userId, messages)) {
+      const ids = messages.filter(m => m.aliceJobId).map(m => m.aliceJobId!).slice(-10);
+      if (ids.length) api.aiAssistant.acknowledgeAlice(ids).catch(() => {});
+    }
+  }, [messages, userId]);
+  useEffect(() => {
+    if (!status?.allowedRole || !status?.aliceEnabled) return;
+    let alive = true;
+    let busy = false;
+    const receive = async () => {
+      if (busy) return;
+      busy = true;
+      try {
+        const { messages: inbox } = await api.aiAssistant.aliceInbox();
+        if (!alive || !inbox.length) return;
+        // Сервер может повторно доставить ответ при обрыве ACK. ID сообщений стабильны.
+        const stored = new Set(readStore(userId).map(m => m.id));
+        const delivered = inbox.filter(j => stored.has(`alice_a_${j.id}`)).map(j => j.id);
+        if (delivered.length) await api.aiAssistant.acknowledgeAlice(delivered).catch(() => {});
+        if (!alive) return;
+        setMessages(current => {
+          const ids = new Set(current.map(m => m.id));
+          const incoming: Msg[] = [];
+          for (const job of inbox) {
+            if (ids.has(`alice_a_${job.id}`)) continue;
+            incoming.push({ id: `alice_u_${job.id}`, role: 'user', text: `Алиса: ${job.question}`, note: 'Запрос с колонки Алиса' });
+            incoming.push({ id: `alice_a_${job.id}`, aliceJobId: job.id, role: 'assistant',
+              text: job.reply + (job.expired ? '\nПодтверждение устарело — попросите агента подготовить действие заново.' : ''),
+              actions: job.actions.map(a => ({ ...a, auto: false })),
+            });
+          }
+          return incoming.length ? [...current, ...incoming] : current;
+        });
+      } catch { /* Алиса необязательна; чат работает и без этого канала. */ }
+      finally { busy = false; }
+    };
+    void receive();
+    const timer = setInterval(receive, 5000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [userId, status?.allowedRole, status?.aliceEnabled]);
   // Что листается: слой страницы PagePush, на Mac — карточка, иначе окно
   const scroller = (): HTMLElement | null => {
     let el: HTMLElement | null = listEnd.current?.parentElement || null;
