@@ -100,7 +100,8 @@ const Customers: React.FC<CustomersProps> = ({
       .filter(c => activeSegment === 'ALL' || !!segmentOf?.(c.id).has(activeSegment))
       .filter(c =>
         c.name.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        c.phone.includes(searchTerm)
+        c.phone.includes(searchTerm) ||
+        (c.extraPhones || []).some(p => p.phone.includes(searchTerm))
       )
       .sort((a, b) => a.name.localeCompare(b.name)); // Сортировка по алфавиту
   }, [customers, searchTerm, activeSegment, segmentOf]);

@@ -1,7 +1,8 @@
 import React, { useMemo, useRef, useState } from 'react';
 import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
 import PassportScan, { type PassportFields } from './PassportScan';
-import { Customer } from '../types';
+import { Customer, CustomerPhone } from '../types';
+import { cleanExtraPhones, MAX_EXTRA_PHONES, PHONE_LABELS } from '../src/customerPhones';
 import { appAlert, appConfirm } from '../src/dialogs';
 import { fileToJpeg } from '../src/jpeg';
 
@@ -17,6 +18,8 @@ import { fileToJpeg } from '../src/jpeg';
 export interface NewCustomerData {
   name: string;
   phone: string;
+  /** Дополнительные номера (до двух) */
+  extraPhones?: CustomerPhone[];
   photo?: string;
   address?: string;
   passportSeries?: string;
@@ -56,6 +59,7 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
   const initial = useMemo(() => ({
     name: customer?.name || '',
     phone: customer?.phone || '',
+    extraPhones: (customer?.extraPhones || []) as CustomerPhone[],
     photo: customer?.photo || '',
     address: customer?.address || '',
     birthDate: customer?.birthDate || '',
@@ -70,7 +74,11 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
   const set = <K extends keyof typeof initial>(key: K, value: (typeof initial)[K]) =>
     setForm(f => ({ ...f, [key]: value }));
 
-  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some(k => form[k] !== initial[k]);
+  // Дополнительные номера — список: сравниваем по содержимому, а не по ссылке
+  const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some(k =>
+    k === 'extraPhones' ? JSON.stringify(form[k]) !== JSON.stringify(initial[k]) : form[k] !== initial[k]);
+  const setExtra = (i: number, patch: Partial<CustomerPhone>) =>
+    setForm(f => ({ ...f, extraPhones: f.extraPhones.map((p, j) => (j === i ? { ...p, ...patch } : p)) }));
   const valid = form.name.trim().length > 0 && form.phone.trim().length > 0;
   const canSave = valid && !saving && (editing ? dirty : true);
 
@@ -104,6 +112,7 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
     const clean = {
       name: form.name.trim(),
       phone: form.phone.trim(),
+      extraPhones: cleanExtraPhones(form.extraPhones, form.phone),
       address: form.address.trim() || undefined,
       passportSeries: form.passportSeries.trim() || undefined,
       passportNumber: form.passportNumber.trim() || undefined,
@@ -186,6 +195,37 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
                    type="tel" inputMode="tel" autoComplete="off" enterKeyHint="next"
                    placeholder="+7 900 000-00-00" required />
           </SheetField>
+          {/* Дополнительные номера: жена, родственник, работа — на случай, если основной не отвечает */}
+          {form.extraPhones.map((p, i) => (
+            <div key={i} className="px-4 py-2.5">
+              <span className="block text-[12px] font-medium text-slate-500 dark:text-slate-400">Дополнительный номер {i + 1}</span>
+              <div className="mt-0.5 flex items-center gap-2">
+                <input className={`${sheetInputClass} min-w-0 flex-1`} value={p.phone}
+                       onChange={e => setExtra(i, { phone: e.target.value })}
+                       type="tel" inputMode="tel" autoComplete="off" enterKeyHint="next"
+                       placeholder="+7 900 000-00-00" aria-label={`Дополнительный номер ${i + 1}`} />
+                <select value={p.label || ''} onChange={e => setExtra(i, { label: e.target.value })}
+                        aria-label="Чей это номер"
+                        className="shrink-0 max-w-[40%] rounded-lg bg-slate-100 dark:bg-slate-700 text-[13px] font-medium text-slate-600 dark:text-slate-200 px-2 py-1.5 outline-none">
+                  <option value="">Без подписи</option>
+                  {PHONE_LABELS.map(l => <option key={l} value={l}>{l}</option>)}
+                  {p.label && !(PHONE_LABELS as readonly string[]).includes(p.label) && <option value={p.label}>{p.label}</option>}
+                </select>
+                <button type="button" aria-label="Убрать номер"
+                        onClick={() => setForm(f => ({ ...f, extraPhones: f.extraPhones.filter((_, j) => j !== i) }))}
+                        className="shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-slate-400 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-900/30 active:scale-90 transition">
+                  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"><path d="M6 6l12 12M18 6L6 18" /></svg>
+                </button>
+              </div>
+            </div>
+          ))}
+          {form.extraPhones.length < MAX_EXTRA_PHONES && (
+            <button type="button" onClick={() => set('extraPhones', [...form.extraPhones, { phone: '', label: '' }])}
+                    className="w-full px-4 py-3 text-left text-[15px] font-semibold text-indigo-600 dark:text-indigo-400 flex items-center gap-2 active:bg-slate-50 dark:active:bg-slate-700/50 transition-colors">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.6" strokeLinecap="round"><path d="M12 5v14M5 12h14" /></svg>
+              Добавить номер
+            </button>
+          )}
         </SheetSection>
 
         {/* Съёмка паспорта — перед полями: вручную набирать нужно, только когда фото нет */}

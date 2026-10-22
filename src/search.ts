@@ -114,11 +114,12 @@ export const search = (query: string, data: SearchData, options: SearchOptions =
   // ── клиенты ──────────────────────────────────────────────────────────────
   for (const customer of customers) {
     const name = lower(customer.name);
-    const phone = phoneKey(customer.phone);
+    // Основной и дополнительные номера: клиента находят по любому
+    const keys = [customer.phone, ...(customer.extraPhones || []).map(p => p.phone)].map(phoneKey).filter(Boolean);
     let rank = textRank(name, text);
-    if (rank === null && asPhone && phone.includes(asPhone)) rank = 0;
+    if (rank === null && asPhone && keys.some(k => k.includes(asPhone))) rank = 0;
     // Короткий хвост номера тоже узнаваем: «0077» — как запомнил продавец.
-    if (rank === null && queryDigits.length >= 3 && phone.endsWith(queryDigits)) rank = 1;
+    if (rank === null && queryDigits.length >= 3 && keys.some(k => k.endsWith(queryDigits))) rank = 1;
     if (rank === null) continue;
 
     const contracts = sales.filter(s => s.customerId === customer.id && !String(s.customerId).startsWith('system_'));
@@ -156,7 +157,7 @@ export const search = (query: string, data: SearchData, options: SearchOptions =
     }
     if (rank === null && asNumber !== null && number && Number(number) === asNumber) rank = 0;
     if (rank === null && asNumber !== null && money(sale.totalAmount) === asNumber) rank = 2;
-    if (rank === null && asPhone && phoneKey(customer?.phone).includes(asPhone)) rank = 2;
+    if (rank === null && asPhone && customer && [customer.phone, ...(customer.extraPhones || []).map(p => p.phone)].some(v => phoneKey(v).includes(asPhone))) rank = 2;
     if (rank === null) continue;
 
     const remaining = money(sale.remainingAmount);

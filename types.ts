@@ -326,6 +326,12 @@ export interface OAuthClientCreated {
   redirectUris: string[];
 }
 
+/** Дополнительный телефон клиента: сам номер и, по желанию, чей он («Жена», «Работа») */
+export interface CustomerPhone {
+  phone: string;
+  label?: string;
+}
+
 export interface Customer {
   id: string;
   /** Запись сделал FinUchetGPT — в журнале операций метка */
@@ -335,6 +341,8 @@ export interface Customer {
   createdAt?: string; // ISO String
   name: string;
   phone: string;
+  /** До двух дополнительных номеров (всего с основным — три). Напоминания и звонок по умолчанию — на основной */
+  extraPhones?: CustomerPhone[];
   email: string;
   address?: string; // New field
   trustScore: number; // 0-100, AI calculated

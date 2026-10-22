@@ -58,16 +58,6 @@ const BLOCK_LABELS: Record<TemplateBlock["type"], string> = {
   gap: "Отступ",
   pagebreak: "Новая страница",
 };
-const BLOCK_HINTS: Record<TemplateBlock["type"], string> = {
-  title: "Название договора по центру",
-  text: "Обычный текст, условия, примечания",
-  row: "Подпись и значение: «Покупатель: ____»",
-  list: "Пронумерованные пункты 1, 2, 3…",
-  schedule: "Платежи: дата, сумма, остаток",
-  signatures: "Линии для подписей сторон",
-  gap: "Пустое место между блоками",
-  pagebreak: "Дальше — с нового листа",
-};
 
 const newBlock = (type: TemplateBlock["type"]): TemplateBlock =>
   normalizeBlock(
@@ -383,9 +373,6 @@ function BlockForm({
           Пустых строк в бланке
           <input type="number" min={0} max={40} value={block.rows} onChange={(e) => set({ rows: Math.min(40, Math.max(0, Number(e.target.value) || 0)) })} className="w-16 rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900 px-2 py-1 text-[16px]" />
         </label>
-        <p className="text-[11px] text-slate-400 leading-snug">
-          В договоре строк столько, сколько платежей; если таблица длиннее листа, она продолжится на следующем.
-        </p>
       </div>
     );
   if (block.type === "gap")
@@ -396,7 +383,7 @@ function BlockForm({
         options={[1, 2, 3, 4, 6].map((n) => ({ id: String(n) as any, label: n === 1 ? "Малый" : n === 2 ? "Средний" : n === 3 ? "Большой" : n === 4 ? "Очень большой" : "Огромный" }))}
       />
     );
-  return <p className="text-xs text-slate-500">Всё, что ниже, печатается с нового листа.</p>;
+  return <p className="text-xs text-slate-500">С нового листа</p>;
 }
 
 const summary = (b: TemplateBlock) => {
@@ -532,7 +519,6 @@ export default function CustomContractTemplateEditor({
         {(Object.keys(BLOCK_LABELS) as TemplateBlock["type"][]).map((t) => (
           <button key={t} type="button" onClick={() => insertAt(index, t)} className="text-left rounded-xl px-3 py-2 hover:bg-indigo-50 dark:hover:bg-indigo-950/40">
             <span className="block text-sm font-semibold text-slate-800 dark:text-white">{BLOCK_LABELS[t]}</span>
-            <span className="block text-[11px] text-slate-400 leading-snug">{BLOCK_HINTS[t]}</span>
           </button>
         ))}
         <button type="button" onClick={() => setAdding(null)} className="col-span-2 text-xs text-slate-400 py-1">Отмена</button>
@@ -552,7 +538,6 @@ export default function CustomContractTemplateEditor({
   return (
     <GlassSheet
       title={initial ? "Новая версия шаблона" : "Личный шаблон"}
-      subtitle="Соберите договор из блоков или загрузите образец"
       onClose={onClose}
       action={{
         label: saving ? "Сохраняем…" : "Сохранить",
@@ -567,10 +552,7 @@ export default function CustomContractTemplateEditor({
       }
     >
       <div className="space-y-5 px-3 py-5 sm:px-5">
-        <SheetSection
-          title="Загрузить образец (по желанию)"
-          hint="ИИ посмотрит на ваш образец и соберёт такой же договор из блоков: заголовок, строки с полями, таблица графика, подписи. Дальше всё можно поправить вручную. Фото, PDF до 8 страниц или Word."
-        >
+        <SheetSection title="Образец">
           <div className="p-4 space-y-3">
             <input
               ref={input}
@@ -597,7 +579,7 @@ export default function CustomContractTemplateEditor({
                 <span className="block font-semibold text-slate-800 dark:text-white">
                   {files.length ? "Изменить файлы" : "Добавить фото или документ"}
                 </span>
-                <span className="block text-xs text-slate-500 mt-1">JPEG, PNG, WebP, PDF или Word</span>
+                <span className="block text-xs text-slate-500 mt-1">Фото, PDF или Word</span>
               </span>
             </button>
             {files.length > 0 && (
@@ -620,9 +602,7 @@ export default function CustomContractTemplateEditor({
               <>
                 <label className="flex items-start gap-2.5 text-xs leading-relaxed text-slate-500 dark:text-slate-400">
                   <input type="checkbox" checked={consent} disabled={busy} onChange={(e) => setConsent(e.target.checked)} className="mt-0.5 accent-indigo-600" />
-                  <span>
-                    Разрешаю отправить образец на распознавание ИИ (Claude через OpenRouter). Лучше загружать пустой бланк без данных покупателей. Файлы не сохраняются.
-                  </span>
+                  <span>Отправить образец на распознавание ИИ (лучше пустой бланк)</span>
                 </label>
                 <button
                   type="button"
@@ -636,15 +616,13 @@ export default function CustomContractTemplateEditor({
                       Остановить
                     </>
                   ) : (
-                    <>Собрать шаблон по образцу</>
+                    <>Распознать</>
                   )}
                 </button>
               </>
             )}
             {busy && (
-              <p role="status" className="text-xs text-slate-500">
-                ИИ читает образец и собирает блоки. Обычно это 20–40 секунд.
-              </p>
+              <p role="status" className="text-xs text-slate-500">Читаем образец, до минуты…</p>
             )}
           </div>
         </SheetSection>
@@ -656,7 +634,6 @@ export default function CustomContractTemplateEditor({
         )}
         {warnings.length > 0 && (
           <div className="rounded-xl bg-amber-50 dark:bg-amber-950/30 p-3 text-xs text-amber-800 dark:text-amber-200 space-y-1">
-            <p className="font-semibold">ИИ не уверен:</p>
             {warnings.map((w, i) => (
               <p key={i}>• {w}</p>
             ))}
@@ -707,7 +684,7 @@ export default function CustomContractTemplateEditor({
                   <div className="flex items-center gap-1 pr-1.5">
                     <button type="button" onClick={() => setOpen(open === i ? null : i)} className="flex-1 min-w-0 text-left px-3.5 py-2.5">
                       <span className="block text-[11px] font-semibold uppercase tracking-wide text-indigo-500">{BLOCK_LABELS[b.type]}</span>
-                      <span className="block text-sm text-slate-700 dark:text-slate-200 truncate">{summary(b) || BLOCK_HINTS[b.type]}</span>
+                      <span className="block text-sm text-slate-700 dark:text-slate-200 truncate">{summary(b) || "Пусто"}</span>
                     </button>
                     <button type="button" aria-label="Выше" className={iconBtn} disabled={i === 0 || busy} onClick={() => moveAt(i, -1)}><ChevronUp size={17} /></button>
                     <button type="button" aria-label="Ниже" className={iconBtn} disabled={i === blocks.length - 1 || busy} onClick={() => moveAt(i, 1)}><ChevronDown size={17} /></button>
@@ -728,9 +705,6 @@ export default function CustomContractTemplateEditor({
                 Начать с готового примера
               </button>
             )}
-            <p className="text-xs text-slate-500 px-1">
-              Нажмите на блок, чтобы изменить. Кнопка «+ поле» вставляет данные договора: ФИО, паспорт, сумму. Пустое поле на печати остаётся линией для записи от руки, заполненное — просто значением, без черты.
-            </p>
           </div>
         ) : (
           <div className="h-[65vh] rounded-xl overflow-hidden border border-slate-200 bg-slate-100">
@@ -748,9 +722,6 @@ export default function CustomContractTemplateEditor({
               Шаблон готов · {blocks.length} блоков · полей: {tokens.length}
             </p>
           )}
-          <p className="text-xs text-slate-500">
-            Перед сохранением проверьте результат в предпросмотре. Сохранение не меняет формы уже оформленных договоров.
-          </p>
         </div>
       </div>
     </GlassSheet>

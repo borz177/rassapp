@@ -185,9 +185,6 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
             <p className="font-bold text-slate-800 dark:text-white">
               Мои шаблоны
             </p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              Ваш образец с автоматическим заполнением
-            </p>
           </div>
           <span className="text-xs text-slate-400">
             {customTemplates.length} / 10
@@ -218,9 +215,9 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
                   <span className="font-bold text-slate-800 dark:text-white block truncate">
                     {t.name}
                   </span>
-                  <span className="text-xs text-slate-500">
-                    {active ? "Выбран по умолчанию" : "Личный шаблон"}
-                  </span>
+                  {active && (
+                    <span className="text-xs text-slate-500">По умолчанию</span>
+                  )}
                 </span>
                 <FileText size={20} className="text-indigo-500 shrink-0" />
               </button>
@@ -264,12 +261,12 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
             className="w-full flex justify-center items-center gap-2 rounded-2xl border-2 border-dashed border-indigo-200 dark:border-indigo-800 text-indigo-600 dark:text-indigo-400 py-4 font-semibold text-sm disabled:opacity-40 hover:bg-indigo-50 dark:hover:bg-indigo-950/30"
           >
             <Plus size={18} />
-            Добавить свой образец
+            Добавить шаблон
           </button>
         )}
         {!allowPaid && (
           <p className="text-xs text-slate-500">
-            Личные формы доступны вместе с дополнительными шаблонами договора.
+            Доступно с дополнительными шаблонами.
           </p>
         )}
         {libraryError && (

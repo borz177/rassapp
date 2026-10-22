@@ -777,8 +777,15 @@ ${customer.name}!
                             </div>
                         )}
                         <div>
-                            <label className="text-xs text-slate-400 uppercase">Телефон</label>
+                            <label className="text-xs text-slate-400 uppercase">{(customer.extraPhones?.length || 0) > 0 ? 'Телефоны' : 'Телефон'}</label>
                             <p className="text-lg font-medium text-slate-800 dark:text-white">{customer.phone}</p>
+                            {/* Дополнительные номера — с подписью, по нажатию набираются */}
+                            {(customer.extraPhones || []).map((p, i) => (
+                                <p key={i} className="mt-0.5 flex items-baseline gap-2 text-base font-medium text-slate-700 dark:text-slate-200">
+                                    <a href={`tel:${String(p.phone).replace(/[^\d+]/g, '')}`} className="active:opacity-60">{p.phone}</a>
+                                    {p.label && <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">{p.label}</span>}
+                                </p>
+                            ))}
                         </div>
                         {customer.address && (
                             <div>

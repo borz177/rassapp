@@ -59,7 +59,8 @@ const LazyFallback: React.FC = () => (
 );
 import { reconcileSalePaymentPlan } from './src/salePlan';
 import { regeneratePaymentPlan, parseInputDate } from './src/saleMath';
-import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
+import { cleanExtraPhones } from './src/customerPhones';
+import { Customer, CustomerPhone, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { warmProductImages } from './src/productImageCache';
 import { watchWindowFocus } from './src/windowFocus';
@@ -1306,9 +1307,9 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v42';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v43';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
-  // Сейчас в окне — FinUchetGPT: агент есть только у владельца аккаунта
+  // Сейчас в окне — шаблоны договоров и FinUchetGPT: оба только у владельца аккаунта
   if (user.role !== 'manager' && user.role !== 'admin') return;
 
   let seen = false;
@@ -3917,6 +3918,7 @@ ${e?.message || ''}`);
 const handleAddCustomer = async (data: {
   name: string;
   phone: string;
+  extraPhones?: CustomerPhone[];
   photo?: string;
   address?: string;
   passportSeries?: string;
@@ -3945,6 +3947,7 @@ const handleAddCustomer = async (data: {
     // Обязательные поля
     name: data.name.trim(),
     phone: data.phone.trim(),
+    extraPhones: cleanExtraPhones(data.extraPhones, data.phone),
 
     // Опциональные поля
     email: '',
@@ -6429,37 +6432,24 @@ if (!user && !showSplash) {
       <div className="px-6 pt-7 pb-6">
         <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400">Новое</p>
         <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          FinUchetGPT — ИИ-помощник в учёте
+          Обновление
         </h3>
-        <p className="mt-1.5 text-[14px] text-slate-500 dark:text-slate-400">20 запросов бесплатно, чтобы попробовать</p>
 
         {/* Список обновлений. Говорим о том, что человек заметит сам, и его
             словами: результат, а не устройство. */}
         <div className="mt-6 space-y-5">
           {[
             {
-              tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
-              icon: <><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3z" /><path d="M19 10v2a7 7 0 0 1-14 0v-2" /><path d="M12 19v3" /></>,
-              title: 'Скажите или напишите',
-              text: '«Прими 5 000 от Ахмадова», «кто просрочил?» — агент найдёт клиента и сделает сам.',
-            },
-            {
               tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-              icon: <><rect x="3" y="5" width="18" height="14" rx="2" /><circle cx="9" cy="12" r="2.5" /><path d="M14 10h4M14 14h4" /></>,
-              title: 'Договор по фото паспорта',
-              text: 'Пришлите фото — клиент и договор заполнятся, останется проверить.',
+              icon: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
+              title: 'Свои шаблоны договоров',
+              text: 'Загрузите образец — ИИ соберёт такой же, или составьте сами. Настройки → Печатная форма.',
             },
             {
-              tone: 'bg-amber-50 text-amber-600 dark:bg-amber-500/15 dark:text-amber-300',
-              icon: <><circle cx="12" cy="12" r="4" /><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4" /></>,
-              title: 'Утренняя сводка',
-              text: 'Кто платит сегодня и кто просрочил — в удобный вам час.',
-            },
-            {
-              tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" /><path d="m9 12 2 2 4-4" /></>,
-              title: 'Последнее слово за вами',
-              text: 'Записи ждут «Подтвердить», любую можно отменить.',
+              tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
+              icon: <><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></>,
+              title: 'Агент стал умнее',
+              text: 'Несколько фото сразу (клиент и поручитель), перенос платежа, журнал действий.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
@@ -6482,11 +6472,11 @@ if (!user && !showSplash) {
           <>
             <button onClick={() => { setShowTemplateUpdateModal(false); openAssistant(); }}
                     className="mt-7 w-full h-12 bg-violet-600 text-white text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
-              Попробовать
+              Открыть агента
             </button>
             <button onClick={() => setShowTemplateUpdateModal(false)}
                     className="mt-2 w-full h-11 text-[15px] font-semibold text-slate-500 dark:text-slate-400 active:opacity-60">
-              Позже
+              Закрыть
             </button>
           </>
         ) : (
