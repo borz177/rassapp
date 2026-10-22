@@ -282,9 +282,10 @@ const TaskModal: React.FC<{
         </div>
       </Sheet>
 
-      {/* Подтверждение удаления — поверх окна задачи */}
+      {/* Подтверждение удаления — поверх окна задачи. Окно задачи лежит на слое 9999,
+          поэтому подтверждению нужен слой выше: иначе оно оказывалось ПОЗАДИ окна */}
       {confirmDelete && task && onDelete && (
-        <Sheet variant="dialog" onClose={() => setConfirmDelete(false)} className="p-5 text-center">
+        <Sheet variant="dialog" zIndex={10000} onClose={() => setConfirmDelete(false)} className="p-5 text-center">
             <div className="w-12 h-12 mx-auto mb-3 rounded-2xl bg-rose-50 dark:bg-rose-900/30 flex items-center justify-center text-rose-600 dark:text-rose-400">
               {ICONS.Delete}
             </div>
