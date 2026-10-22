@@ -398,12 +398,15 @@ const summary = (b: TemplateBlock) => {
 
 export default function CustomContractTemplateEditor({
   initial,
+  initialWarnings,
   companyName,
   sellerPhone,
   onSave,
   onClose,
 }: {
   initial?: CustomContractTemplate;
+  /** Предупреждения распознавания, если шаблон пришёл уже собранным (от агента) */
+  initialWarnings?: string[];
   companyName: string;
   sellerPhone: string;
   onSave: (template: CustomContractTemplate) => void | Promise<void>;
@@ -426,7 +429,7 @@ export default function CustomContractTemplateEditor({
   const [busy, setBusy] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-  const [warnings, setWarnings] = useState<string[]>([]);
+  const [warnings, setWarnings] = useState<string[]>(initialWarnings || []);
   const [tab, setTab] = useState<"edit" | "preview">("edit");
   const [open, setOpen] = useState<number | null>(null);
   const [adding, setAdding] = useState<number | null>(null);

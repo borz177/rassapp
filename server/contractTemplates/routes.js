@@ -2,17 +2,15 @@ const multer = require("multer");
 const crypto = require("crypto");
 const { detectType } = require("./sources");
 const { recognizeLayout } = require("./layoutRecognize");
-const { dailyLimit, UNLIMITED } = require("./model");
+const { dailyLimit } = require("./model");
+const { createUsage } = require("./usage");
 
 const registerContractTemplateRoutes = (
   app,
   { pool, auth, checkFeatureAccess, recognize = recognizeLayout },
 ) => {
-  const ready =
-    pool.query(`CREATE TABLE IF NOT EXISTS contract_template_import_usage (
-    user_id TEXT NOT NULL, day DATE NOT NULL, attempts INTEGER NOT NULL DEFAULT 0,
-    PRIMARY KEY(user_id,day))`);
-  ready.catch(() => {});
+  const usage = createUsage(pool);
+  const ready = usage.ready;
   const running = new Set();
   const upload = multer({
     storage: multer.memoryStorage(),
@@ -74,15 +72,8 @@ const registerContractTemplateRoutes = (
           .status(413)
           .json({ msg: "Общий размер файлов — не больше 16 МБ." });
       req.files.forEach(detectType);
-      await ready;
-      const daily = await pool.query(
-        `INSERT INTO contract_template_import_usage(user_id,day,attempts)
-        VALUES($1,(now() AT TIME ZONE 'Europe/Moscow')::date,1)
-        ON CONFLICT(user_id,day) DO UPDATE SET attempts=contract_template_import_usage.attempts+1
-        WHERE contract_template_import_usage.attempts < $2 RETURNING attempts`,
-        [req.user.id, dailyLimit() || UNLIMITED],
-      );
-      if (!daily.rows.length)
+      const daily = await usage.take(req.user.id);
+      if (!daily.ok)
         return res.status(429).json({
           msg: `Сегодня исчерпан лимит распознавания (${dailyLimit()} в день). Можно продолжить вручную или повторить завтра.`,
         });
@@ -95,7 +86,7 @@ const registerContractTemplateRoutes = (
         ...result,
         id: "ct_" + crypto.randomBytes(16).toString("hex"),
         attemptsLeft: dailyLimit()
-          ? dailyLimit() - daily.rows[0].attempts
+          ? dailyLimit() - daily.attempts
           : null,
       });
     } catch (e) {

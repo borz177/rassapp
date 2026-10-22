@@ -75,6 +75,8 @@ interface Props {
   onOpenTariffs: () => void;
   /** Подключить WhatsApp — карточка под ответом «WhatsApp не подключён» */
   onOpenWhatsApp?: () => void;
+  /** Шаблон договора из фото (карточка template_draft) → конструктор */
+  onOpenTemplate?: (template: any, warnings?: string[]) => void;
 }
 
 /**
@@ -295,7 +297,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onReschedule }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onOpenTemplate, onReschedule }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -1322,6 +1324,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onCancelReschedule={() => patchAction(m.id, a.id, { state: 'cancelled' })}
                   onCancelDelete={() => patchAction(m.id, a.id, { state: 'cancelled' })}
                   onOpenView={() => onOpenWhatsApp?.()}
+                  onOpenTemplate={() => { if (a.kind !== 'template_draft') return; onOpenTemplate?.(a.template, a.warnings); patchAction(m.id, a.id, { state: 'done' }); }}
                 />
               ))}
             </div>

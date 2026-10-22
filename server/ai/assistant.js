@@ -397,7 +397,7 @@ const CLAIMS_DONE_RE = /черновик[а-яё ]{0,12} (?<!не )готов|д
 // Подтвердить» без кнопки, и так три раза). Такой ответ не показываем, а даём модели
 // второй шанс — уже с инструментами
 const PROMISE_RE = /нажм(ите|и)[^.\n]{0,20}«?Подтвердить|(^|[^а-яё])(записываю|провожу|принимаю|оформляю|отправляю|добавляю|удаляю|создаю|вношу)([^а-яё]|$)|(кнопк|карточк)[а-яё]*[^.\n]{0,40}(подтвер|ниже|под (этим|ответом|сообщением))/i;
-const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'delete_contract', 'reschedule']);
+const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'delete_contract', 'reschedule', 'template_draft']);
 // Агент отказал: не умеет или отправил делать в приложении — это просьба о новом
 // умении, а не ошибка. Пишем отдельно (cant_do), чтобы видеть, что добавлять
 const CANT_DO_RE = /(не умею|не могу|недоступн|не поддержива|нет (такой |этой )?возможност|пока нельзя|нельзя (сделать|изменить|удалить)|(делается|правят|правится|меняется|меняют|исправ[а-яё]+) в (самом )?приложени|в приложении вручную|не входит в мои)/i;
@@ -414,7 +414,23 @@ const STEP_LABELS = {
   remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…', delete_contract: 'Смотрю договор…', set_guarantor: 'Записываю поручителя…', change_payment_date: 'Считаю новый график…',
   delete_payment: 'Готовлю удаление платежа…', update_expense: 'Исправляю расход…', delete_expense: 'Готовлю удаление расхода…',
   create_payment: 'Провожу платёж…', create_expense: 'Записываю расход…', create_income: 'Записываю приход…',
-  create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…',
+  create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…', create_contract_template: 'Читаю образец, до минуты…',
+};
+
+// Образец договора с фото → личный шаблон из блоков (тем же распознаванием, что
+// «Настройки → Печатная форма → Добавить шаблон»). Сервер ничего не сохраняет:
+// человек открывает готовый шаблон в конструкторе, проверяет и сохраняет сам.
+const CREATE_TEMPLATE_TOOL = {
+  name: 'create_contract_template',
+  description: [
+    'Сделать личный шаблон договора из фото образца в этом сообщении (все фото сообщения — страницы одного образца, по порядку).',
+    'Вызывай, когда просят «сделай из этого шаблон договора», «загрузи мой бланк как шаблон» и к сообщению приложены фото бланка.',
+    'Шаблон не сохраняется сам: под ответом кнопка откроет его в конструкторе, человек проверит и сохранит. Фото паспортов и чеков — не образец.',
+    'Нет фото — не вызывай: попроси прислать фото бланка (лучше пустого) или объясни, что шаблон собирают в Настройки → Печатная форма → Добавить шаблон.',
+  ].join(' '),
+  input: {
+    name: { type: 'string', description: 'Название шаблона, если человек его назвал' },
+  },
 };
 
 // Ожидаемые платежи по графику за период — среди инструментов API такого нет
@@ -492,7 +508,7 @@ const compact = (v) => {
   return v;
 };
 
-function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null }) {
+function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null, checkFeatureAccess = null }) {
   const basePool = pool;
   const localTransaction = new (require('node:async_hooks').AsyncLocalStorage)();
   pool = new Proxy(basePool, { get(target, prop) {
@@ -1273,6 +1289,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null 
     'ПОХОЖИЕ ИМЕНА. Инструмент вернул suggestions (точного совпадения нет) — не проси написать заново, а сразу ask_choice «Возможно, вы имели в виду:» с этими вариантами (label — ФИО и последние 4 цифры телефона, ref — id) и последним вариантом «Другой — напишу сам». Так же со счетами и инвесторами из list_accounts / list_investors: названное не совпало дословно, но есть похожее — варианты кнопками.',
     'ПРОШЛЫЕ КАРТОЧКИ. Пометка [Ждёт подтверждения: …] в истории — карточка прошлого ответа: она могла устареть или потеряться. Человек снова просит то же (платёж, расход, договор) — вызови инструмент заново, будет новая карточка под этим ответом; не отвечай «уже подготовлено, нажмите Подтвердить» без вызова.',
     'УТОЧНЕНИЯ. Не хватает важного — один короткий вопрос. Выбор из известных вариантов (договоры клиента, похожие клиенты, счета, неясная сумма) — не текстом, а ask_choice; ответ на кнопку придёт с id в квадратных скобках — используй его, не ищи заново.',
+    'ШАБЛОН ДОГОВОРА. «Сделай из этого шаблон договора» + фото бланка — create_contract_template (не prepare_contract: это не договор клиента). Шаблон соберётся за ~30 секунд и откроется кнопкой в конструкторе; скажи об этом одной фразой: предупреждения распознавания приложение покажет в самой карточке, не перечисляй их и не рисуй кнопку текстом. Без фото — попроси прислать фото бланка (лучше пустого, без данных клиентов). Лимит распознавания — 5 в день, он общий с настройками.',
     'Если в «Контексте» подписка приложения истекла — только показывай данные и отвечай: ничего не записывай, не оформляй, не отправляй, скажи, что это недоступно, не предлагай продлить или купить.',
   ].join('\n');
 
@@ -1496,6 +1513,37 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null 
    * Перенос даты первого платежа: сервер проверяет договор и дату, карточку
    * «Перенести» выполняет приложение (regeneratePaymentPlan, как правка в форме)
    */
+  // Фото образца → шаблон (карточка template_draft). Лимит и права — как у экрана «Мои шаблоны»
+  const prepareContractTemplate = async (userId, imgs, args, actions, signal) => {
+    if (!imgs.length) return 'Фото образца нет в этом сообщении. Попроси прислать фото бланка (лучше пустого) вместе с просьбой.';
+    if (actions.some(a => a.kind === 'template_draft')) return 'Шаблон в этом сообщении уже собран — повторять не нужно.';
+    const owner = (await pool.query('SELECT role FROM users WHERE id=$1', [userId])).rows[0];
+    if (!owner || !['manager', 'admin'].includes(owner.role)) return 'Личные шаблоны договоров создаёт только владелец аккаунта. Скажи об этом.';
+    const access = checkFeatureAccess ? await checkFeatureAccess(userId, 'contractTemplates').catch(() => null) : null;
+    if (!access?.allowed) return `Личные шаблоны недоступны: ${access?.msg || 'не подходит тариф'}. Скажи об этом одной фразой, без призывов купить.`;
+    const files = imgs.map(url => ({ buffer: Buffer.from(String(url).split(',')[1] || '', 'base64') }));
+    const { createUsage } = require('../contractTemplates/usage');
+    const { dailyLimit } = require('../contractTemplates/model');
+    const { recognizeLayout } = require('../contractTemplates/layoutRecognize');
+    const usage = (prepareContractTemplate.usage ||= createUsage(pool));
+    const taken = await usage.take(userId);
+    if (!taken.ok) return `Сегодня исчерпан лимит распознавания образцов (${dailyLimit()} в день). Скажи, что можно продолжить завтра или собрать шаблон вручную: Настройки → Печатная форма → Добавить шаблон.`;
+    try {
+      const r = await recognizeLayout(files, signal);
+      const name = String(args.name || '').trim().slice(0, 80) || r.name;
+      actions.push({
+        id: newActionId(), kind: 'template_draft', title: 'Открыть в конструкторе',
+        summary: `Шаблон «${name}»: ${r.layout.blocks.length} блоков`,
+        template: { name, fontFamily: r.fontFamily, fontSize: r.fontSize, layout: r.layout },
+        warnings: r.warnings,
+      });
+      return `Шаблон «${name}» собран (${r.layout.blocks.length} блоков), под ответом кнопка «Открыть в конструкторе»: он ещё не сохранён, человек проверит и сохранит сам.${r.warnings.length ? ` Предупреждения показаны в карточке — не повторяй их.` : ''}`;
+    } catch (e) {
+      if (signal?.aborted) throw e;
+      return `Шаблон не собран: ${/[А-Яа-я]/.test(e.message || '') ? e.message : 'не удалось разобрать образец'} Скажи об этом и предложи прислать фото почётче или собрать вручную.`;
+    }
+  };
+
   const prepareReschedule = async (userId, args, actions) => {
     const sale = await loadItem(userId, 'sales', args.contractId);
     if (!sale || String(sale.customerId || '').startsWith('system_')) return 'Договор не найден — найди его через customer_overview.';
@@ -1749,7 +1797,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null 
       ...historyMessages(history),
       { role: 'user', content },
     ];
-    const tools = [...TOOLS.map(toOpenAiTool), ...RECONCILIATION_TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL),
+    const tools = [...TOOLS.map(toOpenAiTool), ...RECONCILIATION_TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(CREATE_TEMPLATE_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL),
       ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL,
         DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL, SET_GUARANTOR_TOOL, CHANGE_PAYMENT_DATE_TOOL].map(toOpenAiTool)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
@@ -1911,8 +1959,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null 
           result = await customerOverview(user.id, args);
         } else if (name === 'due_payments') {
           result = await duePayments(user.id, args);
-        } else if (readOnly && ['prepare_contract', 'send_document', ...CUSTOM_WRITE_NAMES].includes(name)) {
+        } else if (readOnly && ['prepare_contract', 'create_contract_template', 'send_document', ...CUSTOM_WRITE_NAMES].includes(name)) {
           result = READ_ONLY_TEXT;
+        } else if (name === 'create_contract_template') {
+          result = await prepareContractTemplate(user.id, imgs, args, actions, signal);
         } else if (name === 'prepare_contract') {
           // customerId, которого нет в базе (модель выдумала или взяла не тот), дал бы
           // форму без клиента. Есть данные нового клиента — берём их, иначе спрашиваем

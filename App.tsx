@@ -41,6 +41,7 @@ import PagePush from './components/transitions/PagePush';
 const AdminPanel = lazy(() => import('./components/AdminPanel'));
 const AdminSupportPanel = lazy(() => import('./components/AdminSupportPanel'));
 const Integrations = lazy(() => import('./components/Integrations'));
+const CustomContractTemplateEditor = lazy(() => import('./components/CustomContractTemplateEditor'));
 const Calculator = lazy(() => import('./components/Calculator'));
 const AIAssistant = lazy(() => import('./components/AIAssistant'));
 const AITariffs = lazy(() => import('./components/AITariffs'));
@@ -60,7 +61,7 @@ const LazyFallback: React.FC = () => (
 import { reconcileSalePaymentPlan } from './src/salePlan';
 import { regeneratePaymentPlan, parseInputDate } from './src/saleMath';
 import { cleanExtraPhones } from './src/customerPhones';
-import { Customer, CustomerPhone, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
+import { Customer, CustomerPhone, CustomContractTemplate, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { warmProductImages } from './src/productImageCache';
 import { watchWindowFocus } from './src/windowFocus';
@@ -77,7 +78,7 @@ import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
 import { expandFundedSales, saleTouchesAccount, primaryPurchaseView, coFundExpenses, isCoFundExpenseOf, fundingPieces } from './src/funding';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal, formatRuPhone, getSellerPhone} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -4506,6 +4507,14 @@ const handleQuickAddCustomer = async (data: {
     setCurrentView('CUSTOMER_DETAILS');
   };
 
+  // Шаблон договора, собранный агентом по фото: открываем в конструкторе поверх чата
+  const [assistantTemplate, setAssistantTemplate] = useState<{ template: any; warnings: string[] } | null>(null);
+  const saveAssistantTemplate = async (template: CustomContractTemplate) => {
+    const list = [...(appSettings.customContractTemplates || []), template];
+    await handleUpdateSettings({ ...appSettings, customContractTemplates: list,
+      legacyContractTemplate: appSettings.contractTemplate === 'CLASSIC' ? 'CLASSIC' : appSettings.contractTemplate === 'MODERN' ? 'MODERN' : appSettings.legacyContractTemplate || 'MODERN' }, true);
+  };
+
   const openContractFromAssistant = async (draft: any) => {
     const customerId = await resolveDraftCustomer(draft);
     attachGuarantorPhoto(customerId, draft);
@@ -5488,6 +5497,7 @@ if (!user && !showSplash) {
                         onOpenTariffs={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('AI_TARIFFS'); }}
                         onOpenWhatsApp={() => { setPreviousView('AI_ASSISTANT'); setCurrentView('INTEGRATIONS'); }}
                         onOpenContract={openContractFromAssistant}
+                        onOpenTemplate={(template: any, warnings?: string[]) => setAssistantTemplate({ template, warnings: warnings || [] })}
                         onCreateContract={createContractFromAssistant}
                         onSendDocument={sendDocumentFromAssistant}
                         onDeleteContract={deleteContractFromAssistant}
@@ -5500,6 +5510,18 @@ if (!user && !showSplash) {
                     </Suspense>
                   )}
                 </PagePush>
+              )}
+              {assistantTemplate && (
+                <Suspense fallback={null}>
+                  <CustomContractTemplateEditor
+                    initial={assistantTemplate.template}
+                    initialWarnings={assistantTemplate.warnings}
+                    companyName={appSettings.companyName || ''}
+                    sellerPhone={formatRuPhone(getSellerPhone(user, appSettings))}
+                    onClose={() => setAssistantTemplate(null)}
+                    onSave={saveAssistantTemplate}
+                  />
+                </Suspense>
               )}
               {currentView === 'AI_TARIFFS' && (
                 <PagePush onClose={() => setCurrentView(previousView === 'AI_TARIFFS' ? 'AI_ASSISTANT' : previousView)} showBackButton>

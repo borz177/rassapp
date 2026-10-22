@@ -39,6 +39,8 @@ export type AIAction =
       state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string }
   /** Кнопка перехода в раздел приложения (например, подключить WhatsApp) */
   | { id: string; kind: 'open_view'; title: string; summary?: string; view: 'whatsapp' }
+  /** Шаблон договора, собранный из фото образца: кнопка открывает его в конструкторе (не сохранён) */
+  | { id: string; kind: 'template_draft'; title: string; summary: string; template: any; warnings?: string[]; state?: 'done' }
   | { id: string; kind: 'send_doc'; title: string; summary: string; doc: 'contract' | 'receipt'; saleId: string; auto?: boolean;
       state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string };
 
@@ -78,6 +80,8 @@ interface Props {
   onCancelDelete: () => void;
   /** Открыть раздел приложения (карточка open_view) */
   onOpenView: () => void;
+  /** Открыть собранный шаблон в конструкторе (карточка template_draft) */
+  onOpenTemplate: () => void;
   /** Перенести график (карточка reschedule) / отказаться */
   onConfirmReschedule: () => void;
   onCancelReschedule: () => void;
@@ -241,6 +245,17 @@ const AIActionCard: React.FC<Props> = (p) => {
             {!a.state && <button onClick={p.onCancelReschedule} className={secondary}>Отмена</button>}
           </div>
         )}
+      </div>
+    );
+  }
+
+  if (a.kind === 'template_draft') {
+    return (
+      <div className={shell}>
+        <p className="text-xs font-bold uppercase tracking-wide text-violet-600 dark:text-violet-300">Шаблон договора</p>
+        <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100 flex items-start gap-2"><FileText size={18} className="mt-0.5 shrink-0 text-violet-500" />{a.summary}</p>
+        {!!a.warnings?.length && <ul className="mt-2 text-xs text-slate-500 list-disc pl-5 space-y-0.5">{a.warnings.map((w, i) => <li key={i}>{w}</li>)}</ul>}
+        <button onClick={p.onOpenTemplate} className={`${primary} mt-3 w-full`}>{a.state === 'done' ? 'Открыть ещё раз' : a.title}</button>
       </div>
     );
   }

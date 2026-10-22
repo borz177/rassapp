@@ -4498,7 +4498,7 @@ const saveAgentDocument = async (dataUrl, label) => {
   await fs.promises.writeFile(path.join(uploadDir, filename), c.buffer);
   return { fileUrl: `/uploads/documents/${filename}`, fileSize: c.buffer.length, mimeType: c.mimetype || 'image/jpeg' };
 };
-const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument });
+const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument, checkFeatureAccess });
 // Идущие запросы к агенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
 const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
