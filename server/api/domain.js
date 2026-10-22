@@ -9,7 +9,7 @@
 // договор раскладывается на доли счетов. Модуль подгружается при старте; до
 // загрузки (доли секунды) и при сбое — договоры как есть, без долей.
 let expandFundedSalesImpl = (sales) => sales;
-import(require('url').pathToFileURL(require('path').join(__dirname, '..', '..', 'shared', 'funding.js')).href)
+const ready = import(require('url').pathToFileURL(require('path').join(__dirname, '..', '..', 'shared', 'funding.js')).href)
   .then(m => { expandFundedSalesImpl = m.expandFundedSales; })
   .catch(e => console.error('❌ shared/funding.js:', e.message));
 const expandFundedSales = (sales) => expandFundedSalesImpl(sales);
@@ -91,4 +91,4 @@ const accountBalances = (accounts, sales, expenses, retailSales = []) => {
   return balances;
 };
 
-module.exports = { expandFundedSales, saleTouchesAccount, moneyIn, collected, profitMargin, moneyInProfit, receivedProfit, overdueAmount, accountBalances };
+module.exports = { ready, expandFundedSales, saleTouchesAccount, moneyIn, collected, profitMargin, moneyInProfit, receivedProfit, overdueAmount, accountBalances };

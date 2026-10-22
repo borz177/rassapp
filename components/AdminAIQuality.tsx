@@ -65,11 +65,7 @@ const AdminAIQuality: React.FC = () => {
             <div className="text-[11px] text-slate-400 mt-0.5">Собирает сервер сам — пользователи ничего не делают</div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="flex items-center gap-2 text-xs font-semibold text-slate-600 dark:text-slate-300 cursor-pointer">
-              <input type="checkbox" checked={!!q?.autoApply} disabled={busy === 'auto'}
-                     onChange={e => act('auto', () => api.adminAiAutoApply(e.target.checked), e.target.checked ? 'Выводы применяются автоматически' : 'Выводы ждут решения')} />
-              Применять выводы автоматически
-            </label>
+            <span className="text-xs text-slate-500">Новые правила — после проверки и вашего решения</span>
             <button disabled={busy === 'review'} onClick={() => act('review', async () => {
               const r = await api.adminAiReview();
               toast.success(r.cases ? `Разобрано случаев: ${r.cases}, новых выводов: ${r.proposed}` : 'Новых случаев нет');
@@ -105,7 +101,7 @@ const AdminAIQuality: React.FC = () => {
               {l.why && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{l.why}{l.cases ? ` · случаев: ${l.cases}` : ''}</p>}
               <div className="mt-2 flex gap-2">
                 <button disabled={!!busy} onClick={() => act(`a${l.id}`, () => api.adminAiLesson(l.id, 'apply'), 'Вывод применён — агент учитывает его в ответах')}
-                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 disabled:opacity-50">Применить</button>
+                        className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 disabled:opacity-50">Проверить и применить</button>
                 <button disabled={!!busy} onClick={() => act(`r${l.id}`, () => api.adminAiLesson(l.id, 'reject'))}
                         className="px-3 py-1.5 rounded-lg text-xs font-semibold text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 disabled:opacity-50">Отклонить</button>
               </div>
@@ -128,6 +124,14 @@ const AdminAIQuality: React.FC = () => {
           </div>
         ))}
       </div>
+
+      {!!q?.versions?.length && <details className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
+        <summary className="cursor-pointer text-sm font-semibold">История изменений правил</summary>
+        <p className="mt-2 text-xs text-slate-500">Ненужное действующее правило можно отключить кнопкой «Убрать».</p>
+        {q.versions.map(v => <p key={v.id} className="mt-2 text-xs text-slate-500">
+          {when(v.created_at)} · Правило №{v.lesson_id}: {({apply:'применено после проверки',reject:'отклонено',remove:'отключено'} as Record<string,string>)[v.action] || v.action}
+        </p>)}
+      </details>}
 
       {/* Не ошибки, а просьбы о новых умениях: в разбор не идут, по ним решают, что добавить агенту */}
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-2">

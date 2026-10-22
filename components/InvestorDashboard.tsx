@@ -5,6 +5,7 @@ import { Sale, Expense, Account, Investor, AppSettings, Customer } from '../type
 import { ICONS } from '../constants';
 import { moneyInProfit, saleProfitMargin, formatCurrency, formatDate, getAccountShares, addMonthsClamped, paymentProfitShares, expectedProfitShares, investorProfitOutflows } from '../src/utils';
 import Contracts from './Contracts';
+import { collectionAmount } from '../shared/collections.js';
 
 interface InvestorDashboardProps {
   sales: Sale[];
@@ -106,10 +107,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
         totalBuyCost += Number(sale.buyPrice) || 0;
       }
 
-      totalCollected += Number(sale.downPayment) || 0;
-      sale.paymentPlan
-        .filter(p => p.isPaid && p.isRealPayment !== false)
-        .forEach(p => totalCollected += Number(p.amount) || 0);
+      totalCollected += collectionAmount(sale, appSettings.collectedWithoutDownPayment);
 
       totalOutstanding += Number(sale.remainingAmount) || 0;
     });
@@ -117,7 +115,7 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
     const workingCapital = balance + totalOutstanding;
 
     return { totalCollected, totalOutstanding, totalSalesAmount, totalBuyCost, workingCapital };
-  }, [investorSales, balance]);
+  }, [investorSales, balance, appSettings.collectedWithoutDownPayment]);
   // 🔹 Что уменьшает прибыль к выводу — та же функция, что в карточке инвестора у
   // менеджера: выплаты этому инвестору и его доля в общих расходах «из прибыли».
   // В общем пуле expenses содержат выводы ВСЕХ участников — функция берёт только его.
@@ -323,6 +321,7 @@ const expectedTotalProfit = useMemo(() => {
                   {formatCurrency(stats.totalCollected, appSettings.showCents)}
                   <span className="text-xs sm:text-sm text-slate-400 ml-1">₽</span>
                 </p>
+                {appSettings.collectedWithoutDownPayment && <p className="mt-1 text-[10px] sm:text-[11px] text-slate-400">без первых взносов</p>}
               </div>
 
               {/* 2. Долг клиентов */}

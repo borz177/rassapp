@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
-import { Sale, RetailSale } from '../types';
+import { Sale, RetailSale, Investor } from '../types';
+import { collectionPayments, isCustomerSale } from '../shared/collections.js';
 import { formatCurrency } from '../src/utils';
 import { useTheme } from '../src/theme/ThemeContext';
 
@@ -26,6 +27,8 @@ interface Props {
    */
   retailSales?: RetailSale[];
   showCents?: boolean;
+  collectedWithoutDownPayment?: boolean;
+  investors?: Investor[];
 }
 
 const MONTHS = ['янв', 'фев', 'мар', 'апр', 'май', 'июн', 'июл', 'авг', 'сен', 'окт', 'ноя', 'дек'];
@@ -66,7 +69,7 @@ const ThemeSwitch: React.FC = () => {
   );
 };
 
-const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales, showCents }) => {
+const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales, showCents, collectedWithoutDownPayment = false, investors }) => {
   const retail = !!retailSales;
   const [range, setRange] = useState<6 | 12>(12);
   const now = new Date();
@@ -87,20 +90,20 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
       const k = key(d);
       if (buckets.has(k)) buckets.set(k, (buckets.get(k) || 0) + amount);
     };
+    const investorIds = new Set((investors || []).map(i => i.id));
     if (retailSales) {
       // Продажа считается в день чека на всю сумму — и за наличные, и в долг:
       // это выручка магазина, а не деньги в кассе
       for (const r of retailSales) if (!r.isCancelled) add(r.date, Number(r.total) || 0);
     } else for (const s of sales) {
-      if (String(s.customerId || '').startsWith('system_')) continue;
-      add(s.startDate, Number(s.downPayment) || 0);
-      for (const p of s.paymentPlan || []) {
-        if (p.isPaid && p.isRealPayment !== false) add(p.date, Number(p.amount) || 0);
+      if (!isCustomerSale(s, investorIds)) continue;
+      for (const p of collectionPayments(s, collectedWithoutDownPayment)) {
+        add(p.date, p.amount);
       }
     }
     return months.map(d => ({ label: MONTHS[d.getMonth()], value: buckets.get(key(d)) || 0, full: d }));
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [sales, retailSales, range]);
+  }, [sales, retailSales, range, collectedWithoutDownPayment, investors]);
 
   const thisMonth = data[data.length - 1]?.value || 0;
   const prevMonth = data[data.length - 2]?.value || 0;
@@ -143,6 +146,7 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
               )}
             </div>
             <p className="mt-1 text-[13px] text-slate-400">За период: {formatCurrency(total, showCents)} ₽</p>
+            {!retail && collectedWithoutDownPayment && <p className="mt-1 text-[12px] text-slate-400">без первых взносов</p>}
           </div>
           <div className="flex p-1 rounded-full bg-slate-100 dark:bg-white/5 shrink-0">
             {RANGES.map(r => (

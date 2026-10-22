@@ -13,11 +13,13 @@ import { api } from '../services/api';
 import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
 import { contractScheduleRows } from '../src/contractSchedule';
 import { checkDuplicateSale, isLegacyPaidSlot, regeneratePaymentPlan, markupPrice, parseInputDate, toInputDate } from '../src/saleMath';
-import { buildContractHtml, buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX, type ContractData } from '../src/contractTemplates';
-import { withHtml2canvasTextFix, contractDocumentTitle, contractFileName, setContractPdfProperties } from '../src/contractPdf';
+import { buildContractHtml, resolveContractTemplate, type ContractData } from '../src/contractTemplates';
+import { contractDocumentTitle, contractFileName, contractPdfBlob } from '../src/contractPdf';
+import { templateForSale, TEMPLATE_FIELDS, layoutOf, layoutTokens } from '../shared/contractTemplate.js';
+import type { ContractTemplateId } from '../src/contractTemplates';
 import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, haptic, type SendStage } from './feedback';
-import { openPrintPreview } from './PrintPreview';
+import { openPrintPreview, openPdfPrintPreview } from './PrintPreview';
 import { isIOSApp } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
 import { useKeyboardAvoidance } from '../src/keyboard';
@@ -118,9 +120,11 @@ const NewSale: React.FC<NewSaleProps> = ({
   const [createdSale, setCreatedSale] = useState<any>(null);
   const [isPriceManual, setIsPriceManual] = useState(false);
 
-  const contractRef = useRef<HTMLDivElement>(null);
   const mainAccount = accounts.find(a => a.isMain || a.type === 'MAIN');
    const appSettings = propAppSettings || getAppSettings();
+   const defaultContractTemplate = initialData.id
+     ? templateForSale(initialData, appSettings, contractTemplatesAllowed).id
+     : resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed);
 
   const isSubscriptionExpired = useMemo(() => {
     if (!user?.subscription) return false;
@@ -743,6 +747,10 @@ if (mode === 'CASH') {
         updatedAt: new Date().toISOString()
       };
 
+      const chosenForm=templateForSale({...fullSaleObject,contractTemplateId:formData.contractTemplateId || initialData.contractTemplateId || defaultContractTemplate},appSettings,contractTemplatesAllowed);
+      fullSaleObject.contractTemplateId=chosenForm.id;
+      if(chosenForm.snapshot)fullSaleObject.contractTemplateSnapshot=chosenForm.snapshot;
+
       // 🔥 ОТПРАВКА НА СЕРВЕР
       const savedSale = await onSubmit(fullSaleObject);
 
@@ -781,19 +789,6 @@ if (mode === 'CASH') {
     setFormData(prev => ({ ...prev, mode: newMode }));
   };
 
-  // === renderContractContent (Скрытый рендер для PDF) ===
-  /**
-   * Скрытый лист договора, с которого снимается PDF для WhatsApp.
-   *
-   * Раньше здесь была отдельная React-разметка — третья копия договора после
-   * печати с этого экрана и печати из списка. Копии жили своей жизнью: правка
-   * формулировки в печати не доходила до PDF, и клиент получал не тот документ,
-   * который ему потом давали подписать. Теперь лист собирается тем же шаблоном,
-   * что и печать, и подчиняется тому же выбору в настройках.
-   *
-   * Ширина — ровно лист A4 в точках экрана: html2canvas снимает пиксели, и без
-   * фиксированной ширины пропорции PDF зависели бы от размера окна.
-   */
   /**
    * Данные договора — одни для PDF в WhatsApp и для печати.
    *
@@ -803,6 +798,15 @@ if (mode === 'CASH') {
    * печатается линией под запись, а не маской.
    */
   const contractDataFor = (sale: any): ContractData => ({
+    saleId: sale.id,
+    customTemplate: templateForSale(sale,appSettings,contractTemplatesAllowed).snapshot,
+    customerBirthDate: selectedCustomer?.birthDate,
+    customerPhone2: formatRuPhone(sale.customerPhone2),
+    guarantorPhone2: formatRuPhone(sale.guarantorPhone2),
+    guarantorPassportSeries: sale.guarantorPassportSeries,
+    guarantorPassportNumber: sale.guarantorPassportNumber,
+    guarantorPassportIssuedBy: sale.guarantorPassportIssuedBy,
+    guarantorAddress: sale.guarantorAddress,
     companyName: appSettings?.companyName || 'Компания',
     sellerPhone: formatRuPhone(getSellerPhone(user, appSettings)),
     contractNumber: contractNumberFor(sales, sale),
@@ -829,99 +833,11 @@ if (mode === 'CASH') {
     customerName: selectedCustomer?.name,
   });
 
-  const renderContractContent = () => {
-    if (!createdSale || !selectedCustomer) return null;
-    const { html, styles } = buildContractFragment(
-      resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
-      contractDataFor(createdSale)
-    );
 
-    return (
-      <div
-        ref={contractRef}
-        className="contract-sheet"
-        style={{
-          width: `${CONTRACT_SHEET_WIDTH_PX}px`,
-          position: 'absolute',
-          left: '-9999px',
-          top: '-9999px',
-          visibility: 'hidden',
-        }}
-      >
-        <style>{styles}</style>
-        <div dangerouslySetInnerHTML={{ __html: html }} />
-      </div>
-    );
-  };
-
-  // === generatePDFBlob using html2canvas ===
-  // 🔹 jsPDF/html2canvas грузятся динамически — они нужны только для этого экспорта
-  // (WhatsApp-отправка PDF), не для основного создания договора, и не должны попадать
-  // в главный бандл.
   const generatePDFBlob = async (): Promise<Blob> => {
-    if (!contractRef.current) throw new Error("Contract element not found");
-    let jsPDF: any, html2canvas: any;
-    try {
-      [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
-        import('jspdf'),
-        import('html2canvas')
-      ]);
-    } catch (importErr: any) {
-      // Старый кеш PWA после деплоя — сервер вернул HTML вместо JS-чанка
-      if (importErr?.message?.includes('MIME') || importErr?.message?.includes('text/html')) {
-        const err: any = new Error('APP_UPDATE_REQUIRED');
-        err.isUpdateRequired = true;
-        throw err;
-      }
-      throw importErr;
-    }
-    const element = contractRef.current;
-    const originalStyle = {
-      display: element.style.display,
-      position: element.style.position,
-      left: element.style.left,
-      top: element.style.top,
-      visibility: element.style.visibility,
-      zIndex: element.style.zIndex
-    };
-
-    // Лист держим ЗА ПРЕДЕЛАМИ экрана. Раньше здесь было left: 0 и z-index: 9999 —
-    // договор выкладывался поверх интерфейса и висел 300 мс ожидания плюс время
-    // отрисовки, из-за чего при сохранении на секунду выскакивал полный лист.
-    // Видимым он быть обязан (visibility: hidden html2canvas снял бы пустотой),
-    // но положение за краем экрана на снимок не влияет — проверено.
-    element.style.display = 'block';
-    element.style.position = 'fixed';
-    element.style.left = '-10000px';
-    element.style.top = '0';
-    element.style.visibility = 'visible';
-    element.style.zIndex = '-1';
-    element.style.background = 'white';
-
-    try {
-      await new Promise(resolve => setTimeout(resolve, 300));
-      // Через правку замера шрифта: без неё текст в PDF съезжает вниз со строк
-      const canvas = await withHtml2canvasTextFix<HTMLCanvasElement>(() => html2canvas(element, {
-        scale: 2,
-        useCORS: true,
-        logging: false,
-        backgroundColor: '#ffffff'
-      }));
-      const imgData = canvas.toDataURL('image/jpeg', 0.8);
-      const pdf = new jsPDF('p', 'mm', 'a4');
-      const pdfWidth = pdf.internal.pageSize.getWidth();
-      const pdfHeight = (canvas.height * pdfWidth) / canvas.width;
-      pdf.addImage(imgData, 'JPEG', 0, 0, pdfWidth, pdfHeight);
-      if (createdSale) setContractPdfProperties(pdf, contractTitleFor(createdSale), appSettings?.companyName);
-      return pdf.output('blob');
-    } finally {
-      element.style.display = originalStyle.display;
-      element.style.position = originalStyle.position;
-      element.style.left = originalStyle.left;
-      element.style.top = originalStyle.top;
-      element.style.visibility = originalStyle.visibility;
-      element.style.zIndex = originalStyle.zIndex;
-    }
+    if (!createdSale) throw new Error('Сначала сохраните договор.');
+    const chosen=templateForSale(createdSale,appSettings,contractTemplatesAllowed);
+    return contractPdfBlob(chosen.id as ContractTemplateId,contractDataFor(createdSale),contractTitleFor(createdSale));
   };
 
   const handleSendContract = async () => {
@@ -1018,12 +934,12 @@ if (mode === 'CASH') {
     }
   };
 
-  const handlePrintContract = () => {
+  const handlePrintContract = async () => {
     if (!createdSale) return;
     // Разметка обеих форм живёт в src/contractTemplates.ts: договор печатают из
     // нескольких мест, и копии вёрстки разошлись бы на первой же правке.
     const htmlContent = buildContractHtml(
-      resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
+      templateForSale(createdSale,appSettings,contractTemplatesAllowed).id as ContractTemplateId,
       contractDataFor(createdSale)
     );
 
@@ -1031,10 +947,15 @@ if (mode === 'CASH') {
     openPrintPreview(htmlContent, { title: contractTitleFor(createdSale) });
   };
 
+  const hasFixedPrintTemplate = !!(initialData.contractTemplateId || initialData.contractTemplateSnapshot);
+  const selectedPrintTemplate = initialData.contractTemplateSnapshot || appSettings?.customContractTemplates?.find(t=>`CUSTOM:${t.id}` === (formData.contractTemplateId || defaultContractTemplate));
+  const extraPrintFields = [
+    'customerPhone2', 'guarantorPhone2', 'guarantorPassportSeries',
+    'guarantorPassportNumber', 'guarantorPassportIssuedBy', 'guarantorAddress',
+  ].filter(key => selectedPrintTemplate && layoutTokens(layoutOf(selectedPrintTemplate)).includes(key));
+
   return (
     <div ref={formRootRef} className="space-y-4 animate-fade-in pb-20">
-      {/* === СКРЫТЫЙ КОНТРАКТ ДЛЯ PDF === */}
-      {renderContractContent()}
 
       <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
         <TopBarBack onClick={onClose} />
@@ -1297,6 +1218,22 @@ if (mode === 'CASH') {
           ))}
         </div>
 
+        {mode === 'INSTALLMENT' && (
+          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
+            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Печатная форма договора</label>
+            <select aria-label="Печатная форма договора" className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none disabled:opacity-60"
+              disabled={hasFixedPrintTemplate}
+              value={formData.contractTemplateId || initialData.contractTemplateId || defaultContractTemplate}
+              onChange={e=>setFormData(prev=>({...prev,contractTemplateId:e.target.value}))}>
+              <option value="MODERN">Договор 1</option>
+              <option value="CLASSIC" disabled={!contractTemplatesAllowed}>Договор 2</option>
+              {(appSettings?.customContractTemplates || []).map(t=><option key={t.id} value={`CUSTOM:${t.id}`} disabled={!contractTemplatesAllowed}>{t.name}</option>)}
+              {initialData.contractTemplateSnapshot && !(appSettings?.customContractTemplates || []).some(t=>t.id===initialData.contractTemplateSnapshot.id) && <option value={initialData.contractTemplateId}>{initialData.contractTemplateSnapshot.name} · сохранённая версия</option>}
+            </select>
+            <p className="mt-1.5 text-[11px] text-slate-400">{hasFixedPrintTemplate?'Форма закреплена за оформленным договором.':'Личные образцы добавляются в настройках. Выбранная версия сохранится вместе с договором.'}</p>
+          </div>
+        )}
+
         {showSupplierField && (
           <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
             <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Поставщик (Партнер)</label>
@@ -1524,6 +1461,29 @@ if (mode === 'CASH') {
                 value={formData.guarantorPhone}
                 onChange={e => setFormData(prev => ({ ...prev, guarantorPhone: e.target.value }))}/></div>
           </div>
+          {extraPrintFields.length > 0 && (
+            <details className="pt-3 border-t border-slate-100 dark:border-slate-700">
+              <summary className="cursor-pointer text-sm font-medium text-indigo-600 dark:text-indigo-300">
+                Дополнительные данные для вашего бланка
+              </summary>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 mt-3">
+                {extraPrintFields.map(key => (
+                  <label key={key} className="block text-xs text-slate-500">
+                    {TEMPLATE_FIELDS[key]}
+                    <input
+                      aria-label={TEMPLATE_FIELDS[key]}
+                      type={key.includes('Phone') ? 'tel' : 'text'}
+                      maxLength={500}
+                      autoComplete="off"
+                      value={formData[key] || ''}
+                      onChange={e => setFormData(prev => ({ ...prev, [key]: e.target.value }))}
+                      className="mt-1 w-full p-3 border rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white border-slate-300 dark:border-slate-600"
+                    />
+                  </label>
+                ))}
+              </div>
+            </details>
+          )}
         </div>
 
         <div

@@ -12,7 +12,10 @@ test('PostgreSQL queue: deduplication, serialization, ownership and delivery ack
   let pool;
   try {
     await admin.query(`CREATE SCHEMA ${schema}`);
-    pool = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
+    // OAuth хранит TIMESTAMP без часового пояса: тестовая БД и Node должны
+    // интерпретировать время одинаково (на production оба работают в UTC).
+    const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    pool = new Pool({ connectionString: url, options: `-c search_path=${schema} -c timezone=${timezone}` });
     await ensureTables(pool);
     const store = createStore(pool);
     const job = { userId: 'one', connectionId: 'connection', key: 'session', messageId: 1, question: 'Касса' };
@@ -48,6 +51,12 @@ test('PostgreSQL queue: deduplication, serialization, ownership and delivery ack
     const savedEnv = [process.env.ALICE_SKILL_ID, process.env.ALICE_OAUTH_CLIENT_ID, process.env.ALICE_ALLOWED_USER_IDS];
     process.env.ALICE_SKILL_ID = 'test-skill'; process.env.ALICE_OAUTH_CLIENT_ID = client.clientId; process.env.ALICE_ALLOWED_USER_IDS = '';
     const app = express(); app.use(express.json());
+    const { registerOAuthRoutes } = require('../api/oauthRoutes');
+    registerOAuthRoutes(app, {
+      pool, auth: (req,res,next) => { req.user = { id: 'voice-owner', role: 'manager' }; next(); },
+      adminAuth: (req,res) => res.sendStatus(403),
+      getEffectivePlan: () => 'BUSINESS', planLimits: { BUSINESS: { api: true } }, logAdminAction: () => {},
+    });
     let modelCalls = 0;
     const channel = registerAliceRoutes(app, {
       pool, auth: (req,res,next) => { req.user = { id: req.get('x-test-user') || 'voice-owner' }; next(); },
@@ -63,6 +72,25 @@ test('PostgreSQL queue: deduplication, serialization, ownership and delivery ack
       request: { type: 'SimpleUtterance', command: text } });
     const post = async b => (await fetch(`${base}/api/alice/webhook`, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(b) })).json();
     try {
+      // Формат Яндекса и стандартный OAuth сохраняют оба разрешения до выдачи токена.
+      for (const scope of ['read&write', 'read write']) {
+        const request = { client_id: client.clientId, redirect_uri: 'https://social.yandex.net/broker/redirect', scope, state: 'oauth-test' };
+        const info = await (await fetch(`${base}/api/oauth/authorize-info?${new URLSearchParams(request)}`)).json();
+        assert.deepEqual(info.scopes.map(s => s.key), ['read', 'write']);
+        const approved = await (await fetch(`${base}/api/oauth/authorize`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(request),
+        })).json();
+        const callback = new URL(approved.redirectTo);
+        assert.equal(callback.searchParams.get('state'), 'oauth-test');
+        const issued = await (await fetch(`${base}/api/oauth/token`, {
+          method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({ client_id: client.clientId, client_secret: client.clientSecret,
+            grant_type: 'authorization_code', code: callback.searchParams.get('code'), redirect_uri: request.redirect_uri }),
+        })).json();
+        assert.equal(issued.error, undefined, issued.error_description);
+        assert.equal(issued.scope, 'read write');
+        assert.deepEqual((await oauth.findByAccessToken(pool, issued.access_token)).scopes, ['read', 'write']);
+      }
       const bad = payload('касса'); bad.session.user.access_token = 'fu_at_invalid';
       assert.ok((await post(bad)).start_account_linking);
       const accepted = await post(payload('касса')); assert.match(accepted.response.text, /Запрос принят/);

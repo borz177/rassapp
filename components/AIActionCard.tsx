@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Check, Download, FileSpreadsheet, FileText, MessageCircle, Receipt, RotateCcw, Send, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
+import { CalendarClock, Check, Download, FileSpreadsheet, FileText, MessageCircle, Receipt, RotateCcw, Send, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
 
 /**
  * Карточки действий FinUchetGPT под ответом агента. Поведение (запросы,
@@ -33,6 +33,9 @@ export type AIAction =
       state?: 'busy' | 'done' | 'error'; result?: string }
   /** Удалить договор — по нажатию, всё делает приложение (handleDeleteSale) */
   | { id: string; kind: 'delete_contract'; title: string; summary: string; saleId: string; note?: string;
+      state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string }
+  /** Перенести график (дату первого платежа) — по нажатию, пересчитывает приложение */
+  | { id: string; kind: 'reschedule'; title: string; summary: string; saleId: string; date: string; note?: string;
       state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string }
   /** Кнопка перехода в раздел приложения (например, подключить WhatsApp) */
   | { id: string; kind: 'open_view'; title: string; summary?: string; view: 'whatsapp' }
@@ -75,6 +78,9 @@ interface Props {
   onCancelDelete: () => void;
   /** Открыть раздел приложения (карточка open_view) */
   onOpenView: () => void;
+  /** Перенести график (карточка reschedule) / отказаться */
+  onConfirmReschedule: () => void;
+  onCancelReschedule: () => void;
 }
 
 /** Пояснение, почему в «Авто» всё же просят подтвердить */
@@ -212,6 +218,27 @@ const AIActionCard: React.FC<Props> = (p) => {
               <Trash2 size={16} /> {a.state === 'busy' ? 'Удаляем…' : 'Удалить'}
             </button>
             {!a.state && <button onClick={p.onCancelDelete} className={secondary}>Отмена</button>}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (a.kind === 'reschedule') {
+    return (
+      <div className={shell}>
+        {title}
+        <p className="mt-1 text-[15px] text-slate-800 dark:text-slate-100 flex items-start gap-2"><CalendarClock size={18} className="mt-0.5 shrink-0 text-violet-500" />{a.summary}</p>
+        {!a.state && a.note && <p className={mutedLine}>{a.note}</p>}
+        {a.state === 'done' && <p className={okLine}>✓ {a.result}</p>}
+        {a.state === 'cancelled' && <p className={mutedLine}>Не перенесено</p>}
+        {a.state === 'error' && <p className={errLine}>{a.result}</p>}
+        {(!a.state || a.state === 'busy') && (
+          <div className="mt-3 flex gap-2">
+            <button onClick={p.onConfirmReschedule} disabled={a.state === 'busy'} className={primary}>
+              <CalendarClock size={16} /> {a.state === 'busy' ? 'Переносим…' : 'Перенести'}
+            </button>
+            {!a.state && <button onClick={p.onCancelReschedule} className={secondary}>Отмена</button>}
           </div>
         )}
       </div>

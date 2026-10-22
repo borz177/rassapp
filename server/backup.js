@@ -138,6 +138,7 @@ module.exports = ({ pool, transporter, auth, getEffectivePlan, generateCode }) =
 
         const data = { customers: [], sales: [], accounts: [], investors: [] };
         for (const row of res.rows) {
+            if (row.type === 'settings') { data.settings = row.data; continue; }
             if (!data[row.type]) continue;
             // Менеджер видит только своих инвесторов — та же проверка, что в /api/data.
             if (row.type === 'investors' && row.data.userId !== undefined && row.data.userId !== userId) continue;

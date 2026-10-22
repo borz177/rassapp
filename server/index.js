@@ -962,6 +962,7 @@ app.use(express.json({
     // а этот разборщик пытается читать как JSON любое тело и отвечает 400 ещё до
     // маршрута. Тело этого адреса разбирает сам маршрут — см. api/oauthRoutes.js.
     if (req.url.startsWith('/api/oauth/token')) return false;
+    if (req.url.startsWith('/api/contract-templates/recognize')) return false;
     return true;
   }
 }));
@@ -3599,9 +3600,17 @@ app.post('/api/data/:type', auth, async (req, res) => {
     // и отказ из-за одного поля запер бы человеку весь экран настроек после
     // понижения тарифа. Выбор молча вернётся к «Договору 1» — ровно это и
     // покажет интерфейс.
-    if (type === 'settings' && itemData.contractTemplate && itemData.contractTemplate !== 'MODERN') {
+    if (type === 'settings') {
       const tplAccess = await checkFeatureAccess(targetUserId, 'contractTemplates');
+      try { await require('./contractTemplates/settings').validateCustomSettings(pool, req.user, targetUserId, itemData, tplAccess.allowed); }
+      catch (e) { return res.status(e.status || 400).json({msg:e.message}); }
       if (!tplAccess.allowed) itemData.contractTemplate = 'MODERN';
+    }
+    if (type === 'sales') {
+      try {
+        const allowed = (await checkFeatureAccess(targetUserId, 'contractTemplates')).allowed;
+        await require('./contractTemplates/settings').stampSaleTemplate(pool, targetUserId, itemData, allowed);
+      } catch (e) { return res.status(e.status || 400).json({msg:e.message}); }
     }
 
     // 🔒 Модуль "Магазин и склад" — только тариф BUSINESS_PRO. Раньше проверялось
@@ -4166,6 +4175,7 @@ app.delete('/api/user/account', auth, async (req, res) => {
     await client.query('DELETE FROM oauth_tokens WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM backup_settings WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM subscription_reminders WHERE user_id = ANY($1)', [allIds]);
+    await client.query('DELETE FROM contract_template_import_usage WHERE user_id = ANY($1)', [allIds]);
     await client.query('DELETE FROM users WHERE id = ANY($1)', [allIds]);
 
     await client.query('COMMIT');
@@ -4329,6 +4339,9 @@ app.use('/uploads/products', express.static(productImageDir, {
   setHeaders: (res) => res.setHeader('Cross-Origin-Resource-Policy', 'cross-origin'),
 }));
 
+// Личные образцы договоров обрабатываются отдельно от паспорта и чата агента.
+require('./contractTemplates/routes').registerContractTemplateRoutes(app, { pool, auth, checkFeatureAccess });
+
 /**
  * Поля паспорта из фотографии.
  *
@@ -4474,7 +4487,18 @@ const extendAiSubscription = async (userId, aiPlan, months) => {
 };
 const AI_TRIAL_REQUESTS = 20;
 const { createAssistant } = require('./ai/assistant');
-const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT });
+// Фото от агента (паспорт поручителя) — в документы, как загрузка из карточки клиента
+const saveAgentDocument = async (dataUrl, label) => {
+  const m = String(dataUrl || '').match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+  if (!m) return null;
+  const c = await compressImage(Buffer.from(m[2], 'base64'), m[1], 1920, 80);
+  const ext = /^\.(jpe?g|png|webp)$/i.test(c.ext || '') ? c.ext : '.jpg';
+  const safe = String(label || 'document').replace(/[^a-zA-Z0-9а-яА-ЯёЁ\-_]/g, '-').slice(0, 50);
+  const filename = `${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${safe}${ext}`;
+  await fs.promises.writeFile(path.join(uploadDir, filename), c.buffer);
+  return { fileUrl: `/uploads/documents/${filename}`, fileSize: c.buffer.length, mimeType: c.mimetype || 'image/jpeg' };
+};
+const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument });
 // Идущие запросы к агенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
 const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
@@ -4487,13 +4511,15 @@ const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe
 //  morningDigest — утренняя сводка уведомлением (server/ai/digest.js);
 //  digestHour — в котором часу по Москве (6–22, по умолчанию 9);
 //  digestWeekdays — только по будням.
-const AI_SETTINGS_DEFAULTS = { autoLimit: null, morningDigest: false, digestHour: 9, digestWeekdays: false };
+const AI_SETTINGS_DEFAULTS = { preferences: '', anomalyAlerts: false, autoLimit: null, morningDigest: false, digestHour: 9, digestWeekdays: false };
 const DIGEST_STAT_KEYS = ['dueCount', 'overdueCount', 'remindable', 'muted'];
 const normalizeAiSettings = (raw) => {
   const s = { ...AI_SETTINGS_DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
   const limit = s.autoLimit === null || s.autoLimit === '' ? null : Math.round(Number(s.autoLimit));
   return {
     autoLimit: limit === null || !Number.isFinite(limit) || limit < 0 ? null : Math.min(limit, 100_000_000),
+    preferences: String(s.preferences || '').slice(0, 500),
+    anomalyAlerts: s.anomalyAlerts === true,
     morningDigest: s.morningDigest === true,
     digestHour: Number.isInteger(Number(s.digestHour)) && Number(s.digestHour) >= 6 && Number(s.digestHour) <= 22 ? Number(s.digestHour) : 9,
     digestWeekdays: s.digestWeekdays === true,
@@ -4524,6 +4550,7 @@ const aiAssistantState = async (userId) => {
   const trialLeft = Math.max(0, AI_TRIAL_REQUESTS - (u.ai_trial_used || 0));
   return {
     allowedRole: aiAgentAllowed(u.role),
+    sharedHistory: true,
     aliceEnabled: !!(process.env.ALICE_SKILL_ID && process.env.ALICE_OAUTH_CLIENT_ID),
     consent: !!u.ai_consent_at,
     plan: sub ? { key: sub.plan, name: plan?.name || sub.plan, expiresAt: sub.expiresAt, monthly: plan?.monthly || 0 } : null,
@@ -4560,6 +4587,8 @@ app.put('/api/ai/assistant/settings', auth, async (req, res) => {
     }
     const next = normalizeAiSettings({
       ...normalizeAiSettings(cur),
+      ...('preferences' in body ? { preferences: String(body.preferences || '').slice(0,500) } : {}),
+      ...('anomalyAlerts' in body ? { anomalyAlerts: body.anomalyAlerts === true } : {}),
       ...('autoLimit' in body ? { autoLimit: body.autoLimit } : {}),
       ...('morningDigest' in body ? { morningDigest: body.morningDigest === true } : {}),
       ...('digestHour' in body ? { digestHour: body.digestHour } : {}),
@@ -4586,14 +4615,79 @@ app.post('/api/ai/assistant/consent', auth, async (req, res) => {
   } catch (e) { res.status(500).json({ msg: 'Не удалось сохранить' }); }
 });
 
+const aiConversations = require('./ai/conversations').createConversations(pool);
+const aiClientActions = require('./ai/clientActions').createClientActions(pool);
 const runAssistantTurn = require('./ai/runAssistant').createAssistantRunner({
+  conversations: aiConversations,
   pool, assistant: aiAssistant, state: aiAssistantState,
   subscriptionState: getSubscriptionState, month: aiMonth,
+});
+
+app.post('/api/ai/assistant/client-actions/:id/claim', auth, async (req,res) => {
+  try {
+    if (req.user.role !== 'admin' && (await getSubscriptionState(req.user.id)).expired) return res.status(403).json({msg:'Изменения недоступны.'});
+    res.json(await aiClientActions.claim(req.user.id,req.params.id));
+  } catch (e) { res.status(409).json({msg:e.message}); }
+});
+app.post('/api/ai/assistant/client-actions/:id/finish', auth, async (req,res) => {
+  try { res.json({ result:await aiClientActions.finish(req.user.id,req.params.id,req.body) }); }
+  catch { res.status(503).json({msg:'Не удалось подтвердить результат. Проверьте запись в приложении.'}); }
+});
+app.get('/api/ai/assistant/history', auth, async (req, res) => {
+  try {
+    const history = await aiConversations.list(req.user.id);
+    const ledger = new Map((await aiAssistant.actionStore.list(req.user.id)).map(a => [a.id, a]));
+    const clientLedger = new Map((await aiClientActions.list(req.user.id)).map(a => [a.id,a]));
+    for (const message of history.messages) for (const action of message.actions || []) {
+      const client = clientLedger.get(action.id);
+      if (client) {
+        if (client.kind === 'contract_form') Object.assign(action,{state:client.status==='done'?'saved':'failed',result:client.result?.text || 'Операция уже начата. Проверьте результат.',saved:client.status==='done'?client.result:undefined});
+        else Object.assign(action,{state:client.status==='done'?'done':'error',result:client.result?.text || 'Операция уже начата. Проверьте результат.'});
+      }
+      const entry = ledger.get(action.id);
+      if (!entry) continue;
+      if (entry.status === 'done') Object.assign(action, { state: 'done', result: entry.result?.text, undoable: entry.result?.undoable });
+      else if (entry.status === 'undone') Object.assign(action, { state: 'undone', undoResult: entry.undo_result?.text, undoable: false });
+      else if (['failed','stale','uncertain','cancelled'].includes(entry.status)) Object.assign(action, { state: 'error', result: entry.result?.text || 'Действие недоступно. Проверьте журнал операций.', undoable: false });
+    }
+    res.setHeader('Cache-Control', 'no-store'); res.json(history);
+  } catch { res.status(503).json({ msg: 'Не удалось загрузить общую историю.' }); }
+});
+app.post('/api/ai/assistant/history/new', auth, async (req, res) => {
+  try { await aiConversations.clear(req.user.id, true); res.json({ ok: true }); }
+  catch (e) { res.status(409).json({ msg: e.message }); }
+});
+app.delete('/api/ai/assistant/history', auth, async (req, res) => {
+  try { await aiConversations.clear(req.user.id); res.json({ ok: true }); }
+  catch (e) { res.status(409).json({ msg: e.message }); }
+});
+app.post('/api/ai/assistant/statement/preview', auth, async (req,res) => {
+  try {
+    const service = require('./ai/reconciliation');
+    const rows = await service.createReconciliation(pool).load(req.user.id);
+    const transactions = require('./ai/statement').parseStatement(req.body?.csv);
+    res.json({ rows: require('./ai/receiptMatch').matchTransactions(service.group(rows),transactions), written: false });
+  } catch (e) { res.status(400).json({ msg: e.message }); }
+});
+app.get('/api/ai/assistant/journal', auth, async (req, res) => {
+  try {
+    res.setHeader('Cache-Control','no-store');
+    const [serverActions, clientActions] = await Promise.all([aiAssistant.actionStore.list(req.user.id), aiClientActions.list(req.user.id)]);
+    const actions = [...serverActions, ...clientActions.map(a => ({
+      id: a.id, status: a.status, result: a.result, created_at: a.created_at,
+      source: 'application', summary: a.payload?.summary || ({ contract_form: 'Создание договора', send_doc: 'Отправка документа', delete_contract: 'Удаление договора', reschedule: 'Изменение графика' })[a.kind],
+    }))].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0,100);
+    res.json({ actions });
+  }
+  catch { res.status(503).json({ msg: 'Не удалось загрузить журнал.' }); }
 });
 
 app.post('/api/ai/assistant/message', auth, async (req, res) => {
   const { text, history, image, audio, mode, requestId, stream } = req.body || {};
   if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
+  // Несколько фото в сообщении (паспорт клиента и поручителя) — до трёх; старые сборки шлют одно image
+  const images = Array.isArray(req.body?.images) ? req.body.images.slice(0, 3) : null;
+  if (images && images.some(x => !/^data:image\/(jpeg|png|webp);base64,/.test(String(x)) || String(x).length > 8_000_000)) return res.status(400).json({ msg: 'Фото не распознано' });
   if (audio && !(audio.data && /^(mp3|wav|ogg|webm|m4a|aac|flac)$/.test(audio.format))) return res.status(400).json({ msg: 'Голос не распознан' });
   const stop = new AbortController();
   const reqKey = requestId ? `${req.user.id}:${String(requestId).slice(0, 64)}` : null;
@@ -4611,7 +4705,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       streaming = true;
     }
     const result = await runAssistantTurn({
-      userId: req.user.id, text, history, image, audio, mode, verifiedState: st, signal: stop.signal,
+      userId: req.user.id, requestId, sharedHistory: req.body?.sharedHistory === true, text, history, image: images?.[0] || image, images, audio, mode, verifiedState: st, signal: stop.signal,
       onStep: streaming ? label => send({ step: label }) : null,
       onStream: streaming ? ev => send(ev) : null,
       silent: req.get('x-ai-eval') === '1',
@@ -4745,7 +4839,7 @@ app.post('/api/admin/ai/quality/review', adminAuth, async (req, res) => {
   catch (e) { console.error('admin ai review:', e.message); res.status(500).json({ msg: 'Разбор не получился — попробуйте позже.' }); }
 });
 app.post('/api/admin/ai/lessons/:id/:action', adminAuth, async (req, res) => {
-  try { await aiAssistant.quality.decide(Number(req.params.id), req.params.action); res.json({ ok: true }); }
+  try { await aiAssistant.quality.decide(Number(req.params.id), req.params.action, req.user?.id); res.json({ ok: true }); }
   catch (e) { res.status(400).json({ msg: e.message }); }
 });
 app.put('/api/admin/ai/quality/settings', adminAuth, async (req, res) => {
@@ -4769,9 +4863,32 @@ app.post('/api/ai/assistant/actions/:id/undo', auth, async (req, res) => {
   } catch (e) { console.error('AI undo error:', e.message); res.status(500).json({ ok: false, text: 'Не удалось отменить — попробуйте ещё раз.' }); }
 });
 
-app.post('/api/ai/assistant/actions/:id/cancel', auth, (req, res) => {
-  aiAssistant.cancelAction(req.user.id, req.params.id);
-  res.json({ ok: true });
+// Фото паспорта поручителя из черновика договора — к клиенту в документы (категория «Поручитель»).
+// Клиента приложение знает, когда открывает форму или оформляет договор агентом
+app.post('/api/ai/assistant/guarantor-photo', auth, async (req, res) => {
+  try {
+    const { customerId, image, name } = req.body || {};
+    if (!/^data:image\/(jpeg|png|webp);base64,/.test(String(image || '')) || String(image).length > 8_000_000) return res.status(400).json({ msg: 'Фото не распознано' });
+    const userId = getTargetUserId(req.user);
+    const c = (await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'customers' AND id = $2`, [userId, String(customerId || '')])).rows[0]?.data;
+    if (!c) return res.status(404).json({ msg: 'Клиент не найден' });
+    const who = String(name || '').trim().slice(0, 120);
+    const file = await saveAgentDocument(image, `Паспорт поручителя ${who}`);
+    if (!file) return res.status(400).json({ msg: 'Фото не распознано' });
+    const doc = { id: `doc_${Date.now()}_${crypto.randomUUID().slice(0, 5)}`, name: who ? `Паспорт поручителя — ${who}` : 'Паспорт поручителя', category: 'guarantor',
+      fileUrl: file.fileUrl, fileType: 'image', mimeType: file.mimeType, fileSize: file.fileSize, uploadedAt: new Date().toISOString() };
+    await pool.query(`UPDATE data_items SET data = jsonb_set(data, '{documents}', COALESCE(data->'documents', '[]'::jsonb) || $1::jsonb), updated_at = NOW()
+                       WHERE user_id = $2 AND type = 'customers' AND id = $3`, [JSON.stringify([doc]), userId, String(customerId)]);
+    res.json({ ok: true, document: doc });
+  } catch (e) {
+    console.error('AI guarantor photo:', e.message);
+    res.status(500).json({ msg: 'Не удалось сохранить фото' });
+  }
+});
+
+app.post('/api/ai/assistant/actions/:id/cancel', auth, async (req, res) => {
+  try { await aiAssistant.cancelAction(req.user.id, req.params.id); res.json({ ok: true }); }
+  catch { res.status(503).json({ msg: 'Не удалось отменить действие.' }); }
 });
 
 app.post('/api/ai/passport', auth, async (req, res) => {
@@ -7904,6 +8021,7 @@ const { requestId: apiRequestId } = require('./api/http');
 const { makeApiKeyAuth, perMinuteLimiter, perDayLimiter, authFailureLimiter } = require('./api/auth');
 const { makeIdempotency, makeRequestLog, cleanupApiTables } = require('./api/middleware');
 const { createApiV1Router } = require('./api/v1');
+const atomicApiWrites = require('./api/atomicWrites').createAtomicWrites(pool);
 const { openApiSpec } = require('./api/openapi');
 
 // Описание API открыто без ключа: по нему генерируют клиентов и смотрят,
@@ -7921,8 +8039,8 @@ app.use(
   makeApiKeyAuth({ pool, getEffectivePlan, planLimits: PLAN_LIMITS, verifyAgentToken: (raw) => aiAssistant.verifyAgentToken(raw) }),
   perMinuteLimiter,
   perDayLimiter,
-  makeIdempotency(pool),
-  createApiV1Router({ pool, checkContractLimit, planLimits: PLAN_LIMITS })
+  atomicApiWrites.middleware,
+  createApiV1Router({ pool: atomicApiWrites.db, checkContractLimit, planLimits: PLAN_LIMITS, checkFeatureAccess })
 );
 
 // Вход «Через FinUchet» для помощников: страница согласия и обмен токенов.
@@ -8247,6 +8365,7 @@ backupModule.startScheduler();
 // 📧 Письма о конце подписки со ссылкой на оплату (см. subscription-reminders.js)
 require('./subscription-reminders')({ pool, sendEmail }).start();
 // Утренняя сводка FinUchetGPT (настройки агента → «Утренняя сводка»)
+require('./ai/monitor').createMonitor({ pool, createNotification, allowed: aiAgentAllowed }).start();
 require('./ai/digest')({ pool, createNotification, aiTrialRequests: AI_TRIAL_REQUESTS, aiPlans: AI_PLANS }).start();
 
 // 🔹 Очистка старых конфигов (запускается раз в сутки)

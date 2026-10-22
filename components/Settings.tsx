@@ -27,7 +27,7 @@ interface SettingsProps {
   contractTemplatesAllowed?: boolean;
   /** Тариф позволяет закуп с нескольких счетов («Бизнес» и выше) */
   coFundingAllowed?: boolean;
-  onUpdateSettings: (settings: AppSettings) => void;
+  onUpdateSettings: (settings: AppSettings, persistFirst?: boolean) => void | Promise<void>;
   onNavigate: (view: ViewState) => void;
   onSettingsChanged?: () => void;
   currentUserId?: string;
@@ -631,7 +631,7 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
           <div className="flex items-center justify-between gap-3 mt-5 pt-5 border-t border-slate-100 dark:border-slate-700">
               <div>
                   <p className="font-medium text-slate-700 dark:text-slate-300">«Собрано» без первых взносов</p>
-                  <p className="text-sm text-slate-500 dark:text-slate-400">На главной в «Собрано» — только платежи клиентов по графику. Выключено — вместе с первыми взносами</p>
+                  <p className="text-sm text-slate-500 dark:text-slate-400">В «Собрано», отчётах, графиках и сводках — платежи без первых взносов по рассрочкам. Касса, долг и прибыль учитывают взносы полностью</p>
               </div>
               <label className="relative inline-flex items-center cursor-pointer">
                   <input
@@ -877,7 +877,12 @@ const Settings: React.FC<SettingsProps> = ({ appSettings, shopAllowed = false, c
             value={appSettings.contractTemplate || 'MODERN'}
             companyName={appSettings.companyName || ''}
             sellerPhone={formatRuPhone(getSellerPhone(user, appSettings))}
-            onChange={id => onUpdateSettings({ ...appSettings, contractTemplate: id })}
+            customTemplates={appSettings.customContractTemplates || []}
+            canManage={user?.role === 'manager' || user?.role === 'admin'}
+            onCustomTemplatesChange={(customContractTemplates, contractTemplate) => onUpdateSettings({...appSettings,customContractTemplates,contractTemplate,
+              legacyContractTemplate:appSettings.contractTemplate==='CLASSIC'?'CLASSIC':appSettings.contractTemplate==='MODERN'?'MODERN':appSettings.legacyContractTemplate || 'MODERN'},true)}
+            onChange={id => onUpdateSettings({ ...appSettings, contractTemplate: id,
+              legacyContractTemplate:appSettings.contractTemplate==='CLASSIC'?'CLASSIC':appSettings.contractTemplate==='MODERN'?'MODERN':appSettings.legacyContractTemplate || 'MODERN' })}
           />
       </SettingsAccordion>
 

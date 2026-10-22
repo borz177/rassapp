@@ -14,10 +14,11 @@ const { CODES, ok, created, noContent, fail, route, readPaging, paginate } = req
 const { validate } = require('./validate');
 const { requireScope } = require('./auth');
 const domain = require('./domain');
+const { collectionPayments, isCustomerSale } = require('../../shared/collections.js');
 
 const newId = prefix => `${prefix}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
 
-const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
+const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureAccess }) => {
   const router = express.Router();
 
   // ── доступ к данным ──────────────────────────────────────────────────────
@@ -31,6 +32,10 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     return rows[0]?.data || null;
   };
   const save = async (userId, type, item) => {
+    if (type === 'sales' && item.type === 'INSTALLMENT') {
+      const allowed=checkFeatureAccess ? (await checkFeatureAccess(userId,'contractTemplates')).allowed : false;
+      await require('../contractTemplates/settings').stampSaleTemplate(pool,userId,item,allowed);
+    }
     await pool.query(
       `INSERT INTO data_items (id, user_id, type, data, updated_at) VALUES ($1, $2, $3, $4, NOW())
        ON CONFLICT (id) DO UPDATE SET data = EXCLUDED.data, updated_at = NOW()`,
@@ -769,14 +774,17 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
   router.get('/reports/summary', requireScope('read'), route(async (req, res) => {
     const userId = tenant(req);
     const { from, to, accountId } = req.query;
-    const [accounts, salesAll, expensesAll, retail] = await Promise.all([
+    const [accounts, salesAll, expensesAll, retail, settingsRows, investors] = await Promise.all([
       loadAll(userId, 'accounts'), loadAll(userId, 'sales'),
       loadAll(userId, 'expenses'), loadAll(userId, 'retailSales'),
+      loadAll(userId, 'settings'), loadAll(userId, 'investors'),
     ]);
+    const withoutDownPayment = !!settingsRows[0]?.collectedWithoutDownPayment;
 
     // Счёт и договоры: количество — по договорам с участием счёта, деньги — по
     // долям счетов в совместных договорах (shared/funding.js)
-    const isContract = s => !String(s.customerId || '').startsWith('system_');
+    const investorIds = new Set(investors.map(i => i.id));
+    const isContract = s => isCustomerSale(s, investorIds);
     const contracts = salesAll.filter(s => (!accountId || domain.saleTouchesAccount(s, accountId)) && isContract(s));
     const moneyContracts = domain.expandFundedSales(salesAll).filter(s => (!accountId || s.accountId === accountId) && isContract(s));
     const inPeriod = contracts.filter(s => inRange(s.startDate, from, to));
@@ -786,8 +794,10 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
     moneyContracts.forEach(s => {
       domain.moneyIn(s).forEach(m => {
         if (!inRange(m.date, from, to)) return;
-        collectedInPeriod += m.amount;
         profitInPeriod += domain.moneyInProfit(s, m, false);
+      });
+      collectionPayments(s, withoutDownPayment).forEach(m => {
+        if (inRange(m.date, from, to)) collectedInPeriod += m.amount;
       });
     });
 
@@ -808,6 +818,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits }) => {
       },
       money: {
         collected: num(collectedInPeriod),
+        collectedWithoutDownPayment: withoutDownPayment,
         profit: num(profitInPeriod),
         expenses: num(expenses.reduce((sum, e) => sum + (Number(e.amount) || 0), 0)),
         outstandingDebt: num(moneyContracts.reduce((sum, s) => sum + (Number(s.remainingAmount) || 0), 0)),

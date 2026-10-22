@@ -206,6 +206,9 @@ export const regeneratePaymentPlan = (
 /** Черновик договора от FinUchetGPT (prepare_contract в server/ai/assistant.js) */
 export interface AssistantContractDraft {
   productName?: string;
+  /** Поручитель — ФИО и телефон (если назвали) */
+  guarantorName?: string;
+  guarantorPhone?: string;
   buyPrice?: number;
   markupPercent?: number;
   totalPrice?: number;
@@ -279,8 +282,8 @@ export const buildAssistantSale = (opts: {
     downPayment,
     installments,
     interestRate,
-    guarantorName: '',
-    guarantorPhone: '',
+    guarantorName: String(draft.guarantorName || '').trim(),
+    guarantorPhone: String(draft.guarantorPhone || '').trim(),
     roundingMode: 'NONE' as const,
     roundingStep: 100,
     supplierId: '',

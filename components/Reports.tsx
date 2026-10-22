@@ -4,6 +4,7 @@ import { useModeOrder } from '../src/modeOrder';
 import SwapModesButton from './SwapModesButton';
 import TabPill from './TabPill';
 import ShopReportBody from './ShopReportBody';
+import { collectionPayments, isCustomerSale } from '../shared/collections.js';
 import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product, StockMovement} from '../types';
 import { moneyInProfit, saleProfitMargin, formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn } from '../src/utils';
 import { openPrintPreview } from './PrintPreview';
@@ -136,6 +137,11 @@ const Reports: React.FC<ReportsProps> = ({
 }) => {
   // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
   const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
+  const collectionNote = appSettings.collectedWithoutDownPayment ? 'Без первых взносов' : undefined;
+  const customerSales = useMemo(() => {
+    const investorIds = new Set(investors.map(i => i.id));
+    return sales.filter(s => isCustomerSale(s, investorIds));
+  }, [sales, investors]);
     // Рассрочка и магазин считаются по разным данным: договоры с графиком против
     // розничных чеков. Смешивать их в одном отчёте нельзя — выручка сложилась бы,
     // а маржа и средний чек потеряли смысл. Поэтому вкладки, а не общий свод.
@@ -169,17 +175,14 @@ const Reports: React.FC<ReportsProps> = ({
         const diffDays = Math.ceil((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24));
         const useMonthly = diffDays > 90;
 
-        let filteredSales = sales;
+        let filteredSales = customerSales;
         if (filters.accountId !== 'ALL') {
-            filteredSales = sales.filter(s => s.accountId === filters.accountId);
+            filteredSales = customerSales.filter(s => s.accountId === filters.accountId);
         }
 
         const buckets: Record<string, number> = {};
         filteredSales.forEach(sale => {
-            const allPayments = [
-                { date: sale.startDate, amount: sale.downPayment },
-                ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-            ];
+            const allPayments = collectionPayments(sale, appSettings.collectedWithoutDownPayment);
             allPayments.forEach(p => {
                 const pDate = new Date(p.date);
                 if (pDate >= startDate && pDate <= endDate) {
@@ -203,7 +206,7 @@ const Reports: React.FC<ReportsProps> = ({
                 }
                 return { label, amount, key };
             });
-    }, [sales, accounts, filters]);
+    }, [customerSales, filters, appSettings.collectedWithoutDownPayment]);
 
     // Expense stats
     const expenseStats = useMemo(() => {
@@ -311,25 +314,24 @@ const Reports: React.FC<ReportsProps> = ({
         const startDate = new Date(filters.period.start);
         const endDate = new Date(filters.period.end);
         endDate.setHours(23, 59, 59, 999);
-        const typedSales = sales as Sale[];
+        const typedSales = customerSales;
         const filteredSales = filters.accountId !== 'ALL'
             ? typedSales.filter((s: Sale) => s.accountId === filters.accountId)
             : typedSales;
         const items: { date: string; productName: string; customerId: string; amount: number; label: string }[] = [];
         filteredSales.forEach((sale: Sale) => {
-            const dpDate = new Date(sale.startDate);
-            if (dpDate >= startDate && dpDate <= endDate && sale.downPayment > 0) {
-                items.push({ date: sale.startDate, productName: sale.productName, customerId: sale.customerId, amount: sale.downPayment, label: 'Первый взнос' });
-            }
-            (sale.paymentPlan || []).filter((p: any) => p.isPaid && p.isRealPayment !== false).forEach((p: any) => {
+            collectionPayments(sale, appSettings.collectedWithoutDownPayment).forEach(p => {
                 const pDate = new Date(p.date);
-                if (pDate >= startDate && pDate <= endDate) {
-                    items.push({ date: p.actualDate || p.date, productName: sale.productName, customerId: sale.customerId, amount: p.amount, label: 'Платёж' + (p.note ? ` · ${p.note}` : '') });
+                if (p.amount > 0 && pDate >= startDate && pDate <= endDate) {
+                    const label = p.id === `${sale.id}_dp`
+                        ? (sale.type === 'CASH' ? 'Продажа' : 'Первый взнос')
+                        : 'Платёж' + (p.note ? ` · ${p.note}` : '');
+                    items.push({ date: p.actualDate || p.date, productName: sale.productName, customerId: sale.customerId, amount: p.amount, label });
                 }
             });
         });
         return items.sort((a, b) => b.date.localeCompare(a.date));
-    }, [sales, accounts, filters]);
+    }, [customerSales, filters, appSettings.collectedWithoutDownPayment]);
 
     // Investor payout detail items for modal
     const investorPayoutsDetail = useMemo(() => {
@@ -545,7 +547,7 @@ const Reports: React.FC<ReportsProps> = ({
             `${sep}${sep}`,
             `ОСНОВНЫЕ ПОКАЗАТЕЛИ${sep}${sep}`,
             `Показатель${sep}Сумма (₽)${sep}`,
-            `Поступления от клиентов${sep}${data.customerPaymentsInPeriod.toFixed(2)}${sep}`,
+            `Поступления от клиентов${collectionNote ? ' (без первых взносов)' : ''}${sep}${data.customerPaymentsInPeriod.toFixed(2)}${sep}`,
             `Ожидаемая прибыль (менеджер)${sep}${data.expectedManagerProfit.toFixed(2)}${sep}`,
             `Ожидаемая прибыль (инвесторы)${sep}${data.expectedInvestorProfit.toFixed(2)}${sep}`,
             `Реализованная прибыль (менеджер)${sep}${data.realizedManagerProfit.toFixed(2)}${sep}`,
@@ -717,7 +719,7 @@ const Reports: React.FC<ReportsProps> = ({
         <div class="subtitle">Период: <strong>${filters.period.start} — ${filters.period.end}</strong> · Счёт: <strong>${escapeHtml(selectedAccountName)}</strong></div>
         <h2>Ключевые показатели</h2>
         <div class="kpi-grid">
-            <div class="kpi"><div class="kpi-label">Поступления</div><div class="kpi-value">${fmt(data.customerPaymentsInPeriod)}</div></div>
+            <div class="kpi"><div class="kpi-label">Поступления</div><div class="kpi-value">${fmt(data.customerPaymentsInPeriod)}</div>${collectionNote ? `<div class="kpi-sub">${collectionNote}</div>` : ''}</div>
             <div class="kpi"><div class="kpi-label">Реализованная прибыль</div><div class="kpi-value green">${fmt(totalRealized)}</div></div>
             <div class="kpi"><div class="kpi-label">Ожидаемая прибыль</div><div class="kpi-value">${fmt(totalExpected)}</div></div>
             <div class="kpi"><div class="kpi-label">Моя прибыль</div><div class="kpi-value green">${fmt(data.realizedManagerProfit)}</div><div class="kpi-sub">${managerSharePct}% от общей</div></div>
@@ -877,7 +879,7 @@ const Reports: React.FC<ReportsProps> = ({
                     <>
                         {/* KPI Cards */}
                         <div className={`grid gap-4 ${hasInvestors ? 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5' : 'grid-cols-2 sm:grid-cols-2 lg:grid-cols-4'}`}>
-                            <KpiCard icon="💰" label="Поступления" value={`${formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽`} badge="Получено" color="emerald" />
+                            <KpiCard icon="💰" label="Поступления" value={`${formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽`} badge="Получено" color="emerald" subtext={collectionNote} />
                             <KpiCard icon="✅" label="Реализованная прибыль" value={`${formatCurrency(totalRealized, appSettings.showCents)} ₽`} badge="Факт" color="teal" />
                             <KpiCard icon="👤" label="Моя прибыль" value={`${formatCurrency(data.realizedManagerProfit, appSettings.showCents)} ₽`} badge={`${managerSharePct}%`} color="sky" subtext="от общей прибыли" />
                             {hasInvestors && (

@@ -67,3 +67,5 @@ package.json
 package-lock.json
 server/package.json
 server/package-lock.json
+# Локальные шрифты и настройки Word-конвертера
+.local-documents/

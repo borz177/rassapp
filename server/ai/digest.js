@@ -11,6 +11,7 @@
 // оставшимися пробными запросами (сводка — часть агента).
 
 const domain = require('../api/domain');
+const { collectionPayments, isCustomerSale } = require('../../shared/collections.js');
 
 const DEFAULT_HOUR = 9;
 // Сервер перезапускался ровно в этот час — догоняем, но не позже чем через два часа:
@@ -37,17 +38,17 @@ const isDigestTime = (settings, hour = mskHour(), weekday = mskWeekday()) => {
  * Цифры сводки. customers — чтобы знать, кому можно напомнить (есть телефон
  * и напоминания не отключены в карточке).
  */
-const digestStats = (sales, customers, today) => {
+const digestStats = (sales, customers, today, withoutDownPayment = false, investors = []) => {
   const byId = new Map(customers.map(c => [c.id, c]));
   const yesterday = mskDay(new Date(new Date(`${today}T12:00:00+03:00`).getTime() - 864e5));
-  const st = { dueCount: 0, dueSum: 0, overdueCount: 0, overdueSum: 0, remindable: 0, muted: 0, receivedYesterday: 0 };
+  const st = { dueCount: 0, dueSum: 0, overdueCount: 0, overdueSum: 0, remindable: 0, muted: 0, receivedYesterday: 0, collectedWithoutDownPayment: withoutDownPayment };
+  const investorIds = new Set(investors.map(i => i.id));
   for (const s of sales) {
-    if (String(s.customerId || '').startsWith('system_')) continue;
+    if (!isCustomerSale(s, investorIds)) continue;
     // Вчера получено: первый взнос и платежи по договорам
     if (s.type === 'INSTALLMENT') {
-      if (mskDay(new Date(s.startDate)) === yesterday) st.receivedYesterday += Number(s.downPayment) || 0;
-      for (const p of s.paymentPlan || []) {
-        if (p.isPaid && p.isRealPayment !== false && mskDay(new Date(p.actualDate || p.date)) === yesterday) st.receivedYesterday += Number(p.amount) || 0;
+      for (const p of collectionPayments(s, withoutDownPayment)) {
+        if (mskDay(new Date(p.actualDate || p.date)) === yesterday) st.receivedYesterday += p.amount;
       }
     }
     if (s.status !== 'ACTIVE') continue;
@@ -77,7 +78,7 @@ const digestText = (st) => {
     parts.push(`В просрочке ${st.overdueCount} ${plural(st.overdueCount, 'договор', 'договора', 'договоров')} на ${money(st.overdueSum)}`
       + (st.muted ? ` (у ${st.muted} напоминания отключены в карточке клиента).` : '.'));
   }
-  if (st.receivedYesterday) parts.push(`Вчера получено ${money(st.receivedYesterday)}.`);
+  if (st.receivedYesterday) parts.push(`Вчера получено ${money(st.receivedYesterday)}${st.collectedWithoutDownPayment ? ' без первых взносов' : ''}.`);
   return parts.join(' ');
 };
 
@@ -100,9 +101,9 @@ module.exports = ({ pool, createNotification, aiTrialRequests, aiPlans }) => {
         if (u.role !== 'admin' && !sub && !trialLeft) continue;
         // Отметка до отправки: при сбое лучше пропустить день, чем прислать дважды
         await pool.query(`UPDATE users SET ai_settings = coalesce(ai_settings, '{}'::jsonb) || jsonb_build_object('digestSentOn', $1::text) WHERE id = $2`, [today, u.id]);
-        const [sales, customers] = await Promise.all(['sales', 'customers'].map(t =>
+        const [sales, customers, settings, investors] = await Promise.all(['sales', 'customers', 'settings', 'investors'].map(t =>
           pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = $2`, [u.id, t]).then(r => r.rows.map(x => x.data))));
-        const stats = digestStats(sales, customers, today);
+        const stats = digestStats(sales, customers, today, !!settings[0]?.collectedWithoutDownPayment, investors);
         const text = digestText(stats);
         if (text) {
           // Та же сводка — первым сообщением в чате агента, когда его откроют сегодня; кнопки — по цифрам

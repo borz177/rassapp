@@ -272,6 +272,8 @@ const fetchWithAuth = async (
 
   try {
     const baseHeaders = getAuthHeader();
+    // Браузер сам добавит multipart boundary для файлов.
+    if (typeof FormData !== 'undefined' && fetchOptions.body instanceof FormData) delete baseHeaders['Content-Type'];
     const optionHeaders = fetchOptions.headers;
     let mergedHeaders: Record<string, string> = { ...baseHeaders };
 
@@ -378,6 +380,7 @@ export interface AdminWhatsAppRow {
 
 /** Админ: самоулучшение агента (GET /api/admin/ai/quality) */
 export interface AdminAiQuality {
+    versions?: { id: number; lesson_id: number; action: string; actor: string | null; created_at: string }[];
     kinds: Record<string, string>;
     byDay: { day: string; kind: string; n: number }[];
     recent: { kind: string; tool: string | null; question: string | null; answer: string | null; detail: string | null; created_at: string }[];
@@ -1507,7 +1510,7 @@ export const api = {
         return data;
     },
     adminAiLesson: async (id: number, action: 'apply' | 'reject' | 'remove'): Promise<void> => {
-        const res = await fetchWithAuth(`${API_URL}/admin/ai/lessons/${id}/${action}`, { method: 'POST' });
+        const res = await fetchWithAuth(`${API_URL}/admin/ai/lessons/${id}/${action}`, { method: 'POST', timeout: 200000 });
         const data = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(data.msg || 'Не получилось');
     },
@@ -1675,6 +1678,25 @@ export const api = {
         const data = await res.json();
         if (!res.ok) throw new Error(data.msg || 'Failed to set subscription');
         return data.subscription;
+    },
+
+    // Личный образец договора: файлы передаются только по явному действию пользователя.
+    recognizeContractTemplate: async (files: File[], signal?: AbortSignal): Promise<{
+      id: string; name: string; fontFamily: 'serif' | 'sans'; fontSize: number;
+      layout: import('../types').CustomContractTemplate['layout'];
+      warnings: string[]; pages: number; attemptsLeft: number | null;
+    }> => {
+      const body = new FormData();
+      files.forEach(file => body.append('files', file));
+      body.append('consent', 'true');
+      const res = await fetchWithAuth(`${API_URL}/contract-templates/recognize`, {
+        method: 'POST', body, timeout: 150000, signal,
+      });
+      const data = await res.json().catch(() => ({
+        msg: res.status === 413 ? 'Файл слишком большой. Попробуйте уменьшить его.' : 'Не удалось распознать образец.',
+      }));
+      if (!res.ok) throw new Error(data.msg || 'Не удалось распознать образец.');
+      return data;
     },
 
     // === ВХОД «ЧЕРЕЗ FINUCHET» ДЛЯ ПОМОЩНИКОВ ===
@@ -2128,6 +2150,34 @@ export const api = {
 
     /** ИИ-агент (server/ai/assistant.js) */
     aiAssistant: {
+      claimClientAction: async (id: string): Promise<{claimed:boolean;result?:any}> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/client-actions/${encodeURIComponent(id)}/claim`,{method:'POST'});
+        const body=await res.json(); if (!res.ok) throw new Error(body.msg || 'Действие недоступно'); return body;
+      },
+      finishClientAction: async (id: string, result: any): Promise<any> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/client-actions/${encodeURIComponent(id)}/finish`,{method:'POST',body:JSON.stringify(result)});
+        const body=await res.json(); if (!res.ok) throw new Error(body.msg || 'Проверьте результат операции'); return body.result;
+      },
+      previewStatement: async (csv: string): Promise<{ rows: any[] }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/statement/preview`, { method: 'POST', body: JSON.stringify({ csv }) });
+        const result = await res.json();
+        if (!res.ok) throw new Error(result.msg || 'Не удалось проверить выписку');
+        return result;
+      },
+      history: async (): Promise<{ threadId: string; messages: any[] }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/history`);
+        if (!res.ok) throw new Error('История недоступна');
+        return res.json();
+      },
+      clearHistory: async (archive = false): Promise<void> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/history${archive ? '/new' : ''}`, { method: archive ? 'POST' : 'DELETE' });
+        if (!res.ok) throw new Error((await res.json()).msg || 'Не удалось очистить историю');
+      },
+      journal: async (): Promise<{ actions: any[] }> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/journal`);
+        if (!res.ok) throw new Error('Журнал недоступен');
+        return res.json();
+      },
       aliceInbox: async (): Promise<{ messages: { id: string; question: string; reply: string; actions: any[]; expired?: boolean }[] }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/alice/inbox`);
         if (!res.ok) throw new Error('Не удалось получить ответы Алисы');
@@ -2152,14 +2202,14 @@ export const api = {
        * отвечает потоком строк JSON (NDJSON), итог — в последней строке.
        */
       message: async (
-        body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string },
+        body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; images?: string[]; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string; sharedHistory?: boolean },
         signal?: AbortSignal,
         onStep?: (label: string) => void,
         /** Текст ответа по мере появления: кусок; null — начать заново */
         onDelta?: (piece: string | null) => void,
       ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean; heard?: string }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, {
-          method: 'POST', body: JSON.stringify(onStep ? { ...body, stream: true } : body), timeout: 120000, signal,
+          method: 'POST', body: JSON.stringify(onStep ? { ...body, stream: true } : body), timeout: 200000, signal,
         });
         if (onStep && res.ok && res.body && /ndjson/.test(res.headers.get('content-type') || '')) {
           const reader = res.body.getReader();
@@ -2198,10 +2248,15 @@ export const api = {
         return res.json().catch(() => ({ ok: false, text: 'Не удалось отменить' }));
       },
       /** Настройки агента (порог «Авто», утренняя сводка) */
-      saveSettings: async (patch: { autoLimit?: number | null; morningDigest?: boolean; digestHour?: number; digestWeekdays?: boolean }): Promise<{ settings: { autoLimit: number | null; morningDigest: boolean; digestHour?: number; digestWeekdays?: boolean } }> => {
+      saveSettings: async (patch: { preferences?: string; anomalyAlerts?: boolean; autoLimit?: number | null; morningDigest?: boolean; digestHour?: number; digestWeekdays?: boolean }): Promise<{ settings: { preferences?: string; anomalyAlerts?: boolean; autoLimit: number | null; morningDigest: boolean; digestHour?: number; digestWeekdays?: boolean } }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/settings`, { method: 'PUT', body: JSON.stringify(patch) });
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.msg || 'Не удалось сохранить');
         return res.json();
+      },
+      /** Фото паспорта поручителя из черновика договора — к клиенту в документы */
+      guarantorPhoto: async (customerId: string, image: string, name?: string): Promise<boolean> => {
+        const res = await fetchWithAuth(`${API_URL}/ai/assistant/guarantor-photo`, { method: 'POST', body: JSON.stringify({ customerId, image, name }), timeout: 30000 });
+        return res.ok;
       },
       /** «Стоп»: сервер остановит запрос в безопасной точке и вернёт, что успел сделать */
       stop: async (requestId: string): Promise<void> => {

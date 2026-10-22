@@ -1,4 +1,5 @@
 import React, { useMemo, useState } from 'react';
+import { useProgressiveList } from '../src/hooks/useProgressiveList';
 import Operations from './Operations';
 import Journal from './Journal';
 import GlassSheet, { SheetSection, SheetSegmented } from './GlassSheet';
@@ -166,21 +167,33 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
     ];
     items.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 
-    const groups: [string, FeedItem[]][] = [];
-    for (const it of items) {
-      const key = dayKey(it.date);
-      const last = groups[groups.length - 1];
-      if (last && last[0] === key) last[1].push(it);
-      else groups.push([key, [it]]);
-    }
     // Деньги по текущему отбору: продажа за наличные — тоже поступление
     const income = moneyItems.filter(o => o.type === 'INCOME').reduce((s, o) => s + o.amount, 0)
       + docItems.filter(d => d.kind === 'SALE' && d.sale && !d.sale.isCredit).reduce((s, d) => s + d.total, 0);
     // Возврат — деньги ушли покупателю (только реально отданное, без списанного долга)
     const expense = moneyItems.filter(o => o.type === 'EXPENSE').reduce((s, o) => s + o.amount, 0)
       + docItems.filter(d => d.kind === 'RETURN' && d.sale).reduce((s, d) => s + (d.sale!.refund ?? d.total), 0);
-    return { groups, count: items.length, income, expense };
+    return { items, count: items.length, income, expense };
   }, [ops, docs, search, type, accountId, category, employeeId, pay]);
+
+  // Лента рисуется частями: тысячи строк сразу подвешивали переход на экран.
+  // Итоги выше считаются по всей ленте, а не по показанной части
+  const { visible: shownItems, hasMore: moreItems, sentinel: feedSentinel } = useProgressiveList<FeedItem>(
+    feed.items,
+    'HISTORY',
+    JSON.stringify([search, type, accountId, category, employeeId, pay]),
+    60,
+  );
+  const groups = useMemo(() => {
+    const out: [string, FeedItem[]][] = [];
+    for (const it of shownItems) {
+      const key = dayKey(it.date);
+      const last = out[out.length - 1];
+      if (last && last[0] === key) last[1].push(it);
+      else out.push([key, [it]]);
+    }
+    return out;
+  }, [shownItems]);
 
   const filtersActive = type !== 'ALL' || !!accountId || category !== 'ALL' || !!employeeId || pay !== 'ALL';
   const resetFilters = () => { setType('ALL'); setAccountId(''); setCategory('ALL'); setEmployeeId(''); setPay('ALL'); };
@@ -256,13 +269,13 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
         </div>
       )}
 
-      {feed.groups.length === 0 ? (
+      {groups.length === 0 ? (
         <p className="text-sm text-slate-500 dark:text-slate-400 py-10 text-center">
           {search || filtersActive ? 'Ничего не найдено.' : 'Операций пока нет.'}
         </p>
       ) : (
         <div className="space-y-4">
-          {feed.groups.map(([key, items]) => (
+          {groups.map(([key, items]) => (
             <div key={key}>
               <p className="px-1 pb-2 text-sm font-bold text-slate-500 dark:text-slate-400">{dayTitle(key)}</p>
               <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700 overflow-hidden">
@@ -275,6 +288,9 @@ const History: React.FC<HistoryProps> = ({ money, goods }) => {
               </div>
             </div>
           ))}
+          {moreItems && (
+            <div ref={feedSentinel} className="py-4 text-center text-xs text-slate-400">Загружаем ещё…</div>
+          )}
         </div>
       )}
 

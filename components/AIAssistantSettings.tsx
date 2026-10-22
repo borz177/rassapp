@@ -12,6 +12,8 @@ import { toast } from '../src/toast';
  */
 
 export interface AISettings {
+  preferences?: string;
+  anomalyAlerts?: boolean;
   /** В «Авто» сумма от этой и больше ждёт «Подтвердить»; null — без порога */
   autoLimit: number | null;
   /** Утренняя сводка уведомлением */
@@ -33,20 +35,22 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
   const [digest, setDigest] = useState(settings.morningDigest);
   const [hour, setHour] = useState(settings.digestHour ?? 9);
   const [weekdays, setWeekdays] = useState(!!settings.digestWeekdays);
+  const [preferences, setPreferences] = useState(settings.preferences || '');
+  const [alerts, setAlerts] = useState(!!settings.anomalyAlerts);
   const [saving, setSaving] = useState(false);
 
   const customValue = Math.round(Number(custom.replace(/\s/g, '').replace(',', '.')));
   const customValid = Number.isFinite(customValue) && customValue > 0;
   const nextLimit = limitChoice === 'none' ? null : customValid ? customValue : NaN;
   const valid = !(limitChoice === 'custom' && !customValid);
-  const dirty = nextLimit !== settings.autoLimit || digest !== settings.morningDigest
+  const dirty = preferences !== (settings.preferences || '') || alerts !== !!settings.anomalyAlerts || nextLimit !== settings.autoLimit || digest !== settings.morningDigest
     || hour !== (settings.digestHour ?? 9) || weekdays !== !!settings.digestWeekdays;
 
   const save = async (close: () => void) => {
     if (!valid || saving) return;
     setSaving(true);
     try {
-      const r = await api.aiAssistant.saveSettings({ autoLimit: nextLimit as number | null, morningDigest: digest, digestHour: hour, digestWeekdays: weekdays });
+      const r = await api.aiAssistant.saveSettings({ preferences, anomalyAlerts: alerts, autoLimit: nextLimit as number | null, morningDigest: digest, digestHour: hour, digestWeekdays: weekdays });
       onSaved(r.settings);
       toast.success('Настройки сохранены');
       close();
@@ -68,6 +72,14 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
       })}
     >
       <div className="space-y-6">
+        <SheetSection title="Память предпочтений" hint="Хранится в вашем аккаунте и действует на всех устройствах. Можно изменить или очистить. Суммы и долги агент получает из учёта заново.">
+          <SheetField label="Как вам удобнее работать">
+            <textarea className={sheetInputClass} value={preferences} maxLength={500} rows={3} onChange={e => setPreferences(e.target.value)} placeholder="Например: отвечай коротко, всегда показывай общий остаток по всем кассам" />
+          </SheetField>
+        </SheetSection>
+        <SheetSection title="Проверка учёта" hint="Проверка каждые 30 минут. Не больше одного уведомления в день. Агент не исправляет записи автоматически.">
+          <SheetToggle label="Сообщать о расхождениях" description="Отрицательная касса, договоры без действующего счёта, несовпадения закупов и возможные повторы платежей" checked={alerts} onChange={setAlerts} />
+        </SheetSection>
         <SheetSection
           title="Порог для режима «Авто»"
           hint="В «Авто» платёж, расход или приход от этой суммы ждёт «Подтвердить»; договор — по закупу."

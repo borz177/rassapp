@@ -12,7 +12,9 @@
  * договоре появился бы пункт, которого нет у другого.
  */
 
-export type ContractTemplateId = 'MODERN' | 'CLASSIC';
+import type { CustomContractTemplate } from '../types';
+import { customContractFragment } from './customContractTemplate';
+export type ContractTemplateId = 'MODERN' | 'CLASSIC' | `CUSTOM:${string}`;
 
 export interface ContractTemplateInfo {
   id: ContractTemplateId;
@@ -40,7 +42,8 @@ export const resolveContractTemplate = (
   allowPaid: boolean
 ): ContractTemplateId => {
   const id = chosen || 'MODERN';
-  return !allowPaid && PAID_CONTRACT_TEMPLATES.includes(id) ? 'MODERN' : id;
+  return !allowPaid && (PAID_CONTRACT_TEMPLATES.includes(id) || id.startsWith('CUSTOM:'))
+    ? 'MODERN' : id;
 };
 
 export const CONTRACT_TEMPLATES: ContractTemplateInfo[] = [
@@ -64,11 +67,20 @@ export interface ContractScheduleRow {
 }
 
 export interface ContractData {
+  saleId?: string;
+  customTemplate?: CustomContractTemplate;
   companyName: string;
   sellerPhone: string;
   sellerExtraPhone?: string;
   customerName?: string;
   customerPhone?: string;
+  customerBirthDate?: string;
+  customerPhone2?: string;
+  guarantorPhone2?: string;
+  guarantorPassportSeries?: string;
+  guarantorPassportNumber?: string;
+  guarantorPassportIssuedBy?: string;
+  guarantorAddress?: string;
   passportSeries?: string;
   passportNumber?: string;
   passportIssuedBy?: string;
@@ -499,6 +511,33 @@ const FIT_SCRIPT = `
   })();
 `;
 
+/** Личные формы масштабируются только по ширине: число страниц не ограничено одним листом. */
+const CUSTOM_FIT_SCRIPT = `
+  (function () {
+    var sheet = document.querySelector('.contract-sheet');
+    function fit() {
+      sheet.style.transform = '';
+      var width = document.documentElement.clientWidth;
+      var scale = Math.min(1, width / ${CONTRACT_SHEET_WIDTH_PX});
+      sheet.style.transformOrigin = 'top left';
+      sheet.style.margin = '0';
+      sheet.style.marginLeft = Math.max(0, (width - ${CONTRACT_SHEET_WIDTH_PX} * scale) / 2) + 'px';
+      sheet.style.transform = 'scale(' + scale + ')';
+      document.body.style.overflowX = 'hidden';
+      document.body.style.height = (sheet.offsetHeight * scale) + 'px';
+    }
+    window.__fitContractForPrint = function () {
+      sheet.style.transform = '';
+      document.body.style.height = '';
+    };
+    window.addEventListener('resize', fit);
+    window.addEventListener('beforeprint', window.__fitContractForPrint);
+    window.addEventListener('afterprint', fit);
+    if (document.fonts) document.fonts.ready.then(fit);
+    fit();
+  })();
+`;
+
 /**
  * Разметка договора без обёртки документа: тот же лист, но пригодный для вставки
  * в страницу приложения — из него снимается PDF для WhatsApp.
@@ -510,10 +549,18 @@ const FIT_SCRIPT = `
 export const buildContractFragment = (
   template: ContractTemplateId,
   data: ContractData
-): { html: string; styles: string } => ({
-  html: template === 'CLASSIC' ? classicBody(data) : modernBody(data),
-  styles: template === 'CLASSIC' ? CLASSIC_STYLES : MODERN_STYLES,
-});
+): { html: string; styles: string } => {
+  if (template.startsWith('CUSTOM:')) {
+    if (!data.customTemplate || template !== `CUSTOM:${data.customTemplate.id}`) {
+      throw new Error('Личная форма договора недоступна. Выберите другой шаблон.');
+    }
+    return customContractFragment(data.customTemplate, data);
+  }
+  return {
+    html: template === 'CLASSIC' ? classicBody(data) : modernBody(data),
+    styles: template === 'CLASSIC' ? CLASSIC_STYLES : MODERN_STYLES,
+  };
+};
 
 /**
  * Готовый HTML-документ договора.
@@ -527,6 +574,7 @@ export const buildContractHtml = (
   options: { withPrintButton?: boolean } = {}
 ): string => {
   const { html: body, styles } = buildContractFragment(template, data);
+  const custom = template.startsWith('CUSTOM:');
 
   return `<!DOCTYPE html>
 <html lang="ru">
@@ -539,7 +587,7 @@ export const buildContractHtml = (
 <body>
   ${options.withPrintButton ? '<button class="no-print" onclick="window.close()">✕ Закрыть</button>' : ''}
   <div class="contract-sheet">${body}</div>
-  <script>${FIT_SCRIPT}<\/script>
+  <script>${custom ? CUSTOM_FIT_SCRIPT : FIT_SCRIPT}<\/script>
   ${options.withPrintButton ? '<script>window.onload = function () { setTimeout(function () { if (window.__fitContractForPrint) window.__fitContractForPrint(); window.print(); }, 300); }<\/script>' : ''}
 </body>
 </html>`;
@@ -574,30 +622,38 @@ export const blankContractData = (companyName: string, sellerPhone: string): Con
 });
 
 /** Образец для предпросмотра в настройках — с правдоподобными числами. */
-export const sampleContractData = (companyName: string, sellerPhone: string): ContractData => {
+export const sampleContractData = (companyName: string, sellerPhone: string, customTemplate?: CustomContractTemplate): ContractData => {
   const start = new Date();
-  const rows: ContractScheduleRow[] = Array.from({ length: 6 }).map((_, i) => {
+  const installments = 6;
+  const monthlyPayment = 30000 / installments;
+  const rows: ContractScheduleRow[] = Array.from({ length: installments }).map((_, i) => {
     const date = new Date(start);
     date.setMonth(date.getMonth() + i + 1);
-    return { date: date.toISOString(), paid: 5000, remaining: 30000 - 5000 * (i + 1) };
+    return { date: date.toISOString(), paid: monthlyPayment, remaining: Math.max(0,30000 - monthlyPayment * (i + 1)) };
   });
   return {
     companyName: companyName || 'ООО «Пример»',
     sellerPhone: sellerPhone || '+7 (900) 000-00-00',
     customerName: 'Иванов Иван Иванович',
     customerPhone: '+7 (900) 111-22-33',
+    customerPhone2: '+7 (900) 222-33-44',
     passportSeries: '4501',
     passportNumber: '123456',
     passportIssuedBy: 'ОВД г. Москвы',
     customerAddress: 'г. Москва, ул. Примерная, д. 1',
     guarantorName: 'Петров Пётр Петрович',
     guarantorPhone: '+7 (900) 444-55-66',
+    guarantorPhone2: '+7 (900) 555-66-77',
+    guarantorPassportSeries: '4502',
+    guarantorPassportNumber: '234567',
+    guarantorPassportIssuedBy: 'ОВД г. Москвы',
+    guarantorAddress: 'г. Москва, ул. Примерная, д. 2',
     contractNumber: '0001',
     productName: 'Телефон Samsung Galaxy A55',
     totalAmount: 36000,
     downPayment: 6000,
-    installments: 6,
-    monthlyPayment: 5000,
+    installments,
+    monthlyPayment,
     startDate: start.toISOString(),
     rows,
   };

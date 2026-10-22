@@ -175,7 +175,7 @@ const scenarios = [
     if (!done?.ok || !done.undoable) return false;
     const u = await api(`/actions/${done.id}/undo`);
     const again = await api(`/actions/${done.id}/undo`);
-    return u.ok && !again.ok;
+    return u.ok && again.ok && JSON.stringify(u) === JSON.stringify(again);
   }],
   ['«Подтверждать»: платёж ждёт «Подтвердить»', async () => {
     const d = await new Chat('confirm').say('прими 1000 от Дудаевой за диван');

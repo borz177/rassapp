@@ -27,3 +27,9 @@ test('no consent or exhausted quota never invokes model', async () => {
     const s = setup({ state: async () => state }); await assert.rejects(s.run({ userId: 'u' })); assert.equal(s.input(), undefined);
   }
 });
+test('revoked consent blocks replay of a saved answer',async()=>{
+  let replayed=false;
+  const s=setup({state:async()=>({allowedRole:true,consent:false,left:10}),conversations:{run:async()=>{replayed=true;return {reply:'private'}}}});
+  await assert.rejects(s.run({userId:'u',requestId:'old'}),{status:403});
+  assert.equal(replayed,false);
+});

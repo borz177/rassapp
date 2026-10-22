@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useEffect } from 'react';
+import { useProgressiveList } from '../src/hooks/useProgressiveList';
 import Sheet from './Sheet';
 import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../types';
 import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, expenseProfitSplit, CLIENT_DISCOUNT, clientDiscountLabel } from '../src/utils';
@@ -133,6 +134,15 @@ const Operations: React.FC<OperationsProps> = ({
 
   }, [allOperations, filterType, filterAccountId, filterCategory, filterEmployeeId]);
 
+  // Лента рисуется частями: тысячи операций одним махом подвешивали переход на
+  // страницу. Итоги сверху считаются по всем операциям, а не по показанным
+  const { visible: shownOps, hasMore: moreOps, sentinel: opsSentinel, reveal: revealOp } = useProgressiveList<any>(
+    operations,
+    'OPERATIONS',
+    JSON.stringify([filterType, filterAccountId, filterCategory, filterEmployeeId]),
+    60,
+  );
+
   // 🔎 Переход из поиска к конкретной операции
   const [highlightId, setHighlightId] = useState<string | null>(null);
   useEffect(() => {
@@ -140,6 +150,7 @@ const Operations: React.FC<OperationsProps> = ({
     onFocusHandled?.();
     const op = operations.find(o => o.id === focusOperationId);
     if (!op) return; // запись отфильтрована или удалена — остаёмся в начале ленты
+    revealOp(operations.indexOf(op)); // старая запись может быть ещё не показана
     setHighlightId(op.id);
     setSelectedOp(op);
     // Прокрутку — после въезда экрана и восстановления его прежней прокрутки
@@ -171,7 +182,7 @@ const Operations: React.FC<OperationsProps> = ({
     yesterday.setDate(yesterday.getDate() - 1);
     const yesterdayStr = getMskDateString(yesterday);
 
-    operations.forEach(op => {
+    shownOps.forEach(op => {
         const opDate = new Date(op.date);
         const opDateStr = getMskDateString(opDate);
 
@@ -196,7 +207,7 @@ const Operations: React.FC<OperationsProps> = ({
     });
 
     return groups;
-  }, [operations]);
+  }, [shownOps]);
 
   const getTimeMsk = (dateStr: string) => {
       return new Date(dateStr).toLocaleTimeString('ru-RU', {
@@ -416,6 +427,9 @@ const Operations: React.FC<OperationsProps> = ({
         </div>
     </div>
 ))}
+          {moreOps && (
+            <div ref={opsSentinel} className="py-4 text-center text-xs text-slate-400">Загружаем ещё…</div>
+          )}
       </div>
 
       </>)}

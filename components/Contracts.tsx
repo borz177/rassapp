@@ -1,4 +1,5 @@
 import React, { useMemo, useRef, useState, useEffect } from 'react';
+import { useProgressiveList } from '../src/hooks/useProgressiveList';
 import Sheet from './Sheet';
 import { useSheetDrag } from '../src/sheetDrag';
 import { friendlyError } from '../src/friendlyError';
@@ -506,7 +507,10 @@ const [sentStats, setSentStats] = useState<{ sent: number; total: number } | nul
 // Требуем осознанное подтверждение риска, а не просто текст предупреждения, который легко пропустить.
 const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
-  const getCustomerName = (id: string) => customers.find(c => c.id === id)?.name || 'Неизвестно';
+  // Клиент по id — словарём: поиск перебором в каждой строке и в сортировке
+  // давал тысячи × сотни сравнений на каждый показ списка
+  const customerById = useMemo(() => new Map(customers.map(c => [c.id, c])), [customers]);
+  const getCustomerName = (id: string) => customerById.get(id)?.name || 'Неизвестно';
 
   // Номера считаем по всему списку, а не по отфильтрованному: у пятидесятого
   // договора номер 0050 и в архиве, и в поиске по одному клиенту.
@@ -532,7 +536,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
         archive.push(sale);
         return;
       }
-      if (calculateSaleOverdue(sale) > 0) overdue.push(sale);
+      if ((metrics.get(sale.id)?.overdue ?? calculateSaleOverdue(sale)) > 0) overdue.push(sale);
       else active.push(sale);
     });
 
@@ -544,7 +548,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
     if (searchTerm) {
       const lowerTerm = searchTerm.toLowerCase();
       list = list.filter(sale => {
-        const customer = customers.find(c => c.id === sale.customerId);
+        const customer = customerById.get(sale.customerId);
         return (customer?.name.toLowerCase().includes(lowerTerm)) || sale.productName.toLowerCase().includes(lowerTerm);
       });
     }
@@ -598,7 +602,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
       if (f.noPayments) list = list.filter(sale => m(sale).noPayments);
     }
 
-    const name = (sale: Sale) => customers.find(c => c.id === sale.customerId)?.name || '';
+    const name = (sale: Sale) => customerById.get(sale.customerId)?.name || '';
     const byDate = (a: Sale, b: Sale) => time(b.startDate) - time(a.startDate);
     const cmp: Record<SortKey, (a: Sale, b: Sale) => number> = {
       overdue: (a, b) => m(b).overdue - m(a).overdue,
@@ -613,11 +617,18 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
       name: (a, b) => name(a).localeCompare(name(b), 'ru'),
     };
     return { filteredList: [...list].sort((a, b) => cmp[sortKey](a, b) || byDate(a, b)), beforeAging };
-  }, [sales, customers, activeTab, searchTerm, filters, sortKey, metrics]);
+  }, [sales, customers, customerById, activeTab, searchTerm, filters, sortKey, metrics]);
+
+  // Список рисуется частями: 40 строк, дальше — по мере прокрутки
+  const { visible: visibleContracts, hasMore: moreContracts, sentinel: contractsSentinel } = useProgressiveList<Sale>(
+    filteredList,
+    'CONTRACTS',
+    JSON.stringify([activeTab, searchTerm, filters, sortKey]),
+  );
 
   const totalOverdueSum = useMemo(() => {
     if (activeTab !== 'OVERDUE') return 0;
-    return filteredList.reduce((sum, s) => sum + calculateSaleOverdue(s), 0);
+    return filteredList.reduce((sum, s) => sum + (metrics.get(s.id)?.overdue ?? calculateSaleOverdue(s)), 0);
   }, [filteredList, activeTab]);
 
   // Сколько договоров в каждом статусе — для выбора в заголовке и красной метки
@@ -676,8 +687,9 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
   })();
   const resetFilters = () => setFilters(EMPTY_FILTERS);
 
-  const debtorRows: DebtorRow[] = activeTab === 'OVERDUE' ? filteredList.map(s => {
-    const c = customers.find(x => x.id === s.customerId);
+  // Список должников нужен только окну «Поделиться» — не собираем его на каждый показ
+  const debtorRows: DebtorRow[] = activeTab === 'OVERDUE' && shareOpen ? filteredList.map(s => {
+    const c = customerById.get(s.customerId);
     const mm = metrics.get(s.id)!;
     return { name: c?.name || 'Без имени', birthDate: c?.birthDate, phone: c?.phone, product: s.productName, days: mm.overdueDays, amount: mm.overdue };
   }) : [];
@@ -835,7 +847,7 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
   const ActionMenu = () => {
     if (!currentMenuSale) return null;
     const sale = currentMenuSale;
-    const customer = customers.find(c => c.id === sale.customerId);
+    const customer = customerById.get(sale.customerId);
     const isMobile = window.innerWidth < 640;
 
     const items: { key: string; label: string; icon: React.ReactNode; color: string; hover: string; run: () => void }[] = [
@@ -1182,9 +1194,9 @@ useEffect(() => {
             <div className="text-4xl mb-2">📄</div>
             <p className="text-slate-400 dark:text-slate-500 text-sm">Ничего не найдено</p>
           </div>
-        ) : filteredList.map((sale, index) => {
-          const customer = customers.find(c => c.id === sale.customerId);
-          const overdueSum = calculateSaleOverdue(sale);
+        ) : visibleContracts.map((sale, index) => {
+          const customer = customerById.get(sale.customerId);
+          const overdueSum = metrics.get(sale.id)?.overdue ?? calculateSaleOverdue(sale);
           const isOverdue = activeTab === 'OVERDUE' || overdueSum > 0;
           const isCompleted = sale.status === 'COMPLETED' || sale.remainingAmount === 0;
           const displayNumber = filteredList.length - index;
@@ -1318,6 +1330,9 @@ useEffect(() => {
             </SwipeRow>
           );
         })}
+        {moreContracts && (
+          <div ref={contractsSentinel} className="py-4 text-center text-xs text-slate-400">Загружаем ещё…</div>
+        )}
       </div>
 
       {/* Меню действий */}

@@ -1,4 +1,5 @@
 import React, { useState, useMemo } from 'react'; // Добавили useMemo
+import { useProgressiveList } from '../src/hooks/useProgressiveList';
 import ViewModeToggle, { useViewMode } from './ViewModeToggle';
 import type { CustomerSegment } from '../src/customerSegments';
 import { isMacShell } from '../src/platform';
@@ -104,6 +105,14 @@ const Customers: React.FC<CustomersProps> = ({
       .sort((a, b) => a.name.localeCompare(b.name)); // Сортировка по алфавиту
   }, [customers, searchTerm, activeSegment, segmentOf]);
 
+  // Список рисуется частями — сотни карточек сразу подвешивали переход на экран
+  const { visible: visibleCustomers, hasMore: moreCustomers, sentinel: customersSentinel } = useProgressiveList<(typeof sortedFilteredCustomers)[number]>(
+    sortedFilteredCustomers,
+    'CUSTOMERS',
+    JSON.stringify([searchTerm, activeSegment, tiles]),
+    50,
+  );
+
 
   return (
     <div className="space-y-4 pb-20 animate-fade-in">
@@ -177,7 +186,7 @@ const Customers: React.FC<CustomersProps> = ({
         {sortedFilteredCustomers.length === 0 && (
             <div className="col-span-full text-center py-8 text-slate-400 dark:text-slate-500">Клиенты не найдены</div>
         )}
-        {sortedFilteredCustomers.map(c => {
+        {visibleCustomers.map(c => {
           const d = debtByCustomer.get(c.id);
           const tone = !d || d.debt <= 0 ? '#10b981' : d.overdue > 0 ? '#ef4444' : '#f59e0b';
           return (
@@ -206,7 +215,7 @@ const Customers: React.FC<CustomersProps> = ({
         {sortedFilteredCustomers.length === 0 && (
             <div className="text-center py-8 text-slate-400 dark:text-slate-500">Клиенты не найдены</div>
         )}
-        {sortedFilteredCustomers.map(c => (
+        {visibleCustomers.map(c => (
           <SwipeRow
             key={c.id}
             className="rounded-xl"
@@ -251,6 +260,9 @@ const Customers: React.FC<CustomersProps> = ({
           </SwipeRow>
         ))}
       </div>
+      )}
+      {moreCustomers && (
+        <div ref={customersSentinel} className="py-4 text-center text-xs text-slate-400">Загружаем ещё…</div>
       )}
     </div>
   );

@@ -45,7 +45,7 @@
    | URL авторизации | `https://rassrochka.pro/oauth/authorize` |
    | URL получения токена | `https://rassrochka.pro/api/oauth/token` |
    | URL обновления токена | `https://rassrochka.pro/api/oauth/token` |
-   | Scope / идентификатор группы действий | `read write` |
+   | Scope / идентификатор группы действий | `read&write` (разделитель в консоли Яндекса — `&`) |
 
    Разрешённый callback зарегистрирован как `https://social.yandex.net/broker/redirect`.
    Если в консоли Яндекса отображается другой callback, добавьте **точный** адрес в настройках

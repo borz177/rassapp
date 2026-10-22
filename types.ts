@@ -672,7 +672,33 @@ export interface Expense {
 
 }
 
+/** Блок личной печатной формы: приложение рисует из блоков договор само */
+export interface TemplateCell { label: string; text: string; width: number; fill: boolean; bold: boolean; align: 'left' | 'center' | 'right'; }
+export interface TemplateColumn { key: 'number' | 'date' | 'paid' | 'remaining' | 'signature' | 'blank'; title: string; width: number; }
+export type TemplateBlock =
+  | { type: 'title' | 'text'; text: string; align: 'left' | 'center' | 'right' | 'justify'; bold: boolean; italic: boolean; size: 'small' | 'normal' | 'large' }
+  | { type: 'row'; cells: TemplateCell[] }
+  | { type: 'list'; items: string[]; size: 'small' | 'normal' | 'large' }
+  | { type: 'schedule'; columns: TemplateColumn[]; rows: number }
+  | { type: 'signatures'; items: string[] }
+  | { type: 'gap'; size: number }
+  | { type: 'pagebreak' };
+
+export interface CustomContractTemplate {
+  id: string;
+  name: string;
+  fontFamily: 'serif' | 'sans';
+  fontSize: number;
+  createdAt: string;
+  layout: { blocks: TemplateBlock[] };
+  /** Прежний текстовый вид: читается и превращается в блоки */
+  text?: string;
+}
+
 export interface Sale {
+  /** Печатная форма закрепляется при оформлении; личная версия сохраняется целиком. */
+  contractTemplateId?: 'MODERN' | 'CLASSIC' | `CUSTOM:${string}`;
+  contractTemplateSnapshot?: CustomContractTemplate;
   /** Категория прочего прихода: по ней операция находится в фильтрах */
   category?: string;
   id: string;
@@ -696,6 +722,12 @@ export interface Sale {
   status: 'ACTIVE' | 'COMPLETED' | 'DEFAULTED' | 'DRAFT';
   guarantorName?: string;
   guarantorPhone?: string;
+  customerPhone2?: string;
+  guarantorPhone2?: string;
+  guarantorPassportSeries?: string;
+  guarantorPassportNumber?: string;
+  guarantorPassportIssuedBy?: string;
+  guarantorAddress?: string;
   paymentPlan: Payment[];
   notes?: string;
   price?: number;
@@ -835,7 +867,7 @@ export interface AppSettings {
   calculator?: CalculatorSettings;
   theme?: 'PURPLE' | 'BLUE' | 'GREEN' | 'BLACK';
   showCents?: boolean;
-  /** Главная, карточка «Собрано»: только платежи клиентов, без первых взносов (по умолчанию — со взносами) */
+  /** «Собрано», отчёты и графики поступлений: без первых взносов по рассрочкам. Кассу, долг и прибыль не меняет. */
   collectedWithoutDownPayment?: boolean;
   markupFromNetBuyPrice?: boolean;
   /**
@@ -864,7 +896,10 @@ export interface AppSettings {
    * Печатная форма договора. Пусто — «Современный»: он был единственным, и
    * менять вид бумаги у тех, кто ничего не выбирал, нельзя.
    */
-  contractTemplate?: 'MODERN' | 'CLASSIC';
+  contractTemplate?: 'MODERN' | 'CLASSIC' | `CUSTOM:${string}`;
+  /** Форма старых договоров без закреплённой версии при выборе личного шаблона. */
+  legacyContractTemplate?: 'MODERN' | 'CLASSIC';
+  customContractTemplates?: CustomContractTemplate[];
   /**
    * Свои категории операций. Заводятся при оприходовании прочего прихода и
    * доступны и в расходе — категория одна и та же, в какую бы сторону ни шли

@@ -1,3 +1,6 @@
+import AIStatementPreview from './AIStatementPreview';
+import AIAgentJournal from './AIAgentJournal';
+import { toast } from '../src/toast';
 import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import AIOrb from './AIOrb';
@@ -35,6 +38,8 @@ interface Msg {
   role: 'user' | 'assistant';
   text: string;
   image?: string;
+  /** Несколько фото в сообщении (до трёх): паспорт клиента, поручителя… image — первое из них */
+  images?: string[];
   aliceJobId?: string; // ответ с колонки, подтверждается только здесь
   voice?: number; // длительность голосового, с
   heard?: string; // расшифровка голосового (сервер) — видна под ним и уходит в историю
@@ -42,6 +47,7 @@ interface Msg {
   stopped?: boolean; // человек нажал «Стоп», ответа не было
   actions?: Action[];
   error?: boolean;
+  workflow?: { id: string; status: string; step?: string; plan?: { title: string; status: string }[] };
 }
 
 interface Props {
@@ -55,6 +61,8 @@ interface Props {
   onSendDocument: (saleId: string, kind: 'contract' | 'receipt', opts?: { fresh?: boolean }) => Promise<{ ok: boolean; text: string }>;
   /** «Отменить договор», оформленный в «Авто» */
   onDeleteContract: (saleId: string) => Promise<{ ok: boolean; text: string }>;
+  /** Перенести дату первого платежа (карточка reschedule) — пересчёт графика как в форме договора */
+  onReschedule?: (saleId: string, date: string) => Promise<{ ok: boolean; text: string }>;
   /** Карточка договора у клиента */
   onShowContract: (saleId: string, customerId?: string) => void;
   /** Отчёт Excel за период — собрать и сохранить (по нажатию «Скачать») */
@@ -96,6 +104,12 @@ const actionNote = (a: Action): string => {
   if (a.kind === 'done') {
     if (!a.ok) return `[Не выполнено: ${a.result}]`;
     return a.state === 'undone' ? `[Отменено: ${a.summary}]` : `[Выполнено: ${a.summary}]`;
+  }
+  if (a.kind === 'reschedule') {
+    if (a.state === 'done') return `[Выполнено: график перенесён — ${a.summary}]`;
+    if (a.state === 'cancelled') return `[Отменено человеком, не перенесено: ${a.summary}]`;
+    if (a.state === 'error') return `[Не выполнено: ${a.result}]`;
+    return `[Ждёт подтверждения: перенести график — ${a.summary}]`;
   }
   if (a.kind === 'delete_contract') {
     if (a.state === 'done') return `[Выполнено: договор удалён — ${a.summary}]`;
@@ -204,7 +218,7 @@ const writeStore = (userId: string, msgs: Msg[], prev = false) => {
   try {
     if (prev && !msgs.length) { localStorage.removeItem(storeKey(userId, true)); return true; }
     // Без фото: они тяжёлые и это паспорта
-    localStorage.setItem(storeKey(userId, prev), JSON.stringify(msgs.slice(-40).map(m => ({ ...m, image: m.image ? 'stripped' : undefined }))));
+    localStorage.setItem(storeKey(userId, prev), JSON.stringify(msgs.slice(-40).map(m => ({ ...m, image: m.image ? 'stripped' : undefined, images: undefined }))));
     return true;
   } catch { return false; /* Не подтверждаем доставку Алисы, пока история не сохранена. */ }
 };
@@ -241,7 +255,7 @@ const renderRich = (text: string): React.ReactNode => {
  * Меню «⋯» в шапке чата: новый чат, очистить, настройки агента.
  * Раскрывается из угла, закрывается касанием мимо и Esc.
  */
-const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; onClear: () => void; onSettings: () => void; inTopbar?: boolean }> = ({ hasChat, busy, onNew, onClear, onSettings, inTopbar }) => {
+const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; onClear: () => void; onSettings: () => void; onJournal: () => void; inTopbar?: boolean }> = ({ hasChat, busy, onNew, onClear, onSettings, onJournal, inTopbar }) => {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -273,6 +287,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
           {item('Новый чат', SquarePen, onNew, { disabled: !hasChat || busy })}
           {item('Очистить чат', Trash2, onClear, { danger: true, disabled: !hasChat || busy })}
           <div className="my-1.5 h-px bg-slate-100 dark:bg-slate-700" />
+          {item('Журнал действий', Settings2, onJournal)}
           {item('Настройки агента', Settings2, onSettings)}
         </div>
       )}
@@ -280,7 +295,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onReschedule }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -288,6 +303,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const shownAtOpen = useRef<Set<string>>(new Set(messages.map(m => m.id)));
   const [prevChat, setPrevChat] = useState<Msg[]>(() => readStore(userId, true));
   const [clearOpen, setClearOpen] = useState(false);
+  const [statementRows, setStatementRows] = useState<any[] | null>(null);
+  const [journalOpen, setJournalOpen] = useState(false);
   const [settingsOpen, setSettingsOpen] = useState(false);
   // Слот кнопок в верхней панели (Layout.tsx) — есть только в телефонной раскладке
   const [topbarSlot, setTopbarSlot] = useState<HTMLElement | null>(null);
@@ -316,7 +333,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     setAutoIntro(false);
   };
   const [text, setText] = useState('');
-  const [image, setImage] = useState<string | null>(null);
+  // До трёх фото в сообщении («первый — клиент, второй — поручитель»); image — первое
+  const [images, setImages] = useState<string[]>([]);
+  const image = images[0] || null;
+  const MAX_PHOTOS = 3;
   const [sending, setSending] = useState(false);
   // Идущий запрос — для «Стоп»; stopping — «Стоп» нажат, ждём безопасной точки
   const running = useRef<{ id: string; ctrl: AbortController; userMsgId: string } | null>(null);
@@ -705,7 +725,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     }
   }, [messages, userId]);
   useEffect(() => {
-    if (!status?.allowedRole || !status?.aliceEnabled) return;
+    if (!status?.allowedRole || !status?.aliceEnabled || status?.sharedHistory) return;
     let alive = true;
     let busy = false;
     const receive = async () => {
@@ -738,7 +758,42 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     void receive();
     const timer = setInterval(receive, 5000);
     return () => { alive = false; clearInterval(timer); };
-  }, [userId, status?.allowedRole, status?.aliceEnabled]);
+  }, [userId, status?.allowedRole, status?.aliceEnabled, status?.sharedHistory]);
+  const sharedThread = useRef<string | null>((() => { try { return localStorage.getItem(`finuchet_ai_thread_${userId}`); } catch { return null; } })());
+  useEffect(() => {
+    if (!status?.sharedHistory || !status?.allowedRole || sending) return;
+    let alive = true;
+    let busy = false;
+    const receive = async () => {
+      if (busy || running.current) return;
+      busy = true;
+      try {
+        const remote = await api.aiAssistant.history();
+        if (!alive || running.current) return;
+        const changedThread = sharedThread.current !== null && sharedThread.current !== remote.threadId;
+        sharedThread.current = remote.threadId;
+        try { localStorage.setItem(`finuchet_ai_thread_${userId}`, remote.threadId); } catch { /* без хранилища */ }
+        setMessages(current => {
+          const byId = new Map<string, Msg>(current.map(m => [m.id,m]));
+          const synced: Msg[] = remote.messages.map(m => {
+            const local = changedThread ? undefined : byId.get(m.id);
+            return { ...local, ...m, image: local?.image, images: local?.images,
+              actions: m.actions?.map((a: Action) => {
+                const old = local?.actions?.find(x => x.id === a.id);
+                return old && !['confirm','done','contract_form','send_doc','delete_contract','reschedule'].includes(a.kind) ? { ...a, ...old } : a;
+              }) };
+          });
+          const ids = new Set(synced.map(m => m.id));
+          return [...(changedThread ? [] : current.filter(m => !ids.has(m.id) && !m.id.startsWith('reply_') && !m.id.startsWith('alice_'))), ...synced];
+        });
+      } catch { /* Локальная история остаётся доступной без сети. */ }
+      finally { busy = false; }
+    };
+    void receive();
+    const timer = setInterval(receive, 8000);
+    return () => { alive = false; clearInterval(timer); };
+  }, [userId, status?.sharedHistory, status?.allowedRole, sending]);
+
   // Что листается: слой страницы PagePush, на Mac — карточка, иначе окно
   const scroller = (): HTMLElement | null => {
     let el: HTMLElement | null = listEnd.current?.parentElement || null;
@@ -844,22 +899,23 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const patchAction = (msgId: string, actionId: string, patch: Partial<Action>) =>
     setMessages(ms => ms.map(m => m.id !== msgId ? m : { ...m, actions: m.actions?.map(a => a.id === actionId ? { ...a, ...patch } as Action : a) }));
 
-  const send = async (payload: { text?: string; image?: string | null; audio?: { data: string; format: string }; voice?: number; note?: string }) => {
+  const send = async (payload: { text?: string; image?: string | null; images?: string[]; audio?: { data: string; format: string }; voice?: number; note?: string; forceConfirm?: boolean }) => {
     if (sending) return;
     if (status && !status.consent) { setConsentOpen(true); return; }
-    const userMsg: Msg = { id: newId(), role: 'user', text: payload.text || '', image: payload.image || undefined, voice: payload.voice, note: payload.note };
+    const sentImages = payload.images?.length ? payload.images : payload.image ? [payload.image] : [];
+    const userMsg: Msg = { id: newId(), role: 'user', text: payload.text || '', image: sentImages[0], images: sentImages.length > 1 ? sentImages : undefined, voice: payload.voice, note: payload.note };
     const history = toHistory(messages);
     setMessages(ms => [...ms, userMsg]);
-    setText(''); setImage(null);
+    setText(''); setImages([]);
     setSending(true);
-    const req = { id: newId(), ctrl: new AbortController(), userMsgId: userMsg.id };
+    const req = { id: userMsg.id, ctrl: new AbortController(), userMsgId: userMsg.id };
     running.current = req;
     setStepLabel('');
     setLiveText('');
     try {
       const r = await api.aiAssistant.message({
         text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '),
-        history, image: payload.image || undefined, audio: payload.audio, mode, requestId: req.id,
+        history, sharedHistory: !!status?.sharedHistory, image: sentImages[0], images: sentImages.length > 1 ? sentImages : undefined, audio: payload.audio, mode: payload.forceConfirm ? 'confirm' : mode, requestId: req.id,
       }, req.ctrl.signal,
         label => { if (running.current === req) setStepLabel(label); },
         piece => { if (running.current === req) setLiveText(t => piece === null ? '' : t + piece); });
@@ -872,7 +928,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         actions = actions.map(a => (a.kind === 'contract_form' || a.kind === 'send_doc') ? { ...a, auto: false } : a);
         if (!actions.length) { markStopped(userMsg.id); return; }
       }
-      const msgId = newId();
+      const msgId = `reply_${userMsg.id}`;
       setMessages(ms => [...ms, { id: msgId, role: 'assistant', text: r.reply || (r.cancelled ? 'Остановлено.' : ''), actions }]);
       if (actions.some(a => a.kind === 'done' && a.ok)) onDataChanged();
       if (!r.cancelled) runAuto(msgId, actions);
@@ -913,7 +969,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const submit = () => {
     const t = text.trim();
     if (!t && !image) return;
-    send({ text: t, image });
+    send({ text: t, images });
     // Печатали с открытой клавиатурой — курсор остаётся в поле, можно писать дальше
     if (focusedRef.current) requestAnimationFrame(() => inputRef.current?.focus({ preventScroll: true }));
   };
@@ -964,7 +1020,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     try {
       const audio = await r.stop();
       if (audio.seconds < 0.6) return; // случайное касание
-      send({ audio: { data: audio.data, format: audio.format }, voice: Math.round(audio.seconds), image, text: text.trim() || undefined });
+      send({ audio: { data: audio.data, format: audio.format }, voice: Math.round(audio.seconds), images, text: text.trim() || undefined });
     } catch (e: any) { setMicError(e.message); }
   };
   const cancelRecording = async () => {
@@ -977,9 +1033,26 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     r.cancel();
   };
 
-  const pickPhoto = async (f?: File | null) => {
-    if (!f) return;
-    try { setImage(await compressImage(f)); } catch (e: any) { setMicError(e.message); }
+  // Можно выбрать сразу несколько (в медиатеке iPhone — отметить) — до трёх в сообщении
+  const pickPhotos = async (files?: FileList | null) => {
+    const list = Array.from(files || []);
+    if (!list.length) return;
+    setMicError(null);
+    const csv = list.find(f => /\.csv$/i.test(f.name));
+    if (csv) {
+      if (list.length !== 1) { setMicError('Выберите один CSV отдельно от фотографий.'); return; }
+      if (csv.size > 256 * 1024) { setMicError('CSV должен быть не больше 256 КБ.'); return; }
+      try { setStatementRows((await api.aiAssistant.previewStatement(await csv.text())).rows); }
+      catch (e: any) { setMicError(e.message); }
+      return;
+    }
+    const room = MAX_PHOTOS - images.length;
+    if (room <= 0) { setMicError(`Не больше ${MAX_PHOTOS} фото в одном сообщении`); return; }
+    if (list.length > room) setMicError(`Добавлены первые ${room} — не больше ${MAX_PHOTOS} фото в сообщении`);
+    try {
+      const shrunk = await Promise.all(list.slice(0, room).map(f => compressImage(f)));
+      setImages(cur => [...cur, ...shrunk].slice(0, MAX_PHOTOS));
+    } catch (e: any) { setMicError(e.message); }
   };
 
   const confirm = async (msgId: string, a: Action) => {
@@ -1012,10 +1085,33 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   };
 
   // Договор в «Авто»: сохранить сразу; не вышло — карточка с причиной и формой
+  // Фото паспорта поручителя из черновика (guarantorPhoto — номер фото) — берём из
+  // сообщения, на которое ответил агент; приложение положит его к клиенту в документы
+  const withGuarantorPhoto = (msgId: string, draft: any) => {
+    const n = Number(draft?.guarantorPhoto);
+    if (!draft?.guarantorName || !(n >= 1)) return draft;
+    const at = messages.findIndex(x => x.id === msgId);
+    for (let i = at - 1; i >= 0; i--) {
+      const u = messages[i];
+      if (u.role !== 'user') continue;
+      const pics = u.images?.length ? u.images : u.image && u.image !== 'stripped' ? [u.image] : [];
+      return pics[n - 1] ? { ...draft, _guarantorPhoto: pics[n - 1] } : draft;
+    }
+    return draft;
+  };
+  const clientAction = async (action: Action, perform: () => Promise<any>) => {
+    if (!status?.sharedHistory) return perform();
+    try {
+      const claim = await api.aiAssistant.claimClientAction(action.id);
+      if (!claim.claimed) return claim.result || {ok:false,text:'Действие уже начато.'};
+      const result = await perform();
+      return await api.aiAssistant.finishClientAction(action.id,result) || result;
+    } catch (e: any) { return {ok:false,text:e.message || 'Проверьте результат операции перед повтором.'}; }
+  };
   const saveContract = async (msgId: string, a: Action) => {
     if (a.kind !== 'contract_form') return;
     patchAction(msgId, a.id, { state: 'saving' });
-    const r = await onCreateContract(a.draft);
+    const r = await clientAction(a, () => onCreateContract(withGuarantorPhoto(msgId, a.draft)));
     if (!r.ok || !r.saleId) { patchAction(msgId, a.id, { state: 'failed', result: r.text }); return; }
     const saved = { saleId: r.saleId, customerId: r.customerId, number: r.number, total: r.total, monthly: r.monthly, offline: r.offline };
     patchAction(msgId, a.id, { state: 'saved', saved, result: r.text });
@@ -1035,11 +1131,18 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     patchAction(msgId, a.id, r.ok ? { state: 'deleted', result: r.text } : { state: 'saved', result: r.text });
   };
 
+  const rescheduleConfirmed = async (msgId: string, a: Action) => {
+    if (a.kind !== 'reschedule' || !onReschedule) return;
+    patchAction(msgId, a.id, { state: 'busy' });
+    const r = await clientAction(a, () => onReschedule(a.saleId, a.date));
+    patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
+    if (r.ok) onDataChanged();
+  };
   // Удаление договора по просьбе — как вручную (handleDeleteSale в App.tsx)
   const deleteContractConfirmed = async (msgId: string, a: Action) => {
     if (a.kind !== 'delete_contract') return;
     patchAction(msgId, a.id, { state: 'busy' });
-    const r = await onDeleteContract(a.saleId);
+    const r = await clientAction(a, () => onDeleteContract(a.saleId));
     patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.ok ? 'Договор удалён.' : r.text });
     if (r.ok) onDataChanged();
   };
@@ -1054,7 +1157,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const sendDoc = async (msgId: string, a: Action, fresh = false) => {
     if (a.kind !== 'send_doc') return;
     patchAction(msgId, a.id, { state: 'busy' });
-    const r = await onSendDocument(a.saleId, a.doc, { fresh: fresh || a.doc === 'receipt' });
+    const r = await clientAction(a, () => onSendDocument(a.saleId, a.doc, { fresh: fresh || a.doc === 'receipt' }));
     patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
   };
 
@@ -1077,10 +1180,14 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   };
 
   // Новый чат: текущий откладываем — его можно вернуть из пустого чата
-  const newChat = () => {
+  const newChat = async () => {
     if (sending) return;
-    writeStore(userId, messages, true);
-    setPrevChat(messages);
+    if (status?.sharedHistory) {
+      try { await api.aiAssistant.clearHistory(true); sharedThread.current = null; }
+      catch (e: any) { toast.error(e.message); return; }
+    }
+    writeStore(userId, status?.sharedHistory ? [] : messages, true);
+    setPrevChat(status?.sharedHistory ? [] : messages);
     setMessages([]);
   };
   const restorePrev = () => {
@@ -1089,7 +1196,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     setPrevChat([]);
   };
   // Очистить: переписка удаляется с устройства насовсем
-  const clearChat = () => {
+  const clearChat = async () => {
+    if (status?.sharedHistory) {
+      try { await api.aiAssistant.clearHistory(); sharedThread.current = null; }
+      catch (e: any) { toast.error(e.message); return; }
+    }
     setMessages([]);
     setClearOpen(false);
   };
@@ -1098,6 +1209,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
 
   return (
     <div ref={rootRef} className="ai-chat-root flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
+      {statementRows && <AIStatementPreview rows={statementRows} onClose={() => setStatementRows(null)} onPrepare={t => { setStatementRows(null); send({ text: t, forceConfirm: true }); }} />}
+      {journalOpen && <AIAgentJournal onClose={() => setJournalOpen(false)} />}
       {/* Шапка */}
       {/* В пустом чате шар один — большой посередине; маленький в шапке появляется вместе с перепиской */}
       <div className="flex items-center gap-3 pb-3 md:sticky md:top-0 md:z-20 md:pt-3 md:-mt-3 md:bg-slate-50/90 md:dark:bg-slate-900/90 md:backdrop-blur">
@@ -1111,8 +1224,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         </div>
         {/* Меню «⋯»: на телефоне — в верхней панели (не уезжает при прокрутке), на компьютере — в закреплённой шапке */}
         {topbarSlot && phone
-          ? createPortal(<ChatMenu inTopbar hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />, topbarSlot)
-          : <ChatMenu hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onSettings={() => setSettingsOpen(true)} />}
+          ? createPortal(<ChatMenu inTopbar hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onJournal={() => setJournalOpen(true)} onSettings={() => setSettingsOpen(true)} />, topbarSlot)
+          : <ChatMenu hasChat={!empty} busy={sending} onNew={newChat} onClear={() => setClearOpen(true)} onJournal={() => setJournalOpen(true)} onSettings={() => setSettingsOpen(true)} />}
       </div>
 
       {/* Лента. Касание ленты на телефоне закрывает клавиатуру — как в мессенджерах */}
@@ -1160,7 +1273,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                     : m.error
                       ? 'bg-rose-50 dark:bg-rose-500/10 text-rose-700 dark:text-rose-300 rounded-bl-lg'
                       : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 rounded-bl-lg'}`}>
-                  {m.image && m.image !== 'stripped' && <img src={m.image} alt="" className="mb-2 max-h-48 rounded-2xl" />}
+                  {m.images && m.images.length > 1 ? (
+                    <div className="mb-2 flex gap-1.5">
+                      {m.images.map((src, i) => <img key={i} src={src} alt="" className="h-28 min-w-0 flex-1 object-cover rounded-2xl" />)}
+                    </div>
+                  ) : m.image && m.image !== 'stripped' && <img src={m.image} alt="" className="mb-2 max-h-48 rounded-2xl" />}
                   {m.image === 'stripped' && <p className="text-xs opacity-75 mb-1">📷 Фото</p>}
                   {m.voice ? <p className="text-xs opacity-80 mb-0.5">🎙 Голосовое · {m.voice} с</p> : null}
                   {m.heard ? <p className="text-[13px] leading-snug opacity-90 italic mb-0.5">«{m.heard}»</p> : null}
@@ -1178,6 +1295,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   )}
                 </p>
               )}
+              {!!m.workflow?.plan?.length && <details className="rounded-2xl border border-slate-200 dark:border-slate-700 px-4 py-3 text-sm">
+                <summary className="cursor-pointer font-semibold">План задачи · {m.workflow.plan.filter(s => s.status === 'done').length} из {m.workflow.plan.length}</summary>
+                <ol className="mt-2 space-y-1">{m.workflow.plan.map((s,i) => <li key={i}>{s.status === 'done' ? '✓' : s.status === 'blocked' ? '!' : '○'} {s.title}</li>)}</ol>
+                <p className="mt-2 text-xs text-slate-500">Результаты денежных операций — в журнале действий.</p>
+              </details>}
               {m.actions?.map(a => (
                 <AIActionCard key={a.id} action={a} sending={sending} whatsappEnabled={whatsappEnabled}
                               accountName={a.kind === 'contract_form' ? contractAccountName?.(a.draft) : undefined}
@@ -1188,7 +1310,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onUndo={() => undo(m.id, a)}
                   onSendReceipt={() => sendReceipt(m.id, a)}
                   onSaveContract={() => saveContract(m.id, a)}
-                  onOpenForm={() => { if (a.kind !== 'contract_form') return; onOpenContract(a.draft); if (a.state !== 'failed') patchAction(m.id, a.id, { state: 'done' }); }}
+                  onOpenForm={() => { if (a.kind !== 'contract_form') return; onOpenContract(withGuarantorPhoto(m.id, a.draft)); if (a.state !== 'failed') patchAction(m.id, a.id, { state: 'done' }); }}
                   onShowContract={() => { if (a.kind === 'contract_form' && a.saved) onShowContract(a.saved.saleId, a.saved.customerId); }}
                   onSendContract={() => sendContract(m.id, a)}
                   onDeleteContract={() => deleteContract(m.id, a)}
@@ -1196,6 +1318,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onDownloadReport={() => downloadReport(m.id, a)}
                   onCancelDoc={() => patchAction(m.id, a.id, { state: 'cancelled' })}
                   onConfirmDelete={() => deleteContractConfirmed(m.id, a)}
+                  onConfirmReschedule={() => rescheduleConfirmed(m.id, a)}
+                  onCancelReschedule={() => patchAction(m.id, a.id, { state: 'cancelled' })}
                   onCancelDelete={() => patchAction(m.id, a.id, { state: 'cancelled' })}
                   onOpenView={() => onOpenWhatsApp?.()}
                 />
@@ -1246,13 +1370,19 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             закрывают её сами: открывается выбор фото / поле уступает записи */}
         <div onMouseDown={e => { if ((e.target as HTMLElement).closest('button:not([data-blur])')) e.preventDefault(); }}
              className={`ai-field relative rounded-[28px] bg-white/90 dark:bg-slate-800/90 backdrop-blur border shadow-lg ${focused ? 'border-violet-300 dark:border-violet-500/50 is-focused' : 'border-slate-200 dark:border-slate-700'}`}>
-          {image && (
-            <div className="ai-msg-in px-3 pt-3">
-              <div className="relative inline-block">
-                <img src={image} alt="" className="h-16 rounded-xl" />
-                <button onClick={() => setImage(null)} aria-label="Убрать фото"
-                        className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-slate-900/80 dark:bg-white/90 text-white dark:text-slate-900 text-xs leading-none flex items-center justify-center shadow">✕</button>
-              </div>
+          {images.length > 0 && (
+            <div className="ai-msg-in px-3 pt-3 flex gap-2.5">
+              {images.map((src, i) => (
+                <div key={i} className="relative inline-block">
+                  <img src={src} alt="" className="h-16 rounded-xl" />
+                  {/* Номер — им называют фото: «первый — клиент, второй — поручитель» */}
+                  {images.length > 1 && (
+                    <span className="absolute bottom-1 left-1 min-w-5 h-5 px-1 rounded-full bg-slate-900/75 text-white text-[11px] font-bold leading-5 text-center">{i + 1}</span>
+                  )}
+                  <button onClick={() => setImages(cur => cur.filter((_, j) => j !== i))} aria-label={`Убрать фото ${i + 1}`}
+                          className="absolute -top-1.5 -right-1.5 w-6 h-6 rounded-full bg-slate-900/80 dark:bg-white/90 text-white dark:text-slate-900 text-xs leading-none flex items-center justify-center shadow">✕</button>
+                </div>
+              ))}
             </div>
           )}
           {/* Набранное во время записи уйдёт вместе с голосовым — показываем его (конец,
@@ -1319,7 +1449,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                 <Plus size={24} strokeWidth={1.8} />
               </button>
             )}
-            <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={e => { pickPhoto(e.target.files?.[0]); e.target.value = ''; }} />
+            <input ref={fileRef} type="file" accept="image/*,.csv,text/csv" multiple className="hidden" onChange={e => { pickPhotos(e.target.files); e.target.value = ''; }} />
             <div className="flex-1" />
             {!recUi && <ModeMenu mode={mode} onChange={setMode} />}
           {/* Идёт ответ — на месте отправки «Стоп» с бегущим кольцом */}
@@ -1395,7 +1525,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           <div className="flex flex-col items-center text-center">
             <span className="w-12 h-12 rounded-full flex items-center justify-center bg-rose-50 dark:bg-rose-500/10 text-rose-500"><Trash2 size={22} /></span>
             <h3 className="mt-3 text-lg font-bold text-slate-900 dark:text-white">Очистить чат?</h3>
-            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Переписка удалится с этого устройства, вернуть её не получится. Данные учёта не затронуты.</p>
+            <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">Переписка удалится из общей истории аккаунта и этого устройства. Вернуть её не получится. Данные учёта и журнал действий сохранятся.</p>
           </div>
           <div className="mt-5 grid grid-cols-2 gap-2">
             <button onClick={() => setClearOpen(false)} className="py-3 rounded-2xl font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 active:scale-[.98] transition">Отмена</button>

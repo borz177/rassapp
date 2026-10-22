@@ -397,6 +397,7 @@ Location: /api/v1/customers/cust_1727100000000_a1b2c3
     "contracts": { "total": 84, "created": 7, "active": 61, "completed": 20, "overdue": 9 },
     "money": {
       "collected": 412000,
+      "collectedWithoutDownPayment": false,
       "profit": 96500,
       "expenses": 38000,
       "outstandingDebt": 1840000,

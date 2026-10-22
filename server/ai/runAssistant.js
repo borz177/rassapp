@@ -1,6 +1,7 @@
 // Единый вызов агента и учёт лимитов для приложения и Алисы.
-const createAssistantRunner = ({ pool, assistant, state, subscriptionState, month }) => async ({
-  userId, text = '', history = [], image = null, audio = null, mode = 'confirm',
+const createAssistantRunner = ({ pool, assistant, state, subscriptionState, month, conversations = null }) => {
+const execute = async ({
+  userId, text = '', history = [], image = null, images = null, audio = null, mode = 'confirm',
   signal, onStep, onStream, silent = false, channel = 'app', allowWrites = true, verifiedState,
 }) => {
   const st = verifiedState || await state(userId);
@@ -14,9 +15,9 @@ const createAssistantRunner = ({ pool, assistant, state, subscriptionState, mont
   const alice = channel === 'alice';
   const out = await assistant.reply({
     user: me, text: String(text).slice(0, 4000), history: Array.isArray(history) ? history : [],
-    image: alice ? null : image, audio: alice ? null : audio,
+    image: alice ? null : image, images: alice ? null : images, audio: alice ? null : audio,
     mode: alice ? 'confirm' : mode === 'auto' ? 'auto' : 'confirm',
-    channel, autoLimit: st.settings.autoLimit, companyName: settings?.companyName || '',
+    channel, preferences: st.settings.preferences || '', autoLimit: st.settings.autoLimit, companyName: settings?.companyName || '',
     readOnly: !allowWrites || (me.role !== 'admin' && !!(await subscriptionState(userId)).expired),
     signal, onStep, onStream, silent,
   });
@@ -36,5 +37,18 @@ const createAssistantRunner = ({ pool, assistant, state, subscriptionState, mont
     cancelled: !!out.cancelled, left: Math.max(0, st.left - (counted ? 1 : 0)),
     ...(typeof out.heard === 'string' ? { heard: out.heard } : {}),
   };
+};
+return async args => {
+  // Повтор запроса возвращает сохранённый ответ, но не обходит отзыв доступа.
+  if (conversations) {
+    const current = await state(args.userId);
+    const me = (await pool.query('SELECT id, name, role, blocked FROM users WHERE id = $1', [args.userId])).rows[0];
+    if (!current?.allowedRole || !current.consent || !me || me.blocked) {
+      throw Object.assign(new Error('Доступ к агенту отсутствует. Проверьте аккаунт и согласие на обработку данных.'), { status: 403 });
+    }
+    return conversations.run({ ...args, verifiedState: current }, execute);
+  }
+  return execute(args);
+};
 };
 module.exports = { createAssistantRunner };

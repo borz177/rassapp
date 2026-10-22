@@ -31,6 +31,7 @@ import Suppliers from './components/Suppliers';
 import Tasks from './components/Tasks';
 import SupplierDetails from './components/SupplierDetails';
 import InvestorDashboard from './components/InvestorDashboard';
+import { collectionAmount, collectionPayments, isCustomerSale } from './shared/collections.js';
 import Tariffs from './components/Tariffs';
 import Help from './components/Help';
 import Auth from './components/Auth';
@@ -57,6 +58,7 @@ const LazyFallback: React.FC = () => (
   </div>
 );
 import { reconcileSalePaymentPlan } from './src/salePlan';
+import { regeneratePaymentPlan, parseInputDate } from './src/saleMath';
 import { Customer, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
 import { warmProductImages } from './src/productImageCache';
@@ -135,15 +137,12 @@ const capturePendingReferral = () => {
 };
 capturePendingReferral();
 
-const App: React.FC = () => {
+const MainApp: React.FC = () => {
     const path = window.location.pathname
 const isLanding = path === "/"
 // Документация API — открытая страница рядом с лендингом. Грузится отдельным
 // куском: в приложении она не нужна ни одному экрану.
 const isApiDocs = path === "/api" || path === "/api/"
-// Страница согласия для помощников: сюда приводит внешний помощник, и она
-// должна открываться до всей остальной логики приложения.
-const isOAuthConsent = path === "/oauth/authorize"
 // Правовые документы по постоянным адресам (/privacy и другие): на окно внутри
 // приложения ссылку не дашь, а её спрашивают площадки помощников и магазины.
 const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
@@ -1614,8 +1613,11 @@ const dashboardStats = useMemo(() => {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
 
+  const investorIds = new Set(investors.map(i => i.id));
   sales.forEach(sale => {
-    totalRevenue += (sale.totalAmount - sale.remainingAmount);
+    if (isCustomerSale(sale, investorIds)) {
+      totalRevenue += collectionAmount(sale, appSettings.collectedWithoutDownPayment);
+    }
     totalOutstanding += sale.remainingAmount;
     // ✅ ПРОВЕРКА: реальная сумма просрочки > 0
     const overdueAmount = calculateSaleOverdue(sale, today);
@@ -1625,7 +1627,7 @@ const dashboardStats = useMemo(() => {
     }
   });
   return { totalRevenue, totalOutstanding, overdueCount, installmentSalesTotal };
-}, [sales]);
+}, [sales, investors, appSettings.collectedWithoutDownPayment]);
   // Договоры, разложенные по счетам (shared/funding.js): совместный договор — по
   // части на каждый счёт с пропорциональными суммами. Всё, что считает деньги ПО
   // СЧЁТУ, берёт эти части; списки и счётчики — сами договоры. Без совместных
@@ -1700,11 +1702,10 @@ const dashboardStats = useMemo(() => {
         : moneySales.filter(s => s.accountId === accountId);
 
     let customerPaymentsInPeriod = 0;
+    const investorIds = new Set(investors.map(i => i.id));
     filteredSales.forEach(sale => {
-        const allPayments = [
-            { date: sale.startDate, amount: sale.downPayment },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        ];
+        if (!isCustomerSale(sale, investorIds)) return;
+        const allPayments = collectionPayments(sale, appSettings.collectedWithoutDownPayment);
         allPayments.forEach(p => {
             const paymentDate = new Date(p.date);
             if (paymentDate >= startDate && paymentDate <= endDate) {
@@ -1788,7 +1789,7 @@ const dashboardStats = useMemo(() => {
       });
 
     return { customerPaymentsInPeriod, expectedManagerProfit, expectedInvestorProfit, realizedManagerProfit, realizedInvestorProfit };
-  }, [reportFilters, moneySales, accounts, investors, expenses, employees, isManager, profitFromPaymentsOnly]);
+  }, [reportFilters, moneySales, accounts, investors, expenses, employees, isManager, profitFromPaymentsOnly, appSettings.collectedWithoutDownPayment]);
 
   // 📱 Выход из аккаунта на iPhone: сначала отвязать телефон от его уведомлений —
   // пока жив токен входа, без него сервер запрос не примет. Без сети выход не ждёт
@@ -4364,9 +4365,18 @@ const handleQuickAddCustomer = async (data: {
    * закуп со счёта, лимит тарифа, офлайн-очередь). Не всё ясно — не сохраняем,
    * а говорим, что не так: тогда человек откроет форму.
    */
+  // Фото паспорта поручителя из черновика агента — в документы клиента (на сервере),
+  // как только клиент известен; не ждём — договор от этого не зависит
+  const attachGuarantorPhoto = (customerId: string | undefined, draft: any) => {
+    if (!customerId || !draft?._guarantorPhoto) return;
+    api.aiAssistant.guarantorPhoto(customerId, draft._guarantorPhoto, draft.guarantorName)
+      .then(ok => { if (ok) loadData(); })
+      .catch(() => {});
+  };
   const createContractFromAssistant = async (draft: any): Promise<{ ok: boolean; text: string; saleId?: string; customerId?: string; number?: string; monthly?: number; total?: number; offline?: boolean }> => {
     try {
       const customerId = await resolveDraftCustomer(draft);
+      attachGuarantorPhoto(customerId, draft);
       const accountId = draftAccountId(draft);
       const problem = assistantSaleProblem({ draft, customerId, accountId, sales, fromNetBuyPrice: appSettings.markupFromNetBuyPrice });
       if (problem) return { ok: false, text: problem, customerId };
@@ -4456,6 +4466,27 @@ const handleQuickAddCustomer = async (data: {
     }
   };
 
+  /**
+   * Перенос даты первого платежа по просьбе агенту — тот же пересчёт графика, что
+   * при смене даты в форме договора (regeneratePaymentPlan): полученные платежи
+   * сохраняются, будущие строки строятся заново от новой даты
+   */
+  const rescheduleFromAssistant = async (saleId: string, date: string): Promise<{ ok: boolean; text: string }> => {
+    const sale = aiDataRef.current.sales.find((s: Sale) => s.id === saleId);
+    if (!sale) return { ok: false, text: 'Договор не найден — обновите данные.' };
+    if (!checkAccess('WRITE')) return { ok: false, text: 'Срок подписки истёк — изменения недоступны.' };
+    try {
+      const first = parseInputDate(date);
+      const plan = regeneratePaymentPlan({ ...sale }, first.toISOString(), sale.paymentPlan);
+      const updated = reconcileSalePaymentPlan({ ...sale, paymentPlan: plan, paymentDay: first.getDate() });
+      const saved = await api.saveItem('sales', updated, { intent: { kind: 'contract', label: sale.productName } });
+      updateList(setSales, saved);
+      return { ok: true, text: `График перенесён: первый платёж ${first.toLocaleDateString('ru-RU')}` };
+    } catch (e: any) {
+      return { ok: false, text: e?.message || 'Не удалось перенести график.' };
+    }
+  };
+
   /** «Отменить» у договора, оформленного агентом: обычное удаление договора */
   const deleteContractFromAssistant = async (saleId: string): Promise<{ ok: boolean; text: string }> => {
     try { await handleDeleteSale(saleId); return { ok: true, text: 'Договор отменён и удалён.' }; }
@@ -4474,6 +4505,7 @@ const handleQuickAddCustomer = async (data: {
 
   const openContractFromAssistant = async (draft: any) => {
     const customerId = await resolveDraftCustomer(draft);
+    attachGuarantorPhoto(customerId, draft);
     const totalPrice = Number(draft.totalPrice) || 0;
     const buy = Number(draft.buyPrice) || 0;
     const down = Number(draft.downPayment) || 0;
@@ -4487,6 +4519,8 @@ const handleQuickAddCustomer = async (data: {
       interestRate: draft.markupPercent != null ? Number(draft.markupPercent) : (totalPrice && buy ? rateForPrice(buy, down, totalPrice, appSettings.markupFromNetBuyPrice) : undefined),
       installments: Number(draft.months) || undefined,
       downPayment: Number(draft.downPayment) || 0,
+      ...(draft.guarantorName ? { guarantorName: String(draft.guarantorName).trim() } : {}),
+      ...(draft.guarantorPhone ? { guarantorPhone: String(draft.guarantorPhone).trim() } : {}),
       ...(totalPrice ? { totalAmount: totalPrice } : {}),
       ...(draft.accountId && accounts.some((a: Account) => a.id === draft.accountId) ? { accountId: draft.accountId } : {}),
     });
@@ -4826,7 +4860,13 @@ const handleAddCategory = async (name: string) => {
     await handleUpdateSettings({ ...appSettings, customCategories: [...existing, clean] });
 };
 
-const handleUpdateSettings = async (newSettings: AppSettings) => {
+const handleUpdateSettings = async (newSettings: AppSettings, persistFirst = false) => {
+    // Редактор шаблона закрывается только после успешного сохранения или постановки в офлайн-очередь.
+    if (persistFirst) {
+        if (!user) throw new Error('Войдите в аккаунт, чтобы сохранить шаблон.');
+        await api.saveItem('settings', {id:`settings_${user.id}`, ...newSettings, _updated:Date.now()});
+        recentLocalWritesRef.current.set(`settings_${user.id}`, Date.now());
+    }
 
 
     // 🔹 1. Обновляем appSettings с НОВЫМИ ссылками на объекты (для триггера re-render)
@@ -4849,6 +4889,8 @@ const handleUpdateSettings = async (newSettings: AppSettings) => {
 
     // 🔹 2. Сохраняем в localStorage (локальный кэш)
     saveAppSettings(newSettings);
+
+    if (persistFirst) return;
 
     if (user) {
         // Отмечаем до отправки: ответ, собранный сервером до неё, не должен
@@ -4943,10 +4985,6 @@ if (!user && !showSplash) {
 
   if (isApiDocs) {
     return <Suspense fallback={null}><ApiDocs /></Suspense>;
-  }
-
-  if (isOAuthConsent) {
-    return <Suspense fallback={null}><OAuthConsent /></Suspense>;
   }
 
   if (legalDoc) {
@@ -5450,6 +5488,7 @@ if (!user && !showSplash) {
                         onCreateContract={createContractFromAssistant}
                         onSendDocument={sendDocumentFromAssistant}
                         onDeleteContract={deleteContractFromAssistant}
+                        onReschedule={rescheduleFromAssistant}
                         onShowContract={openContractById}
                         onExportReport={exportReportFromAssistant}
                         whatsappEnabled={!!assistantWhatsApp?.enabled}
@@ -6475,5 +6514,11 @@ if (!user && !showSplash) {
 
 
 };
+
+// Привязка аккаунта должна работать и при уже выполненном входе. Не запускаем
+// здесь загрузку и синхронизацию приложения: они могут подменить экран согласия.
+const App: React.FC = () => /^\/oauth\/authorize\/?$/.test(window.location.pathname)
+  ? <Suspense fallback={null}><OAuthConsent /></Suspense>
+  : <MainApp />;
 
 export default App;

@@ -31,6 +31,7 @@ const KIND_LABELS = {
   tool_error: 'Ошибка инструмента',
   model_fallback: 'Основная модель не ответила',
   cant_do: 'Не умеет — просили новое умение',
+  tech_words: 'Показал человеку технические названия',
 };
 // Не ошибки агента, а просьбы о том, чего он пока не умеет: в разбор ошибок не идут
 // (иначе разбор придумал бы «не отказывай») и хранятся дольше — их считают за месяцы
@@ -53,6 +54,7 @@ const mask = (text, max = 500) => String(text || '')
   .slice(0, max);
 
 module.exports = ({ pool }) => {
+  let validationConfig;
   const ready = pool.query(`
     CREATE TABLE IF NOT EXISTS ai_signals (
       id BIGSERIAL PRIMARY KEY,
@@ -81,6 +83,8 @@ module.exports = ({ pool }) => {
       auto_apply BOOLEAN NOT NULL DEFAULT FALSE,
       last_review_at TIMESTAMP
     );
+    ALTER TABLE ai_lessons ADD COLUMN IF NOT EXISTS validation JSONB;
+    CREATE TABLE IF NOT EXISTS ai_lesson_versions(id BIGSERIAL PRIMARY KEY,lesson_id BIGINT,action TEXT,actor TEXT,rules JSONB,created_at TIMESTAMPTZ DEFAULT NOW());
     INSERT INTO ai_quality_settings (id) VALUES (1) ON CONFLICT DO NOTHING;
   `).catch(e => console.error('❌ AI quality tables:', e.message));
 
@@ -141,7 +145,7 @@ module.exports = ({ pool }) => {
       const rule = l.rule.trim().slice(0, MAX_LESSON_CHARS);
       if (!rule || existing.has(rule.toLowerCase()) || UNSAFE_RE.test(rule)) continue;
       const active = (await pool.query(`SELECT count(*)::int AS n FROM ai_lessons WHERE status = 'active'`)).rows[0].n;
-      const status = settings?.auto_apply && active < MAX_LESSONS ? 'active' : 'proposed';
+      const status = 'proposed'; // Кандидаты проходят проверки и решение администратора.
       await pool.query(
         `INSERT INTO ai_lessons (rule, why, kinds, cases, status, decided_at) VALUES ($1, $2, $3, $4, $5, $6)`,
         [rule, String(l.why || '').slice(0, 300), (Array.isArray(l.kinds) ? l.kinds : []).join(',').slice(0, 200), Math.max(0, Number(l.cases) || 0), status, status === 'active' ? new Date() : null]);
@@ -165,27 +169,52 @@ module.exports = ({ pool }) => {
     const wishes = (await pool.query(
       `SELECT kind, tool, question, answer, created_at FROM ai_signals WHERE kind = ANY($1) ORDER BY id DESC LIMIT 100`, [WISH_KINDS])).rows;
     const lessons = (await pool.query(
-      `SELECT id, rule, why, kinds, cases, status, created_at, decided_at FROM ai_lessons WHERE status <> 'removed' ORDER BY (status = 'proposed') DESC, id DESC LIMIT 50`)).rows;
+      `SELECT id, rule, why, kinds, cases, status, created_at, decided_at, validation FROM ai_lessons WHERE status <> 'removed' ORDER BY (status = 'proposed') DESC, id DESC LIMIT 50`)).rows;
     const settings = (await pool.query('SELECT auto_apply, last_review_at FROM ai_quality_settings WHERE id = 1')).rows[0] || {};
     const pendingReview = (await pool.query('SELECT count(*)::int AS n FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1)', [WISH_KINDS])).rows[0].n;
-    return { kinds: KIND_LABELS, byDay, recent, wishes, lessons, autoApply: !!settings.auto_apply, lastReviewAt: settings.last_review_at, pendingReview };
+    const versions = (await pool.query('SELECT id,lesson_id,action,actor,created_at FROM ai_lesson_versions ORDER BY id DESC LIMIT 30')).rows;
+    return { versions, kinds: KIND_LABELS, byDay, recent, wishes, lessons, autoApply: false, lastReviewAt: settings.last_review_at, pendingReview };
   };
 
-  const decide = async (id, action) => {
+  const decide = async (id, action, actor = null) => {
     await ready;
     const status = { apply: 'active', reject: 'rejected', remove: 'removed' }[action];
     if (!status) throw new Error('Неверное действие');
+    let checkedRule;
     if (status === 'active') {
       const rule = (await pool.query('SELECT rule FROM ai_lessons WHERE id = $1', [id])).rows[0]?.rule;
       if (!rule) throw new Error('Нет такого вывода');
+      checkedRule = rule;
       if (UNSAFE_RE.test(rule)) throw new Error('Это правило ослабляет защиту агента — применить нельзя');
+      if (!validationConfig) throw new Error('Проверка правил ещё не готова.');
+      const validation = await require('./lessonValidation').validateLesson({ rule, ...validationConfig });
+      await pool.query('UPDATE ai_lessons SET validation=$2 WHERE id=$1',[id,JSON.stringify({ ...validation, ruleHash: require('./canonical').hash(rule), promptHash: require('./canonical').hash(validationConfig.staticPrompt), model: validationConfig.model })]);
+      if (!validation.passed) throw new Error('Новое правило не прошло проверочные сценарии и не применено.');
     }
-    await pool.query('UPDATE ai_lessons SET status = $1, decided_at = NOW() WHERE id = $2', [status, id]);
+    // Проверка моделью идёт без блокировки; решение и снимок версии — атомарно.
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await client.query('SELECT id FROM ai_quality_settings WHERE id=1 FOR UPDATE');
+      const current = (await client.query('SELECT rule FROM ai_lessons WHERE id=$1 FOR UPDATE',[id])).rows[0];
+      if (!current) throw new Error('Нет такого вывода');
+      if (status === 'active') {
+        if (current.rule !== checkedRule) throw new Error('Правило изменилось. Повторите проверку.');
+        const count = (await client.query("SELECT count(*)::int AS n FROM ai_lessons WHERE status='active' AND id<>$1",[id])).rows[0].n;
+        if (count >= MAX_LESSONS) throw new Error('Сначала отключите одно из действующих правил.');
+      }
+      await client.query('UPDATE ai_lessons SET status=$1,decided_at=NOW() WHERE id=$2',[status,id]);
+      const rules = (await client.query('SELECT id,rule,status FROM ai_lessons ORDER BY id')).rows;
+      await client.query('INSERT INTO ai_lesson_versions(lesson_id,action,actor,rules) VALUES($1,$2,$3,$4)',[id,action,actor,JSON.stringify(rules)]);
+      await client.query('COMMIT');
+    } catch (e) { await client.query('ROLLBACK'); throw e; }
+    finally { client.release(); }
     resetLessons();
   };
 
   const setAutoApply = async (on) => {
     await ready;
+    if (on) throw new Error('Новые правила требуют проверок и решения администратора.');
     await pool.query('UPDATE ai_quality_settings SET auto_apply = $1 WHERE id = 1', [!!on]);
   };
 
@@ -194,7 +223,8 @@ module.exports = ({ pool }) => {
     `DELETE FROM ai_signals WHERE created_at < NOW() - CASE WHEN kind = ANY($1) THEN INTERVAL '180 days' ELSE INTERVAL '30 days' END`, [WISH_KINDS])).catch(() => {});
 
   /** Ночной разбор: раз в сутки около 03:00 по Москве */
-  const start = ({ callModel, staticPrompt }) => {
+  const start = ({ callModel, staticPrompt, model }) => {
+    validationConfig = { callModel, staticPrompt, model: model || REVIEW_MODEL };
     const tick = async () => {
       cleanup();
       const hour = Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }));
@@ -204,7 +234,7 @@ module.exports = ({ pool }) => {
       const r = await review({ callModel, staticPrompt });
       console.log(`🧠 AI self-review: случаев ${r.cases}, новых выводов ${r.proposed}`);
     };
-    setInterval(() => tick().catch(e => console.error('AI self-review:', e.message)), 20 * 60 * 1000);
+    setInterval(() => tick().catch(e => console.error('AI self-review:', e.message)), 20 * 60 * 1000).unref();
   };
 
   return { signal, lessonsPrompt, review, report, decide, setAutoApply, start, mask, UNSAFE_RE };

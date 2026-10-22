@@ -5,6 +5,7 @@ import { registerBackInterceptor } from './transitions/PagePush';
 
 interface PrintPreviewProps {
   html: string;
+  pdfUrl?: string;
   title: string;
   autoPrint: boolean;
   onClose: () => void;
@@ -21,10 +22,11 @@ interface PrintPreviewProps {
  * Здесь документ живёт во фрейме внутри страницы: сверху всегда есть
  * «Закрыть», работают жест «назад» и Esc, а печатается только сам документ.
  */
-const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onClose }) => {
+const PrintPreview: React.FC<PrintPreviewProps> = ({ html, pdfUrl, title, autoPrint, onClose }) => {
   const frameRef = useRef<HTMLIFrameElement>(null);
   const printedRef = useRef(false);
   const [ready, setReady] = useState(false);
+  const [printError, setPrintError] = useState('');
 
   // Шаг «назад» закрывает просмотр, а не страницу под ним.
   useEffect(() => registerBackInterceptor(() => { onClose(); return true; }), [onClose]);
@@ -70,9 +72,14 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onC
     if (!win) return;
     // Договор подгоняет себя под лист перед печатью. На телефоне событие
     // beforeprint приходит не всегда — зовём подгонку сами (см. contractTemplates).
-    win.__fitContractForPrint?.();
-    win.focus();
-    win.print();
+    try {
+      if (!pdfUrl) win.__fitContractForPrint?.();
+      win.focus();
+      win.print();
+      setPrintError('');
+    } catch {
+      setPrintError('Используйте кнопку печати в панели просмотра PDF.');
+    }
   };
 
   return (
@@ -90,16 +97,18 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, title, autoPrint, onC
           <Printer size={18} /> Печать
         </button>
       </div>
+      {printError && <p role="alert" className="px-4 py-2 text-sm bg-white text-amber-700">{printError}</p>}
       <iframe
         ref={frameRef}
         title={title}
-        srcDoc={html}
+        srcDoc={pdfUrl ? undefined : html}
+        src={pdfUrl}
         className="flex-1 w-full border-0 bg-white"
         onLoad={() => {
           setReady(true);
           // Firefox и Safari берут имя из документа во фрейме — проставляем и там
           try { if (frameRef.current?.contentDocument) frameRef.current.contentDocument.title = title; } catch { /* чужой origin — не наш случай */ }
-          frameRef.current?.contentWindow?.addEventListener('keydown', e => onKeyRef.current(e));
+          try { frameRef.current?.contentWindow?.addEventListener('keydown', e => onKeyRef.current(e)); } catch { /* PDF использует собственный просмотрщик браузера */ }
           if (autoPrint && !printedRef.current) {
             printedRef.current = true;
             window.setTimeout(print, 250);
@@ -136,6 +145,27 @@ export const openPrintPreview = (
   };
   const shouldAutoPrint = autoPrint ?? window.matchMedia?.('(pointer: fine)').matches ?? false;
   root.render(<PrintPreview html={html} title={title} autoPrint={shouldAutoPrint} onClose={close} />);
+  return close;
+};
+
+/** PDF из исходного Word открывается тем же просмотром поверх приложения. */
+export const openPdfPrintPreview = (
+  blob: Blob,
+  { title = 'Договор' }: { title?: string } = {}
+): (() => void) => {
+  const url = URL.createObjectURL(blob);
+  const host = document.createElement('div');
+  document.body.append(host);
+  const root = createRoot(host);
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    root.unmount();
+    host.remove();
+    URL.revokeObjectURL(url);
+  };
+  root.render(<PrintPreview html="" pdfUrl={url} title={title} autoPrint={false} onClose={close} />);
   return close;
 };
 

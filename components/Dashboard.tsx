@@ -2,6 +2,7 @@ import React, { useMemo, useState, useEffect, useRef } from 'react';
 import { useModeOrder } from '../src/modeOrder';
 import SwapModesButton from './SwapModesButton';
 import MacDashboardHero from './MacDashboardHero';
+import { collectionAmount } from '../shared/collections.js';
 import { isMacShell } from '../src/platform';
 import ProfitTotalsModal from './ProfitTotalsModal';
 import { ModalParkContext } from './ModalPortal';
@@ -1169,9 +1170,7 @@ const currentMonthName = useMemo(() => {
         // Исключаем и системные, и инвесторские транзакции
         if (!isSystemTransaction && !isInvestorTransaction) {
             // «Собрано» без первых взносов — если так выбрано в настройках (Отображение)
-            const collected = (appSettings.collectedWithoutDownPayment ? 0 : sale.downPayment) + sale.paymentPlan
-                .filter(p => p.isPaid && p.isRealPayment !== false)
-                .reduce((sum, p) => sum + p.amount, 0);
+            const collected = collectionAmount(sale, appSettings.collectedWithoutDownPayment);
 
             totalRevenue += collected;
             totalOutstanding += sale.remainingAmount;
@@ -1182,7 +1181,7 @@ const currentMonthName = useMemo(() => {
     });
 
     return { totalRevenue, totalOutstanding, installmentSalesTotal };
-}, [sales, selectedAccountId, investors, appSettings.collectedWithoutDownPayment]); // ← добавили investors в зависимости
+}, [moneySales, selectedAccountId, investors, appSettings.collectedWithoutDownPayment]);
 
 
 
@@ -1766,6 +1765,8 @@ useEffect(() => {
                     part="chart"
                     sales={selectedAccountId ? moneySales.filter(s => s.accountId === selectedAccountId) : moneySales}
                     showCents={appSettings.showCents}
+                    collectedWithoutDownPayment={appSettings.collectedWithoutDownPayment}
+                    investors={investors}
                   />
                 )}
 

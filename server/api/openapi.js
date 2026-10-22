@@ -288,7 +288,8 @@ const Summary = {
     money: {
       type: 'object',
       properties: {
-        collected: money('Получено за период'),
+        collected: money('Собрано за период с учётом настройки «Без первых взносов»'),
+        collectedWithoutDownPayment: { type: 'boolean', description: 'Первые взносы по рассрочкам исключены из collected' },
         profit: money('Прибыль с полученного'),
         expenses: money('Расходы за период'),
         outstandingDebt: money('Остаток долга по договорам'),

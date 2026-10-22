@@ -15,6 +15,7 @@
  */
 
 import { fundingPieces } from './funding.js';
+import { collectionAmount, collectionPayments } from './collections.js';
 
 const MONEY_FORMAT = '#,##0';
 
@@ -93,7 +94,7 @@ const applySheetViewSettings = (XLSX, base64) => {
  * Считает строки всех листов. Вынесено отдельно от сборки книги, чтобы логику
  * можно было проверить без библиотеки xlsx.
  *
- * @param {{customers: any[], sales: any[], accounts: any[], investors: any[]}} data
+ * @param {{customers: any[], sales: any[], accounts: any[], investors: any[], settings?: {collectedWithoutDownPayment?: boolean}}} data
  * @param {{startDate?: string, endDate?: string, onlyActive?: boolean, includePlanned?: boolean, now?: number}} options
  */
 export function buildReportRows(data, options = {}) {
@@ -102,6 +103,7 @@ export function buildReportRows(data, options = {}) {
     const accounts = data.accounts || [];
     const investors = data.investors || [];
     const { startDate, endDate, onlyActive = false, includePlanned = false } = options;
+    const withoutDownPayment = !!data.settings?.collectedWithoutDownPayment;
     // Только эти счета (отчёт по одному инвестору или счёту). Договор с
     // совместным финансированием попадает, если в нём есть хотя бы один из них
     const onlyAccounts = Array.isArray(options.accountIds) && options.accountIds.length ? new Set(options.accountIds) : null;
@@ -119,6 +121,7 @@ export function buildReportRows(data, options = {}) {
     let filteredSalesCount = 0;
 
     let totalPeriodPayments = 0;
+    let totalScheduledPayments = 0;
     let totalClientDebt = 0;
     // Итоги считаем по тем же правилам, что и главная страница (Dashboard):
     // «Сумма договоров» — только рассрочки (type === 'INSTALLMENT'), «Сумма закупа» —
@@ -207,7 +210,7 @@ export function buildReportRows(data, options = {}) {
                 agg.buyPrice += buyPrice * k;
                 agg.profit += profit * k;
             }
-            agg.paid += totalRealPaid * k;
+            agg.paid += collectionAmount(sale, withoutDownPayment) * k;
             agg.debt += currentDebt * k;
             investorTotals.set(investorName, agg);
         }
@@ -242,11 +245,20 @@ export function buildReportRows(data, options = {}) {
 
         paymentAnchors.push(paymentsData.length);
 
-        const paymentsToExport = (includePlanned ? paymentPlan : paymentPlan.filter(p => p.isRealPayment))
-            .filter(p => {
-                const pDate = new Date(p.date).getTime();
-                return pDate >= filterStart && pDate <= filterEnd;
-            });
+        const inPeriod = p => {
+            const date = new Date(p.date).getTime();
+            return date >= filterStart && date <= filterEnd;
+        };
+        totalPeriodPayments += collectionPayments(sale, withoutDownPayment)
+            .filter(inPeriod).reduce((sum, p) => sum + p.amount, 0);
+        // Первый взнос уже есть в колонке «Взнос» обзора клиентов. Не добавляем
+        // его в лист платежей: при обратном импорте старой версией приложения
+        // он иначе засчитался бы второй раз как платёж графика.
+        const paidPayments = collectionPayments(sale, true)
+            .filter(p => p.id !== `${sale.id}_dp` && p.amount > 0);
+        const paymentsToExport = [...paidPayments, ...(includePlanned
+            ? paymentPlan.filter(p => !(p.isPaid && p.isRealPayment !== false)) : [])]
+            .filter(inPeriod);
 
         if (paymentsToExport.length === 0) {
             paymentsData.push({
@@ -260,7 +272,7 @@ export function buildReportRows(data, options = {}) {
         } else {
             for (const payment of paymentsToExport) {
                 if (payment.isRealPayment && payment.isPaid) {
-                    totalPeriodPayments += payment.amount || 0;
+                    totalScheduledPayments += payment.amount || 0;
                 }
                 paymentsData.push({
                     'Клиент': customer?.name || 'Неизвестный клиент',
@@ -283,7 +295,7 @@ export function buildReportRows(data, options = {}) {
         'Клиент': 'ИТОГО:',
         'Товар': `Продаж: ${filteredSalesCount}`,
         'Статус товара': '',
-        'Сумма': totalPeriodPayments,
+        'Сумма': totalScheduledPayments,
         'Дата платежа': '',
         'Платёж': ''
     });
@@ -295,7 +307,8 @@ export function buildReportRows(data, options = {}) {
     const summaryData = [
         { 'Параметр': '📅 Период выгрузки', 'Значение': periodText },
         { 'Параметр': '', 'Значение': '' },
-        { 'Параметр': '💳 Получено платежей', 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
+        { 'Параметр': `💳 Собрано (${withoutDownPayment ? 'без первых взносов' : 'с первыми взносами'})`, 'Значение': `${totalPeriodPayments.toLocaleString('ru-RU')} ₽` },
+        { 'Параметр': '💳 Платежи по графику', 'Значение': `${totalScheduledPayments.toLocaleString('ru-RU')} ₽` },
         { 'Параметр': '📉 Общий долг клиентов', 'Значение': `${totalClientDebt.toLocaleString('ru-RU')} ₽` },
         { 'Параметр': '', 'Значение': '' },
         { 'Параметр': '🏷 Сумма договоров (рассрочка)', 'Значение': `${totalContractsAmount.toLocaleString('ru-RU')} ₽` },

@@ -13,7 +13,8 @@ import { buildContractHtml, resolveContractTemplate, type ContractData, type Con
 import { contractScheduleRows } from '../src/contractSchedule';
 import { contractNumbers, escapeHtml, formatDate, getSellerPhone, formatRuPhone } from '../src/utils';
 import { contractDocumentTitle, contractFileName, contractPdfBlob, paymentDocumentTitle, pdfFileName } from '../src/contractPdf';
-import { openPrintPreview } from './PrintPreview';
+import { openPrintPreview, openPdfPrintPreview } from './PrintPreview';
+import { templateForSale } from '../shared/contractTemplate.js';
 
 export interface PrintContractContext {
   sale: Sale;
@@ -43,20 +44,30 @@ export const contractDocument = ({
   // График — общий расчёт с чеком оплаты и печатью при оформлении (src/contractSchedule.ts):
   // сначала поступления, потом непокрытые месяцы, без пустых строк между оплатами.
   const scheduleRows = contractScheduleRows(sale);
+  const chosen = templateForSale(sale, appSettings, contractTemplatesAllowed !== false);
 
   // Обе печатные формы собираются в src/contractTemplates.ts — там же, откуда
   // печатает экран оформления. Иначе выбранный в настройках бланк применялся бы
   // только к одному из двух путей печати.
   return {
-    template: resolveContractTemplate(appSettings?.contractTemplate, contractTemplatesAllowed),
+    template: chosen.snapshot ? chosen.id : resolveContractTemplate(chosen.id, contractTemplatesAllowed),
     number: numbers[sale.id],
     customer,
     data: {
+      saleId: sale.id,
+      customTemplate: chosen.snapshot,
       companyName,
       sellerPhone,
       contractNumber: numbers[sale.id],
       customerName: customer?.name,
       customerPhone: formatRuPhone(customer?.phone),
+      customerBirthDate: customer?.birthDate,
+      customerPhone2: formatRuPhone(sale.customerPhone2),
+      guarantorPhone2: formatRuPhone(sale.guarantorPhone2),
+      guarantorPassportSeries: sale.guarantorPassportSeries,
+      guarantorPassportNumber: sale.guarantorPassportNumber,
+      guarantorPassportIssuedBy: sale.guarantorPassportIssuedBy,
+      guarantorAddress: sale.guarantorAddress,
       passportSeries: customer?.passportSeries,
       passportNumber: customer?.passportNumber,
       passportIssuedBy: customer?.passportIssuedBy,
@@ -74,7 +85,7 @@ export const contractDocument = ({
   };
 };
 
-export const printContract = (ctx: PrintContractContext) => {
+export const printContract = async (ctx: PrintContractContext) => {
   const { template, data, number, customer } = contractDocument(ctx);
   const htmlContent = buildContractHtml(template, data);
 

@@ -45,7 +45,8 @@ const registerOAuthRoutes = (app, { pool, auth, adminAuth, getEffectivePlan, pla
   };
 
   const parseScopes = raw => {
-    const asked = String(raw || 'read').split(/[\s,+]+/).filter(Boolean);
+    // Яндекс Диалоги задают несколько разрешений через &, обычные OAuth-клиенты — пробелом.
+    const asked = String(raw || 'read').split(/[\s,+&]+/).filter(Boolean);
     const allowed = asked.filter(s => oauth.SCOPES.includes(s));
     return allowed.length ? [...new Set(allowed)] : ['read'];
   };

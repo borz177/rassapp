@@ -9,6 +9,7 @@
     "ai:eval": "node ai/evals/run.js"
   },
   "dependencies": {
+    "@xmldom/xmldom": "0.9.12",
     "axios": "^1.6.8",
     "bcryptjs": "^2.4.3",
     "compression": "^1.8.1",
@@ -16,10 +17,12 @@
     "dotenv": "^16.4.5",
     "express": "^4.19.2",
     "express-rate-limit": "^8.7.0",
+    "fflate": "0.8.2",
     "helmet": "^8.1.0",
     "jsonwebtoken": "^9.0.2",
     "multer": "^2.1.1",
     "nodemailer": "^6.9.13",
+    "pdf-lib": "1.17.1",
     "pdfkit": "^0.18.0",
     "pg": "^8.11.3",
     "sharp": "^0.34.5",

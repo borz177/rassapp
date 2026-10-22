@@ -62,7 +62,7 @@ const createWorker = ({ store, connectionById, runAssistantTurn, log = console }
         { role: 'assistant', text: x.result?.reply || '' },
       ]);
       const result = await runAssistantTurn({
-        userId: job.user_id, text: job.question, history, mode: 'confirm', channel: 'alice',
+        userId: job.user_id, requestId: `alice_${job.id}`, sharedHistory: true, text: job.question, history, mode: 'confirm', channel: 'alice',
         allowWrites: identity.scopes.includes('write'), signal: AbortSignal.timeout(180000),
       });
       await store.finish(job.id, result);

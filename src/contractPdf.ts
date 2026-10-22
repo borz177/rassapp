@@ -2,6 +2,7 @@ import {
   buildContractFragment, CONTRACT_SHEET_WIDTH_PX,
   type ContractData, type ContractTemplateId,
 } from './contractTemplates';
+import { paginateCustomContract } from './customContractTemplate';
 
 /**
  * PDF договора из той же вёрстки, что идёт на печать.
@@ -109,6 +110,7 @@ export const contractPdfBlob = async (
   data: ContractData,
   title = 'Договор'
 ): Promise<Blob> => {
+  if (template.startsWith('CUSTOM:')) return customContractPdfBlob(template, data, title);
   const [{ default: jsPDF }, canvas] = await Promise.all([
     import('jspdf'),
     contractSheetCanvas(template, data),
@@ -129,6 +131,38 @@ export const contractPdfBlob = async (
   pdf.addImage(canvas.toDataURL('image/png'), 'PNG', (PAGE_W_MM - width) / 2, 0, width, height);
   setContractPdfProperties(pdf, title, data.companyName);
   return pdf.output('blob');
+};
+
+const customContractPdfBlob = async (
+  template: ContractTemplateId, data: ContractData, title: string
+): Promise<Blob> => {
+  const [{ default: jsPDF }, { default: html2canvas }] = await Promise.all([
+    import('jspdf'), import('html2canvas'),
+  ]);
+  const { html, styles } = buildContractFragment(template, data);
+  const host = document.createElement('div');
+  host.style.cssText = `position:fixed;left:-10000px;top:0;width:${CONTRACT_SHEET_WIDTH_PX}px;pointer-events:none;z-index:-1;background:white;`;
+  host.className = 'contract-sheet';
+  host.innerHTML = `<style>.contract-sheet,.contract-sheet *{box-sizing:border-box}${styles}</style>${html}`;
+  document.body.append(host);
+  try {
+    await document.fonts?.ready;
+    const pages = paginateCustomContract(host);
+    const pdf = new jsPDF({ orientation: 'portrait', unit: 'mm', format: 'a4', compress: true });
+    for (let i = 0; i < pages.length; i++) {
+      const canvas = await withHtml2canvasTextFix(() => html2canvas(pages[i], {
+        scale: 2, backgroundColor: '#fff', logging: false, useCORS: false, scrollX: 0, scrollY: 0,
+      }));
+      if (i) pdf.addPage();
+      pdf.addImage(canvas.toDataURL('image/png'), 'PNG', 0, 0, PAGE_W_MM, PAGE_H_MM);
+      canvas.width = 0;
+      canvas.height = 0;
+    }
+    setContractPdfProperties(pdf, title, data.companyName);
+    return pdf.output('blob');
+  } finally {
+    host.remove();
+  }
 };
 
 /** Имя файла без символов, которых не терпят файловые системы. */

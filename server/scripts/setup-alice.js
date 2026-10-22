@@ -31,7 +31,7 @@ const pool = new Pool({ connectionString: process.env.DATABASE_URL });
   await client.query('COMMIT');
   complete = true;
   console.log(`Настройки записаны в ${output}. Секрет не выводится в терминал.`);
-  console.log('В консоли Яндекса используйте OAuth client ID и secret из файла. Scope: read write.');
+  console.log('В консоли Яндекса используйте OAuth client ID и secret из файла. Scope: read&write.');
   console.log('Webhook: https://rassrochka.pro/api/alice/webhook');
   console.log('Авторизация: https://rassrochka.pro/oauth/authorize');
   console.log('Получение и обновление токена: https://rassrochka.pro/api/oauth/token');
