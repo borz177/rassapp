@@ -154,6 +154,27 @@ global.fetch = async (...args) => {
         const y = today.slice(0, 4);
         return a.from === `${y}-09-01` && a.to === `${y}-09-30` && a.compareFrom === `${y}-08-01` && a.compareTo === `${y}-08-31`;
       }],
+      // Разговор с прода 23.10: срок датами — договор не оформлялся пять минут
+      ['Срок датами «С 14.10.2026 по 14.03.2027» в ответ на вопрос → черновик на 5 месяцев', async () => {
+        const history = [
+          { role: 'user', text: 'Оформи договор' },
+          { role: 'assistant', text: 'Для оформления договора нужны: ФИО клиента, товар, закуп, срок и наценка.' },
+          { role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс 256, закуп 117000, взнос 25000, наценка 25%' },
+          { role: 'assistant', text: 'Уточните срок рассрочки в месяцах и телефон клиента.' },
+        ];
+        const r = await say('+7 961 885 15 15\nС 14.10.2026 по 14.03.2027', 'confirm', history);
+        const d = (r.actions || []).find(a => a.kind === 'contract_form')?.draft;
+        return !!d && Number(d.months) === 5 && Number(d.buyPrice) === 117000 && !/ничего не записано/.test(r.reply);
+      }],
+      ['Всё одним сообщением, срок датами → черновик сразу', async () => {
+        const r = await say('Абдурзакова Зарема Расуловна\nАйфон 17 pro max silver\nС 14.10.2026 по 14.03.2027\n117000\n25%\nСо взносом 25000\n+7 961 885 15 15');
+        const d = (r.actions || []).find(a => a.kind === 'contract_form')?.draft;
+        return !!d && Number(d.months) === 5 && !/ничего не записано/.test(r.reply);
+      }],
+      ['«Можно добавить свой образец договора?» → да, как это сделать', async () => {
+        const r = await say('Можно добавить свой образец договора?');
+        return /фото|Печатная форма|шаблон/i.test(r.reply) && !/не могу|не умею|только стандарт/i.test(r.reply);
+      }],
       ['«Спиши чехол» без причины → спрашивает причину, ничего не списывает', async () => {
         const r = await say('спиши один чехол');
         return !card(r, 'stock_write_off') || card(r, 'stock_write_off').kind !== 'done'

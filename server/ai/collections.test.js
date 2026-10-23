@@ -195,3 +195,15 @@ test('сравнение: падение сборов объясняется т�
   assert.equal(r.current.newContracts.count, 1);
   assert.equal(r.drivers.biggestExpenses[0].title, 'Аренда офиса');
 });
+
+test('срок договора датами: «С 14.10.2026 по 14.03.2027» — 5 месяцев', () => {
+  const { monthsSaidIn } = require('./assistant')._test;
+  const said = ['‪+7 961 885‑15‑15‬\nС 14.10.2026 по 14.03.2027'];
+  assert.equal(monthsSaidIn(said, 5), true);
+  assert.equal(monthsSaidIn(said, 6), false);
+  assert.equal(monthsSaidIn(['с 14.10 по 14.03'], 5), true);
+  assert.equal(monthsSaidIn(['14.11.2026–14.11.2027'], 12), true);
+  assert.equal(monthsSaidIn(['на 6 месяцев'], 6), true);
+  assert.equal(monthsSaidIn(['айфон 16 pro'], 16), false);
+  assert.equal(monthsSaidIn(['тел 8 961 885-15-15'], 5), false);
+});

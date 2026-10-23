@@ -133,7 +133,7 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal((await pool.query('SELECT count(*)::int AS n FROM ai_payment_promises')).rows[0].n, 0);
 
     // 4. Письмо должнику: угрозы отклоняются; нормальное — карточка с текстом, отправка по нажатию
-    await ask('Напиши Иванову', [{ tool: 'send_collection_message', args: { contractId: 'r', text: 'Иван, оплатите долг, иначе сообщим вам на работу и в полицию.' } }, { content: 'Не отправлено.' }]);
+    await ask('Напиши Иванову', [{ tool: 'send_collection_message', args: { contractId: 'r', text: 'Иван, оплатите долг, иначе сообщим вам на работу.' } }, { content: 'Не отправлено.' }]);
     assert.match(lastToolResult(), /угрозы|нерабочее время/);
     const text = 'Иван, добрый день! По договору на iPhone 16 есть просрочка. Пожалуйста, внесите платёж или напишите, когда сможете оплатить.';
     r = await ask('Напиши Иванову вежливо', [{ tool: 'send_collection_message', args: { contractId: 'r', text } }, { content: 'Проверьте текст и нажмите «Подтвердить».' }], 'auto');
@@ -197,6 +197,29 @@ test('умения: реструктуризация, досрочное пог�
     assert.ok(cmp.data.drivers);
     await ask('Сравни', [{ tool: 'compare_periods', args: { from: '2026-02-30' } }, { content: 'Ошибка.' }]);
     assert.match(lastToolResult(), /from — дата/);
+
+    // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
+    const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
+    const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];
+    script.push({ tool: 'prepare_contract', args: draftArgs }, { content: 'Черновик готов — нажмите «Открыть форму договора».' });
+    r = await assistant.reply({ user, text: '+7 961 885-15-15\nС 14.10.2026 по 14.03.2027', history, mode: 'confirm', silent: true });
+    assert.equal(r.actions.find(a => a.kind === 'contract_form')?.draft.months, 5, r.reply);
+    // «Да» на «это 5 месяцев — подтвердите»
+    const confirmHistory = [...history, { role: 'user', text: '+7 961 885-15-15' }, { role: 'assistant', text: 'Ранее вы указывали даты, это 5 месяцев — подтвердите, пожалуйста.' }];
+    script.push({ tool: 'prepare_contract', args: draftArgs }, { content: 'Черновик готов — нажмите «Открыть форму договора».' });
+    r = await assistant.reply({ user, text: 'Да', history: confirmHistory, mode: 'confirm', silent: true });
+    assert.equal(r.actions.find(a => a.kind === 'contract_form')?.draft.months, 5, r.reply);
+    // Число без слова «закуп» при наценке модель положила в цену — это закуп
+    script.push({ tool: 'prepare_contract', args: { ...draftArgs, buyPrice: undefined, totalPrice: 117000 } }, { content: 'Черновик готов.' });
+    r = await assistant.reply({ user, text: 'Абдурзакова Зарема Расуловна\nАйфон 17\nС 14.10.2026 по 14.03.2027\n117000\n25%\n+7 961 885-15-15', mode: 'confirm', silent: true });
+    const fixedDraft = r.actions.find(a => a.kind === 'contract_form')?.draft;
+    assert.equal(fixedDraft?.buyPrice, 117000, r.reply);
+    assert.equal(fixedDraft?.totalPrice, undefined);
+    // Срок не назван, а модель пишет «Черновик готов» — вместо этого вопрос, без задвоенных пометок
+    script.push({ tool: 'prepare_contract', args: { ...draftArgs, months: undefined } }, { content: 'Черновик готов — нажмите «Открыть форму договора».\n\n⚠️ В этом ответе ничего не записано и не изменено — если нужно, попросите ещё раз.' });
+    r = await assistant.reply({ user, text: '+7 961 885-15-15', history, mode: 'confirm', silent: true });
+    assert.equal(r.actions.some(a => a.kind === 'contract_form'), false);
+    assert.equal(r.reply, 'Договор ещё не подготовлен — уточните, пожалуйста: срок в месяцах.');
   } finally {
     if (app?.server) await new Promise(r => app.server.close(r));
     await new Promise(r => model.close(r));

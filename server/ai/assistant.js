@@ -470,11 +470,25 @@ const notAPhone = (p) => { const d = String(p || '').replace(/\D/g, ''); return 
 // Срок, который человек правда назвал: «на 6 месяцев», «6 мес», «полгода», «год»,
 // «шесть месяцев», «срок 6», «на 6» или ответ одним числом на вопрос о сроке
 const MONTH_WORDS = { 1: 'один|одн', 2: 'два|двух', 3: 'три|тр[её]х', 4: 'четыр', 5: 'пят', 6: 'шест|полгод', 7: 'сем', 8: 'восем|восьм', 9: 'девят', 10: 'десят', 11: 'одиннадцат', 12: 'двенадцат|год|годик', 18: 'восемнадцат|полтора год', 24: 'двадцат[ьи] четыр|два года|двух лет', 36: 'тридцат[ьи] шест|три года|тр[её]х лет' };
+// «С 14.10.2026 по 14.03.2027», «14.10–14.03» — срок датами: число месяцев между ними
+const monthsBetweenSaid = (t) => {
+  const out = [];
+  for (const m of String(t || '').matchAll(/(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?\s*(?:г\.?|года)?\s*(?:по|до|[-–—])\s*(\d{1,2})\.(\d{1,2})(?:\.(\d{2,4}))?/g)) {
+    const [, , m1, y1, , m2, y2] = m.map(Number);
+    if (!(m1 >= 1 && m1 <= 12 && m2 >= 1 && m2 <= 12)) continue;
+    const full = (y) => (y && y < 100 ? 2000 + y : y);
+    let diff = y1 && y2 ? (full(y2) * 12 + m2) - (full(y1) * 12 + m1) : m2 - m1;
+    if (!(y1 && y2) && diff <= 0) diff += 12;
+    if (diff >= 1 && diff <= 120) out.push(diff);
+  }
+  return out;
+};
 const monthsSaidIn = (texts, m) => {
   const n = Number(m);
   if (!Number.isInteger(n)) return false;
   const words = MONTH_WORDS[n];
   return texts.some(t => {
+    if (monthsBetweenSaid(t).includes(n)) return true;
     const s = String(t || '').toLowerCase().replace(/ё/g, 'е');
     return new RegExp(`(^|\\D)${n}\\s*(-?\\s*(ти|х|и))?\\s*(мес|м\\.|мц)`).test(s)
       || new RegExp(`(срок|на|рассрочк[уа]|по)\\s*${n}(\\D|$)`).test(s)
@@ -830,7 +844,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     const wd = new Date(`${collections.mskDay(d)}T12:00:00Z`).getUTCDay();
     return wd === 0 || wd === 6 ? (h < 9 || h >= 20) : (h < 8 || h >= 22);
   };
-  const THREAT_RE = /уголовн|полици|коллектор|посад|арест|угрож|опозор|родственник|на работ[уе]\b/i;
+  const THREAT_RE = /уголовн|полици|коллектор|посад|арест|угрож|опозор|родственник|на работ[уе](?![а-яё])/i;
   const collectionTextProblem = (text, stage) => {
     const t = String(text || '').trim();
     if (t.length < 20) return 'Текст письма слишком короткий — напиши 2–6 предложений.';
@@ -1647,7 +1661,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'ПОХОЖИЕ ИМЕНА. Инструмент вернул suggestions (точного совпадения нет) — не проси написать заново, а сразу ask_choice «Возможно, вы имели в виду:» с этими вариантами (label — ФИО и последние 4 цифры телефона, ref — id) и последним вариантом «Другой — напишу сам». Так же со счетами и инвесторами из list_accounts / list_investors: названное не совпало дословно, но есть похожее — варианты кнопками.',
     'ПРОШЛЫЕ КАРТОЧКИ. Пометка [Ждёт подтверждения: …] в истории — карточка прошлого ответа: она могла устареть или потеряться. Человек снова просит то же (платёж, расход, договор) — вызови инструмент заново, будет новая карточка под этим ответом; не отвечай «уже подготовлено, нажмите Подтвердить» без вызова.',
     'УТОЧНЕНИЯ. Не хватает важного — один короткий вопрос. Выбор из известных вариантов (договоры клиента, похожие клиенты, счета, неясная сумма) — не текстом, а ask_choice; ответ на кнопку придёт с id в квадратных скобках — используй его, не ищи заново.',
-    'ШАБЛОН ДОГОВОРА. «Сделай из этого шаблон договора» + фото бланка — create_contract_template (не prepare_contract: это не договор клиента). Шаблон соберётся за ~30 секунд и откроется кнопкой в конструкторе; скажи об этом одной фразой: предупреждения распознавания приложение покажет в самой карточке, не перечисляй их и не рисуй кнопку текстом. Без фото — попроси прислать фото бланка (лучше пустого, без данных клиентов). Лимит распознавания — 5 в день, он общий с настройками.',
+    'ШАБЛОН ДОГОВОРА. «Сделай из этого шаблон договора» + фото бланка — create_contract_template (не prepare_contract: это не договор клиента). Шаблон соберётся за ~30 секунд и откроется кнопкой в конструкторе; скажи об этом одной фразой: предупреждения распознавания приложение покажет в самой карточке, не перечисляй их и не рисуй кнопку текстом. Без фото — попроси прислать фото бланка (лучше пустого, без данных клиентов). Спрашивают, можно ли свой образец, бланк или шаблон договора, — да: пришлите сюда фото бланка, соберу шаблон, или Настройки → Печатная форма → Добавить шаблон; не говори, что формы только стандартные. Лимит распознавания — 5 в день, он общий с настройками.',
     'Если в «Контексте» подписка приложения истекла — только показывай данные и отвечай: ничего не записывай, не оформляй, не отправляй, скажи, что это недоступно, не предлагай продлить или купить.',
   ].join('\n');
 
@@ -2164,6 +2178,8 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     const writes = new Set();
     let claimChecked = false;
     let promiseRetried = false;
+    // Чего не хватило договору в последнем prepare_contract (null — подготовлен или не вызывался)
+    let contractMissing = null;
     const actions = [];
     const usage = { prompt: 0, completion: 0, cost: 0, cached: 0 };
 
@@ -2197,6 +2213,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         messages.push({ role: 'system', content: 'Проверка: ты пишешь, что действие выполняется или ждёт «Подтвердить», но инструмент не вызван — карточки нет, человек её не увидит. Вызови нужный инструмент сейчас (платёж — create_payment с contractId и суммой; договор клиента — через customer_overview). Если не хватает данных — спроси одним вопросом. Не пиши, что карточка есть, пока не вызвал инструмент.' });
         continue;
       }
+      if (!calls.length && contractMissing && !actions.some(a => a.kind === 'contract_form') && /черновик|форм[уы] договора|договор[а-яё ]{0,12}(готов|оформлен)/i.test(msg.content || '')) {
+        flag(user.id, 'honesty_fix', { question: text, answer: msg.content, detail: 'черновик договора не подготовлен — не хватает полей' });
+        msg.content = `Договор ещё не подготовлен — уточните, пожалуйста: ${contractMissing.map(m => m.replace(/\s*\(.*$|\s*—.*$/, '')).join(', ')}.`;
+      }
       if (!calls.length && !claimChecked && CLAIMS_DONE_RE.test(msg.content || '') && !actions.some(a => ACTION_KINDS.has(a.kind))) {
         // Отчитался о деле, которого в этом ответе не было. Переспрашиваем с
         // выключенными инструментами: модель может только переписать ответ
@@ -2224,7 +2244,9 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
           // выполненном приложение кладёт в историю) — говорим правду сами
           const pastActions = history.some(m => /\[(Выполнено|Договор оформлен|Отправлено):/.test(String(m?.text || '')));
           if (CLAIMS_DONE_RE.test(msg.content || '') && !pastActions) {
-            msg.content = `${msg.content}\n\n⚠️ В этом ответе ничего не записано и не изменено — если нужно, попросите ещё раз.`;
+            // Модель могла переписать пометку из прошлого ответа — одна, в конце
+            const clean = String(msg.content || '').replace(/\s*⚠️ В этом ответе ничего не записано[^\n]*/g, '').trim();
+            msg.content = `${clean}\n\n⚠️ В этом ответе ничего не записано и не изменено — если нужно, попросите ещё раз.`;
           }
         } catch (e) {
           if (signal?.aborted) return stopped(actions, usage);
@@ -2362,10 +2384,22 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
             args.buyPrice = Number(args.totalPrice);
             delete args.totalPrice;
           }
+          // Наценка названа, а число без слова «закуп» («117000 / 25%») модель положила в цену:
+          // с наценкой цену считает форма, значит число — закуп (разговор с прода 23.10)
+          if (!(Number(args.buyPrice) > 0) && Number(args.totalPrice) > 0 && args.markupPercent != null && Number(args.markupPercent) > 0
+              && !saidTexts.some(t => /(цен[аоуы]|стоимост|в рассрочку за|итого)/i.test(String(t || '')))) {
+            flag(user.id, 'guard_buy_price', { tool: name, question: text, detail: 'число при наценке — закуп, а не цена' });
+            args.buyPrice = Number(args.totalPrice);
+            delete args.totalPrice;
+          }
           // Срок, которого человек не называл, модель подставила сама («12») или взяла
           // из названия товара («айфон 16» → 16 мес) — спросим. Голосовое, которое
           // не удалось расшифровать, проверить не с чем — тогда верим модели
-          if (args.months != null && !audio && !monthsSaidIn(saidTexts, args.months)) {
+          // «Да» на вопрос агента «…это 5 месяцев — подтвердите» — срок назван подтверждением
+          const lastAgent = [...history].reverse().find(m => m?.role === 'assistant')?.text || '';
+          const confirmsMonths = /^\s*(да|ага|угу|верно|всё верно|все верно|подтверждаю|да,? верно)(?![а-яё])/i.test(String(asked || ''))
+            && new RegExp(`(^|\\D)${Number(args.months)}\\s*(мес|месяц)`, 'i').test(lastAgent);
+          if (args.months != null && !audio && !confirmsMonths && !monthsSaidIn(saidTexts, args.months)) {
             flag(user.id, 'guard_months_unsaid', { tool: name, question: text });
             delete args.months;
           }
@@ -2388,6 +2422,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
               : `«${picked.name}» — другой человек: просили «${named}», а такого клиента в базе нет. Вызови prepare_contract снова с newCustomer: { name: ФИО в именительном падеже, как в паспорте («${named}» → «Фамилия Имя») } (без customerId) и confirmedNewCustomer: true — это новый клиент.`;
           }
           const missing = missingContractFields(args);
+          contractMissing = missing.length ? missing : null;
           // Похожий клиент в базе — раньше вопроса о телефоне: у клиента из базы телефон уже есть
           const lookalikes = missing.every(m => m.startsWith('телефон')) && !badCustomer && !named ? await existingLookalikes(user.id, args) : null;
           if (badCustomer) flag(user.id, 'guard_bad_customer', { tool: name, question: text });
@@ -2605,4 +2640,4 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   return { actionStore, reply, confirmAction, cancelAction, undoAction, verifyAgentToken, model: DEFAULT_MODEL, query, quality, selfReview };
 }
 
-module.exports = { createAssistant };
+module.exports = { createAssistant, _test: { monthsSaidIn } };
