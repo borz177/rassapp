@@ -11,6 +11,7 @@
 // оставшимися пробными запросами (сводка — часть агента).
 
 const domain = require('../api/domain');
+const { promiseDigest, addDays } = require('./collections');
 const { collectionPayments, isCustomerSale } = require('../../shared/collections.js');
 
 const DEFAULT_HOUR = 9;
@@ -82,6 +83,12 @@ const digestText = (st) => {
   return parts.join(' ');
 };
 
+// Обещания клиентов (promise_payment): кто обещал заплатить сегодня, кто вчера не сдержал
+const promiseText = ({ dueToday, broken }) => [
+  dueToday.length && `Обещали заплатить сегодня: ${dueToday.slice(0, 5).map(p => `${p.name} (${money(p.amount)})`).join(', ')}${dueToday.length > 5 ? ` и ещё ${dueToday.length - 5}` : ''}.`,
+  broken.length && `Не сдержали обещание вчера: ${broken.slice(0, 5).join(', ')}${broken.length > 5 ? ` и ещё ${broken.length - 5}` : ''}.`,
+].filter(Boolean).join(' ');
+
 // Прежний вызов: только по договорам
 const buildDigest = (sales, today) => digestText(digestStats(sales, [], today));
 
@@ -104,7 +111,13 @@ module.exports = ({ pool, createNotification, aiTrialRequests, aiPlans }) => {
         const [sales, customers, settings, investors] = await Promise.all(['sales', 'customers', 'settings', 'investors'].map(t =>
           pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = $2`, [u.id, t]).then(r => r.rows.map(x => x.data))));
         const stats = digestStats(sales, customers, today, !!settings[0]?.collectedWithoutDownPayment, investors);
-        const text = digestText(stats);
+        let promised = '';
+        try {
+          const { rows: list } = await pool.query(`SELECT sale_id, amount::float AS amount, due_date, status, created_at FROM ai_payment_promises
+            WHERE user_id = $1 AND due_date >= $2 AND due_date <= $3`, [u.id, addDays(today, -1), today]);
+          promised = promiseText(promiseDigest({ promises: list, sales, customers, today }));
+        } catch { /* обещаний ещё не записывали — таблицы нет */ }
+        const text = [digestText(stats), promised].filter(Boolean).join(' ') || null;
         if (text) {
           // Та же сводка — первым сообщением в чате агента, когда его откроют сегодня; кнопки — по цифрам
           const keep = { dueCount: stats.dueCount, overdueCount: stats.overdueCount, remindable: stats.remindable, muted: stats.muted };
@@ -135,3 +148,4 @@ module.exports = ({ pool, createNotification, aiTrialRequests, aiPlans }) => {
 module.exports.isDigestTime = isDigestTime;
 module.exports.digestStats = digestStats;
 module.exports.digestText = digestText;
+module.exports.promiseText = promiseText;

@@ -439,7 +439,7 @@ const openApiSpec = {
         tags: ['Платежи'], summary: 'Принять платёж по договору',
         description: 'Сумма больше остатка долга отклоняется кодом 409 — переплату нужно подтвердить параметром allowOverpay=true. Повтор запроса с тем же Idempotency-Key вернёт прежний ответ и второй платёж не создаст.',
         parameters: [{ name: 'allowOverpay', in: 'query', schema: { type: 'boolean' }, description: 'Разрешить переплату' }],
-        requestBody: jsonBody({ contractId: str('Договор'), amount: money('Сумма платежа', 20000), date: { type: 'string' }, note: { type: 'string' } }),
+        requestBody: jsonBody({ contractId: str('Договор'), amount: money('Сумма платежа', 20000), date: { type: 'string' }, note: { type: 'string' }, discountAmount: { type: 'number', description: 'Скидка при полном погашении: сумма платежа и скидка вместе закрывают остаток долга' } }),
         responses: { 201: { description: 'Платёж принят', content: { 'application/json': { schema: itemOf('PaymentResult') } } }, ...errorResponses },
       },
     },
@@ -520,6 +520,30 @@ const openApiSpec = {
         responses: { 200: { description: 'Сводка', content: { 'application/json': { schema: itemOf('Summary') } } }, ...errorResponses },
       },
     },
+    '/reports/compare': {
+      get: {
+        tags: ['Отчёты'], summary: 'Сравнение двух периодов и что объясняет разницу',
+        description: 'Собрано, прибыль, расходы (закуп отдельно), новые договоры и просрочка на конец периода — за период и период сравнения, разница и объяснения: статьи расходов, крупные траты, клиенты, которые перестали платить. Без дат — месяц по сегодня против того же отрезка прошлого месяца.',
+        parameters: [
+          { name: 'from', in: 'query', schema: { type: 'string' }, description: 'Начало периода (YYYY-MM-DD)' },
+          { name: 'to', in: 'query', schema: { type: 'string' }, description: 'Конец периода' },
+          { name: 'compareFrom', in: 'query', schema: { type: 'string' }, description: 'Начало периода сравнения' },
+          { name: 'compareTo', in: 'query', schema: { type: 'string' }, description: 'Конец периода сравнения' },
+          { name: 'accountId', in: 'query', schema: { type: 'string' }, description: 'Только по одному счёту' },
+        ],
+        responses: { 200: { description: 'Сравнение', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
+      },
+    },
+    '/reports/forecast': {
+      get: {
+        tags: ['Отчёты'], summary: 'Прогноз поступлений по графику платежей',
+        description: 'Непогашенные строки графика на ближайшие дни (по неделям), реалистичная оценка с учётом того, как каждый клиент платил раньше, текущая просрочка и клиенты, которые часто опаздывают.',
+        parameters: [
+          { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 180, default: 30 }, description: 'Сколько дней вперёд, начиная с сегодня' },
+        ],
+        responses: { 200: { description: 'Прогноз', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
+      },
+    },
   },
   components: {
     securitySchemes: {
@@ -561,6 +585,8 @@ const OPERATION_IDS = {
   'get /investors': 'listInvestors',
   'get /investors/{id}': 'getInvestor',
   'get /reports/summary': 'getSummary',
+  'get /reports/forecast': 'getForecast',
+  'get /reports/compare': 'comparePeriods',
 };
 
 const fallbackId = (method, path) =>

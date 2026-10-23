@@ -21,8 +21,11 @@ const createActionStore = pool => {
     return (await pool.query('SELECT * FROM ai_actions WHERE id=$1 AND user_id=$2', [id, userId])).rows[0];
   };
   const snapshot = async (userId, args, undo) => {
+    // Склад: товары документа и созданные записи — их меняет отмена
     const ids = [...new Set([args?.contractId, args?.customerId, args?.expenseId, args?.accountId,
-      undo?.id, undo?.saleId, undo?.customerId, undo?.contractId, undo?.ref].filter(Boolean))];
+      undo?.id, undo?.saleId, undo?.customerId, undo?.contractId, undo?.ref,
+      ...(Array.isArray(args?.items) ? args.items.map(i => i?.productId) : []), ...(Array.isArray(undo?.ids) ? undo.ids : [])]
+      .filter(x => typeof x === 'string' && x))];
     const rows = (await pool.query(`SELECT id,type,data FROM data_items WHERE user_id=$1
       AND (id=ANY($2::text[]) OR ($3::text IS NOT NULL AND type='sales' AND data->'paymentPlan' @> $4::jsonb)) ORDER BY id`,
     [userId, ids, args?.paymentId || null, JSON.stringify([{ id: args?.paymentId || '' }])])).rows;

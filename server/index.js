@@ -2250,7 +2250,10 @@ app.post('/api/integrations/whatsapp/send-reminder', auth, reminderLimiter, asyn
       template = 'overdue',
       // Человек явно решил отправить, хотя у клиента напоминания отключены
       // (FinUchetGPT спрашивает «Всё равно отправить?» кнопками)
-      sendDespiteMuted = false
+      sendDespiteMuted = false,
+      // Готовый текст вместо шаблона — письмо по стадии взыскания от FinUchetGPT
+      // (человек видел его целиком в карточке «Подтвердить»)
+      customMessage = ''
       // 🔹 totalToPay больше не нужен — ИТОГО = только долг
     } = req.body;
 
@@ -2321,7 +2324,9 @@ const productsBlock =
 const totalBlock =
   `💰 *ИТОГО К ОПЛАТЕ: ${overdueAmountText} ₽*`;
 
-const message = rawTemplate
+const message = typeof customMessage === 'string' && customMessage.trim()
+  ? customMessage.trim().slice(0, 2000)
+  : rawTemplate
   .replace(/{имя}/g, customerName)
   .replace(/{товар}/g, productName || '')
   .replace(/{сумма}/g, monthlyPaymentText)

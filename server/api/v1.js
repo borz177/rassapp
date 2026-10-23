@@ -528,6 +528,9 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     amount: { type: 'money', required: true, min: 0.01 },
     date: { type: 'date' },
     note: { type: 'string', maxLength: 500 },
+    // Скидка при полном погашении — как в окне «Принять платёж»: сумма + скидка
+    // закрывают весь остаток долга
+    discountAmount: { type: 'money', min: 0 },
   };
 
   router.post('/payments', requireScope('write'), route(async (req, res) => {
@@ -559,12 +562,22 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
           { remainingAmount: num(sale.remainingAmount), overpayment: overpay });
       }
 
+      const discount = num(value.discountAmount);
+      if (discount > 0 && Math.abs(value.amount + discount - num(sale.remainingAmount)) > 1) {
+        await client.query('ROLLBACK');
+        return fail(res, 422, CODES.VALIDATION,
+          'Скидка даётся только при полном погашении: сумма платежа и скидка вместе должны закрыть остаток долга.',
+          { remainingAmount: num(sale.remainingAmount) });
+      }
+      const discountPercent = discount > 0 ? Math.round(discount / num(sale.remainingAmount) * 1000) / 10 : 0;
       const payment = {
         id: newId('pay'), saleId: sale.id, amount: value.amount,
         date: value.date || new Date().toISOString(),
         actualDate: new Date().toISOString(),
         isPaid: true, isRealPayment: true,
-        note: value.note || (req.apiAuth?.key?.isAgent ? 'FinUchetGPT' : 'Платёж через API'),
+        note: value.note || (discount > 0 ? `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discount} ₽)`
+          : req.apiAuth?.key?.isAgent ? 'FinUchetGPT' : 'Платёж через API'),
+        ...(discount > 0 ? { discountAmount: discount, discountPercent } : {}),
         ...viaAi(req),
       };
       sale.paymentPlan.push(payment);
@@ -828,6 +841,37 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
           .reduce((sum, [, v]) => sum + v, 0)),
       },
     });
+  }));
+
+  // ── прогноз поступлений ──────────────────────────────────────────────────
+  // Сколько должны внести по графику в ближайшие дни и сколько, судя по истории
+  // оплат каждого клиента, внесут вовремя (server/ai/collections.js)
+  router.get('/reports/forecast', requireScope('read'), route(async (req, res) => {
+    const days = req.query.days == null ? 30 : Number(req.query.days);
+    if (!Number.isInteger(days) || days < 1 || days > 180) {
+      return fail(res, 400, CODES.VALIDATION, 'days — целое число от 1 до 180.', [{ field: 'days', code: 'range', message: '1–180' }]);
+    }
+    const userId = tenant(req);
+    const [sales, customers, investors] = await Promise.all([
+      loadAll(userId, 'sales'), loadAll(userId, 'customers'), loadAll(userId, 'investors'),
+    ]);
+    ok(res, require('../ai/collections').forecast({ sales, customers, investors, days }));
+  }));
+
+  // ── сравнение периодов («почему упала прибыль») ──────────────────────────
+  // Цифры двух периодов теми же формулами, что сводка, и что объясняет разницу
+  // (server/ai/analytics.js). Без дат — месяц по сегодня против того же отрезка прошлого
+  router.get('/reports/compare', requireScope('read'), route(async (req, res) => {
+    const { resolvePeriods, comparePeriods } = require('../ai/analytics');
+    const periods = resolvePeriods(req.query);
+    if (periods.error) return fail(res, 400, CODES.VALIDATION, periods.error);
+    const userId = tenant(req);
+    const [sales, expenses, customers, investors, settingsRows] = await Promise.all([
+      loadAll(userId, 'sales'), loadAll(userId, 'expenses'), loadAll(userId, 'customers'),
+      loadAll(userId, 'investors'), loadAll(userId, 'settings'),
+    ]);
+    ok(res, comparePeriods({ sales, expenses, customers, investors, periods,
+      withoutDownPayment: !!settingsRows[0]?.collectedWithoutDownPayment, accountId: req.query.accountId || null }));
   }));
 
   // Неизвестный путь внутри /api/v1 — это опечатка в интеграции, и молчать о ней
