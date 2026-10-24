@@ -1494,6 +1494,16 @@ const loadData = async (currentUser?: User, skipLoadingState = true) => {
 };
 
   // ... (Access checks and calculation logic remain the same)
+  // Поле «Поставщик» в договоре — только тариф «Бизнес Pro». checkAccess открывает
+  // всё сотрудникам, а им нужен тариф менеджера (он приходит в user.subscription).
+  // Уже выбранный в договоре поставщик виден всегда (см. NewSale).
+  const supplierFieldAllowed = (() => {
+    if (!user || isInvestor) return false;
+    if (user.role === 'admin') return true;
+    const s = user.subscription;
+    return !!s && s.plan === 'BUSINESS_PRO' && new Date() <= new Date(s.expiresAt);
+  })();
+
   const checkAccess = (feature: 'WRITE' | 'INVESTORS' | 'AI' | 'PASSPORT_SCAN' | 'WHATSAPP' | 'WHATSAPP_GREEN' | 'EMPLOYEES' | 'SUPPLIERS' | 'INVESTOR_POOLS' | 'NOTIFICATIONS' | 'TASKS' | 'SHOP' | 'CONTRACT_TEMPLATES' | 'API' | 'COFUND'): boolean => {
     if (!user) return false;
 
@@ -5446,7 +5456,7 @@ if (!user && !showSplash) {
                   <PagePush onClose={() => { setCurrentView(formReturnView); setEditingSale(null); }}>
                     {(requestClose: () => void) => (
                       <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
-                           accounts={accounts} suppliers={suppliers} showSupplierField={checkAccess('SUPPLIERS')} onClose={requestClose}
+                           accounts={accounts} suppliers={suppliers} showSupplierField={supplierFieldAllowed || !!(editingSale || draftSaleData)?.supplierId} onClose={requestClose}
                            onSelectCustomer={(data: any) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
                            onOpenRetail={shopAvailable ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
                            showShop={shopAvailable} warehouseId={saleWarehouse?.id || DEFAULT_WAREHOUSE_ID}

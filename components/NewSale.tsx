@@ -947,7 +947,6 @@ if (mode === 'CASH') {
     openPrintPreview(htmlContent, { title: contractTitleFor(createdSale) });
   };
 
-  const hasFixedPrintTemplate = !!(initialData.contractTemplateId || initialData.contractTemplateSnapshot);
   const selectedPrintTemplate = initialData.contractTemplateSnapshot || appSettings?.customContractTemplates?.find(t=>`CUSTOM:${t.id}` === (formData.contractTemplateId || defaultContractTemplate));
   const extraPrintFields = [
     'customerPhone2', 'guarantorPhone2', 'guarantorPassportSeries',
@@ -1217,22 +1216,6 @@ if (mode === 'CASH') {
             </button>
           ))}
         </div>
-
-        {mode === 'INSTALLMENT' && (
-          <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
-            <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Печатная форма договора</label>
-            <select aria-label="Печатная форма договора" className="w-full p-3 border border-slate-300 dark:border-slate-600 rounded-lg bg-white dark:bg-slate-900 text-slate-900 dark:text-white outline-none disabled:opacity-60"
-              disabled={hasFixedPrintTemplate}
-              value={formData.contractTemplateId || initialData.contractTemplateId || defaultContractTemplate}
-              onChange={e=>setFormData(prev=>({...prev,contractTemplateId:e.target.value}))}>
-              <option value="MODERN">Договор 1</option>
-              <option value="CLASSIC" disabled={!contractTemplatesAllowed}>Договор 2</option>
-              {(appSettings?.customContractTemplates || []).map(t=><option key={t.id} value={`CUSTOM:${t.id}`} disabled={!contractTemplatesAllowed}>{t.name}</option>)}
-              {initialData.contractTemplateSnapshot && !(appSettings?.customContractTemplates || []).some(t=>t.id===initialData.contractTemplateSnapshot.id) && <option value={initialData.contractTemplateId}>{initialData.contractTemplateSnapshot.name} · сохранённая версия</option>}
-            </select>
-            <p className="mt-1.5 text-[11px] text-slate-400">{hasFixedPrintTemplate?'Форма закреплена за оформленным договором.':'Личные образцы добавляются в настройках. Выбранная версия сохранится вместе с договором.'}</p>
-          </div>
-        )}
 
         {showSupplierField && (
           <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm">
