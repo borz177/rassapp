@@ -22,6 +22,12 @@ function normalizePhone(raw) {
 
   if (d.length === 11 && d.startsWith('7')) return { phone: d, reason: null };
 
+  // У номеров на +7 (Россия, Казахстан) всегда 11 цифр. Длиннее — ошибка в карточке
+  // (лишняя цифра, два номера слитно): WhatsApp отвечал «no LID found», отправка падала
+  if (d.length > 11 && (d.startsWith('7') || d.startsWith('8'))) {
+    return { phone: null, reason: `в номере ${d.length} цифр — у номера на +7 их 11, проверьте телефон в карточке клиента` };
+  }
+
   // Прочие страны (375…, 380…, 998…) и десятизначные с иным началом —
   // отдаём как есть, пусть Green API рассудит.
   if (d.length === 10) return { phone: '7' + d, reason: null };

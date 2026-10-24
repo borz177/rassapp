@@ -10,7 +10,7 @@ import TopBarBack from './TopBarBack';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppDocument } from '../services/whatsapp';
 import { api } from '../services/api';
-import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency } from '../src/utils';
+import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency, normalizePhoneForWhatsApp } from '../src/utils';
 import { contractScheduleRows } from '../src/contractSchedule';
 import { checkDuplicateSale, isLegacyPaidSlot, regeneratePaymentPlan, markupPrice, parseInputDate, toInputDate } from '../src/saleMath';
 import { buildContractHtml, resolveContractTemplate, type ContractData } from '../src/contractTemplates';
@@ -865,12 +865,9 @@ if (mode === 'CASH') {
         customerName: selectedCustomer.name,
       });
 
-      const cleanPhone = selectedCustomer.phone?.replace(/\D/g, '') || '';
-      const whatsappPhone = cleanPhone.startsWith('8')
-        ? '7' + cleanPhone.slice(1)
-        : cleanPhone.startsWith('7')
-          ? cleanPhone
-          : '7' + cleanPhone;
+      // С учётом страны: раньше к любому номеру не на 7/8 приписывалась «7», и
+      // иностранный +49 176… уходил на несуществующий 7 49 176… («no LID found»)
+      const whatsappPhone = normalizePhoneForWhatsApp(selectedCustomer.phone) || '';
 
       const success = await sendWhatsAppDocument(appSettings.whatsapp, whatsappPhone, blob, fileName);
 

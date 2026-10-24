@@ -312,12 +312,13 @@ function createWaTransport(pool) {
   const sendDocument = async (userId, rawPhone, base64, fileName, mime = 'application/pdf') => {
     const settings = { provider: 'builtin' };
     const { phone, reason } = normalizePhone(rawPhone);
-    if (!phone) { await record(userId, settings, 'skipped', reason); return { ok: false, reason }; }
+    // skipped — не отправляли (номер, лимит, нет WhatsApp), а не сбой доставки
+    if (!phone) { await record(userId, settings, 'skipped', reason); return { ok: false, skipped: true, reason }; }
     const row = await getBuiltin(userId);
-    if (!row) return { ok: false, reason: 'встроенный WhatsApp не подключён' };
+    if (!row) return { ok: false, skipped: true, reason: 'встроенный WhatsApp не подключён' };
     const quota = await builtinQuota(userId, row.created_at);
-    if (quota.left <= 0) { await record(userId, settings, 'skipped', 'дневной лимит'); return { ok: false, reason: `дневной лимит ${quota.limit}` }; }
-    if (!(await onWhatsApp(row.token, phone))) { await record(userId, settings, 'skipped', 'нет WhatsApp'); return { ok: false, reason: 'у номера нет WhatsApp' }; }
+    if (quota.left <= 0) { await record(userId, settings, 'skipped', 'дневной лимит'); return { ok: false, skipped: true, reason: `дневной лимит ${quota.limit}` }; }
+    if (!(await onWhatsApp(row.token, phone))) { await record(userId, settings, 'skipped', 'нет WhatsApp'); return { ok: false, skipped: true, reason: 'у номера нет WhatsApp' }; }
     try {
       const r = await wuz('post', '/chat/send/document', row.token,
         { Phone: phone, FileName: fileName, Document: `data:${mime};base64,${base64}` }, 60000);

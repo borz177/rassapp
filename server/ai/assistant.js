@@ -1877,6 +1877,9 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       p = (await pool.query(`SELECT data->>'phone' AS phone FROM data_items WHERE user_id = $1 AND type = 'customers' AND id = $2`, [userId, customerId])).rows[0]?.phone;
     }
     if (String(p || '').replace(/\D/g, '').length < 10) return 'у клиента нет телефона.';
+    // Тем же правилом, что и отправка: у номера на +7 — 11 цифр
+    const n = require('../phone-utils').normalizePhone(String(p));
+    if (!n.phone) return `телефон клиента записан с ошибкой (${n.reason}).`;
     return null;
   };
 

@@ -2197,8 +2197,18 @@ app.post('/api/integrations/whatsapp/send-document', auth, waDocumentLimiter, as
     const { phone, fileName, base64 } = req.body || {};
     if (!phone || !base64) return res.status(400).json({ error: 'Нет номера или файла' });
     const name = String(fileName || 'document.pdf').slice(0, 120);
-    const r = await waTransport.sendDocument(userId, phone, String(base64), name);
-    if (!r.ok) return res.status(502).json({ error: 'Не удалось отправить файл', reason: r.reason });
+    // Старые сборки приписывали «7» к иностранному номеру (+49 176… → 7 49 176…):
+    // такой номер есть в карточке клиента без семёрки — отправляем на него
+    let target = String(phone);
+    const digits = target.replace(/\D/g, '');
+    if (digits.length > 11 && digits.startsWith('7')) {
+      const hit = await pool.query(`SELECT 1 FROM data_items WHERE user_id = $1 AND type = 'customers'
+        AND regexp_replace(coalesce(data->>'phone', ''), '\\D', '', 'g') = $2 LIMIT 1`, [userId, digits.slice(1)]);
+      if (hit.rowCount) target = digits.slice(1);
+    }
+    const r = await waTransport.sendDocument(userId, target, String(base64), name);
+    // Не отправляли (номер с ошибкой, нет WhatsApp, лимит) — 422 с причиной; сбой доставки — 502
+    if (!r.ok) return res.status(r.skipped ? 422 : 502).json({ error: r.skipped ? `Не отправлено: ${r.reason}` : 'Не удалось отправить файл', reason: r.reason });
     res.json({ success: true });
   } catch (e) {
     console.error('🔴 send-document:', e.message);

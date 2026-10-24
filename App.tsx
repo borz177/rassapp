@@ -78,7 +78,7 @@ import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
 import { expandFundedSales, saleTouchesAccount, primaryPurchaseView, coFundExpenses, isCoFundExpenseOf, fundingPieces } from './src/funding';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal, formatRuPhone, getSellerPhone} from './src/utils';
+import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal, formatRuPhone, getSellerPhone, normalizePhoneForWhatsApp} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -4434,10 +4434,10 @@ const handleQuickAddCustomer = async (data: {
       const { blob, fileName, customer } = await contractPdfFile({
         sale, sales: allSales, customers: allCustomers, appSettings, user, contractTemplatesAllowed: checkAccess('CONTRACT_TEMPLATES'),
       }, kind);
-      // Номер — как при отправке из оформления договора: 8… → 7…
+      // Номер с учётом страны, как при оформлении договора: иностранный не получает «7» спереди
       const digits = String(customer?.phone || '').replace(/\D/g, '');
       if (digits.length < 10) return { ok: false, text: 'У клиента нет телефона — добавьте его в карточке клиента.' };
-      const phone = digits.startsWith('8') ? `7${digits.slice(1)}` : digits.startsWith('7') ? digits : `7${digits}`;
+      const phone = normalizePhoneForWhatsApp(customer?.phone) || digits;
       const sent = await sendWhatsAppDocument(assistantWhatsApp, phone, blob, fileName);
       return sent
         ? { ok: true, text: `Отправлено в WhatsApp: ${fileName.replace(/\.pdf$/i, '')}` }
