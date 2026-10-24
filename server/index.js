@@ -4515,8 +4515,9 @@ const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe
 //              null — без порога (по умолчанию);
 //  morningDigest — утренняя сводка уведомлением (server/ai/digest.js);
 //  digestHour — в котором часу по Москве (6–22, по умолчанию 9);
-//  digestWeekdays — только по будням.
-const AI_SETTINGS_DEFAULTS = { preferences: '', anomalyAlerts: false, autoLimit: null, morningDigest: false, digestHour: 9, digestWeekdays: false };
+//  digestWeekdays — только по будням;
+//  proactiveTips — подсказки агента раз в день в то же время (server/ai/proactive.js).
+const AI_SETTINGS_DEFAULTS = { preferences: '', anomalyAlerts: false, autoLimit: null, morningDigest: false, digestHour: 9, digestWeekdays: false, proactiveTips: false };
 const DIGEST_STAT_KEYS = ['dueCount', 'overdueCount', 'remindable', 'muted'];
 const normalizeAiSettings = (raw) => {
   const s = { ...AI_SETTINGS_DEFAULTS, ...(raw && typeof raw === 'object' ? raw : {}) };
@@ -4528,7 +4529,14 @@ const normalizeAiSettings = (raw) => {
     morningDigest: s.morningDigest === true,
     digestHour: Number.isInteger(Number(s.digestHour)) && Number(s.digestHour) >= 6 && Number(s.digestHour) <= 22 ? Number(s.digestHour) : 9,
     digestWeekdays: s.digestWeekdays === true,
+    proactiveTips: s.proactiveTips === true,
     ...(typeof s.digestSentOn === 'string' ? { digestSentOn: s.digestSentOn } : {}),
+    ...(typeof s.proactiveSentOn === 'string' ? { proactiveSentOn: s.proactiveSentOn } : {}),
+    // Подсказки дня: текст и кнопки — только подписи-строки
+    ...(s.proactive && typeof s.proactive.text === 'string' ? { proactive: {
+      date: String(s.proactive.date), text: s.proactive.text,
+      options: (Array.isArray(s.proactive.options) ? s.proactive.options : []).filter(o => o && typeof o.label === 'string').slice(0, 4).map(o => ({ label: o.label.slice(0, 120) })),
+    } } : {}),
     ...(s.digest && typeof s.digest.text === 'string' ? { digest: {
       date: String(s.digest.date), text: s.digest.text,
       // Цифры для кнопок в чате — только числа
@@ -4564,7 +4572,12 @@ const aiAssistantState = async (userId) => {
     trial: !sub && !admin,
     trialLeft,
     plans: Object.entries(AI_PLANS).map(([key, p]) => ({ key, ...p })),
-    settings: (({ digestSentOn, digest, ...pub }) => pub)(normalizeAiSettings(u.ai_settings)),
+    settings: (({ digestSentOn, digest, proactiveSentOn, proactive, ...pub }) => pub)(normalizeAiSettings(u.ai_settings)),
+    // Сегодняшние подсказки агента — чат покажет их после сводки
+    proactive: (() => {
+      const p = normalizeAiSettings(u.ai_settings).proactive;
+      return p && p.date === new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }) ? p : null;
+    })(),
     // Сегодняшняя утренняя сводка — чат покажет её первым сообщением
     digest: (() => {
       const d = normalizeAiSettings(u.ai_settings).digest;
@@ -4598,11 +4611,12 @@ app.put('/api/ai/assistant/settings', auth, async (req, res) => {
       ...('morningDigest' in body ? { morningDigest: body.morningDigest === true } : {}),
       ...('digestHour' in body ? { digestHour: body.digestHour } : {}),
       ...('digestWeekdays' in body ? { digestWeekdays: body.digestWeekdays === true } : {}),
+      ...('proactiveTips' in body ? { proactiveTips: body.proactiveTips === true } : {}),
     });
     // Время сводки поменяли — сегодняшняя (если ещё не ушла) придёт в новый час;
     // уже ушедшую повторно не шлём (digestSentOn остаётся)
     await pool.query('UPDATE users SET ai_settings = $1 WHERE id = $2', [JSON.stringify(next), req.user.id]);
-    const { digestSentOn, digest, ...pub } = next;
+    const { digestSentOn, digest, proactiveSentOn, proactive, ...pub } = next;
     res.json({ settings: pub });
   } catch (e) { console.error('AI settings error:', e.message); res.status(500).json({ msg: 'Не удалось сохранить' }); }
 });
@@ -8372,6 +8386,7 @@ require('./subscription-reminders')({ pool, sendEmail }).start();
 // Утренняя сводка FinUchetGPT (настройки агента → «Утренняя сводка»)
 require('./ai/monitor').createMonitor({ pool, createNotification, allowed: aiAgentAllowed }).start();
 require('./ai/digest')({ pool, createNotification, aiTrialRequests: AI_TRIAL_REQUESTS, aiPlans: AI_PLANS }).start();
+require('./ai/proactive')({ pool, createNotification, aiTrialRequests: AI_TRIAL_REQUESTS, aiPlans: AI_PLANS, checkFeatureAccess }).start();
 
 // 🔹 Очистка старых конфигов (запускается раз в сутки)
 setInterval(async () => {

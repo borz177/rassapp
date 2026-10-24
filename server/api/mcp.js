@@ -29,7 +29,7 @@ const TOOLS = [
   {
     name: 'list_contracts',
     title: 'Договоры',
-    description: 'Список договоров рассрочки с фильтрами по состоянию, клиенту, счёту и дате оформления.',
+    description: 'Список договоров рассрочки с фильтрами по состоянию, клиенту, счёту, дате оформления и поиску по товару или ФИО (search). В meta — total и итоги sums по ВСЕМ отобранным договорам (не только по этой странице); для подсчётов и разбивок — sales_breakdown.',
     scope: 'read',
     input: {
       status: { type: 'string', enum: ['ACTIVE', 'COMPLETED', 'DEFAULTED', 'DRAFT'], description: 'Состояние договора' },
@@ -37,6 +37,7 @@ const TOOLS = [
       accountId: { type: 'string', description: 'Только по одному счёту' },
       from: { type: 'string', description: 'Оформлены с даты, YYYY-MM-DD' },
       to: { type: 'string', description: 'Оформлены по дату, YYYY-MM-DD' },
+      search: { type: 'string', description: 'Слова из товара или ФИО: «iphone», «Дудаев»' },
       limit: { type: 'integer' },
       offset: { type: 'integer' },
     },
@@ -65,7 +66,7 @@ const TOOLS = [
   {
     name: 'list_payments',
     title: 'Полученные платежи',
-    description: 'Деньги, полученные по договорам за период: первый взнос и платежи; у каждого — счёт, на который пришли.',
+    description: 'Деньги, полученные по договорам за период: первый взнос и платежи; у каждого — счёт, на который пришли. В meta — sum (вся сумма за период) и byAccount (по счетам) по ВСЕМ платежам, не только по странице: итоги бери оттуда, не складывай строки.',
     scope: 'read',
     input: {
       contractId: { type: 'string' },
@@ -87,7 +88,7 @@ const TOOLS = [
   {
     name: 'list_expenses',
     title: 'Расходы',
-    description: 'Расходы за период с фильтром по счёту и категории.',
+    description: 'Расходы за период с фильтром по счёту и категории. В meta — sum и byCategory по ВСЕМ отобранным расходам: итоги бери оттуда, не складывай строки.',
     scope: 'read',
     input: {
       accountId: { type: 'string' }, category: { type: 'string' },
@@ -126,12 +127,41 @@ const TOOLS = [
   {
     name: 'cash_forecast',
     title: 'Прогноз поступлений',
-    description: 'Сколько денег придёт по графику платежей в ближайшие дни: по неделям, реалистичная оценка с учётом того, как каждый клиент платил раньше, текущая просрочка и клиенты, которые часто опаздывают. Для «сколько придёт на неделе/в этом месяце», «какой прогноз».',
+    description: 'Сколько денег и прибыли придёт по графику платежей: по неделям и по месяцам (byMonth), реалистичная оценка с учётом того, как каждый клиент платил раньше, ожидаемая прибыль (наценка в этих платежах), текущая просрочка и клиенты, которые часто опаздывают. Для «сколько придёт на неделе / в ноябре», «распиши по месяцам до конца договоров», «какая прибыль ожидается».',
     scope: 'read',
     input: {
-      days: { type: 'integer', description: 'Сколько дней вперёд, начиная с сегодня; по умолчанию 30, максимум 180' },
+      days: { type: 'integer', description: 'Сколько дней вперёд, начиная с сегодня; по умолчанию 30, максимум 1100' },
+      untilEnd: { type: 'boolean', description: 'До последнего платежа по всем договорам — для «по месяцам до конца», «пока не закончатся договоры»' },
+      month: { type: 'string', description: 'Один месяц целиком, YYYY-MM — для «в ноябре», «в следующем месяце» (текущий — с сегодня)' },
     },
-    request: args => ({ method: 'GET', path: `/reports/forecast?${query({ days: args.days })}` }),
+    request: args => ({ method: 'GET', path: `/reports/forecast?${query({ days: args.days, untilEnd: args.untilEnd, month: args.month })}` }),
+  },
+  {
+    name: 'sales_breakdown',
+    title: 'Разбивка договоров',
+    description: 'Готовые итоги по договорам с разбивкой по товару, клиенту, счёту или месяцу оформления (groupBy none — общий итог): сколько договоров, сумма, средний чек, закуп, наценка, получено и прибыль с полученного за всё время, остаток и просрочка. Для «сколько договоров на айфоны и на какую сумму», «сколько заработал на айфонах», «кто должен больше всех» (customer, sort remaining), «кто заплатил больше всех» (customer, sort collected), «средний чек», «сколько договоров на каждый товар». Суммы бери отсюда, не складывай списки.',
+    scope: 'read',
+    input: {
+      groupBy: { type: 'string', enum: ['product', 'customer', 'account', 'month', 'none'], description: 'По чему разбить; none — только итог' },
+      search: { type: 'string', description: 'Только договоры, где в товаре или ФИО есть эти слова: «iphone», «Дудаев»' },
+      from: { type: 'string', description: 'Оформлены с даты, YYYY-MM-DD' },
+      to: { type: 'string', description: 'Оформлены по дату, YYYY-MM-DD' },
+      sort: { type: 'string', enum: ['totalAmount', 'contracts', 'collected', 'profitReceived', 'remaining', 'overdue', 'averageTotal'], description: 'Порядок групп, по убыванию' },
+      limit: { type: 'integer', description: 'Сколько групп, по умолчанию 20' },
+    },
+    request: args => ({ method: 'GET', path: `/reports/breakdown?${query(args)}` }),
+  },
+  {
+    name: 'monthly_report',
+    title: 'Помесячный отчёт',
+    description: 'По месяцам за прошедший период: собрано, прибыль, расходы (закуп отдельно), новые договоры — как сводка приложения за каждый месяц. Для «прибыль по месяцам за полгода», «сколько получал каждый месяц в этом году». По умолчанию — последние 6 месяцев, максимум 24. Будущие месяцы — cash_forecast.',
+    scope: 'read',
+    input: {
+      from: { type: 'string', description: 'С какого дня (берётся его месяц), YYYY-MM-DD' },
+      to: { type: 'string', description: 'По какой день (его месяц), YYYY-MM-DD; по умолчанию сегодня' },
+      accountId: { type: 'string', description: 'Только по одному счёту' },
+    },
+    request: args => ({ method: 'GET', path: `/reports/monthly?${query(args)}` }),
   },
   {
     name: 'compare_periods',

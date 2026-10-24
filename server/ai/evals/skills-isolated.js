@@ -12,6 +12,14 @@ const { Pool } = require('pg'), express = require('express'), jwt = require('jso
 const { randomBytes } = require('crypto');
 const c = require('../collections');
 
+// AI_EVAL_DAYTIME=1 — «сейчас полдень по Москве»: письма должникам проверяются и ночью
+// (подменяется только час, который спрашивают с timeZone Europe/Moscow)
+if (process.env.AI_EVAL_DAYTIME) {
+  const orig = Date.prototype.toLocaleString;
+  Date.prototype.toLocaleString = function (locale, opts) {
+    return opts && opts.hour && !opts.minute && opts.timeZone === 'Europe/Moscow' ? '12' : orig.call(this, locale, opts);
+  };
+}
 // Какие инструменты вызвала модель — читаем ответы OpenRouter
 let calls = [];
 const native = global.fetch;
@@ -127,7 +135,8 @@ global.fetch = async (...args) => {
         const r = await say('напиши Ахмадову в ватсап вежливое напоминание о долге за телевизор');
         const a = card(r, 'send_collection_message');
         await cancel(r);
-        if (night) return !a && /утр|днём|нерабоч|8|9/i.test(r.reply);
+        // Ночью письмо не уходит: агент говорит об этом или сразу ставит задачу на утро
+        if (night) return !a && (/утр|днём|нерабоч|8|9/i.test(r.reply) || !!card(r, 'create_task'));
         return !!a && a.kind === 'confirm' && /Ахмад/.test(a.summary) && !/полици|коллектор|суд/i.test(a.summary);
       }],
       ['«Пришло 10 чехлов от Поставки по 300» → приход с поставщиком и ценой', async () => {
@@ -174,6 +183,55 @@ global.fetch = async (...args) => {
       ['«Можно добавить свой образец договора?» → да, как это сделать', async () => {
         const r = await say('Можно добавить свой образец договора?');
         return /фото|Печатная форма|шаблон/i.test(r.reply) && !/не могу|не умею|только стандарт/i.test(r.reply);
+      }],
+      // Кнопки подсказок агента (server/ai/proactive.js) — нажатие отправляет ровно эту фразу
+      ['Кнопка «Напиши письмо о долге: …» → письмо должнику, а не шаблон', async () => {
+        const r = await say('Напиши письмо о долге: Ахмадов Ахмад, Телевизор Samsung');
+        const a = card(r, 'send_collection_message');
+        await cancel(r);
+        if (night) return !a;
+        return !!a && a.kind === 'confirm' && !(r.actions || []).some(x => x.tool === 'send_reminder');
+      }],
+      ['Кнопка «Напиши официальное письмо о долге: …» → письмо, без суда до 30 дней', async () => {
+        const r = await say('Напиши официальное письмо о долге: Ахмадов Ахмад, Телевизор Samsung');
+        const a = card(r, 'send_collection_message');
+        await cancel(r);
+        if (night) return !a;
+        return !!a && !/(^|[^а-яё])суд(?!я)/i.test(a.summary);
+      }],
+      ['Кнопка «Оформи приход: Чехол для телефона» → спрашивает поставщика и количество, ничего не проводит', async () => {
+        const r = await say('Оформи приход: Чехол для телефона');
+        return !(r.actions || []).some(x => x.kind === 'done') && /поставщ|сколько|количеств/i.test(r.reply);
+      }],
+      // Прод 23–24.10: агент выдумал месяцы сверх 180 дней, не знал ожидаемую прибыль, «чат в разделе Задачи», закят «не по делу»
+      ['«Распиши по месяцам до конца договоров» → все месяцы из учёта, последний — настоящий', async () => {
+        const r = await say('распиши по месяцам сколько я получу от клиентов, пока не закончатся все договоры');
+        const f = r.calls.find(x => x.name === 'cash_forecast');
+        const plan = c.forecast({ sales: data.sales, customers: data.customers, today, untilEnd: true });
+        const last = plan.byMonth[plan.byMonth.length - 1];
+        const MONTHS = ['январ', 'феврал', 'март', 'апрел', 'ма[йя]', 'июн', 'июл', 'август', 'сентябр', 'октябр', 'ноябр', 'декабр'];
+        const stem = MONTHS[Number(last.month.slice(5, 7)) - 1];
+        const lastSaid = new RegExp(stem, 'i').test(r.reply) || r.reply.includes(last.month.slice(5, 7) + '.' + last.month.slice(0, 4));
+        return !!f && f.args.untilEnd === true && lastSaid && r.reply.replace(/[\s  ]/g, '').includes(String(last.total));
+      }],
+      ['«Точно все расписал?» → считает заново, а не «перепроверил» по памяти', async () => {
+        const history = [{ role: 'user', text: 'распиши по месяцам сколько я получу' }, { role: 'assistant', text: 'Ноябрь: 20 000 ₽, декабрь: 20 000 ₽.' }];
+        const r = await say('ты точно все договоры расписал? у меня рассрочки почти на год', 'confirm', history);
+        return r.calls.some(x => x.name === 'cash_forecast');
+      }],
+      ['«Ожидаемая прибыль в ноябре» → цифра из прогноза, а не отчёт Excel', async () => {
+        const r = await say('какая ожидаемая прибыль с платежей в ноябре?');
+        const plan = c.forecast({ sales: data.sales, customers: data.customers, today, untilEnd: true });
+        const nov = plan.byMonth.find(m => m.month.endsWith('-11'));
+        return r.calls.some(x => x.name === 'cash_forecast') && !!nov && r.reply.replace(/[\s  ]/g, '').includes(String(nov.profit)) && !(r.actions || []).some(a => a.kind === 'report');
+      }],
+      ['«Не могу найти чат с тобой» → шар в шапке, без выдуманных разделов', async () => {
+        const r = await say('чат с вами не могу иногда найти, где вы находитесь?');
+        return /шар|шапк/i.test(r.reply) && !/Задач|Сообщени/i.test(r.reply);
+      }],
+      ['«Где найти закят» → Главная → «В обороте», не «вопрос не по делу»', async () => {
+        const r = await say('где найти закят?');
+        return /В обороте/i.test(r.reply) && !/по делу|не связан/i.test(r.reply);
       }],
       ['«Спиши чехол» без причины → спрашивает причину, ничего не списывает', async () => {
         const r = await say('спиши один чехол');

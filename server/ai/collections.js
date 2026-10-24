@@ -55,13 +55,30 @@ const onTimeRate = (d) => (d.paymentsDue >= 3 ? 1 - d.paidLate / d.paymentsDue :
 
 /**
  * Прогноз поступлений на days дней вперёд (с сегодняшнего): сколько должны
- * внести по графику и сколько, судя по истории оплат, внесут вовремя.
+ * внести по графику и сколько, судя по истории оплат, внесут вовремя; по
+ * неделям (первые 13) и по месяцам, с наценкой в этих деньгах (ожидаемая
+ * прибыль — как отчёты прибыли: доля прибыли в каждом рубле договора).
+ * untilEnd — до последнего платежа по всем договорам («распиши до конца»).
  */
-const forecast = ({ sales, customers = [], investors = [], today = mskDay(), days = 30 }) => {
-  const n = Math.min(Math.max(Math.round(Number(days) || 30), 1), 180);
-  const end = addDays(today, n - 1);
+const MAX_DAYS = 1100;
+const forecast = ({ sales, customers = [], investors = [], today = mskDay(), days = 30, untilEnd = false, month = null }) => {
   const investorIds = new Set(investors.map(i => i.id));
   const contracts = sales.filter(s => isContract(s, investorIds));
+  let n = Math.min(Math.max(Math.round(Number(days) || 30), 1), MAX_DAYS);
+  // Названный месяц — целиком (текущий — с сегодня): «в ноябре» не должно быть «до 22 ноября»
+  if (/^\d{4}-\d{2}$/.test(String(month || ''))) {
+    const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    if (last < today) return { error: 'Этот месяц уже прошёл — для прошедших месяцев monthly_report.' };
+    const from = `${month}-01` > today ? `${month}-01` : today;
+    const f = forecast({ sales, customers, investors, today, days: daysBetween(today, last) + 1 });
+    const m = f.byMonth.find(x => x.month === month) || { month, count: 0, total: 0, realistic: 0, profit: 0, from, to: last, fullMonth: from === `${month}-01` };
+    return { month, from, to: last, ...m, overdueNow: f.overdueNow, basis: f.basis };
+  }
+  if (untilEnd) {
+    const last = contracts.filter(s => s.status === 'ACTIVE').flatMap(s => openRows(s).map(r => r.day)).filter(d => d >= today).sort().pop();
+    n = last ? Math.min(daysBetween(today, last) + 1, MAX_DAYS) : 1;
+  }
+  const end = addDays(today, n - 1);
   const names = new Map(customers.map(c => [c.id, c.name || '']));
   const byCustomer = new Map();
   for (const s of contracts) {
@@ -77,11 +94,12 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
   const avg = known.length ? known.reduce((n, x) => n + x.rate, 0) / known.length : 1;
 
   const weeks = [];
-  for (let from = today; from <= end; from = addDays(from, 7)) {
+  for (let from = today; from <= end && weeks.length < 13; from = addDays(from, 7)) {
     const to = addDays(from, 6) < end ? addDays(from, 6) : end;
     weeks.push({ from, to, count: 0, total: 0 });
   }
-  let count = 0, total = 0, realistic = 0, overdueNow = 0, overdueContracts = 0;
+  const months = new Map();
+  let count = 0, total = 0, realistic = 0, profit = 0, overdueNow = 0, overdueContracts = 0;
   const risky = new Map();
   for (const s of contracts) {
     if (s.status !== 'ACTIVE') continue;
@@ -89,11 +107,15 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
     if (o > 0) { overdueNow += o; overdueContracts++; }
     const r = rate.get(s.customerId);
     const p = r.rate ?? avg;
+    const margin = domain.profitMargin(s);
     for (const row of openRows(s)) {
       if (row.day < today || row.day > end) continue;
-      count++; total += row.open; realistic += row.open * p;
+      count++; total += row.open; realistic += row.open * p; profit += row.open * margin;
       const w = weeks.find(x => row.day >= x.from && row.day <= x.to);
       if (w) { w.count++; w.total += row.open; }
+      const m = months.get(row.day.slice(0, 7)) || { month: row.day.slice(0, 7), count: 0, total: 0, realistic: 0, profit: 0 };
+      m.count++; m.total += row.open; m.realistic += row.open * p; m.profit += row.open * margin;
+      months.set(m.month, m);
       if (r.rate != null && r.rate < 0.6) {
         const k = risky.get(s.customerId) || { customer: names.get(s.customerId) || 'Клиент', amount: 0, onTimePercent: Math.round(r.rate * 100), maxDelayDays: r.d.maxDelayDays };
         k.amount += row.open;
@@ -106,8 +128,17 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
     scheduled: { count, total: Math.round(total) },
     // Оценка: каждый платёж умножен на долю платежей, внесённых клиентом без опоздания
     realistic: Math.round(realistic),
-    basis: 'Ожидаемо — непогашенные строки графика за период. Реалистично — с учётом того, какую долю платежей каждый клиент вносил без опоздания (новые клиенты — по средней аккуратности).',
+    // Наценка в ожидаемых деньгах — прибыль, если всё заплатят по графику
+    expectedProfit: Math.round(profit),
+    basis: 'Ожидаемо — непогашенные строки графика за период. Реалистично — с учётом того, какую долю платежей каждый клиент вносил без опоздания (новые клиенты — по средней аккуратности). Ожидаемая прибыль — наценка в этих платежах. Месяцев за пределами периода здесь нет — их не называть.',
     byWeek: weeks.map(w => ({ ...w, total: Math.round(w.total) })),
+    // Текущий месяц — с сегодняшнего дня
+    // fullMonth: false — месяц обрезан началом (сегодня) или концом периода: не называть это «за месяц»
+    byMonth: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)).map(m => {
+      const first = `${m.month}-01`, last = new Date(Date.UTC(Number(m.month.slice(0, 4)), Number(m.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
+      const from = first < today ? today : first, to = last > end ? end : last;
+      return { month: m.month, from, to, fullMonth: from === first && to === last, count: m.count, total: Math.round(m.total), realistic: Math.round(m.realistic), profit: Math.round(m.profit) };
+    }),
     overdueNow: { contracts: overdueContracts, total: Math.round(overdueNow) },
     risky: [...risky.values()].map(x => ({ ...x, amount: Math.round(x.amount) })).sort((a, b) => b.amount - a.amount).slice(0, 5),
   };

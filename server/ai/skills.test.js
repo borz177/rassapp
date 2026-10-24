@@ -198,6 +198,19 @@ test('умения: реструктуризация, досрочное пог�
     await ask('Сравни', [{ tool: 'compare_periods', args: { from: '2026-02-30' } }, { content: 'Ошибка.' }]);
     assert.match(lastToolResult(), /from — дата/);
 
+    // Границы периода — дни по Москве: запись в полночь 1-го числа — в месяце, 1-го следующего — нет
+    const mo = today.slice(0, 7);
+    const nextFirst = c.addDays(`${mo}-28`, 7).slice(0, 7) + '-01';
+    for (const [id, d] of [['e_first', `${mo}-01`], ['e_next', nextFirst]]) {
+      await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', [id, 'owner', 'expenses', JSON.stringify({ id, accountId: 'acc', title: 'Тест', amount: 1000, category: 'Тест', date: new Date(`${d}T00:00:00+03:00`).toISOString() })]);
+    }
+    const lastDay = new Date(Date.UTC(Number(mo.slice(0, 4)), Number(mo.slice(5, 7)), 0)).toISOString().slice(0, 10);
+    const exp = await (await fetch(`http://127.0.0.1:${server.address().port}/api/v1/expenses?category=${encodeURIComponent('Тест')}&from=${mo}-01&to=${lastDay}`,
+      { headers: { Authorization: `Bearer fu_agent_${jwt.sign({ sub: 'owner' }, secret)}` } })).json();
+    assert.deepEqual(exp.data.map(e => e.id), ['e_first']);
+    assert.equal(exp.meta.sum, 1000);
+    assert.deepEqual(exp.meta.byCategory, [{ name: 'Тест', count: 1, sum: 1000 }]);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];
@@ -215,6 +228,20 @@ test('умения: реструктуризация, досрочное пог�
     const fixedDraft = r.actions.find(a => a.kind === 'contract_form')?.draft;
     assert.equal(fixedDraft?.buyPrice, 117000, r.reply);
     assert.equal(fixedDraft?.totalPrice, undefined);
+    // Поручитель вместе с новым договором — в черновик, а не к старому договору клиента (прод 23.10)
+    script.push(
+      { tool: 'prepare_contract', args: { customerId: 'cust', productName: 'iPhone 17 Pro', buyPrice: 110000, markupPercent: 25, months: 5 } },
+      { tool: 'set_guarantor', args: { contractId: 'q', name: 'Саламов Салам', phone: '+79281112233' } },
+      { content: 'Черновик готов. Также я подготовил добавление поручителя Саламова — нажмите «Подтвердить».' });
+    r = await assistant.reply({ user, text: 'Айфон 17 про, закуп 110000, наценка 25%, на 5 месяцев. Поручитель Саламов Салам +7 928 111-22-33', mode: 'confirm', silent: true });
+    const gDraft = r.actions.find(a => a.kind === 'contract_form')?.draft;
+    assert.equal(gDraft?.guarantorName, 'Саламов Салам', r.reply);
+    assert.equal(gDraft?.guarantorPhone, '+79281112233');
+    assert.equal(r.actions.some(a => a.tool === 'set_guarantor'), false);
+    assert.match(r.reply, /Поручитель Саламов Салам — в черновике нового договора/);
+    assert.doesNotMatch(r.reply, /Подтвердить/);
+    assert.equal((await row('sales', 'q')).guarantorName, undefined);
+    assert.equal((await pool.query("SELECT status FROM ai_actions WHERE payload->>'tool'='set_guarantor' ORDER BY created_at DESC LIMIT 1")).rows[0].status, 'cancelled');
     // Срок не назван, а модель пишет «Черновик готов» — вместо этого вопрос, без задвоенных пометок
     script.push({ tool: 'prepare_contract', args: { ...draftArgs, months: undefined } }, { content: 'Черновик готов — нажмите «Открыть форму договора».\n\n⚠️ В этом ответе ничего не записано и не изменено — если нужно, попросите ещё раз.' });
     r = await assistant.reply({ user, text: '+7 961 885-15-15', history, mode: 'confirm', silent: true });

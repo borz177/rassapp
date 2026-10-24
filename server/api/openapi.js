@@ -520,6 +520,20 @@ const openApiSpec = {
         responses: { 200: { description: 'Сводка', content: { 'application/json': { schema: itemOf('Summary') } } }, ...errorResponses },
       },
     },
+    '/reports/breakdown': {
+      get: {
+        tags: ['Отчёты'], summary: 'Итоги договоров с разбивкой по товару, клиенту, счёту или месяцу',
+        parameters: ['groupBy', 'search', 'from', 'to', 'sort', 'limit'].map(name => ({ name, in: 'query', schema: { type: name === 'limit' ? 'integer' : 'string' } })),
+        responses: { 200: { description: 'Разбивка', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
+      },
+    },
+    '/reports/monthly': {
+      get: {
+        tags: ['Отчёты'], summary: 'Помесячно: собрано, прибыль, расходы, новые договоры',
+        parameters: ['from', 'to', 'accountId'].map(name => ({ name, in: 'query', schema: { type: 'string' } })),
+        responses: { 200: { description: 'По месяцам', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
+      },
+    },
     '/reports/compare': {
       get: {
         tags: ['Отчёты'], summary: 'Сравнение двух периодов и что объясняет разницу',
@@ -537,9 +551,11 @@ const openApiSpec = {
     '/reports/forecast': {
       get: {
         tags: ['Отчёты'], summary: 'Прогноз поступлений по графику платежей',
-        description: 'Непогашенные строки графика на ближайшие дни (по неделям), реалистичная оценка с учётом того, как каждый клиент платил раньше, текущая просрочка и клиенты, которые часто опаздывают.',
+        description: 'Непогашенные строки графика на ближайшие дни (по неделям и месяцам), ожидаемая прибыль, реалистичная оценка с учётом того, как каждый клиент платил раньше, текущая просрочка и клиенты, которые часто опаздывают.',
         parameters: [
-          { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 180, default: 30 }, description: 'Сколько дней вперёд, начиная с сегодня' },
+          { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 1100, default: 30 }, description: 'Сколько дней вперёд, начиная с сегодня' },
+          { name: 'untilEnd', in: 'query', schema: { type: 'boolean' }, description: 'До последнего платежа по всем договорам (days тогда не нужен)' },
+          { name: 'month', in: 'query', schema: { type: 'string' }, description: 'Один месяц целиком, YYYY-MM (текущий — с сегодня)' },
         ],
         responses: { 200: { description: 'Прогноз', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
       },
@@ -587,6 +603,8 @@ const OPERATION_IDS = {
   'get /reports/summary': 'getSummary',
   'get /reports/forecast': 'getForecast',
   'get /reports/compare': 'comparePeriods',
+  'get /reports/breakdown': 'salesBreakdown',
+  'get /reports/monthly': 'monthlyReport',
 };
 
 const fallbackId = (method, path) =>

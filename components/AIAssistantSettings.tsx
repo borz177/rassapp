@@ -22,6 +22,8 @@ export interface AISettings {
   digestHour?: number;
   /** Только по будням */
   digestWeekdays?: boolean;
+  /** Подсказки агента раз в день — в то же время, что сводка (server/ai/proactive.js) */
+  proactiveTips?: boolean;
 }
 
 // Час сводки — с 6 до 22 по Москве; самые частые — кнопками, остальные в списке
@@ -35,6 +37,7 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
   const [digest, setDigest] = useState(settings.morningDigest);
   const [hour, setHour] = useState(settings.digestHour ?? 9);
   const [weekdays, setWeekdays] = useState(!!settings.digestWeekdays);
+  const [tips, setTips] = useState(!!settings.proactiveTips);
   const [preferences, setPreferences] = useState(settings.preferences || '');
   const [alerts, setAlerts] = useState(!!settings.anomalyAlerts);
   const [saving, setSaving] = useState(false);
@@ -44,13 +47,13 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
   const nextLimit = limitChoice === 'none' ? null : customValid ? customValue : NaN;
   const valid = !(limitChoice === 'custom' && !customValid);
   const dirty = preferences !== (settings.preferences || '') || alerts !== !!settings.anomalyAlerts || nextLimit !== settings.autoLimit || digest !== settings.morningDigest
-    || hour !== (settings.digestHour ?? 9) || weekdays !== !!settings.digestWeekdays;
+    || hour !== (settings.digestHour ?? 9) || weekdays !== !!settings.digestWeekdays || tips !== !!settings.proactiveTips;
 
   const save = async (close: () => void) => {
     if (!valid || saving) return;
     setSaving(true);
     try {
-      const r = await api.aiAssistant.saveSettings({ preferences, anomalyAlerts: alerts, autoLimit: nextLimit as number | null, morningDigest: digest, digestHour: hour, digestWeekdays: weekdays });
+      const r = await api.aiAssistant.saveSettings({ preferences, anomalyAlerts: alerts, autoLimit: nextLimit as number | null, morningDigest: digest, digestHour: hour, digestWeekdays: weekdays, proactiveTips: tips });
       onSaved(r.settings);
       toast.success('Настройки сохранены');
       close();
@@ -95,14 +98,20 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
         </SheetSection>
 
         <SheetSection title="Уведомления"
-                      hint={digest ? 'Время — московское. Сводка приходит раз в день; поменяли время сегодня — придёт в новое, если ещё не приходила.' : undefined}>
+                      hint={digest || tips ? 'Время — московское, общее для сводки и подсказок. Приходят раз в день; поменяли время сегодня — придут в новое, если ещё не приходили.' : undefined}>
           <SheetToggle
             label="Утренняя сводка"
             description={`${weekdays ? 'По будням' : 'Каждый день'} в ${hour}:00 — сообщением в чате агента и уведомлением: сколько платежей ждём сегодня, кто просрочил, сколько получено вчера`}
             checked={digest}
             onChange={setDigest}
           />
-          {digest && (
+          <SheetToggle
+            label="Подсказки агента"
+            description={`${weekdays ? 'По будням' : 'Каждый день'} в ${hour}:00 агент сам предложит, что сделать: кто не сдержал обещание, кому пора официальное письмо, сколько придёт на неделе, что заканчивается на складе — с кнопками. Запрос тратится, только если нажать кнопку`}
+            checked={tips}
+            onChange={setTips}
+          />
+          {(digest || tips) && (
             <>
               <div className="px-4 py-3 space-y-2">
                 <div className="text-[13px] text-slate-500 dark:text-slate-400">Во сколько</div>
@@ -122,7 +131,7 @@ const AIAssistantSettings: React.FC<{ settings: AISettings; onClose: () => void;
                   </select>
                 </div>
               </div>
-              <SheetToggle label="Только по будням" description="В субботу и воскресенье сводки не будет" checked={weekdays} onChange={setWeekdays} />
+              <SheetToggle label="Только по будням" description="В субботу и воскресенье сводки и подсказок не будет" checked={weekdays} onChange={setWeekdays} />
             </>
           )}
         </SheetSection>

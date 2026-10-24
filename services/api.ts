@@ -2247,8 +2247,8 @@ export const api = {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/actions/${encodeURIComponent(id)}/undo`, { method: 'POST', timeout: 60000 });
         return res.json().catch(() => ({ ok: false, text: 'Не удалось отменить' }));
       },
-      /** Настройки агента (порог «Авто», утренняя сводка) */
-      saveSettings: async (patch: { preferences?: string; anomalyAlerts?: boolean; autoLimit?: number | null; morningDigest?: boolean; digestHour?: number; digestWeekdays?: boolean }): Promise<{ settings: { preferences?: string; anomalyAlerts?: boolean; autoLimit: number | null; morningDigest: boolean; digestHour?: number; digestWeekdays?: boolean } }> => {
+      /** Настройки агента (порог «Авто», утренняя сводка, подсказки) */
+      saveSettings: async (patch: { preferences?: string; anomalyAlerts?: boolean; autoLimit?: number | null; morningDigest?: boolean; digestHour?: number; digestWeekdays?: boolean; proactiveTips?: boolean }): Promise<{ settings: { preferences?: string; anomalyAlerts?: boolean; autoLimit: number | null; morningDigest: boolean; digestHour?: number; digestWeekdays?: boolean; proactiveTips?: boolean } }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/settings`, { method: 'PUT', body: JSON.stringify(patch) });
         if (!res.ok) throw new Error((await res.json().catch(() => null))?.msg || 'Не удалось сохранить');
         return res.json();

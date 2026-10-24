@@ -201,12 +201,24 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     return item;
   };
 
+  // Границы периода — дни по Москве. Записи хранятся полночью по Москве, а
+  // «ГГГГ-ММ-ДД» как дата — полночь по UTC: платёж 1-го числа выпадал из месяца,
+  // а на сервере в UTC в период попадали записи следующего дня
+  const mskDayOf = d => new Date(d).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
+  // Итоги списка по ВСЕМ отобранным строкам, а не по странице: помощник иначе
+  // складывал первые 50 и называл это суммой за период
+  const sumBy = (items, key, val) => {
+    const m = new Map();
+    for (const it of items) { const k = key(it) || '—'; const x = m.get(k) || { name: k, count: 0, sum: 0 }; x.count++; x.sum += val(it); m.set(k, x); }
+    return [...m.values()].map(x => ({ ...x, sum: num(x.sum) })).sort((a, b) => b.sum - a.sum);
+  };
   const inRange = (dateStr, from, to) => {
     if (!from && !to) return true;
-    const t = new Date(dateStr).getTime();
-    if (isNaN(t)) return false;
-    if (from && t < new Date(from).getTime()) return false;
-    if (to && t > new Date(`${to}T23:59:59.999`).getTime()) return false;
+    const t = new Date(dateStr);
+    if (isNaN(t.getTime())) return false;
+    const day = mskDayOf(t);
+    if (from && day < String(from).slice(0, 10)) return false;
+    if (to && day > String(to).slice(0, 10)) return false;
     return true;
   };
 
@@ -401,6 +413,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
   router.get('/contracts', requireScope('read'), route(async (req, res) => {
     const p = paging(req, res); if (!p) return;
     const { status, customerId, accountId, from, to } = req.query;
+    const search = String(req.query.search || '').trim().toLowerCase();
     let items = await loadAll(tenant(req), 'sales');
     // Прочий приход хранится теми же записями, что и договоры, но договором не
     // является — в списке договоров ему не место.
@@ -410,9 +423,21 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     if (accountId) items = items.filter(s => domain.saleTouchesAccount(s, accountId));
     if (from || to) items = items.filter(s => inRange(s.startDate, from, to));
     if (String(req.query.overdue) === 'true') items = items.filter(s => domain.overdueAmount(s) > 0);
+    // Поиск по товару или ФИО клиента: «айфоны», «Дудаев»
+    if (search) {
+      const names = new Map((await loadAll(tenant(req), 'customers')).map(c => [c.id, String(c.name || '').toLowerCase()]));
+      const words = search.replace(/ё/g, 'е').split(/\s+/).filter(Boolean);
+      items = items.filter(s => { const hay = `${s.productName || ''} ${names.get(s.customerId) || ''}`.toLowerCase().replace(/ё/g, 'е'); return words.every(w => hay.includes(w)); });
+    }
     items.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
     const { page, meta } = paginate(items, p);
-    ok(res, page.map(s => mapContract(s)), meta);
+    ok(res, page.map(s => mapContract(s)), { ...meta, sums: {
+      totalAmount: num(items.reduce((n, s) => n + num(s.totalAmount), 0)),
+      remainingAmount: num(items.reduce((n, s) => n + num(s.remainingAmount), 0)),
+      collectedAmount: num(items.reduce((n, s) => n + domain.collected(s), 0)),
+      overdueAmount: num(items.reduce((n, s) => n + domain.overdueAmount(s), 0)),
+      averageTotal: items.length ? num(items.reduce((n, s) => n + num(s.totalAmount), 0) / items.length) : 0,
+    } });
   }));
 
   router.get('/contracts/:id', requireScope('read'), route(async (req, res) => {
@@ -520,7 +545,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     });
     rows.sort((a, b) => new Date(b.date) - new Date(a.date));
     const { page, meta } = paginate(rows, p);
-    ok(res, page, meta);
+    ok(res, page, { ...meta, sum: num(rows.reduce((n, r) => n + r.amount, 0)), byAccount: sumBy(rows, r => r.accountName, r => r.amount) });
   }));
 
   const paymentSchema = {
@@ -647,7 +672,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     if (from || to) items = items.filter(e => inRange(e.date, from, to));
     items.sort((a, b) => new Date(b.date) - new Date(a.date));
     const { page, meta } = paginate(items, p);
-    ok(res, page.map(mapExpense), meta);
+    ok(res, page.map(mapExpense), { ...meta, sum: num(items.reduce((n, e) => n + num(e.amount), 0)), byCategory: sumBy(items, e => e.category || 'Прочее', e => num(e.amount)) });
   }));
 
   router.get('/expenses/:id', requireScope('read'), route(async (req, res) => {
@@ -848,14 +873,43 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
   // оплат каждого клиента, внесут вовремя (server/ai/collections.js)
   router.get('/reports/forecast', requireScope('read'), route(async (req, res) => {
     const days = req.query.days == null ? 30 : Number(req.query.days);
-    if (!Number.isInteger(days) || days < 1 || days > 180) {
-      return fail(res, 400, CODES.VALIDATION, 'days — целое число от 1 до 180.', [{ field: 'days', code: 'range', message: '1–180' }]);
+    if (!Number.isInteger(days) || days < 1 || days > 1100) {
+      return fail(res, 400, CODES.VALIDATION, 'days — целое число от 1 до 1100.', [{ field: 'days', code: 'range', message: '1–1100' }]);
     }
+    const untilEnd = String(req.query.untilEnd) === 'true';
+    const month = req.query.month ? String(req.query.month) : null;
+    if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return fail(res, 400, CODES.VALIDATION, 'month — ГГГГ-ММ.');
     const userId = tenant(req);
     const [sales, customers, investors] = await Promise.all([
       loadAll(userId, 'sales'), loadAll(userId, 'customers'), loadAll(userId, 'investors'),
     ]);
-    ok(res, require('../ai/collections').forecast({ sales, customers, investors, days }));
+    const r = require('../ai/collections').forecast({ sales, customers, investors, days, untilEnd, month });
+    if (r.error) return fail(res, 400, CODES.VALIDATION, r.error);
+    ok(res, r);
+  }));
+
+  // ── разбивка договоров и помесячный отчёт (server/ai/analytics.js) ────────
+  // Готовые итоги вместо подсчёта по спискам: по спискам считали первые 50
+  router.get('/reports/breakdown', requireScope('read'), route(async (req, res) => {
+    const userId = tenant(req);
+    const [sales, customers, accounts, investors] = await Promise.all([
+      loadAll(userId, 'sales'), loadAll(userId, 'customers'), loadAll(userId, 'accounts'), loadAll(userId, 'investors'),
+    ]);
+    const { groupBy, from, to, search, sort, limit } = req.query;
+    const r = require('../ai/analytics').breakdown({ sales, customers, accounts, investors, groupBy: groupBy || 'product', from, to, search, sort: sort || 'totalAmount', limit });
+    if (r.error) return fail(res, 400, CODES.VALIDATION, r.error);
+    ok(res, r);
+  }));
+
+  router.get('/reports/monthly', requireScope('read'), route(async (req, res) => {
+    const userId = tenant(req);
+    const [sales, expenses, investors, settingsRows] = await Promise.all([
+      loadAll(userId, 'sales'), loadAll(userId, 'expenses'), loadAll(userId, 'investors'), loadAll(userId, 'settings'),
+    ]);
+    const r = require('../ai/analytics').monthly({ sales, expenses, investors, withoutDownPayment: !!settingsRows[0]?.collectedWithoutDownPayment,
+      accountId: req.query.accountId || null, from: req.query.from, to: req.query.to });
+    if (r.error) return fail(res, 400, CODES.VALIDATION, r.error);
+    ok(res, r);
   }));
 
   // ── сравнение периодов («почему упала прибыль») ──────────────────────────

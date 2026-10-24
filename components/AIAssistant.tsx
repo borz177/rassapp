@@ -695,6 +695,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     setStatus(s);
     if (!s.consent) setConsentOpen(true);
     showDigest(s.digest);
+    showTips(s.proactive);
   }).catch(() => {});
 
   // Кнопки под сводкой — по её цифрам: нет просрочки — нет «Кто просрочил?».
@@ -715,8 +716,19 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const key = `finuchet_ai_digest_seen_${userId}`;
     try { if (localStorage.getItem(key) === digest.date) return; localStorage.setItem(key, digest.date); } catch { /* приватный режим */ }
     setMessages(ms => [...ms, {
-      id: newId(), role: 'assistant', text: `☀️ **План на сегодня**\n${digest.text.replace(/ — спросите FinUchetGPT.*$/, '.')}`,
+      id: `digest_${newId()}`, role: 'assistant', text: `☀️ **План на сегодня**\n${digest.text.replace(/ — спросите FinUchetGPT.*$/, '.')}`,
       actions: [{ id: newId(), kind: 'choices', title: 'Что дальше?', options: digestOptions(digest.stats) }],
+    }]);
+  };
+  // Подсказки агента (server/ai/proactive.js) — раз в день после сводки; кнопка
+  // отправляет агенту готовую просьбу
+  const showTips = (tips?: { date: string; text: string; options?: { label: string }[] } | null) => {
+    if (!tips || !tips.options?.length) return;
+    const key = `finuchet_ai_tips_seen_${userId}`;
+    try { if (localStorage.getItem(key) === tips.date) return; localStorage.setItem(key, tips.date); } catch { /* приватный режим */ }
+    setMessages(ms => [...ms, {
+      id: `tips_${newId()}`, role: 'assistant', text: `💡 **Что можно сделать сегодня**\n${tips.text}`,
+      actions: [{ id: newId(), kind: 'choices', title: 'С чего начнём?', options: tips.options!.map(o => ({ label: o.label })) }],
     }]);
   };
   useEffect(() => { loadStatus(); }, []);
@@ -786,7 +798,10 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
               }) };
           });
           const ids = new Set(synced.map(m => m.id));
-          return [...(changedThread ? [] : current.filter(m => !ids.has(m.id) && !m.id.startsWith('reply_') && !m.id.startsWith('alice_'))), ...synced];
+          const localOnly = changedThread ? [] : current.filter(m => !ids.has(m.id) && !m.id.startsWith('reply_') && !m.id.startsWith('alice_'));
+          // Сводка и подсказки дня есть только здесь, на сервере их нет — после истории, а не над ней
+          const ofDay = (m: Msg) => m.id.startsWith('digest_') || m.id.startsWith('tips_');
+          return [...localOnly.filter(m => !ofDay(m)), ...synced, ...localOnly.filter(ofDay)];
         });
       } catch { /* Локальная история остаётся доступной без сети. */ }
       finally { busy = false; }

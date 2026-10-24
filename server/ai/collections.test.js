@@ -207,3 +207,42 @@ test('срок договора датами: «С 14.10.2026 по 14.03.2027» 
   assert.equal(monthsSaidIn(['айфон 16 pro'], 16), false);
   assert.equal(monthsSaidIn(['тел 8 961 885-15-15'], 5), false);
 });
+
+test('прогноз по месяцам до конца договоров и ожидаемая прибыль (на проде 24.10 агент выдумал месяцы сверх 180 дней)', async () => {
+  await domain.ready;
+  const s = contract('m', 'c', { first: 5 });           // 12 платежей раз в 30 дней — почти год вперёд
+  const f = c.forecast({ sales: [s], customers: [{ id: 'c', name: 'К' }], today, untilEnd: true });
+  assert.equal(f.scheduled.total, 120000);
+  assert.equal(f.byMonth.reduce((n, m) => n + m.total, 0), 120000);
+  assert.equal(f.byMonth[f.byMonth.length - 1].month, c.addDays(today, 5 + 11 * 30).slice(0, 7));
+  assert.equal(f.expectedProfit, 20000);                // наценка 20 000 из 120 000
+  // Каждый месяц округлён до рубля — сумма месяцев может отличаться на рубль-другой
+  assert.ok(Math.abs(f.byMonth.reduce((n, m) => n + m.profit, 0) - 20000) <= f.byMonth.length);
+  assert.ok(f.byWeek.length <= 13);
+  const short = c.forecast({ sales: [s], customers: [], today, days: 30 });
+  assert.equal(short.byMonth.reduce((n, m) => n + m.total, 0), short.scheduled.total);
+});
+
+test('прогноз за названный месяц — весь месяц; обрезанные месяцы помечены (аудит: «ноябрь» был до 22 ноября)', async () => {
+  await domain.ready;
+  const s = contract('fm', 'c', { first: 3 });
+  const next = c.addDays(today, 40).slice(0, 7);
+  const m = c.forecast({ sales: [s], customers: [], today, month: next });
+  assert.equal(m.month, next);
+  assert.equal(m.fullMonth, true);
+  assert.equal(m.from, `${next}-01`);
+  const short = c.forecast({ sales: [s], customers: [], today, days: 10 });
+  // 10 дней — ни один месяц не полный
+  assert.ok(short.byMonth.length >= 1 && short.byMonth.every(x => x.fullMonth === false));
+  assert.match(c.forecast({ sales: [s], today, month: '2020-01' }).error, /прошёл/);
+});
+
+test('проверка цифр ответа: сумма из данных и сумма двух чисел — из данных, придуманная — нет', () => {
+  const { ungroundedAmounts } = require('./assistant')._test;
+  const data = ['{"meta":{"sum":233814},"data":[{"amount":189282},{"amount":44532}]}'];
+  assert.deepEqual(ungroundedAmounts('Пришло 233 814 ₽: 189 282 ₽ и 44 532 ₽.', data), []);
+  assert.deepEqual(ungroundedAmounts('Итого 233 815 ₽', data), []);            // округление ±1
+  assert.deepEqual(ungroundedAmounts('Всего 218 534 ₽', data), [218534]);       // так ответил агент до исправления
+  assert.deepEqual(ungroundedAmounts('Закуп 500 000 ₽', [], [500, 500000]), []); // «закуп 500» — тысячи
+  assert.deepEqual(ungroundedAmounts('Платежей 12, процент 25%', data), []);   // не рубли — не проверяем
+});

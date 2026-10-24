@@ -132,4 +132,80 @@ const comparePeriods = ({ sales, expenses, customers = [], investors = [], witho
   };
 };
 
-module.exports = { resolvePeriods, overdueOn, comparePeriods };
+/**
+ * Разбивка договоров: по товару, клиенту, счёту или месяцу оформления (или без
+ * разбивки — итог). На каждую группу: сколько договоров, на какую сумму, средний
+ * чек, закуп и наценка, получено и прибыль с полученного (за всё время), остаток
+ * и просрочка. Для «сколько договоров на айфоны», «кто должен больше всех»,
+ * «кто заплатил больше всех», «на чём я заработал». Период — по дате оформления.
+ */
+const GROUPS = ['product', 'customer', 'account', 'month', 'none'];
+const SORTS = ['totalAmount', 'contracts', 'collected', 'profitReceived', 'remaining', 'overdue', 'averageTotal'];
+const breakdown = ({ sales, customers = [], accounts = [], investors = [], groupBy = 'product', from, to, search, sort = 'totalAmount', limit = 20 }) => {
+  if (!GROUPS.includes(groupBy)) return { error: `groupBy — одно из: ${GROUPS.join(', ')}.` };
+  if (!SORTS.includes(sort)) return { error: `sort — одно из: ${SORTS.join(', ')}.` };
+  if ((from && !isDay(from)) || (to && !isDay(to))) return { error: 'from и to — даты ГГГГ-ММ-ДД.' };
+  const investorIds = new Set(investors.map(i => i.id));
+  const names = new Map(customers.map(c => [c.id, c.name || 'Клиент']));
+  const accNames = new Map(accounts.map(a => [a.id, a.name || 'Счёт']));
+  const words = String(search || '').toLowerCase().replace(/ё/g, 'е').split(/\s+/).filter(Boolean);
+  const list = sales.filter(s => s.type === 'INSTALLMENT' && isCustomerSale(s, investorIds))
+    .filter(s => (!from || mskDay(s.startDate) >= from) && (!to || mskDay(s.startDate) <= to))
+    .filter(s => !words.length || words.every(w => `${s.productName || ''} ${names.get(s.customerId) || ''}`.toLowerCase().replace(/ё/g, 'е').includes(w)));
+  const keyOf = (s) => groupBy === 'product' ? String(s.productName || 'Без названия').trim()
+    : groupBy === 'customer' ? names.get(s.customerId) || 'Клиент'
+    : groupBy === 'account' ? accNames.get(s.accountId) || 'Без счёта'
+    : groupBy === 'month' ? mskDay(s.startDate).slice(0, 7) : 'Всего';
+  const groups = new Map();
+  const add = (g, s) => {
+    g.contracts++; g.totalAmount += Number(s.totalAmount) || 0; g.buyPrice += Number(s.buyPrice) || 0;
+    g.collected += domain.collected(s); g.profitReceived += domain.receivedProfit(s);
+    g.remaining += Number(s.remainingAmount) || 0; g.overdue += domain.overdueAmount(s);
+  };
+  const blank = (name) => ({ name, contracts: 0, totalAmount: 0, buyPrice: 0, collected: 0, profitReceived: 0, remaining: 0, overdue: 0 });
+  const all = blank('Всего');
+  for (const s of list) {
+    const k = keyOf(s);
+    if (!groups.has(k)) groups.set(k, blank(k));
+    add(groups.get(k), s); add(all, s);
+  }
+  const fin = (g) => ({ name: g.name, contracts: g.contracts, totalAmount: Math.round(g.totalAmount), averageTotal: g.contracts ? Math.round(g.totalAmount / g.contracts) : 0,
+    buyPrice: Math.round(g.buyPrice), markup: Math.round(g.totalAmount - g.buyPrice), collected: Math.round(g.collected),
+    profitReceived: Math.round(g.profitReceived), remaining: Math.round(g.remaining), overdue: Math.round(g.overdue) });
+  const rows = [...groups.values()].map(fin)
+    .sort((a, b) => groupBy === 'month' && sort === 'totalAmount' ? a.name.localeCompare(b.name) : b[sort] - a[sort]);
+  const n = Math.min(Math.max(Number(limit) || 20, 1), 100);
+  return {
+    groupBy, period: { from: from || null, to: to || null }, search: search || null, sort,
+    totals: fin(all), groupsCount: rows.length, groups: groupBy === 'none' ? [] : rows.slice(0, n),
+    basis: 'Договоры рассрочки клиентов, оформленные в периоде (без периода — все). Получено и прибыль с полученного — за всё время по этим договорам, как в отчётах прибыли. Цифры брать отсюда, не складывать самому.',
+  };
+};
+
+/** Помесячно за прошлые месяцы: собрано, прибыль, расходы (закуп отдельно), новые договоры */
+const monthly = ({ sales, expenses, investors = [], withoutDownPayment = false, accountId = null, from, to, today = mskDay() }) => {
+  const start = from && isDay(from) ? from.slice(0, 7) : null, end = to && isDay(to) ? to.slice(0, 7) : today.slice(0, 7);
+  if (from && !isDay(from)) return { error: 'from — дата ГГГГ-ММ-ДД.' };
+  if (to && !isDay(to)) return { error: 'to — дата ГГГГ-ММ-ДД.' };
+  const months = [];
+  const ym = (m, k) => { const d = new Date(`${m}-15T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + k); return d.toISOString().slice(0, 7); };
+  for (let m = start || ym(end, -5); m <= end && months.length < 24; m = ym(m, 1)) months.push(m);
+  if (!months.length) return { error: 'Начало периода позже конца.' };
+  const investorIds = new Set(investors.map(i => i.id));
+  const isContract = s => isCustomerSale(s, investorIds) && s.type === 'INSTALLMENT';
+  const contracts = sales.filter(s => (!accountId || domain.saleTouchesAccount(s, accountId)) && isContract(s));
+  const moneyContracts = domain.expandFundedSales(sales).filter(s => (!accountId || s.accountId === accountId) && isContract(s));
+  const exp = expenses.filter(e => !accountId || e.accountId === accountId);
+  const rows = months.map(m => {
+    const last = new Date(Date.UTC(Number(m.slice(0, 4)), Number(m.slice(5, 7)), 0)).getUTCDate();
+    // Текущий месяц — по сегодня
+    const period = { from: `${m}-01`, to: m === today.slice(0, 7) ? today : `${m}-${String(last).padStart(2, '0')}` };
+    const st = periodStats({ contracts, moneyContracts, expenses: exp, period, withoutDownPayment });
+    return { month: m, collected: st.collected, profit: st.profit, expenses: st.expenses, purchases: st.purchases, otherExpenses: st.otherExpenses, newContracts: st.newContracts.count, newContractsTotal: st.newContracts.total };
+  });
+  const sum = (k) => rows.reduce((n, r) => n + r[k], 0);
+  return { months: rows, totals: { collected: sum('collected'), profit: sum('profit'), expenses: sum('expenses'), newContracts: sum('newContracts') },
+    basis: 'Прошедшие месяцы — как сводка приложения (текущий — по сегодня). Будущие месяцы — это прогноз (cash_forecast), не этот отчёт.' };
+};
+
+module.exports = { resolvePeriods, overdueOn, comparePeriods, breakdown, monthly };
