@@ -155,7 +155,7 @@ const ASK_CHOICE_TOOL = {
       items: {
         type: 'object',
         properties: {
-          label: { type: 'string', description: 'Надпись на кнопке, коротко: «Samsung S25 · остаток 91 876 ₽»' },
+          label: { type: 'string', description: 'Надпись на кнопке, коротко: «Samsung S25 · остаток 91 876 ₽». У договора — товар и остаток, без суммы платежа: нажатие выбирает договор, а не сумму' },
           ref: { type: 'string', description: 'id договора, клиента или счёта, если вариант — он (человеку не показывается)' },
         },
         required: ['label'],
@@ -354,6 +354,27 @@ const RESTRUCTURE_TOOL = {
   required: ['contractId', 'months', 'firstPaymentDate'],
 };
 
+// Несколько платежей одной карточкой: «Иванов 5000, Петров 10 000, Сидоров за телевизор 3000»,
+// список голосом, строки выписки после match_transactions. Клиента и договор по каждой
+// строке находит сервер; неоднозначные строки — вопрос, а не запись наугад
+const RECORD_PAYMENTS_TOOL = {
+  name: 'record_payments',
+  description: 'Принять сразу несколько платежей (2–50) одной карточкой: список «фамилия — сумма», голосом, со строк выписки. По каждой строке сервер сам найдёт клиента и договор (по ФИО или телефону, товар — если назвали); неоднозначные строки вернёт с вопросом — ничего не записывая. Всегда ждёт «Подтвердить»; записывается вся пачка или ничего; «Отменить» удаляет все платежи пачки. Один платёж — create_payment.',
+  input: {
+    payments: {
+      type: 'array', maxItems: 50, description: 'Строки: кто, сколько, по какому товару (если сказали), когда',
+      items: { type: 'object', properties: {
+        customer: { type: 'string', description: 'ФИО, фамилия или телефон — как сказал человек' },
+        product: { type: 'string', description: 'Товар договора, если назвали («за телевизор»)' },
+        contractId: { type: 'string', description: 'id договора, если уже известен (customer_overview, ask_choice, match_transactions)' },
+        amount: { type: 'number', description: 'Сумма, ₽' },
+        date: { type: 'string', description: 'Дата платежа ГГГГ-ММ-ДД, если не сегодня' },
+      }, required: ['amount'] },
+    },
+  },
+  required: ['payments'],
+};
+
 // ── Склад и магазин (server/ai/stock.js) ───────────────────────────────────
 const STOCK_ITEMS = {
   type: 'array', maxItems: 50, description: 'Позиции: товар из list_products и количество',
@@ -403,7 +424,7 @@ const RETAIL_SALE_TOOL = {
 };
 // Карточка всегда ждёт «Подтвердить», даже в «Авто»: рассылка многим, деньги
 // со скидкой, весь график, письмо клиенту от имени продавца
-const ALWAYS_CONFIRM = new Set(['remind_all_overdue', 'transfer_contracts', 'early_payoff', 'restructure_contract', 'send_collection_message']);
+const ALWAYS_CONFIRM = new Set(['remind_all_overdue', 'transfer_contracts', 'early_payoff', 'restructure_contract', 'send_collection_message', 'record_payments']);
 // Просят написать самому — не шаблон напоминания
 const WRITE_OWN_RE = /напиш|состав|вежлив|мягк|построж|строже|жёстч|жестч|официальн|претензи/i;
 // Причина списания названа человеком (или кнопкой)
@@ -420,7 +441,7 @@ const RECONCILIATION_TOOLS = [
   { name: 'transfer_contracts', description: 'Только по явной просьбе перенести договоры: подготовить перенос вместе с закупами в общий пул. Всегда требует подтверждения человеком. Вложения инвесторов не переносит.', input: { contractIds: { type: 'array', items: { type: 'string' }, maxItems: 100 }, accountId: { type: 'string' } }, required: ['contractIds', 'accountId'] },
 ];
 const CUSTOM_WRITE_NAMES = new Set(['transfer_contracts', 'update_customer', 'create_task', 'send_reminder', 'remind_all_overdue', 'delete_payment', 'update_expense', 'delete_expense', 'set_guarantor',
-  'promise_payment', 'send_collection_message', 'early_payoff', 'restructure_contract', ...SHOP_WRITE_NAMES]);
+  'promise_payment', 'send_collection_message', 'early_payoff', 'restructure_contract', 'record_payments', ...SHOP_WRITE_NAMES]);
 
 // Основа слова без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
 // Слова из команд и названий товаров — не имя, даже с заглавной
@@ -442,7 +463,7 @@ const TOOL_WORDS = {
   set_guarantor: 'поручитель', change_payment_date: 'перенос графика', ask_choice: 'вопрос с вариантами', whoami: 'данные аккаунта',
   cash_forecast: 'прогноз поступлений', compare_periods: 'сравнение периодов', sales_breakdown: 'разбивка договоров', monthly_report: 'отчёт по месяцам', collection_queue: 'очередь взыскания', promise_payment: 'обещание оплаты',
   send_collection_message: 'письмо должнику', payoff_quote: 'расчёт досрочного погашения', early_payoff: 'досрочное погашение',
-  restructure_contract: 'реструктуризация', stock_receive: 'приход товара', stock_write_off: 'списание', retail_sale: 'продажа в магазине',
+  restructure_contract: 'реструктуризация', record_payments: 'несколько платежей', stock_receive: 'приход товара', stock_write_off: 'списание', retail_sale: 'продажа в магазине',
 };
 const FIELD_WORDS = {
   newCustomer: 'новый клиент', customerId: 'клиент', contractId: 'договор', saleId: 'договор', accountId: 'счёт',
@@ -520,6 +541,27 @@ const buyPriceSaid = (texts) => {
   return 0;
 };
 const nameStem = (w) => w.replace(/(ову|еву|ова|ева|ому|ему|ой|ий|ая|ую|ов|ев|ина|ину|ын|ин|а|у|е|ы|и)$/, '');
+// Насколько ФИО подходит под основы слов запроса: 2 — каждая основа — начало фамилии или
+// имени; 1 — совпала только с отчеством или серединой слова; 0 — нет. «Исаев» не должен
+// находить «Ахмадов Руслан Исаевич», если есть сам Исаев (аудит записей 25.10)
+const PATRONYMIC_RE = /(ович|евич|овна|евна|ична|инична|оглы|кызы)$/;
+const nameMatch = (name, stems) => {
+  const parts = String(name || '').toLowerCase().replace(/ё/g, 'е').split(/[^a-zа-я-]+/).filter(Boolean);
+  if (!stems.length || !parts.length) return 0;
+  let weak = false;
+  for (const st of stems) {
+    if (parts.some(p => p.startsWith(st) && !PATRONYMIC_RE.test(p))) continue;
+    if (parts.some(p => p.includes(st))) { weak = true; continue; }
+    return 0;
+  }
+  return weak ? 1 : 2;
+};
+/** Подходящие по имени: есть точные (фамилия/имя) — только они, иначе слабые */
+const bestByName = (items, stems, nameOf = (x) => x.name) => {
+  const scored = items.map(x => [x, nameMatch(nameOf(x), stems)]).filter(([, sc]) => sc > 0);
+  const strong = scored.filter(([, sc]) => sc === 2);
+  return (strong.length ? strong : scored).map(([x]) => x);
+};
 
 // «Записал», «провёл», «отправил»… — модель говорит, что сделала. Если в этом
 // ответе действия не было, это неправда (бывает, когда она отказалась от части
@@ -554,7 +596,7 @@ const STEP_LABELS = {
   create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…', create_contract_template: 'Читаю образец, до минуты…',
   cash_forecast: 'Считаю прогноз…', compare_periods: 'Сравниваю периоды…', sales_breakdown: 'Считаю по договорам…', monthly_report: 'Считаю по месяцам…', collection_queue: 'Разбираю просрочку…', promise_payment: 'Записываю обещание…',
   send_collection_message: 'Готовлю письмо…', payoff_quote: 'Считаю досрочное погашение…', early_payoff: 'Готовлю закрытие договора…',
-  restructure_contract: 'Считаю новый график…', stock_receive: 'Готовлю приход…', stock_write_off: 'Готовлю списание…', retail_sale: 'Готовлю чек…',
+  restructure_contract: 'Считаю новый график…', record_payments: 'Ищу клиентов и договоры…', stock_receive: 'Готовлю приход…', stock_write_off: 'Готовлю списание…', retail_sale: 'Готовлю чек…',
 };
 
 // Образец договора с фото → личный шаблон из блоков (тем же распознаванием, что
@@ -603,6 +645,7 @@ const WRITE_TITLES = {
   send_collection_message: 'Письмо должнику в WhatsApp',
   early_payoff: 'Закрыть договор досрочно',
   restructure_contract: 'Реструктуризация графика',
+  record_payments: 'Принять платежи',
   stock_receive: 'Приход товара',
   stock_write_off: 'Списание товара',
   retail_sale: 'Продажа в магазине',
@@ -626,6 +669,7 @@ const DONE_TITLES = {
   send_collection_message: 'письмо отправлено',
   early_payoff: 'договор закрыт',
   restructure_contract: 'график перестроен',
+  record_payments: 'платежи приняты',
   stock_receive: 'приход проведён',
   stock_write_off: 'товар списан',
   retail_sale: 'продажа проведена',
@@ -870,6 +914,72 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     if (!sale || sale.type !== 'INSTALLMENT' || String(sale.customerId || '').startsWith('system_')) return { error: 'Договор не найден — найди его через customer_overview.' };
     return { sale, customer: rows[0].customer || {} };
   };
+  /**
+   * Строки «кто — сколько» → договоры. Наугад не берём: однофамильцы, несколько
+   * договоров без товара, нет в базе, больше остатка — в problems с вариантами.
+   */
+  // Марки так, как их пишут по-русски: «за айфон» — договор «iPhone 16»
+  const BRANDS = [[/айфон|ифон/g, 'iphone'], [/айпад/g, 'ipad'], [/макбук/g, 'macbook'], [/[аэ]й?рподс/g, 'airpods'], [/эпл|эппл/g, 'apple'],
+    [/самсунг|самсон/g, 'samsung'], [/галакси/g, 'galaxy'], [/с[яи]оми|ш[ао]оми|ксиоми/g, 'xiaomi'], [/редми/g, 'redmi'], [/поко/g, 'poco'],
+    [/хуавей|хуавэй/g, 'huawei'], [/хонор/g, 'honor'], [/реалми/g, 'realme'], [/плейст[еэ]йшн|плэйстейшн|сони/g, 'playstation sony'],
+    [/телек|телик/g, 'телевизор'], [/холодос/g, 'холодильник'], [/ноут(?!бук)/g, 'ноутбук']];
+  const productWords = (v) => { let t = String(v || '').toLowerCase().replace(/ё/g, 'е'); for (const [re, to] of BRANDS) t = t.replace(re, to); return t; };
+  const plural = (n, one, few, many) => { const m10 = n % 10, m100 = n % 100; return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many; };
+  const resolvePaymentLines = async (userId, lines) => {
+    const [customers, sales] = await Promise.all([loadItems(userId, 'customers'), loadItems(userId, 'sales')]);
+    const active = sales.filter(s => s.type === 'INSTALLMENT' && (s.status === 'ACTIVE' || s.status === 'DRAFT')
+      && !String(s.customerId || '').startsWith('system_') && Number(s.remainingAmount) >= 1);
+    const names = new Map(customers.map(c => [c.id, c.name || 'Клиент']));
+    const norm = (v) => String(v || '').toLowerCase().replace(/ё/g, 'е');
+    const today = collections.mskDay();
+    const planned = new Map();
+    const out = [], problems = [];
+    lines.forEach((l, i) => {
+      const n = i + 1;
+      const amount = Math.round((Number(l?.amount) || 0) * 100) / 100;
+      if (!(amount > 0)) { problems.push(`${n}) нет суммы`); return; }
+      const date = l.date ? String(l.date).slice(0, 10) : today;
+      if (!collections.isDay(date) || date > today) { problems.push(`${n}) дата «${l.date}» — нужна сегодняшняя или прошедшая`); return; }
+      let pool_ = [];
+      const who = String(l.customer || '').trim();
+      if (l.contractId) {
+        const s = active.find(x => x.id === l.contractId);
+        if (!s) { problems.push(`${n}) договор не найден или уже закрыт`); return; }
+        pool_ = [s];
+      } else {
+        if (!who) { problems.push(`${n}) не указан клиент`); return; }
+        const digits = who.replace(/\D/g, '');
+        const words = norm(who).split(/\s+/).filter(w => w.length >= 2 && !/\d/.test(w)).map(w => { const st = nameStem(w); return st.length >= 3 ? st : w; });
+        const found = digits.length >= 6
+          ? customers.filter(c => String(c.phone || '').replace(/\D/g, '').includes(digits.slice(-10)))
+          : bestByName(customers, words);
+        if (!found.length) {
+          const near = similar(who, customers).map(({ item }) => item.name);
+          problems.push(`${n}) «${who}» — нет в базе${near.length ? `; похожие: ${near.join(', ')}` : ''}`); return;
+        }
+        pool_ = active.filter(s => found.some(c => c.id === s.customerId));
+        if (!pool_.length) { problems.push(`${n}) у «${found.map(c => c.name).join(', ')}» нет действующего договора с долгом`); return; }
+        const pw = productWords(l.product).split(/[^a-zа-я0-9]+/).filter(w => w.length >= 3);
+        if (pw.length) {
+          const byProduct = pool_.filter(s => pw.every(w => productWords(s.productName).includes(w.slice(0, Math.max(3, w.length - 2)))));
+          if (byProduct.length) pool_ = byProduct;
+        }
+        const people = [...new Set(pool_.map(s => s.customerId))];
+        if (people.length > 1) { problems.push(`${n}) «${who}» — несколько клиентов: ${people.map(id => `${names.get(id)} (id ${id})`).join(', ')}`); return; }
+        if (pool_.length > 1) { problems.push(`${n}) у клиента ${names.get(people[0])} несколько договоров: ${pool_.map(s => `${s.productName} (id ${s.id}, остаток ${money(s.remainingAmount)})`).join(', ')} — за какой?`); return; }
+      }
+      const s = pool_[0];
+      const left = (Number(s.remainingAmount) || 0) - (planned.get(s.id) || 0);
+      if (amount > left + 0.01) { problems.push(`${n}) ${names.get(s.customerId)}, ${s.productName}: ${money(amount)} больше остатка ${money(left)}`); return; }
+      planned.set(s.id, (planned.get(s.id) || 0) + amount);
+      // Такой же платёж в этот день уже есть — возможно, его записали раньше
+      const possibleDuplicate = (s.paymentPlan || []).some(p => p.isRealPayment === true && Math.abs((Number(p.amount) || 0) - amount) < 0.01
+        && collections.mskDay(p.actualDate || p.date) === date);
+      out.push({ n, contractId: s.id, customerName: names.get(s.customerId) || 'Клиент', product: s.productName || 'договор', amount, date, possibleDuplicate });
+    });
+    return { lines: out, problems, today };
+  };
+
   // Письмо должнику — днём по Москве: в будни с 8 до 22, в выходные с 9 до 20
   // (те же часы, что закон разрешает для общения с должником)
   const quietHoursNow = (d = new Date()) => {
@@ -919,6 +1029,17 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   };
 
   const customSummary = async (userId, name, args) => {
+    if (name === 'record_payments') {
+      const lines = Array.isArray(args.payments) ? args.payments.slice(0, 50) : [];
+      if (lines.length < 2) return { error: 'Платёж один — для него create_payment.' };
+      const r = await resolvePaymentLines(userId, lines);
+      if (r.problems.length) {
+        return { error: `Карточку не готовлю — не ясно по строкам: ${r.problems.join('; ')}. Определились: ${r.lines.map(l => `${l.n}) ${l.customerName} — ${l.product} — ${money(l.amount)} (id ${l.contractId})`).join('; ') || 'ни одна'}. Спроси человека про неясные строки одним сообщением (одна неясная строка с вариантами — ask_choice), потом снова record_payments со всеми строками, у уточнённых — contractId. Ничего не записано.`, retry: true };
+      }
+      args.payments = r.lines.map(l => ({ contractId: l.contractId, amount: l.amount, date: l.date }));
+      const total = r.lines.reduce((n, l) => n + l.amount, 0);
+      return { text: `${r.lines.length} ${plural(r.lines.length, 'платёж', 'платежа', 'платежей')} на ${money(total)}: ${r.lines.map(l => `${l.customerName} — ${l.product} — ${money(l.amount)}${l.date !== r.today ? ` (${dayRu(l.date)})` : ''}${l.possibleDuplicate ? ' — ⚠️ такой платёж в этот день уже есть' : ''}`).join('; ')}` };
+    }
     if (name === 'promise_payment') {
       const f = await contractWithCustomer(userId, args.contractId);
       if (f.error) return f;
@@ -1071,6 +1192,23 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     // Карточку «Подтвердить» могли нажать уже после окончания подписки
     if (await appExpired(userId)) return { ok: false, text: 'Срок подписки приложения истёк — изменения недоступны.' };
     if (name === 'transfer_contracts') return reconciliation.transfer(userId, args);
+    if (name === 'record_payments') {
+      // Сверка всей пачки уже прошла перед выполнением (actionStore.run): поштучно её не
+      // повторяем — первый платёж «изменил бы данные» для второго. У каждой строки свой ключ
+      const created = [];
+      const today = collections.mskDay();
+      for (let i = 0; i < (args.payments || []).length; i++) {
+        const p = args.payments[i];
+        const r = await v1Request(userId, { method: 'POST', path: `/payments?line=${i + 1}`, noExpectedState: true,
+          body: { contractId: p.contractId, amount: p.amount, ...(p.date && p.date !== today ? { date: p.date } : {}) } });
+        if (!r.ok) {
+          for (const c of created.slice().reverse()) await v1Request(userId, { method: 'DELETE', path: `/payments/${encodeURIComponent(c.paymentId)}`, noExpectedState: true }).catch(() => {});
+          return { ok: false, text: `Платёж ${i + 1} не прошёл (${r.text}) — ничего не записано.` };
+        }
+        created.push({ paymentId: r.data?.data?.payment?.id, contractId: p.contractId });
+      }
+      return { ok: true, undo: { kind: 'payments_batch', payments: created } };
+    }
     if (name === 'promise_payment') {
       const f = await contractWithCustomer(userId, args.contractId);
       if (f.error) return { ok: false, text: f.error };
@@ -1283,8 +1421,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       // Все слова запроса — в ФИО, каждое по основе: «Дудаевой Мадине» → «дудаев» и «мадин»
       const stems = words.map(w => { const s = nameStem(w); return s.length >= 3 ? s : w; });
       const conds = stems.map((_, i) => `lower(replace(data->>'name', 'ё', 'е')) LIKE $${i + 2}`).join(' AND ');
-      rows = (await pool.query(`SELECT id, data FROM data_items WHERE user_id = $1 AND type = 'customers' AND ${conds} LIMIT 8`,
+      rows = (await pool.query(`SELECT id, data FROM data_items WHERE user_id = $1 AND type = 'customers' AND ${conds} LIMIT 40`,
         [userId, ...stems.map(s => `%${s}%`)])).rows;
+      // Совпадение по отчеству («Исаев» → «…Исаевич») — только если нет совпадений по фамилии/имени
+      rows = bestByName(rows, stems, r => r.data?.name).slice(0, 8);
     }
     if (!rows.length) {
       // Голос мог исказить фамилию: «Гагоев» вместо «Гагаев» — ищем похожих
@@ -1332,10 +1472,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   };
 
   const callV1 = (userId, tool, args) => v1Request(userId, tool.request(args || {}));
-  const v1Request = async (userId, { method, path, body }) => {
+  const v1Request = async (userId, { method, path, body, noExpectedState = false }) => {
     const executionId = executionContext.getStore();
     let expectedState;
-    if (executionId && method !== 'GET') {
+    if (executionId && method !== 'GET' && !noExpectedState) {
       const undo = executionId.endsWith(':undo');
       const operation = await actionStore.get(userId, undo ? executionId.slice(0, -5) : executionId);
       const state = undo ? operation?.after_state : operation?.before_state;
@@ -1516,6 +1656,14 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     } else if (d.undo?.kind === 'task') {
       const q = await pool.query(`DELETE FROM data_items WHERE user_id = $1 AND type = 'tasks' AND id = $2 RETURNING id`, [userId, d.undo.id]);
       r = q.rowCount ? { ok: true } : { ok: false, text: 'Задача не найдена — возможно, её уже удалили.' };
+    } else if (d.undo?.kind === 'payments_batch') {
+      // Все платежи пачки, с последнего; уже удалённый вручную — не ошибка
+      let failed = '';
+      for (const p of [...d.undo.payments].reverse()) {
+        const x = await v1Request(userId, { method: 'DELETE', path: `/payments/${encodeURIComponent(p.paymentId)}`, noExpectedState: true });
+        if (!x.ok && !/не найден/i.test(x.text)) failed = x.text;
+      }
+      r = failed ? { ok: false, text: `Не все платежи удалены: ${failed}` } : { ok: true };
     } else if (d.undo?.kind === 'promise') {
       r = await promises.remove(userId, d.undo.promiseId) ? { ok: true } : { ok: false, text: 'Обещание не найдено — возможно, его уже удалили.' };
     } else if (d.undo?.kind === 'payment_created') {
@@ -1564,6 +1712,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     if (d.undo?.kind === 'customer') return { ok: true, text: `Отменено: вернул прежние данные — ${d.summary.split(':')[0]}.` };
     if (d.undo?.kind === 'task') return { ok: true, text: `Отменено: задача ${d.summary.split(' — ')[0]} удалена.` };
     if (d.undo?.kind === 'promise') return { ok: true, text: 'Отменено: обещание удалено.' };
+    if (d.undo?.kind === 'payments_batch') return { ok: true, text: `Отменено: ${d.undo.payments.length} ${plural(d.undo.payments.length, 'платёж удалён', 'платежа удалены', 'платежей удалены')}.` };
     if (d.undo?.kind === 'payment_created') return { ok: true, text: 'Отменено: платёж удалён, договор снова действует.' };
     if (d.undo?.kind === 'restructure') return { ok: true, text: 'Отменено: график договора — как был.' };
     if (d.undo?.kind === 'stock') return { ok: true, text: 'Отменено: документ удалён, остатки на складе — как были.' };
@@ -1683,6 +1832,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'ГДЕ ЧТО В ПРИЛОЖЕНИИ (не выдумывай разделы и кнопки; не знаешь — так и скажи). Этот чат — фиолетовый шар в шапке рядом с поиском, на любом экране (на компьютере — «FinUchetGPT» в меню слева под поиском); уведомление утренней сводки тоже открывает чат. Закят — Главная → плитка «В обороте» → «Закят» (расчёт и запись выплаты). Свой образец договора — Настройки → Печатная форма. WhatsApp — Настройки → WhatsApp. Подсказки и утренняя сводка агента — меню «⋯» в этом чате → Настройки.',
     'ПОЧЕМУ. «Почему упала прибыль / сборы», «сравни с прошлым месяцем», «откуда такие расходы», «стало лучше или хуже» — compare_periods (без дат — месяц по сегодня против того же отрезка прошлого; «за сентябрь против августа» — полные месяцы в from/to и compareFrom/compareTo). Ответ: сначала главное изменение одной фразой с цифрами обоих периодов, потом 2–4 причины из drivers по величине — статьи расходов (expenseCategories, biggestExpenses), закуп по новым договорам (purchases, newContracts), кто перестал платить (stoppedPaying — ФИО и сколько платил), просрочка на конец периода. Причин не выдумывай: нет в drivers — не называй; данных мало — так и скажи.',
     'ВЗЫСКАНИЕ. «Кому звонить», «кто не платит, что делать», «разбери просрочку» — collection_queue: строкой на клиента — ФИО — товар — просрочка и дни — что сделать (сорвал обещание → позвонить; soft → мягко напомнить; firm → настойчиво, попросить дату оплаты; final → претензия). Клиент обещал заплатить («обещал 10 000 до пятницы», «заплатит 25-го») — promise_payment: сумма и дата ГГГГ-ММ-ДД (дни недели считай от сегодняшней даты); суммы нет — спроси, не подставляй. Письмо должнику — send_collection_message с текстом, который пишешь сам по стадии договора из collection_queue: обращение по имени, товар и сумма просрочки из данных, просьба оплатить или назвать дату; soft — вежливо, firm — твёрдо, final — официально: срок оплаты и что иначе продавец будет вынужден обратиться в суд. Без угроз и давления, без упоминаний работы, родственников, полиции и коллекторов, без выдуманных реквизитов и сумм. Сначала collection_queue (стадия), потом письмо. «Напиши …», «составь письмо», названный тон («вежливо», «построже», «официально», «претензию») — это send_collection_message; send_reminder (шаблон из настроек) — только «отправь/напомни» без слов о тексте и тоне.',
+    'ПЛАТЕЖИ СПИСКОМ. Два и больше платежей сразу («Иванов 5000, Петров 10 000», «сегодня заплатили: …», список голосом, строки выписки после match_transactions) — один вызов record_payments со всеми строками: customer — как сказал человек, product — если назвали, amount, date — если не сегодня; contractId — только известный. Клиентов и договоры найдёт сервер; вернул неясные строки — спроси про них одним сообщением и вызови снова. Карточка одна, ждёт «Подтвердить». Один платёж — create_payment. Строки выписки, которые match_transactions отметил возможным повтором, без вопроса не включай.',
     'ДОСРОЧНОЕ ПОГАШЕНИЕ. «Сколько закрыть досрочно», «какую скидку можно дать» — payoff_quote: остаток, наценка в остатке (скидка больше неё — договор уйдёт ниже закупа), сумма со скидкой. Клиент гасит или закрывает договор («гасит всё», «закрывает полностью», «закрой со скидкой 10 процентов / 5000») — сразу early_payoff (скидка в процентах от остатка или в рублях; без скидки — весь остаток), payoff_quote перед ним не нужен — сумма будет в карточке; карточка всегда ждёт «Подтвердить». Скидку сам не предлагай, если о ней не спросили.',
     'РЕСТРУКТУРИЗАЦИЯ. «Разбей остаток на 6 месяцев», «уменьши платёж — растяни на год», «клиенту тяжело, сделай платёж поменьше» — restructure_contract: months и дата первого нового платежа; дата не названа — ближайший неоплаченный платёж по графику (customer_overview, nextPayment), если он не в прошлом, иначе спроси. Новый платёж в месяц назови из карточки. Карточка всегда ждёт «Подтвердить». Только сдвинуть дату без смены срока — change_payment_date.',
     'СКЛАД И МАГАЗИН. Товар — id из list_products (ищи по-русски и по-английски). «Пришёл товар от …», «оприходуй» — stock_receive (поставщик обязателен — не назван, спроси; цена закупа за штуку — если назвали). «Спиши …» — stock_write_off с причиной (Порча, Брак, Потеря, Недостача, Другое; не названа — спроси через ask_choice). «Продал за наличные / картой …» — retail_sale (цена из каталога, если не назвали другую). Рассрочка на товар — prepare_contract, не retail_sale; в долг агент не продаёт. Товара нет в каталоге — скажи, что его сначала заводят в приложении (Склад → Товары).',
@@ -1823,6 +1973,20 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       out.push(Math.round(n));
     }
     return out;
+  };
+  /**
+   * Сумма платежа взята с подписи кнопки выбора договора («Телевизор · платёж 10 000 ₽
+   * [sale_a]»): нажатием выбрали договор, сумму не называли — спросить её (eval №11)
+   */
+  const labelAmount = (args, userText, history = []) => {
+    // Только ответ на вопрос о договоре: на вопрос о сумме кнопка с суммой — и есть сумма
+    const lastAgent = String([...history].reverse().find(h => h?.role === 'assistant')?.text || '');
+    if (!/договор/i.test(lastAgent) || /сумм/i.test(lastAgent)) return null;
+    const m = /^(.*?)·\s*(?:платёж|платеж|по графику|ежемесячн[а-я]*)\s*([\d\s\u00a0\u202f]+)\s*₽\s*\[[^\]]+\]\s*$/i.exec(String(userText || '').trim());
+    if (!m) return null;
+    const n = Number(m[2].replace(/\D/g, ''));
+    if (!n || Math.round(Number(args.amount) || 0) !== n) return null;
+    return `Человек кнопкой выбрал договор, а не сумму: ${money(n)} — из подписи кнопки. Не бери её сам: спроси через ask_choice «Платёж по графику — N ₽» (ближайший из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму».`;
   };
   const unaskedPayoff = async (userId, args, userText) => {
     const sale = await loadItem(userId, 'sales', args.contractId);
@@ -2207,7 +2371,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL,
         DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL, SET_GUARANTOR_TOOL, CHANGE_PAYMENT_DATE_TOOL,
         COLLECTION_QUEUE_TOOL, PROMISE_PAYMENT_TOOL, COLLECTION_MESSAGE_TOOL, PAYOFF_QUOTE_TOOL, EARLY_PAYOFF_TOOL, RESTRUCTURE_TOOL,
-        STOCK_RECEIVE_TOOL, STOCK_WRITE_OFF_TOOL, RETAIL_SALE_TOOL].map(toOpenAiTool)];
+        STOCK_RECEIVE_TOOL, STOCK_WRITE_OFF_TOOL, RETAIL_SALE_TOOL, RECORD_PAYMENTS_TOOL].map(toOpenAiTool)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
     const writes = new Set();
     let claimChecked = false;
@@ -2619,7 +2783,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
             if (name === 'set_guarantor' && args.phone && (notAPhone(args.phone) || !phoneSaid(args.phone))) delete args.phone;
             const key = `${name}:${require('./canonical').hash(args)}`;
             const cs = custom ? await customSummary(user.id, name, args) : null;
-            const payoff = name === 'create_payment' ? await unaskedPayoff(user.id, args, text) : null;
+            const payoff = name === 'create_payment' ? (labelAmount(args, text, history) || await unaskedPayoff(user.id, args, text)) : null;
             // Счёт выбирают кнопками и для продажи в магазине, если у склада свой счёт не задан
             const saleNeedsAccount = name === 'retail_sale' && !args.accountId
               && !(await loadItems(user.id, 'warehouses')).some(w => !w.isArchived && w.accountId && (w.isMain || !args.warehouse));
@@ -2729,4 +2893,4 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   return { actionStore, reply, confirmAction, cancelAction, undoAction, verifyAgentToken, model: DEFAULT_MODEL, query, quality, selfReview };
 }
 
-module.exports = { createAssistant, _test: { monthsSaidIn, ungroundedAmounts } };
+module.exports = { createAssistant, _test: { monthsSaidIn, ungroundedAmounts, nameMatch, bestByName } };

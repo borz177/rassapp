@@ -226,6 +226,38 @@ test('умения: реструктуризация, досрочное пог�
     assert.match(r.reply, /^Пришло 987\s654 ₽ за всё время\./);
     assert.match(r.reply, /сверьте их в приложении/);
 
+    // Несколько платежей одной карточкой: оба записаны, «Отменить» — база как была
+    await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', ['cust2', 'owner', 'customers', JSON.stringify({ id: 'cust2', name: 'Петров Пётр', phone: '79001112233' })]);
+    await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', ['p2', 'owner', 'sales', JSON.stringify({ ...sale('p2', { first: -10 }), customerId: 'cust2', productName: 'Холодильник' })]);
+    const dump = async () => (await pool.query("SELECT id, data FROM data_items WHERE type='sales' ORDER BY id")).rows.map(x => JSON.stringify(x)).join('\n');
+    const beforeBatch = await dump();
+    script.push({ tool: 'record_payments', args: { payments: [{ customer: 'Петров', amount: 4000 }, { customer: 'Иванов', product: 'айфон', amount: 3000 }] } }, { content: 'Проверьте и нажмите «Подтвердить».' });
+    r = await assistant.reply({ user, text: 'Петров 4000, Иванов за айфон 3000', mode: 'auto', silent: true });
+    card = r.actions.find(a => a.tool === 'record_payments');
+    assert.equal(card?.kind, 'confirm', `пачка всегда ждёт «Подтвердить»: ${lastToolResult().replace(/\n/g, " ").slice(0, 500)}`);
+    assert.match(card.summary, /2 платежа на 7\s000\s₽: Петров Пётр — Холодильник — 4\s000\s₽; Иванов Иван — iPhone 16 — 3\s000\s₽/);
+    assert.equal((await assistant.confirmAction('owner', card.id)).ok, true);
+    assert.equal((await row('sales', 'p2')).remainingAmount, 116000);
+    assert.equal((await row('sales', 'r')).remainingAmount, 102000);
+    const undoBatch = await assistant.undoAction('owner', card.id);
+    assert.equal(undoBatch.ok, true, undoBatch.text);
+    assert.equal(await dump(), beforeBatch.replace(/"updated_at"[^,]*,?/g, ''));
+    // Неясная строка (у Иванова два договора, товар не назван) — карточки нет, ничего не записано
+    script.push({ tool: 'record_payments', args: { payments: [{ customer: 'Петров', amount: 4000 }, { customer: 'Иванов', amount: 3000 }] } }, { content: 'Уточните договор Иванова.' });
+    r = await assistant.reply({ user, text: 'Петров 4000, Иванов 3000', mode: 'confirm', silent: true });
+    assert.equal(r.actions.some(a => a.tool === 'record_payments'), false);
+    assert.match(lastToolResult(), /у клиента Иванов Иван несколько договоров/);
+    assert.match(lastToolResult(), /iPhone 16 \(id r, остаток 105\s000\s₽\)/);
+    assert.match(lastToolResult(), /Samsung S25 \(id q/);
+    assert.equal(await dump(), beforeBatch);
+    // Данные изменились до нажатия — пачка не записывается
+    script.push({ tool: 'record_payments', args: { payments: [{ customer: 'Петров', amount: 1000 }, { contractId: 'q', amount: 2000 }] } }, { content: 'Проверьте.' });
+    r = await assistant.reply({ user, text: 'Петров 1000 и по самсунгу 2000', mode: 'confirm', silent: true });
+    card = r.actions.find(a => a.tool === 'record_payments');
+    await pool.query(`UPDATE data_items SET data = data || '{"notes":"правка"}' WHERE id='p2'`);
+    assert.match((await assistant.confirmAction('owner', card.id)).text, /изменились/);
+    assert.equal((await row('sales', 'q')).remainingAmount, 60000);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];

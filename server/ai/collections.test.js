@@ -257,3 +257,16 @@ test('прогноз: число клиентов отдельно от числ
   const m = c.forecast({ sales: [a, b, d], customers: [], today, month: c.addDays(today, 40).slice(0, 7) });
   assert.equal(m.customers, 2);
 });
+
+test('поиск по имени: отчество не перебивает фамилию и имя (аудит 25.10: «Исаев» находил «…Исаевич»)', () => {
+  const { bestByName } = require('./assistant')._test;
+  const people = [{ name: 'Ахмадов Ислам Русланович' }, { name: 'Ахмадов Руслан Исаевич' }, { name: 'Исаев Хасан Алиевич' }, { name: 'Дудаев Адам Магомедович' }, { name: 'Магомедов Зелимхан' }];
+  const names = (stems) => bestByName(people, stems).map(p => p.name);
+  assert.deepEqual(names(['исаев']), ['Исаев Хасан Алиевич']);
+  assert.deepEqual(names(['ахмад', 'руслан']), ['Ахмадов Руслан Исаевич']);
+  assert.deepEqual(names(['магомедов']), ['Магомедов Зелимхан']);
+  assert.deepEqual(names(['ахмад']), ['Ахмадов Ислам Русланович', 'Ахмадов Руслан Исаевич']);
+  // Только по отчеству — если больше никого: находится как слабое совпадение
+  assert.deepEqual(bestByName([{ name: 'Ахмадов Руслан Исаевич' }], ['исаев']).map(p => p.name), ['Ахмадов Руслан Исаевич']);
+  assert.deepEqual(names(['петров']), []);
+});

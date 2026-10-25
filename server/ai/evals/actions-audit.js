@@ -246,6 +246,56 @@ global.fetch = async (...args) => {
         if (String(a.args.date || '').slice(0, 10) !== c.addDays(today, -1)) fail(`дата ${a.args.date || 'не передана'} вместо ${c.addDays(today, -1)}`);
         await cancelAll(r);
       }],
+      // ── несколько платежей одной карточкой (record_payments) ──
+      ['Список: «Ахмадов Руслан 5000, Исаев 3000, Дудаев за телевизор 10000» → одна карточка, 3 платежа на нужные договоры; отмена — как было', async () => {
+        const before = await snapshot();
+        const r = await say('Сегодня заплатили: Ахмадов Руслан 5000, Исаев 3000, Дудаев за телевизор 10000', 'auto');
+        const a = card(r, 'record_payments') || fail(`нет карточки пачки: ${r.reply}`);
+        if (a.kind !== 'confirm') fail('пачка записана без «Подтвердить»');
+        if (card(r, 'create_payment')) fail('вместе с пачкой — отдельные платежи');
+        if ((await assistant.confirmAction('eval', a.id)).ok !== true) fail('подтверждение не прошло');
+        const got = { s_ar: (await sale('s_ar')).remainingAmount, s_is: (await sale('s_is')).remainingAmount, s_da2: (await sale('s_da2')).remainingAmount };
+        const want = { s_ar: 85000, s_is: 62000, s_da2: 40000 };
+        const wrong = Object.keys(want).filter(k => !near(got[k], want[k]));
+        const untouched = realPays(await sale('s_da1')).length === 2 && realPays(await sale('s_ai')).length === 2;
+        if ((await assistant.undoAction('eval', a.id)).ok !== true) fail('отмена не прошла');
+        if (wrong.length) fail(`остатки: ${JSON.stringify(got)}`);
+        if (!untouched) fail('задеты чужие договоры');
+        if (await snapshot() !== before) fail('после отмены база не как была');
+      }],
+      ['Список с однофамильцем: «Ахмадов 5000, Исаев 3000» → вопрос про Ахмадова, ничего не записано; ответ «Руслан» → карточка на двоих', async () => {
+        const before = await snapshot();
+        const q = 'Ахмадов 5000, Исаев 3000 — запиши платежи';
+        const r = await say(q, 'auto');
+        if (card(r, 'record_payments') || (r.actions || []).some(x => x.kind === 'done')) fail('записал, не уточнив Ахмадова');
+        if (!/Ахмадов/.test(r.reply + JSON.stringify(r.actions || []))) fail(`не спросил про Ахмадова: ${r.reply}`);
+        if (await snapshot() !== before) fail('база изменилась');
+        const ch = choices(r);
+        const answer = ch ? ch.options.find(o => /Ахмадов Руслан/.test(o.label)) : null;
+        const r2 = await say(answer ? `${answer.label}${answer.ref ? ` [${answer.ref}]` : ''}` : 'Руслан', 'confirm', [{ role: 'user', text: q }, { role: 'assistant', text: r.reply }]);
+        const a = card(r2, 'record_payments') || fail(`после уточнения нет карточки: ${r2.reply}`);
+        if (!/Ахмадов Руслан[^;]*5\s000/.test(a.summary) || !/Исаев[^;]*3\s000/.test(a.summary)) fail(`карточка: ${a.summary}`);
+        await cancelAll(r2);
+      }],
+      ['Список словами: «Магомедов пять тысяч, Исаев две тысячи» → 5 000 и 2 000', async () => {
+        const r = await say('запиши платежи: Магомедов пять тысяч, Исаев две тысячи');
+        const a = card(r, 'record_payments') || fail(`нет карточки: ${r.reply}`);
+        if (!/Магомедов[^;]*5\s000/.test(a.summary) || !/Исаев[^;]*2\s000/.test(a.summary)) fail(`карточка: ${a.summary}`);
+        await cancelAll(r);
+      }],
+      ['Переплата в строке: «Исаев 999 999, Магомедов 5000» → карточки нет, сказано про остаток', async () => {
+        const before = await snapshot();
+        const r = await say('Исаев 999999, Магомедов 5000 — запиши', 'auto');
+        if (card(r, 'record_payments') || (r.actions || []).some(x => x.kind === 'done' && x.ok)) fail('записал переплату');
+        if (!/остат|больше/i.test(r.reply)) fail(`не объяснил: ${r.reply}`);
+        if (await snapshot() !== before) fail('база изменилась');
+      }],
+      ['Один платёж — по-прежнему обычная карточка, не пачка', async () => {
+        const r = await say('Магомедов оплатил 5000');
+        if (card(r, 'record_payments')) fail('один платёж ушёл пачкой');
+        if (!card(r, 'create_payment')) fail(`нет карточки платежа: ${r.reply}`);
+        await cancelAll(r);
+      }],
     ];
 
     const only = process.env.AI_EVAL_ONLY ? new Set(process.env.AI_EVAL_ONLY.split(',').map(Number)) : null;

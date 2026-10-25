@@ -24,7 +24,9 @@ const createActionStore = pool => {
     // Склад: товары документа и созданные записи — их меняет отмена
     const ids = [...new Set([args?.contractId, args?.customerId, args?.expenseId, args?.accountId,
       undo?.id, undo?.saleId, undo?.customerId, undo?.contractId, undo?.ref,
-      ...(Array.isArray(args?.items) ? args.items.map(i => i?.productId) : []), ...(Array.isArray(undo?.ids) ? undo.ids : [])]
+      ...(Array.isArray(args?.items) ? args.items.map(i => i?.productId) : []), ...(Array.isArray(undo?.ids) ? undo.ids : []),
+      // Пачка платежей: все её договоры
+      ...(Array.isArray(args?.payments) ? args.payments.map(p => p?.contractId) : []), ...(Array.isArray(undo?.payments) ? undo.payments.map(p => p?.contractId) : [])]
       .filter(x => typeof x === 'string' && x))];
     const rows = (await pool.query(`SELECT id,type,data FROM data_items WHERE user_id=$1
       AND (id=ANY($2::text[]) OR ($3::text IS NOT NULL AND type='sales' AND data->'paymentPlan' @> $4::jsonb)) ORDER BY id`,
