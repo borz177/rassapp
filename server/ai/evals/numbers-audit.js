@@ -114,6 +114,14 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
       10: [Math.round(collectedIn(c.addDays(today, -6), today))],
       14: (() => { const f = c.forecast({ sales, customers, today, untilEnd: true }); const d = new Date(`${monthStart}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); const m = f.byMonth.find(x => x.month === d.toISOString().slice(0, 7)); return [m.total, m.profit]; })(),
       16: [Math.round(sales.reduce((n, s) => n + domain.overdueAmount(s), 0))],
+      20: (() => { const b = domain.accountBalances(accounts, sales, expenses, []); return [Math.round(Math.abs(b.cash2)), Math.round(Math.abs(b.main))]; })(),
+      19: (() => { const d = new Date(`${monthStart}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); const m = c.forecast({ sales, customers, today, month: d.toISOString().slice(0, 7) }); return [m.total]; })(),
+    };
+    // Число клиентов (не рублей) — проверяется отдельно: «81 клиент» вместо 60 (прод 25.10)
+    const nextMonthForecast = (() => { const d = new Date(`${monthStart}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); return c.forecast({ sales, customers, today, month: d.toISOString().slice(0, 7) }); })();
+    const extraCheck = {
+      19: (reply) => new RegExp(`(^|\\D)${nextMonthForecast.customers}\\s*клиент`).test(reply) && !new RegExp(`(^|\\D)${nextMonthForecast.count}\\s*клиент`).test(reply),
+      20: (reply) => /закуп|категор|аренд|зарплат|реклам|бензин/i.test(reply) && !/^[^.]*сравн[а-яё]* период/i.test(reply),
     };
     const names = { 5: nameOf(topDebt[0]), 9: nameOf(topPaid[0]) };
 
@@ -149,6 +157,8 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
       [16, 'Сколько у меня просроченных договоров и на какую сумму просрочка?'],
       [17, 'Какой средний платёж клиента в месяц?'],
       [18, 'Сколько я заработал в прошлом году?'],
+      [19, 'Сколько клиентов должны заплатить в следующем месяце и на какую сумму?'],
+      [20, 'Почему у меня касса в минусе?'],
     ];
     const money = (t) => [...String(t).replace(/[  ]/g, ' ').matchAll(/(\d{1,3}(?: \d{3})+|\d{4,})(?:[.,]\d+)?\s*(?:₽|руб|р\.)/g)].map(m => Number(m[1].replace(/ /g, '')));
     const grounded = (n, nums) => nums.some(x => Math.abs(x - n) <= 1);
@@ -159,13 +169,14 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
       calls = []; lastBody = null;
       const r = await assistant.reply({ user, text: q, mode: 'confirm', silent: true });
       const toolText = (lastBody?.messages || []).filter(m => m.role === 'tool').map(m => m.content).join('\n');
-      const toolNums = [...toolText.matchAll(/-?\d+(?:\.\d+)?/g)].map(m => Math.round(Number(m[0])));
+      const toolNums = [...toolText.matchAll(/-?\d+(?:\.\d+)?/g)].map(m => Math.round(Math.abs(Number(m[0]))));
       const said = money(r.reply);
       const ungrounded = said.filter(n => !grounded(n, toolNums));
       const t = truth[k];
       const right = t ? t.every(v => said.some(n => Math.abs(n - v) <= Math.max(1, v * 0.005)) || String(r.reply).replace(/\s/g, '').includes(String(v))) : null;
       const truncated = /обрезано/.test(toolText);
-      const verdict = ungrounded.length ? 'ВЫДУМАНО' : t && !right ? 'НЕВЕРНО' : 'ок';
+      const extraOk = extraCheck[k] ? extraCheck[k](String(r.reply)) : true;
+      const verdict = ungrounded.length ? 'ВЫДУМАНО' : (t && !right) || !extraOk ? 'НЕВЕРНО' : 'ок';
       if (verdict !== 'ок') bad++;
       console.log(`\n${String(k).padStart(2)}. ${q}\n    ${verdict}${truncated ? ' (ответ инструмента обрезан)' : ''} · инструменты: ${calls.join(', ') || '—'}`);
       console.log(`    правильно: ${t ? t.map(v => v.toLocaleString('ru-RU')).join(' / ') : '—'}${names[k] ? ` (${names[k]})` : ''}`);

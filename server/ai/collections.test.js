@@ -246,3 +246,14 @@ test('проверка цифр ответа: сумма из данных и с
   assert.deepEqual(ungroundedAmounts('Закуп 500 000 ₽', [], [500, 500000]), []); // «закуп 500» — тысячи
   assert.deepEqual(ungroundedAmounts('Платежей 12, процент 25%', data), []);   // не рубли — не проверяем
 });
+
+test('прогноз: число клиентов отдельно от числа платежей (прод 25.10: «81 клиент» — было 81 платёж у 60 клиентов)', async () => {
+  await domain.ready;
+  const a = contract('pa', 'same', { first: 3 }), b = contract('pb', 'same', { first: 5 }), d = contract('pd', 'other', { first: 4 });
+  const f = c.forecast({ sales: [a, b, d], customers: [], today, days: 20 });
+  assert.equal(f.scheduled.count, 3);
+  assert.equal(f.scheduled.customers, 2);
+  assert.equal(f.byMonth.reduce((n, m) => Math.max(n, m.customers), 0) <= 2, true);
+  const m = c.forecast({ sales: [a, b, d], customers: [], today, month: c.addDays(today, 40).slice(0, 7) });
+  assert.equal(m.customers, 2);
+});

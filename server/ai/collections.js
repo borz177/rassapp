@@ -71,7 +71,7 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
     if (last < today) return { error: 'Этот месяц уже прошёл — для прошедших месяцев monthly_report.' };
     const from = `${month}-01` > today ? `${month}-01` : today;
     const f = forecast({ sales, customers, investors, today, days: daysBetween(today, last) + 1 });
-    const m = f.byMonth.find(x => x.month === month) || { month, count: 0, total: 0, realistic: 0, profit: 0, from, to: last, fullMonth: from === `${month}-01` };
+    const m = f.byMonth.find(x => x.month === month) || { month, count: 0, customers: 0, total: 0, realistic: 0, profit: 0, from, to: last, fullMonth: from === `${month}-01` };
     return { month, from, to: last, ...m, overdueNow: f.overdueNow, basis: f.basis };
   }
   if (untilEnd) {
@@ -100,6 +100,8 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
   }
   const months = new Map();
   let count = 0, total = 0, realistic = 0, profit = 0, overdueNow = 0, overdueContracts = 0;
+  // count — платежей (строк графика); клиентов меньше: у одного бывает несколько договоров
+  const payers = new Set();
   const risky = new Map();
   for (const s of contracts) {
     if (s.status !== 'ACTIVE') continue;
@@ -110,11 +112,11 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
     const margin = domain.profitMargin(s);
     for (const row of openRows(s)) {
       if (row.day < today || row.day > end) continue;
-      count++; total += row.open; realistic += row.open * p; profit += row.open * margin;
+      count++; total += row.open; realistic += row.open * p; profit += row.open * margin; payers.add(s.customerId);
       const w = weeks.find(x => row.day >= x.from && row.day <= x.to);
       if (w) { w.count++; w.total += row.open; }
-      const m = months.get(row.day.slice(0, 7)) || { month: row.day.slice(0, 7), count: 0, total: 0, realistic: 0, profit: 0 };
-      m.count++; m.total += row.open; m.realistic += row.open * p; m.profit += row.open * margin;
+      const m = months.get(row.day.slice(0, 7)) || { month: row.day.slice(0, 7), count: 0, total: 0, realistic: 0, profit: 0, payers: new Set() };
+      m.count++; m.total += row.open; m.realistic += row.open * p; m.profit += row.open * margin; m.payers.add(s.customerId);
       months.set(m.month, m);
       if (r.rate != null && r.rate < 0.6) {
         const k = risky.get(s.customerId) || { customer: names.get(s.customerId) || 'Клиент', amount: 0, onTimePercent: Math.round(r.rate * 100), maxDelayDays: r.d.maxDelayDays };
@@ -125,7 +127,7 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
   }
   return {
     from: today, to: end, days: n,
-    scheduled: { count, total: Math.round(total) },
+    scheduled: { count, customers: payers.size, total: Math.round(total) },
     // Оценка: каждый платёж умножен на долю платежей, внесённых клиентом без опоздания
     realistic: Math.round(realistic),
     // Наценка в ожидаемых деньгах — прибыль, если всё заплатят по графику
@@ -137,7 +139,7 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
     byMonth: [...months.values()].sort((a, b) => a.month.localeCompare(b.month)).map(m => {
       const first = `${m.month}-01`, last = new Date(Date.UTC(Number(m.month.slice(0, 4)), Number(m.month.slice(5, 7)), 0)).toISOString().slice(0, 10);
       const from = first < today ? today : first, to = last > end ? end : last;
-      return { month: m.month, from, to, fullMonth: from === first && to === last, count: m.count, total: Math.round(m.total), realistic: Math.round(m.realistic), profit: Math.round(m.profit) };
+      return { month: m.month, from, to, fullMonth: from === first && to === last, count: m.count, customers: m.payers.size, total: Math.round(m.total), realistic: Math.round(m.realistic), profit: Math.round(m.profit) };
     }),
     overdueNow: { contracts: overdueContracts, total: Math.round(overdueNow) },
     risky: [...risky.values()].map(x => ({ ...x, amount: Math.round(x.amount) })).sort((a, b) => b.amount - a.amount).slice(0, 5),
