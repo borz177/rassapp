@@ -58,6 +58,9 @@ const config: CapacitorConfig = {
     // подсказками и автозаменой стирают и подменяют набранное — «не могу ввести
     // имя клиента» (жалоба 25.10.2026, стояло с 17.06.2026)
     captureInput: false,
+    // Плагины Android-сборки — как в прежнем APK. Push-уведомления работают только
+    // на iPhone (src/nativePush.ts), а на Android их плагину нужен Firebase
+    includePlugins: ['@capacitor/app', '@capacitor/filesystem', '@capacitor/haptics', '@capacitor/share', '@capacitor/status-bar'],
     webContentsDebuggingEnabled: false,
   }
 };
