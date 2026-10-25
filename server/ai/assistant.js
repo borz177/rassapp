@@ -1673,7 +1673,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'ЧЕКИ И ВЫПИСКИ. Прочитав чек или строки выписки, сначала match_transactions. При возможном повторе покажи существующий платёж и попроси сверить. Не записывай деньги только по совпадению суммы; неоднозначного клиента уточни. Фото паспорта распознавай как прежде.',
     'СВЕРКА. Для расхождений кассы и договоров без счёта используй reconcile_accounts; называй отдельно остаток каждого счёта и общий итог, включая отрицательные остатки. «Почему касса в минусе / откуда минус» — сразу, за всё время, период не спрашивай: reconcile_accounts. Из чего остаток — его цифры по счёту (initial + receipts − expenses + retailNet); на что ушли деньги — topExpenseCategories этого счёта (закуп по договорам — «Закуп»), суммы ровно оттуда. Возвраты клиентам (refundsNotInBalance, isRefund) в остаток не входят — их причиной минуса не называй и с расходами не складывай. Без предложений «сравнить периоды» вместо ответа. Человек сказал, что дубля / ошибки нет, — больше о нём не повторяй. Просьба «только посчитай» — preview_transfer и ответ с расчётом. Просьба «перенеси» или «подготовь подтверждение переноса» — после preview_transfer обязательно вызови transfer_contracts в этом же ответе: он создаёт карточку, а не проводит перенос сразу. Без transfer_contracts карточка не подготовлена. Запись происходит только после нажатия пользователем «Подтвердить». Возможный дубль не называй доказанным и не удаляй автоматически.',
     'СЧЕТА И ИНВЕСТОРЫ. «Счёт <имя>», «<имя> счёт», «по счёту Гагаева» — это счёт, а не клиент: list_accounts, ищи имя в названии счёта, во владельце (ownerInvestorName) и в участниках пула (poolMembers); инвестор в пуле — значит, его счёт этот пул, так и скажи. Нет среди счетов и инвесторов — тогда уже клиенты. Сколько получено/потрачено по счёту за период — get_summary с accountId; «по каким счетам» — list_payments за период и сложи по accountName (или get_summary по каждому счёту). Прибыль инвестора — investor_profit.',
-    'ЗАПИСИ (платёж, расход, приход, клиент, задача, напоминание). «Подтверждать»: под ответом карточка «Подтвердить» — скажи одной фразой «Проверьте и нажмите «Подтвердить»», без слов про формы и окна. «Авто»: выполняется сразу — скажи коротко, что сделано (под ответом «Отменить»), ничего не проси подтверждать, но сначала убедись, что клиент, договор, сумма и счёт верные. Каждую запись — один вызов. Если человек уже назвал сумму платежа и договор однозначен, сразу используй эту сумму: в режиме «Подтверждать» подготовь карточку, не спрашивай сумму повторно и не подменяй её платежом по графику. Платёж без суммы — не бери сам и не бери весь остаток (остаток в подписи кнопки договора — не сумма платежа): ask_choice «Платёж по графику — N ₽» (ближайший неоплаченный из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму». Расход и приход — по счёту: не назван и счетов несколько — спроси (list_accounts), один — бери его.',
+    'ЗАПИСИ (платёж, расход, приход, клиент, задача, напоминание). «Подтверждать»: под ответом карточка «Подтвердить» — скажи одной фразой «Проверьте и нажмите «Подтвердить»», без слов про формы и окна. «Авто»: выполняется сразу — скажи коротко, что сделано (под ответом «Отменить»), ничего не проси подтверждать, но сначала убедись, что клиент, договор, сумма и счёт верные. Каждую запись — один вызов. У клиента один действующий договор — он и есть договор платежа: не спрашивай «какой договор» и не делай ask_choice с одним вариантом. Если человек уже назвал сумму платежа и договор однозначен, сразу используй эту сумму: в режиме «Подтверждать» подготовь карточку, не спрашивай сумму повторно и не подменяй её платежом по графику. Платёж без суммы — не бери сам и не бери весь остаток (остаток в подписи кнопки договора — не сумма платежа): ask_choice «Платёж по графику — N ₽» (ближайший неоплаченный из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму». Расход и приход — по счёту: не назван и счетов несколько — спроси (list_accounts), один — бери его.',
     'ДОГОВОР — prepare_contract. Обязательны клиент, товар, закуп, срок в месяцах, наценка или цена: чего-то нет — спроси до вызова, в любом режиме, не подставляй. «Закуп 100», «закуп 500» без единиц — это тысячи (100 000 ₽, 500 000 ₽), не переспрашивай. Телефон, адрес и счёт не обязательны — не задерживай ими. Паспорт с фото — в newCustomer буква в букву. «Подтверждать»: скажи «Черновик готов — нажмите «Открыть форму договора»» (не «форма открыта», не «откройте приложение»). «Авто»: скажи «Оформляю договор». «Оформи и отправь» — sendToWhatsApp; договор или чек клиенту в WhatsApp — send_document.',
     'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении. «Удали договор» — delete_contract (договор через customer_overview; несколько — ask_choice): под ответом карточка «Удалить», скажи «Проверьте и нажмите «Удалить» — удаление не отменить».',
     'НЕСКОЛЬКО ФОТО — подписаны «Фото 1», «Фото 2»… по порядку. «Первый — клиент, второй — поручитель»: договор — prepare_contract, newCustomer — с фото клиента, поручитель — guarantorName с фото поручителя (буква в букву) и guarantorPhoto — его номер. Не перепутай, чей паспорт на каком фото; неясно — спроси.',
@@ -2213,6 +2213,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     let claimChecked = false;
     let promiseRetried = false;
     let groundRetried = false;
+    let singleChoiceSkipped = false;
     // Ответ до повтора по проверке цифр: повтор вернул пусто — лучше прежний с пометкой, чем «Ничего не сделано»
     let beforeGroundRetry = '';
     // Тексты, из которых могут взяться цифры ответа: что сказал человек, история, ответы инструментов
@@ -2396,6 +2397,17 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
           if (existingChoice >= 0) actions.splice(existingChoice,1);
           actions.push({ id: newActionId(), kind: 'choices', title: question, options });
           return { reply: question, actions, usage };
+        }
+        // Вариант один (у клиента один договор) — спрашивать не о чем: возвращаем модели,
+        // пусть продолжает с ним (аудит 25.10: «Какой договор оплатил?» с единственным вариантом)
+        if (options.length === 1 && options[0].ref && !singleChoiceSkipped && round < MAX_TOOL_ROUNDS - 1) {
+          singleChoiceSkipped = true;
+          flag(user.id, 'guard_single_choice', { question: text, detail: options[0].label });
+          messages.push({ role: 'assistant', content: msg.content || '', tool_calls: calls });
+          for (const call of calls) messages.push({ role: 'tool', tool_call_id: call.id, content: call === choice
+            ? `Вариант один — «${options[0].label}» (id ${options[0].ref}): выбирать не из чего, человека не спрашивай. Продолжай с ним сразу (например, create_payment с contractId ${options[0].ref}).`
+            : 'Не выполнено: сначала реши вопрос выше.' });
+          continue;
         }
         if (options.length === 1) return { reply: `${question}\n${options[0].label}?`, actions, usage };
         return { reply: question, actions, usage };
@@ -2608,8 +2620,11 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
             const key = `${name}:${require('./canonical').hash(args)}`;
             const cs = custom ? await customSummary(user.id, name, args) : null;
             const payoff = name === 'create_payment' ? await unaskedPayoff(user.id, args, text) : null;
-            const accountChoices = ['create_expense','create_income'].includes(name)
-              ? (await pool.query("SELECT data FROM data_items WHERE user_id=$1 AND type='accounts'",[user.id])).rows.map(r=>r.data) : [];
+            // Счёт выбирают кнопками и для продажи в магазине, если у склада свой счёт не задан
+            const saleNeedsAccount = name === 'retail_sale' && !args.accountId
+              && !(await loadItems(user.id, 'warehouses')).some(w => !w.isArchived && w.accountId && (w.isMain || !args.warehouse));
+            const accountChoices = ['create_expense','create_income'].includes(name) || saleNeedsAccount
+              ? (await pool.query("SELECT data FROM data_items WHERE user_id=$1 AND type='accounts'",[user.id])).rows.map(r=>r.data).filter(a => !a.isArchived) : [];
             // Причину списания модель подставляла сама («Другое») — берём только названную человеком
             const saidRecently = [text, ...history.filter(m => m?.role !== 'assistant').slice(-3).map(m => m?.text)].join(' ');
             const reasonUnsaid = name === 'stock_write_off' && !WRITE_OFF_REASON_RE.test(saidRecently);
