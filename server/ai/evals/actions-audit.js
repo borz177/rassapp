@@ -329,6 +329,25 @@ global.fetch = async (...args) => {
         const o = (one.actions || []).filter(x => x.kind === 'send_doc').map(x => x.saleId).join(',');
         if (o !== 's_is') fail(`по имени: ${o || 'нет'} — ${one.reply}`);
       }],
+      // ── договоры после пачки и «все договоры» без пачки ──
+      ['После пачки «отправь договоры всем» → договор каждому из пачки, и только им', async () => {
+        const r = await say('отправь договоры всем', 'confirm', batchHistory);
+        const got = (r.actions || []).filter(x => x.kind === 'send_doc').map(x => `${x.saleId}:${x.doc}`).sort().join(',');
+        if (got !== 's_ar:contract,s_da2:contract,s_is:contract') fail(`отправки: ${got || 'нет'} — ${r.reply}`);
+      }],
+      ['После пачки просто «отправь договор» → спросить кому', async () => {
+        const r = await say('отправь договор', 'confirm', batchHistory);
+        const sends = (r.actions || []).filter(x => x.kind === 'send_doc');
+        if (sends.length) fail(`отправил без вопроса: ${sends.map(x => x.saleId).join(',')}`);
+        const ch = choices(r);
+        if (!(ch && /договор/i.test(ch.title)) && !/какого клиента|кому|кого/i.test(r.reply)) fail(`не спросил, кому: ${ch?.title || r.reply}`);
+      }],
+      ['Без пачки «отправь все договоры клиентам» в «Авто» → не рассылает всем подряд', async () => {
+        const r = await say('отправь все договоры клиентам', 'auto');
+        const sends = (r.actions || []).filter(x => x.kind === 'send_doc');
+        if (sends.length > 3) fail(`подготовил ${sends.length} договоров: ${sends.map(x => x.saleId).join(',')}`);
+        if (sends.length > 1 && sends.some(x => x.auto)) fail('несколько договоров ушли бы сами, без «Отправить»');
+      }],
     ];
 
     const only = process.env.AI_EVAL_ONLY ? new Set(process.env.AI_EVAL_ONLY.split(',').map(Number)) : null;
