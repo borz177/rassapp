@@ -96,6 +96,11 @@ global.fetch = async (...args) => {
     const fail = (why) => { throw new Error(why); };
     const near = (a, b) => Math.abs(Number(a) - Number(b)) < 0.01;
 
+    // История после подтверждённой пачки — как её пишет приложение (AIAssistant.tsx: actionNote)
+    const batchHistory = [
+      { role: 'user', text: 'Сегодня заплатили: Ахмадов Руслан 5000, Исаев 3000, Дудаев за телевизор 10000' },
+      { role: 'assistant', text: 'Проверьте и нажмите «Подтвердить».\n[Выполнено: 3 платежа на 18 000 ₽: Ахмадов Руслан Исаевич — Samsung Galaxy S25 — 5 000 ₽; Исаев Хасан Алиевич — MacBook Air M3 — 3 000 ₽; Дудаев Адам Магомедович — Телевизор LG 55 — 10 000 ₽]' },
+    ];
     const scenarios = [
       ['Однофамильцы: «Ахмадов Руслан оплатил 5000» → платёж Руслану, не Исламу; отмена убирает', async () => {
         const before = await snapshot();
@@ -295,6 +300,34 @@ global.fetch = async (...args) => {
         if (card(r, 'record_payments')) fail('один платёж ушёл пачкой');
         if (!card(r, 'create_payment')) fail(`нет карточки платежа: ${r.reply}`);
         await cancelAll(r);
+      }],
+      // ── чек после пачки: всем, одному или вопрос ──
+      ['После пачки «отправь чеки всем» → чек каждому из пачки, и только им', async () => {
+        const r = await say('отправь чеки всем', 'confirm', batchHistory);
+        const sends = (r.actions || []).filter(x => x.kind === 'send_doc');
+        const got = sends.map(x => `${x.saleId}:${x.doc}`).sort().join(',');
+        if (got !== 's_ar:receipt,s_da2:receipt,s_is:receipt') fail(`отправки: ${got || 'нет'} — ${r.reply}`);
+      }],
+      ['После пачки «отправь чек Исаеву» → только Исаеву', async () => {
+        const r = await say('отправь чек Исаеву', 'confirm', batchHistory);
+        const got = (r.actions || []).filter(x => x.kind === 'send_doc').map(x => `${x.saleId}:${x.doc}`).join(',');
+        if (got !== 's_is:receipt') fail(`отправки: ${got || 'нет'} — ${r.reply}`);
+      }],
+      ['После пачки просто «отправь чек» → спросить кому (всем или кому-то), не слать наугад одному', async () => {
+        const r = await say('отправь чек', 'confirm', batchHistory);
+        const sends = (r.actions || []).filter(x => x.kind === 'send_doc');
+        const asked = !!choices(r) || /кому|всем|кого/i.test(r.reply);
+        if (sends.length === 1) fail(`отправил одному наугад: ${sends[0].saleId}`);
+        if (!asked && sends.length !== 3) fail(`ни вопроса, ни всех трёх: ${r.reply}`);
+      }],
+      ['После вопроса «кому» нажали «Всем (3)» → три чека; нажали «Исаев Хасан Алиевич» → один', async () => {
+        const asked = [...batchHistory, { role: 'user', text: 'отправь чек' }, { role: 'assistant', text: 'Кому отправить чек?' }];
+        const all = await say('Всем (3)', 'confirm', asked);
+        const a = (all.actions || []).filter(x => x.kind === 'send_doc').map(x => x.saleId).sort().join(',');
+        if (a !== 's_ar,s_da2,s_is') fail(`«Всем»: ${a || 'нет'} — ${all.reply}`);
+        const one = await say('Исаев Хасан Алиевич', 'confirm', asked);
+        const o = (one.actions || []).filter(x => x.kind === 'send_doc').map(x => x.saleId).join(',');
+        if (o !== 's_is') fail(`по имени: ${o || 'нет'} — ${one.reply}`);
       }],
     ];
 
