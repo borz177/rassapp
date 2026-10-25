@@ -57,6 +57,7 @@ global.fetch = async (...args) => {
         { id: 'c_da', name: 'Дудаев Адам Магомедович', phone: '+79000000003' },
         { id: 'c_is', name: 'Исаев Хасан Алиевич', phone: '+79000000004' },
         { id: 'c_ma', name: 'Магомедов Зелимхан Умарович', phone: '+79000000005' },
+        { id: 'c_ba', name: 'Бацаев Аслан', phone: '+79000000006' },
       ],
       accounts: [{ id: 'main', name: 'Основной счёт', type: 'MAIN', isMain: true, initialBalance: 200000 }, { id: 'cash2', name: 'Касса магазина', type: 'MAIN', initialBalance: 30000 }],
       sales: [
@@ -67,6 +68,7 @@ global.fetch = async (...args) => {
         make('s_da3', 'c_da', 'Диван угловой', 5, 9000, -5),
         make('s_is', 'c_is', 'MacBook Air M3', 10, 15000, -150, [[15000, -150], [15000, -120], [15000, -90], [15000, -60], [15000, -35], [10000, -5]]),
         make('s_ma', 'c_ma', 'Холодильник Bosch', 8, 10000, -150, [[10000, -150], [10000, -120], [10000, -90], [10000, -60], [10000, -30]], 60000),
+        make('s_ba', 'c_ba', 'Айфон 15', 8, 7000, -29, [[7000, -29]]),
       ],
       products: [{ id: 'prod_case', userId: 'eval', name: 'Чехол для телефона', price: 1500, buyPrice: 300, stock: 20, unit: 'шт' }],
       suppliers: [{ id: 'sup_1', name: 'ООО Поставка' }],
@@ -347,6 +349,35 @@ global.fetch = async (...args) => {
         const sends = (r.actions || []).filter(x => x.kind === 'send_doc');
         if (sends.length > 3) fail(`подготовил ${sends.length} договоров: ${sends.map(x => x.saleId).join(',')}`);
         if (sends.length > 1 && sends.some(x => x.auto)) fail('несколько договоров ушли бы сами, без «Отправить»');
+      }],
+      // ── прод 25.10: платёж Бацаеву с выдуманным id договора и «отправлю чек» ──
+      ['Как на проде: «Бацаев Аслан 7000 рублей и отправь чек на Ватсап» → карточка с настоящим договором, честно про кнопку «Отправить чек»', async () => {
+        const r = await say('Платеж от клиента Бацаев Аслан 7000 рублей и отправь чек на Ватсап ему.');
+        const a = card(r, 'create_payment') || fail(`нет карточки: ${r.reply}`);
+        if (a.args.contractId !== 's_ba' || !near(a.args.amount, 7000)) fail(`договор ${a.args.contractId}, сумма ${a.args.amount}`);
+        if (/\[Подтвердить/.test(r.reply)) fail('нарисованная кнопка в тексте');
+        if (!/Отправить чек/.test(r.reply) || /(я|сразу) отправлю/i.test(r.reply)) fail(`про чек: ${r.reply}`);
+        await cancelAll(r);
+      }],
+      ['Как на проде, два сообщения: «посмотри, сколько у него» → «он оплатил 7000 и отправь чек» → карточка с настоящим договором', async () => {
+        const q1 = 'Платеж от клиента Бацаев Аслан, ежемесячный платеж, посмотри сколько у него, он оплатил это.';
+        const r1 = await say(q1);
+        await cancelAll(r1);
+        const r2 = await say('Сейчас он оплатил 7000 рублей и отправь ему чек после оплаты.', 'confirm', [{ role: 'user', text: q1 }, { role: 'assistant', text: r1.reply }]);
+        const a = card(r2, 'create_payment') || fail(`нет карточки: ${r2.reply}`);
+        if (a.args.contractId !== 's_ba') fail(`договор ${a.args.contractId}`);
+        await cancelAll(r2);
+      }],
+      ['«Авто»: «Бацаев оплатил 7000, отправь чек» → платёж записан и чек в отправку; отмена платежа', async () => {
+        const before = await snapshot();
+        const r = await say('Бацаев Аслан оплатил 7000, отправь ему чек', 'auto');
+        const a = (r.actions || []).find(x => x.kind === 'done' && x.tool === 'create_payment' && x.ok) || fail(`не записал: ${r.reply}`);
+        const doc = (r.actions || []).find(x => x.kind === 'send_doc');
+        const ok = (await sale('s_ba')).remainingAmount;
+        if ((await assistant.undoAction('eval', a.id)).ok !== true) fail('отмена не прошла');
+        if (!near(ok, 42000)) fail(`остаток ${ok}`);
+        if (!doc || doc.saleId !== 's_ba' || doc.doc !== 'receipt' || !doc.auto) fail(`чек: ${JSON.stringify(doc || null)}`);
+        if (await snapshot() !== before) fail('после отмены база не как была');
       }],
     ];
 

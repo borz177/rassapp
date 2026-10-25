@@ -258,6 +258,20 @@ test('умения: реструктуризация, досрочное пог�
     assert.match((await assistant.confirmAction('owner', card.id)).text, /изменились/);
     assert.equal((await row('sales', 'q')).remainingAmount, 60000);
 
+    // Выдуманный id договора (прод 25.10: «sale_1234567890») — карточки нет, ответ «найди через customer_overview»
+    script.push({ tool: 'create_payment', args: { contractId: 'sale_1234567890', amount: 7000 } }, { content: 'Проверьте и нажмите «Подтвердить».\n[Подтвердить: Платёж 7 000 ₽ — Иванов]' });
+    r = await assistant.reply({ user, text: 'Иванов оплатил 7000', mode: 'confirm', silent: true });
+    assert.equal(r.actions.some(a => a.tool === 'create_payment'), false);
+    assert.match(lastToolResult(), /id не придумывай/);
+    assert.doesNotMatch(r.reply, /\[Подтвердить/);
+    // Платёж ждёт «Подтвердить», а просили и чек: обещание «отправлю» убрано, сказано про кнопку
+    script.push({ tool: 'create_payment', args: { contractId: 'q', amount: 1000 } }, { content: 'Проверьте и нажмите «Подтвердить». После этого я сразу отправлю чек.' });
+    r = await assistant.reply({ user, text: 'Иванов оплатил 1000 по самсунгу и отправь чек', mode: 'confirm', silent: true });
+    assert.ok(r.actions.some(a => a.kind === 'confirm' && a.tool === 'create_payment'));
+    assert.doesNotMatch(r.reply, /сразу отправлю/);
+    assert.match(r.reply, /кнопка «Отправить чек»/);
+    await assistant.cancelAction('owner', r.actions.find(a => a.tool === 'create_payment').id);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];
