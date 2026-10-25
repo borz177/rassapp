@@ -53,7 +53,11 @@ const config: CapacitorConfig = {
   // 🔥 Настройки для Android
   android: {
     allowMixedContent: true, // Разрешаем HTTP контент на HTTPS странице
-    captureInput: true,
+    // captureInput не включать: с ним Capacitor отдаёт клавиатуре упрощённый канал
+    // ввода (BaseInputConnection без режима редактора), и Gboard/Samsung с
+    // подсказками и автозаменой стирают и подменяют набранное — «не могу ввести
+    // имя клиента» (жалоба 25.10.2026, стояло с 17.06.2026)
+    captureInput: false,
     webContentsDebuggingEnabled: false,
   }
 };
