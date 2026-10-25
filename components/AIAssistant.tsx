@@ -57,7 +57,7 @@ interface Props {
   onOpenContract: (draft: any) => void;
   /** «Авто»: оформить договор сразу, без формы */
   onCreateContract: (draft: any) => Promise<{ ok: boolean; text: string; saleId?: string; customerId?: string; number?: string; monthly?: number; total?: number; offline?: boolean }>;
-  /** PDF договора или чека клиенту в WhatsApp; fresh — сначала подтянуть данные (чек сразу после платежа) */
+  /** PDF договора или чека клиенту в WhatsApp; fresh — сначала подтянуть данные (документ сразу после платежа) */
   onSendDocument: (saleId: string, kind: 'contract' | 'receipt', opts?: { fresh?: boolean }) => Promise<{ ok: boolean; text: string }>;
   /** «Отменить договор», оформленный в «Авто» */
   onDeleteContract: (saleId: string) => Promise<{ ok: boolean; text: string }>;
@@ -1171,19 +1171,20 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   };
 
   // Документ клиенту (карточка send_doc)
-  const sendDoc = async (msgId: string, a: Action, fresh = false) => {
+  const sendDoc = async (msgId: string, a: Action) => {
     if (a.kind !== 'send_doc') return;
     patchAction(msgId, a.id, { state: 'busy' });
-    const r = await clientAction(a, () => onSendDocument(a.saleId, a.doc, { fresh: fresh || a.doc === 'receipt' }));
+    // Договор и чек — один лист с внесёнными платежами: перед любым документом подтягиваем
+    // свежие данные, иначе «отправь договор» сразу после платежа мог уйти без этого платежа
+    const r = await clientAction(a, () => onSendDocument(a.saleId, a.doc, { fresh: true }));
     patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
   };
 
-  // Что в «Авто» делает само приложение: договоры, затем документы (чек — уже
-  // с платежом из этого же сообщения)
+  // Что в «Авто» делает само приложение: договоры, затем документы (документ —
+  // уже с платежом из этого же сообщения: sendDoc всегда подтягивает свежие данные)
   const runAuto = async (msgId: string, actions: Action[]) => {
     for (const a of actions) if (a.kind === 'contract_form' && a.auto) await saveContract(msgId, a);
-    const paid = actions.some(a => a.kind === 'done' && a.ok && a.tool === 'create_payment');
-    for (const a of actions) if (a.kind === 'send_doc' && a.auto) await sendDoc(msgId, a, paid);
+    for (const a of actions) if (a.kind === 'send_doc' && a.auto) await sendDoc(msgId, a);
   };
   const cancel = (msgId: string, a: Action) => {
     api.aiAssistant.cancel(a.id);
