@@ -3547,7 +3547,8 @@ app.get('/api/health', (req, res) => {
 //
 // Обычные правки веб-кода сами подхватываются WebView с каждым открытием приложения — версию
 // бампать для них не нужно.
-const LATEST_ANDROID_VERSION_CODE = 2;
+// 25.10.2026: на раздаче 1.1.2 (код 4) — captureInput выключен, клавиатуры больше не стирают текст
+const LATEST_ANDROID_VERSION_CODE = 4;
 
 app.get('/api/app-version', (req, res) => {
   res.json({
