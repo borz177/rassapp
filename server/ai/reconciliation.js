@@ -32,10 +32,20 @@ const audit = data => {
   }
   return {
     calculatedAt: new Date().toISOString(), basis: 'Учётные записи приложения; первый взнос входит в остаток кассы независимо от режима отображения собрано.',
-    accounts: accounts.map(a => ({ id: a.id, name: a.name, initial: initial[a.id], receipts: round(salesOnly[a.id] - initial[a.id]), expenses: round(initial[a.id] - expensesOnly[a.id]), retailNet: round(retailOnly[a.id] - initial[a.id]), balance: balances[a.id] })),
+    // На что ушли деньги — главные статьи по счёту (без возвратов: они в остаток не входят),
+    // чтобы на «почему минус» хватало одного вызова и суммы не досчитывались
+    accounts: accounts.map(a => {
+      const own = expenses.filter(e => e.accountId === a.id);
+      const cats = new Map();
+      for (const e of own.filter(e => e.isRefund !== true)) { const k = e.category || 'Прочее'; cats.set(k, (cats.get(k) || 0) + (Number(e.amount) || 0)); }
+      const refunds = round(own.filter(e => e.isRefund === true).reduce((n, e) => n + (Number(e.amount) || 0), 0));
+      return { id: a.id, name: a.name, initial: initial[a.id], receipts: round(salesOnly[a.id] - initial[a.id]), expenses: round(initial[a.id] - expensesOnly[a.id]), retailNet: round(retailOnly[a.id] - initial[a.id]), balance: balances[a.id],
+        topExpenseCategories: [...cats].map(([category, amount]) => ({ category, amount: round(amount) })).sort((x, y) => y.amount - x.amount).slice(0, 6),
+        ...(refunds ? { refundsNotInBalance: refunds } : {}) };
+    }),
     totalCash: round(Object.values(balances).reduce((a, b) => a + b, 0)),
     orphanContracts, mismatches, duplicatePayments,
-    note: 'Возможный дубль требует проверки: два одинаковых платежа могут быть настоящими. Записи не исправлены автоматически.',
+    note: 'Остаток = initial + receipts − expenses + retailNet. expenses — без возвратов клиентам (refundsNotInBalance в остаток не входят, причиной минуса не называть); на что ушли деньги — topExpenseCategories. Возможный дубль требует проверки: два одинаковых платежа могут быть настоящими. Записи не исправлены автоматически.',
   };
 };
 const planTransfer = (data, ids, targetId) => {

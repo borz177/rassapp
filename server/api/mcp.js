@@ -88,7 +88,7 @@ const TOOLS = [
   {
     name: 'list_expenses',
     title: 'Расходы',
-    description: 'Расходы за период с фильтром по счёту и категории. В meta — sum и byCategory по ВСЕМ отобранным расходам: итоги бери оттуда, не складывай строки.',
+    description: 'Расходы за период с фильтром по счёту и категории. В meta — sum и byCategory по ВСЕМ отобранным расходам: итоги бери оттуда, не складывай строки. Возвраты клиентам (isRefund, meta.refunds) в остаток кассы не входят — на остаток влияет meta.sumAffectingBalance.',
     scope: 'read',
     input: {
       accountId: { type: 'string' }, category: { type: 'string' },

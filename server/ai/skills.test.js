@@ -211,6 +211,21 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal(exp.meta.sum, 1000);
     assert.deepEqual(exp.meta.byCategory, [{ name: 'Тест', count: 1, sum: 1000 }]);
 
+    // Возврат клиенту помечен и не входит в «влияет на остаток» (прод 25.10: «минус из-за возвратов»)
+    await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', ['e_refund', 'owner', 'expenses', JSON.stringify({ id: 'e_refund', accountId: 'acc', title: 'Возврат клиенту', amount: 500, category: 'Тест', date: new Date(`${mo}-02T10:00:00+03:00`).toISOString(), isRefund: true })]);
+    const exp2 = await (await fetch(`http://127.0.0.1:${server.address().port}/api/v1/expenses?category=${encodeURIComponent('Тест')}&from=${mo}-01&to=${lastDay}`,
+      { headers: { Authorization: `Bearer fu_agent_${jwt.sign({ sub: 'owner' }, secret)}` } })).json();
+    assert.equal(exp2.meta.sum, 1500);
+    assert.equal(exp2.meta.refunds, 500);
+    assert.equal(exp2.meta.sumAffectingBalance, 1000);
+    assert.equal(exp2.data.find(e => e.id === 'e_refund').isRefund, true);
+
+    // Проверка цифр: повтор вернул пустой ответ — человек получает прежний с пометкой, а не «Ничего не сделано» (прод 25.10)
+    script.push({ content: 'Пришло 987 654 ₽ за всё время.' }, { content: '' });
+    r = await assistant.reply({ user, text: 'Сколько пришло за всё время?', mode: 'confirm', silent: true });
+    assert.match(r.reply, /^Пришло 987\s654 ₽ за всё время\./);
+    assert.match(r.reply, /сверьте их в приложении/);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];

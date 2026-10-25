@@ -86,6 +86,8 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
       const cat = pick(['Аренда', 'Бензин', 'Реклама', 'Зарплата', 'Прочее']);
       expenses.push({ id: `exp_${i}`, accountId: pick(['main', 'cash2']), amount: Math.round((cat === 'Аренда' ? 40000 : 2000 + rnd() * 15000) / 10) * 10, title: cat, category: cat, date: at(-Math.floor(rnd() * 300)) });
     }
+    // Возвраты клиентам (удалённые договоры): в остаток кассы не входят — причиной минуса быть не могут
+    for (let i = 0; i < 4; i++) expenses.push({ id: `exp_ref_${i}`, accountId: 'cash2', amount: 37000 + i * 1000, title: 'Возврат клиенту', category: 'Возврат клиенту', date: at(-20 - i * 30), isRefund: true });
     for (const [type, items] of Object.entries({ customers, accounts, sales, expenses })) for (const item of items) await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', [item.id, 'eval', type, JSON.stringify(item)]);
 
     // ── правильные ответы ──
@@ -121,7 +123,9 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
     const nextMonthForecast = (() => { const d = new Date(`${monthStart}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); return c.forecast({ sales, customers, today, month: d.toISOString().slice(0, 7) }); })();
     const extraCheck = {
       19: (reply) => new RegExp(`(^|\\D)${nextMonthForecast.customers}\\s*клиент`).test(reply) && !new RegExp(`(^|\\D)${nextMonthForecast.count}\\s*клиент`).test(reply),
-      20: (reply) => /закуп|категор|аренд|зарплат|реклам|бензин/i.test(reply) && !/^[^.]*сравн[а-яё]* период/i.test(reply),
+      20: (reply) => /закуп|категор|аренд|зарплат|реклам|бензин/i.test(reply) && !/^[^.]*сравн[а-яё]* период/i.test(reply)
+        // возвраты (154 000 ₽) — не причина минуса
+        && !/154\s?000/.test(reply.replace(/[\u00a0\u202f]/g, ' ')),
     };
     const names = { 5: nameOf(topDebt[0]), 9: nameOf(topPaid[0]) };
 

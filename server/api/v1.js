@@ -117,6 +117,8 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     customerId: e.customerId || null,
     supplierId: e.supplierId || null,
     payoutType: e.payoutType || null,
+    // Возврат клиенту при удалении договора — в остаток кассы не входит (domain.accountBalances)
+    ...(e.isRefund === true ? { isRefund: true } : {}),
   });
 
   // investorNames — id → имя: чей это счёт и кто в пуле, чтобы «счёт Гагаева»
@@ -672,7 +674,10 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     if (from || to) items = items.filter(e => inRange(e.date, from, to));
     items.sort((a, b) => new Date(b.date) - new Date(a.date));
     const { page, meta } = paginate(items, p);
-    ok(res, page.map(mapExpense), { ...meta, sum: num(items.reduce((n, e) => n + num(e.amount), 0)), byCategory: sumBy(items, e => e.category || 'Прочее', e => num(e.amount)) });
+    const refunds = items.filter(e => e.isRefund === true);
+    ok(res, page.map(mapExpense), { ...meta, sum: num(items.reduce((n, e) => n + num(e.amount), 0)), byCategory: sumBy(items, e => e.category || 'Прочее', e => num(e.amount)),
+      // На остаток кассы влияют расходы без возвратов: возврат взноса при удалении договора уходит вместе с самим взносом
+      ...(refunds.length ? { refunds: num(refunds.reduce((n, e) => n + num(e.amount), 0)), sumAffectingBalance: num(items.filter(e => e.isRefund !== true).reduce((n, e) => n + num(e.amount), 0)) } : {}) });
   }));
 
   router.get('/expenses/:id', requireScope('read'), route(async (req, res) => {
