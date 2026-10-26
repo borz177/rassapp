@@ -579,7 +579,10 @@ const CLAIMS_DONE_RE = /черновик[а-яё ]{0,12} (?<!не )готов|д
 // карточки нет, человек её не увидит (было: «Исраилов оплатил 16 700» → «нажмите
 // Подтвердить» без кнопки, и так три раза). Такой ответ не показываем, а даём модели
 // второй шанс — уже с инструментами
-const PROMISE_RE = /нажм(ите|и)[^.\n]{0,20}«?Подтвердить|(^|[^а-яё])(записываю|провожу|принимаю|оформляю|отправляю|добавляю|удаляю|создаю|вношу)([^а-яё]|$)|(кнопк|карточк)[а-яё]*[^.\n]{0,40}(подтвер|ниже|под (этим|ответом|сообщением))/i;
+const PROMISE_RE = /нажм(ите|и)[^.\n]{0,20}«?(Подтвердить|Открыть форму договора|Перенести|Отправить)|черновик[^.\n]{0,90}(?<!не )готов|(^|[^а-яё])(записываю|провожу|принимаю|оформляю|отправляю|добавляю|удаляю|создаю|вношу)([^а-яё]|$)|(кнопк|карточк)[а-яё]*[^.\n]{0,40}(подтвер|ниже|под (этим|ответом|сообщением))/i;
+// Основные инструменты для повтора с обязательным вызовом (см. forceTool в replyText)
+const FORCE_TOOL_NAMES = new Set(['customer_overview', 'create_payment', 'record_payments', 'prepare_contract', 'ask_choice', 'send_document',
+  'due_payments', 'list_payments', 'change_payment_date', 'create_expense', 'collection_queue', 'cash_forecast', 'get_summary']);
 const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'delete_contract', 'reschedule', 'template_draft']);
 // Агент отказал: не умеет или отправил делать в приложении — это просьба о новом
 // умении, а не ошибка. Пишем отдельно (cant_do), чтобы видеть, что добавлять
@@ -1828,6 +1831,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'СЧЕТА И ИНВЕСТОРЫ. «Счёт <имя>», «<имя> счёт», «по счёту Гагаева» — это счёт, а не клиент: list_accounts, ищи имя в названии счёта, во владельце (ownerInvestorName) и в участниках пула (poolMembers); инвестор в пуле — значит, его счёт этот пул, так и скажи. Нет среди счетов и инвесторов — тогда уже клиенты. Сколько получено/потрачено по счёту за период — get_summary с accountId; «по каким счетам» — list_payments за период и сложи по accountName (или get_summary по каждому счёту). Прибыль инвестора — investor_profit.',
     'ЗАПИСИ (платёж, расход, приход, клиент, задача, напоминание). «Подтверждать»: под ответом карточка «Подтвердить» — скажи одной фразой «Проверьте и нажмите «Подтвердить»», без слов про формы и окна. «Авто»: выполняется сразу — скажи коротко, что сделано (под ответом «Отменить»), ничего не проси подтверждать, но сначала убедись, что клиент, договор, сумма и счёт верные. Каждую запись — один вызов. У клиента один действующий договор — он и есть договор платежа: не спрашивай «какой договор» и не делай ask_choice с одним вариантом. Если человек уже назвал сумму платежа и договор однозначен, сразу используй эту сумму: в режиме «Подтверждать» подготовь карточку, не спрашивай сумму повторно и не подменяй её платежом по графику. Платёж без суммы — не бери сам и не бери весь остаток (остаток в подписи кнопки договора — не сумма платежа): ask_choice «Платёж по графику — N ₽» (ближайший неоплаченный из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму». Расход и приход — по счёту: не назван и счетов несколько — спроси (list_accounts), один — бери его.',
     'ДОГОВОР — prepare_contract. Обязательны клиент, товар (как назвал человек; не назвал — спроси, заглушки «Товар» не пиши), закуп, срок в месяцах, наценка или цена («по 12 300 в месяц» — monthlyPayment, цену посчитает сервер, не переспрашивай); «оплата 12 числа» — paymentDay, точная дата первого платежа — firstPaymentDate: чего-то нет — спроси до вызова, в любом режиме, не подставляй. «Закуп 100», «закуп 500» без единиц — это тысячи (100 000 ₽, 500 000 ₽), не переспрашивай. Телефон, адрес и счёт не обязательны — не задерживай ими. Паспорт с фото — в newCustomer буква в букву. «Подтверждать»: скажи «Черновик готов — нажмите «Открыть форму договора»» (не «форма открыта», не «откройте приложение»). «Авто»: скажи «Оформляю договор». «Оформи и отправь» — sendToWhatsApp; договор или чек клиенту в WhatsApp — send_document.',
+    'ЧЕРНОВИК ЕЩЁ НЕ СОХРАНЁН. В истории пометка [Черновик договора …], а договора у клиента нет, и просят поменять в нём что-то («первый платёж на 20 ноября», «срок 8 месяцев», «наценка 30») — снова prepare_contract с теми же данными из разговора и этим изменением: будет новый черновик. Не отвечай «сначала сохраните черновик».',
     'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении. «Удали договор» — delete_contract (договор через customer_overview; несколько — ask_choice): под ответом карточка «Удалить», скажи «Проверьте и нажмите «Удалить» — удаление не отменить».',
     'НЕСКОЛЬКО ФОТО — подписаны «Фото 1», «Фото 2»… по порядку. «Первый — клиент, второй — поручитель»: договор — prepare_contract, newCustomer — с фото клиента, поручитель — guarantorName с фото поручителя (буква в букву) и guarantorPhoto — его номер. Не перепутай, чей паспорт на каком фото; неясно — спроси.',
     'ПОРУЧИТЕЛЬ И ГРАФИК. Фото паспорта и «это поручитель (по договору …)», «добавь поручителя» — set_guarantor (не создавай клиента!): в договор ФИО (с фото — буква в букву) и телефон, если человек его назвал; фото само ляжет в документы клиента. «Перенеси первый платёж на …», «сдвинь дату платежа», «отсрочка на месяц» — change_payment_date с датой ГГГГ-ММ-ДД (отсрочку считай от ближайшего платежа по графику); скажи «Проверьте и нажмите «Перенести»».',
@@ -2390,6 +2394,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     const writes = new Set();
     let claimChecked = false;
     let promiseRetried = false;
+    // Повтор, в котором модель обязана вызвать инструмент: после «обещал, но не вызвал» и
+    // после пустого ответа (прод 26.10: «Платеж от Давлетукаева 21000» → «Ничего не сделано»)
+    let forceTool = false;
+    let emptyRetried = false;
     let groundRetried = false;
     let singleChoiceSkipped = false;
     // Несколько документов за сообщение: сами (в «Авто») уходят только «всем» после пачки
@@ -2411,7 +2419,21 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       const live = onStream ? { onDelta: (t) => onStream({ delta: t }), onReset: () => onStream({ reset: true }) } : null;
       let data;
       try {
-        data = await callModel({ model: DEFAULT_MODEL, messages, tools, temperature: 0.2, max_tokens: 1200, usage: { include: true } }, signal, live);
+        const body = { model: DEFAULT_MODEL, messages, tools, temperature: 0.2, max_tokens: 1200, usage: { include: true } };
+        if (forceTool) {
+          // Обязательный вызов — только по основным инструментам: по всем ~60 Gemini строит
+          // слишком сложную схему и отвечает 400 («too many states for serving»)
+          forceTool = false;
+          try {
+            data = await callModel({ ...body, tools: tools.filter(t => FORCE_TOOL_NAMES.has(t.function.name)), tool_choice: 'required' }, signal, live);
+          } catch (e) {
+            if (signal?.aborted) throw e;
+            console.warn('AI: обязательный вызов инструмента не принят — обычный повтор:', e.message);
+            data = await callModel(body, signal, live);
+          }
+        } else {
+          data = await callModel(body, signal, live);
+        }
       } catch (e) {
         if (signal?.aborted) return stopped(actions, usage);
         throw e;
@@ -2425,9 +2447,11 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       // Перечень умений («что ты умеешь?» → «оформляю рассрочки, удаляю ошибочные…») — не обещание
       const listsAbilities = /(что|чем)\s+(ты|вы)\s+(ещё\s+|еще\s+)?(може|уме|помог)|что умеешь|возможност/i.test(text)
         || (String(msg.content || '').match(/^\s*([*•-]|\d+[.)])\s/gm) || []).length >= 2;
-      if (!calls.length && !promiseRetried && !listsAbilities && round < MAX_TOOL_ROUNDS - 1 && PROMISE_RE.test(msg.content || '')
+      // Договору не хватило полей (prepare_contract уже вызван) — не повтор, а вопрос о недостающем ниже
+      if (!calls.length && !promiseRetried && !listsAbilities && !contractMissing && round < MAX_TOOL_ROUNDS - 1 && PROMISE_RE.test(msg.content || '')
           && !actions.some(a => ACTION_KINDS.has(a.kind))) {
         promiseRetried = true;
+        forceTool = true;
         flag(user.id, 'honesty_fix', { question: text, answer: msg.content, detail: 'обещал действие без вызова инструмента — повтор с инструментами' });
         messages.push({ role: 'assistant', content: msg.content || '' });
         messages.push({ role: 'system', content: 'Проверка: ты пишешь, что действие выполняется или ждёт «Подтвердить», но инструмент не вызван — карточки нет, человек её не увидит. Вызови нужный инструмент сейчас (платёж — create_payment с contractId и суммой; договор клиента — через customer_overview). Если не хватает данных — спроси одним вопросом. Не пиши, что карточка есть, пока не вызвал инструмент.' });
@@ -2437,6 +2461,15 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
           && /черновик[а-яё ]{0,15}(?<!не )(готов|подготовлен)|нажмите «?Открыть форму договора|договор[а-яё ]{0,12}(?<!не )(готов|оформлен)/i.test(msg.content || '') && !/\?\s*$/.test(String(msg.content || '').trim())) {
         flag(user.id, 'honesty_fix', { question: text, answer: msg.content, detail: 'черновик договора не подготовлен — не хватает полей' });
         msg.content = `Договор ещё не подготовлен — уточните, пожалуйста: ${contractMissing.map(m => m.replace(/\s*\(.*$|\s*—.*$/, '')).join(', ')}.`;
+      }
+      // Пустой ответ без действий — ещё раз, с обязательным вызовом инструмента, а не «Ничего не сделано»
+      // (Пустой повтор проверки цифр — не сюда: там показываем прежний ответ с пометкой)
+      if (!calls.length && !String(msg.content || '').trim() && !actions.length && !emptyRetried && !beforeGroundRetry && round < MAX_TOOL_ROUNDS - 1) {
+        emptyRetried = true;
+        forceTool = true;
+        flag(user.id, 'empty_reply', { question: text, detail: promiseRetried ? 'после повтора за обещание' : '' });
+        messages.push({ role: 'system', content: 'Ответ пустой. Выполни просьбу человека инструментами: клиента и договор найди через customer_overview, затем нужное действие (платёж — create_payment). Не хватает данных — ask_choice.' });
+        continue;
       }
       // Суммы, которых нет в данных, — один раз переделать: взять готовые итоги
       // Слова человека — и «50к», «12 тыс», «закуп 500» (= 500 000); карточки — целиком (черновик договора)

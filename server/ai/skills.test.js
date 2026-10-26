@@ -294,6 +294,17 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal(partial?.amount, 5000, JSON.stringify(due.payments.filter(x => x.contractId === 'r')));
     assert.equal(partial.scheduledAmount, 10000);
 
+    // Обещал без вызова, потом пусто (прод 26.10) — повтор с обязательным вызовом инструмента, карточка есть
+    script.push({ content: 'Проверьте и нажмите «Подтвердить».' }, { content: '' }, { tool: 'create_payment', args: { contractId: 'q', amount: 2100 } }, { content: 'Проверьте и нажмите «Подтвердить».' });
+    const seenFrom = seen.length;
+    r = await assistant.reply({ user, text: 'Платеж от Иванова по самсунгу 2100', mode: 'confirm', silent: true });
+    const forced = seen.slice(seenFrom).map(b => b.tool_choice || null);
+    assert.deepEqual(forced.slice(0, 3), [null, 'required', 'required'], JSON.stringify(forced));
+    const pay = r.actions.find(a => a.tool === 'create_payment');
+    assert.ok(pay, r.reply);
+    assert.notEqual(r.reply, 'Ничего не сделано — уточните, что нужно.');
+    await assistant.cancelAction('owner', pay.id);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];
