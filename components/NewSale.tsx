@@ -133,6 +133,20 @@ const NewSale: React.FC<NewSaleProps> = ({
   }, [user?.subscription]);
 
   // 🔥 Инициализация formData
+  // Дата первого платежа у сохранённого договора: поле paymentDate есть только у договоров
+  // из этой формы (у импортированных, из API и части старых его нет) — пустое обязательное
+  // поле молча не давало сохранить правку такого договора. Тогда берём её из графика.
+  // planPaymentDateRef — первая строка графика: она в поле и с ней сравниваем, менял ли
+  // человек дату (сохранённая paymentDate после переноса графика агентом устаревала).
+  const planPaymentDateRef = useRef<string | null>(null);
+  if (planPaymentDateRef.current === null) {
+    const first = initialData.id && Array.isArray(initialData.paymentPlan)
+      ? initialData.paymentPlan.filter((p: Payment) => p.isRealPayment !== true && p.date)
+          .sort((a: Payment, b: Payment) => new Date(a.date).getTime() - new Date(b.date).getTime())[0]
+      : null;
+    planPaymentDateRef.current = first ? inputDateOf(first.date) : '';
+  }
+
   const [formData, setFormData] = useState<any>(() => {
     const defaultData = {
       id: null,
@@ -172,9 +186,9 @@ const NewSale: React.FC<NewSaleProps> = ({
       startDate: initialData.startDate
         ? inputDateOf(initialData.startDate)
         : toInputDate(new Date()),
-      paymentDate: initialData.paymentDate
-        ? inputDateOf(initialData.paymentDate)
-        : '',
+      // Вернулись из выбора клиента (данные формы с mode) — дата, какую человек уже поставил
+      paymentDate: (initialData.mode || !planPaymentDateRef.current) && initialData.paymentDate
+        ? inputDateOf(initialData.paymentDate) : planPaymentDateRef.current,
       roundingMode: initialData.roundingMode || 'NONE',
     };
   });
@@ -710,10 +724,10 @@ if (mode === 'CASH') {
   // 🔹 При редактировании: пересчитываем график, если изменилось хоть одно поле,
   // влияющее на суммы/сроки платежей. Уже оплаченные/реальные платежи (isPaid/isRealPayment)
   // ВСЕГДА сохраняются как есть — regeneratePaymentPlan трогает только будущие записи.
-  // Сравниваем с impliedOriginalPaymentDate, а не initialData.paymentDate — это поле
-  // не персистится в Sale (только paymentDay), поэтому initialData.paymentDate всегда undefined.
+  // Сравниваем с первой строкой графика (planPaymentDateRef), а не с initialData.paymentDate:
+  // этого поля у части договоров нет, а после переноса графика оно устаревает.
   const scheduleAffectingFieldsChanged =
-    formData.paymentDate !== impliedOriginalPaymentDate ||
+    formData.paymentDate !== (planPaymentDateRef.current || impliedOriginalPaymentDate) ||
     Number(formData.installments) !== Number(initialData.installments) ||
     Number(formData.downPayment) !== Number(initialData.downPayment) ||
     calculatedValues.totalAmount !== Number(initialData.totalAmount);

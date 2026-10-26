@@ -4492,7 +4492,7 @@ const handleQuickAddCustomer = async (data: {
     try {
       const first = parseInputDate(date);
       const plan = regeneratePaymentPlan({ ...sale }, first.toISOString(), sale.paymentPlan);
-      const updated = reconcileSalePaymentPlan({ ...sale, paymentPlan: plan, paymentDay: first.getDate() });
+      const updated = reconcileSalePaymentPlan({ ...sale, paymentPlan: plan, paymentDay: first.getDate(), paymentDate: date });
       const saved = await api.saveItem('sales', updated, { intent: { kind: 'contract', label: sale.productName } });
       updateList(setSales, saved);
       return { ok: true, text: `График перенесён: первый платёж ${first.toLocaleDateString('ru-RU')}` };
