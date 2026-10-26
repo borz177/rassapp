@@ -95,6 +95,8 @@ global.fetch = async (...args) => {
 
     // ── помощники ──
     const say = async (text, mode = 'confirm', history = []) => { calls = []; const r = await assistant.reply({ user, text, mode, history, silent: true }); r.calls = calls; return r; };
+    // В ветке чата — как через conversations.run (память разговора по threadId)
+    const sayIn = async (threadId, text, mode = 'confirm', history = []) => { calls = []; const r = await assistant.reply({ user, text, mode, history, silent: true, threadId }); r.calls = calls; return r; };
     const sale = async (id) => (await pool.query("SELECT data FROM data_items WHERE id=$1", [id])).rows[0]?.data;
     const realPays = (s) => (s.paymentPlan || []).filter(p => p.isRealPayment === true);
     const snapshot = async () => (await pool.query("SELECT id, data FROM data_items ORDER BY id")).rows.map(r => JSON.stringify(r)).join('\n');
@@ -409,6 +411,58 @@ global.fetch = async (...args) => {
         const d = (r.actions || []).find(x => x.kind === 'contract_form')?.draft || fail(`нет черновика: ${r.reply}`);
         const want = `${today.slice(5, 7) <= '11' ? today.slice(0, 4) : String(Number(today.slice(0, 4)) + 1)}-11-20`;
         if (d.firstPaymentDate !== want || d.customerId !== 'c_or' || Number(d.months) !== 6 || Number(d.buyPrice) !== 50000) fail(`черновик: ${JSON.stringify(d)}`);
+      }],
+      // ── память разговора (server/ai/memory.js): ветка чата помнит клиентов и договоры ──
+      ['Память: «Что у Дудаева?» → «он оплатил 10000 за телевизор» → договор телевизора без повторного поиска', async () => {
+        const t = `mem_${randomBytes(4).toString('hex')}`;
+        const q1 = 'Что у Дудаева по договорам?';
+        const r1 = await sayIn(t, q1);
+        const r2 = await sayIn(t, 'Он оплатил 10000 за телевизор', 'confirm', [{ role: 'user', text: q1 }, { role: 'assistant', text: r1.reply }]);
+        const a = card(r2, 'create_payment') || fail(`нет карточки: ${r2.reply}`);
+        if (a.args.contractId !== 's_da2' || !near(a.args.amount, 10000)) fail(`договор ${a.args.contractId}, сумма ${a.args.amount}`);
+        if (r2.calls.some(x => x.name === 'customer_overview')) fail('искал клиента заново');
+        await cancelAll(r2);
+      }],
+      ['Память: «Бацаев оплатил 7000» → «Подтвердить» → «отправь ему чек» → чек по его договору', async () => {
+        const t = `mem_${randomBytes(4).toString('hex')}`;
+        const before = await snapshot();
+        const q1 = 'Бацаев Аслан оплатил 7000';
+        const r1 = await sayIn(t, q1);
+        const a = card(r1, 'create_payment') || fail(`нет карточки: ${r1.reply}`);
+        const done = await assistant.confirmAction('eval', a.id);
+        if (done.ok !== true) fail('подтверждение не прошло');
+        const r2 = await sayIn(t, 'Отправь ему чек', 'confirm', [{ role: 'user', text: q1 }, { role: 'assistant', text: `${r1.reply}\n[Выполнено: ${done.text || a.summary}]` }]);
+        const doc = (r2.actions || []).find(x => x.kind === 'send_doc');
+        if ((await assistant.undoAction('eval', a.id)).ok !== true) fail('отмена не прошла');
+        if (!doc || doc.saleId !== 's_ba' || doc.doc !== 'receipt') fail(`чек: ${JSON.stringify(doc || null)} / ${r2.reply}`);
+        if (await snapshot() !== before) fail('после отмены база не как была');
+      }],
+      ['Память: оплата по «айфон аир» Давлетукаева Асхаба → «а по второму сколько осталось?» → 84 600 ₽', async () => {
+        const t = `mem_${randomBytes(4).toString('hex')}`;
+        const q1 = 'Давлетукаев Асхаб оплатил 16850 за айфон аир';
+        const r1 = await sayIn(t, q1);
+        const a = card(r1, 'create_payment') || fail(`нет карточки: ${r1.reply}`);
+        if (a.args.contractId !== 's_das1') fail(`договор ${a.args.contractId}`);
+        await cancelAll(r1);
+        const r2 = await sayIn(t, 'А по второму его договору сколько осталось?', 'confirm', [{ role: 'user', text: q1 }, { role: 'assistant', text: r1.reply }]);
+        if (!/84[\s\u00a0 ]?600/.test(r2.reply)) fail(`ответ: ${r2.reply}`);
+      }],
+      ['Память: говорили об Ахмадове Руслане, затем «Ахмадов Ислам оплатил 10000» → договор Ислама, не Руслана', async () => {
+        const t = `mem_${randomBytes(4).toString('hex')}`;
+        const q1 = 'Сколько должен Ахмадов Руслан?';
+        const r1 = await sayIn(t, q1);
+        const r2 = await sayIn(t, 'Ахмадов Ислам оплатил 10000', 'confirm', [{ role: 'user', text: q1 }, { role: 'assistant', text: r1.reply }]);
+        const a = card(r2, 'create_payment') || fail(`нет карточки: ${r2.reply}`);
+        if (a.args.contractId !== 's_ai') fail(`договор ${a.args.contractId}`);
+        await cancelAll(r2);
+      }],
+      ['Память: новый чат не помнит прошлый — «он оплатил 5000» без имени → вопрос, ничего не записано', async () => {
+        const t = `mem_${randomBytes(4).toString('hex')}`;
+        await sayIn(t, 'Что у Дудаева по договорам?');
+        const before = await snapshot();
+        const r = await sayIn(`${t}_new`, 'Он оплатил 5000', 'auto');
+        if ((r.actions || []).some(x => x.kind === 'done' || x.kind === 'confirm')) fail(`записал наугад: ${JSON.stringify(r.actions.map(x => x.tool))}`);
+        if (await snapshot() !== before) fail('база изменилась');
       }],
     ];
 

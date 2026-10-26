@@ -5,6 +5,7 @@ const turnContext = new AsyncLocalStorage();
 const createConversations = pool => {
   const actionStore = require('./actionStore').createActionStore(pool);
   const clientActions = require('./clientActions').createClientActions(pool);
+  const memory = require('./memory').createMemory(pool);
   let initialized;
   const ready = () => initialized ||= pool.query(`
     CREATE TABLE IF NOT EXISTS ai_threads(user_id TEXT PRIMARY KEY,id TEXT NOT NULL,updated_at TIMESTAMPTZ DEFAULT NOW());
@@ -79,7 +80,7 @@ const createConversations = pool => {
       try {
         const media = args.images?.length ? args.images : args.image ? [args.image] : [];
         const deadline = AbortSignal.timeout(180000);
-        const result = await turnContext.run({ id, userId: args.userId, mediaHash: media.length ? hash(media) : null }, () => execute({ ...args, signal: args.signal ? AbortSignal.any([args.signal,deadline]) : deadline,
+        const result = await turnContext.run({ id, userId: args.userId, threadId, mediaHash: media.length ? hash(media) : null }, () => execute({ ...args, signal: args.signal ? AbortSignal.any([args.signal,deadline]) : deadline,
           // Старые клиенты передают локальную историю. Новые используют общую.
           history: args.sharedHistory ? past : (args.history || []),
           onStep: step => { args.onStep?.(step); void pool.query("UPDATE ai_turns SET step=$3,updated_at=NOW() WHERE user_id=$1 AND id=$2", [args.userId,id,String(step).slice(0,200)]).catch(() => {}); },
@@ -105,6 +106,8 @@ const createConversations = pool => {
       await db.query('COMMIT');
     } catch (e) { await db.query('ROLLBACK'); throw e; }
     finally { db.release(); }
+    // Память разговора привязана к ветке: новая ветка и так начинается с нуля, старую убираем
+    await memory.clear(userId).catch(e => console.warn('AI: память разговора не очищена:', e.message));
   };
   const setPlan = async (userId, steps) => {
     const current = turnContext.getStore();
