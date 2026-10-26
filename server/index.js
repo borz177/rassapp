@@ -4791,6 +4791,18 @@ app.post('/api/ai/assistant/buy', auth, async (req, res) => {
  * срока, другой — с сегодняшнего дня. Идемпотентно по id платежа: повторный
  * вебхук срок второй раз не прибавит.
  */
+// Один платёж — одна обработка за раз (pg_advisory_lock по id платежа ЮKassa)
+const withPaymentLock = async (paymentId, fn) => {
+  const db = await pool.connect();
+  try {
+    await db.query('SELECT pg_advisory_lock(hashtext($1))', [`payment:${paymentId}`]);
+    return await fn();
+  } finally {
+    await db.query('SELECT pg_advisory_unlock(hashtext($1))', [`payment:${paymentId}`]).catch(() => {});
+    db.release();
+  }
+};
+
 const applyAiPayment = async (paymentId, payment) => {
   const { userId, aiPlan } = payment.metadata || {};
   const p = Object.hasOwn(AI_PLANS, aiPlan) ? AI_PLANS[aiPlan] : null;
@@ -6988,7 +7000,10 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
         const parsedBody = JSON.parse(bodyString);
         const { event, object } = parsedBody;
 
-        if (event === 'payment.succeeded' && object?.id) {
+        // 🔒 Два одинаковых уведомления одновременно (повтор ЮKassa) оба проходили проверку
+        // «платёж уже учтён» до записи в журнал — и подписка продлевалась дважды.
+        // Обработку одного платежа выполняем строго по очереди.
+        if (event === 'payment.succeeded' && object?.id) await withPaymentLock(object.id, async () => {
             const shopId = process.env.YOOKASSA_SHOP_ID;
             const secretKey = process.env.YOOKASSA_SECRET_KEY;
 
@@ -7081,7 +7096,8 @@ app.post('/api/payment/webhook', express.raw({ type: 'application/json' }), asyn
             } else {
                 console.warn(`⚠️ Webhook сообщил payment.succeeded, но проверка статуса в ЮKassa вернула: ${verifyResp.data?.status}`);
             }
-        }
+        });
+        if (res.headersSent) return;
 
         // Платёж отменён: не подтвердили вовремя (expired_on_confirmation), отказ
         // банка, недостаточно средств. Раньше такое уведомление молча пропускалось —
