@@ -85,7 +85,7 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, pdfUrl, title, autoPr
   return (
     <div className="fixed inset-0 z-[100000] flex flex-col bg-slate-200 dark:bg-slate-950 animate-fade-in"
          role="dialog" aria-label={title}>
-      <div className="shrink-0 flex items-center gap-3 px-4 pb-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800"
+      <div className="shell-window-head shrink-0 flex items-center gap-3 px-4 pb-3 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800"
            style={{ paddingTop: 'calc(env(safe-area-inset-top, 0px) + 12px)' }}>
         <button type="button" onClick={onClose} aria-label="Закрыть"
                 className="w-10 h-10 shrink-0 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 flex items-center justify-center active:scale-90 transition-transform">

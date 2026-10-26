@@ -336,7 +336,7 @@ const DocumentViewer: React.FC<DocumentViewerProps> = ({ documents, startIndex, 
 
         {/* Верх: закрыть, что это и какой по счёту */}
         <div
-          className={`absolute inset-x-0 top-0 flex items-center gap-3 px-4 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-3
+          className={`shell-window-head absolute inset-x-0 top-0 flex items-center gap-3 px-4 pt-[calc(env(safe-area-inset-top,0px)+8px)] pb-3
                       bg-gradient-to-b from-black/70 to-transparent transition-opacity duration-200 ${chrome && !closing && dy < 20 ? 'opacity-100' : 'opacity-0 pointer-events-none'}`}
         >
           <button type="button" onClick={close} aria-label="Закрыть"
