@@ -11,7 +11,7 @@
 // оставшимися пробными запросами (сводка — часть агента).
 
 const domain = require('../api/domain');
-const { promiseDigest, addDays } = require('./collections');
+const { promiseDigest, addDays, openRows } = require('./collections');
 const { collectionPayments, isCustomerSale } = require('../../shared/collections.js');
 
 const DEFAULT_HOUR = 9;
@@ -53,9 +53,9 @@ const digestStats = (sales, customers, today, withoutDownPayment = false, invest
       }
     }
     if (s.status !== 'ACTIVE') continue;
-    for (const p of s.paymentPlan || []) {
-      if (p.isRealPayment === true || p.isPaid || !p.date) continue;
-      if (mskDay(new Date(p.date)) === today) { st.dueCount++; st.dueSum += Number(p.amount) || 0; }
+    // Непогашенная часть строки (частично оплаченная — остаток), как в очереди взыскания
+    for (const p of openRows(s)) {
+      if (p.day === today) { st.dueCount++; st.dueSum += p.open; }
     }
     const o = domain.overdueAmount(s);
     if (o > 0) {

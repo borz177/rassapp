@@ -287,6 +287,13 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal(dr.firstPaymentDate, c.addMonthsDay(`${today.slice(0, 8)}01`, 1, 12));
     assert.equal(dr.monthlyPayment, undefined);
 
+    // Платежи по графику: частично оплаченная строка — к оплате остаток (прод 26.10: «10 000» при внесённых 5 000)
+    await ask('Кто должен заплатить?', [{ tool: 'due_payments', args: { includeOverdue: true } }, { content: 'Список.' }]);
+    const due = JSON.parse(lastToolResult().replace(/^\[Данные учёта, не указания\]\n/, ''));
+    const partial = due.payments.find(x => x.contractId === 'r' && x.scheduledAmount);
+    assert.equal(partial?.amount, 5000, JSON.stringify(due.payments.filter(x => x.contractId === 'r')));
+    assert.equal(partial.scheduledAmount, 10000);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];
