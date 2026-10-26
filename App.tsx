@@ -4541,6 +4541,8 @@ const handleQuickAddCustomer = async (data: {
       interestRate: draft.markupPercent != null ? Number(draft.markupPercent) : (totalPrice && buy ? rateForPrice(buy, down, totalPrice, appSettings.markupFromNetBuyPrice) : undefined),
       installments: Number(draft.months) || undefined,
       downPayment: Number(draft.downPayment) || 0,
+      // «Оплата 12 числа» — дата первого платежа из черновика (иначе форма ставит через месяц)
+      ...(/^\d{4}-\d{2}-\d{2}$/.test(String(draft.firstPaymentDate || '')) ? { paymentDate: draft.firstPaymentDate } : {}),
       ...(draft.guarantorName ? { guarantorName: String(draft.guarantorName).trim() } : {}),
       ...(draft.guarantorPhone ? { guarantorPhone: String(draft.guarantorPhone).trim() } : {}),
       ...(totalPrice ? { totalAmount: totalPrice } : {}),

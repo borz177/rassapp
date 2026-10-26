@@ -214,6 +214,8 @@ export interface AssistantContractDraft {
   totalPrice?: number;
   months?: number;
   downPayment?: number;
+  /** Дата первого платежа ГГГГ-ММ-ДД, если назвали («оплата 12 числа») */
+  firstPaymentDate?: string;
 }
 
 /**
@@ -266,8 +268,10 @@ export const buildAssistantSale = (opts: {
   const interestRate = draftRate(draft, fromNetBuyPrice);
   const totalAmount = markupPrice(buyPrice, downPayment, interestRate, fromNetBuyPrice);
   const id = `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`;
-  // Как в форме: дата первого платежа — ровно месяц от даты оформления
-  const paymentDate = toInputDate(addMonthsClamped(parseInputDate(toInputDate(now)), 1));
+  // Как в форме: дата первого платежа — ровно месяц от даты оформления, если в
+  // черновике нет названной («оплата 12 числа»); прошедшую дату не берём
+  const named = /^\d{4}-\d{2}-\d{2}$/.test(String(draft.firstPaymentDate || '')) && String(draft.firstPaymentDate) >= toInputDate(now) ? String(draft.firstPaymentDate) : '';
+  const paymentDate = named || toInputDate(addMonthsClamped(parseInputDate(toInputDate(now)), 1));
   const base = {
     id,
     customerId,

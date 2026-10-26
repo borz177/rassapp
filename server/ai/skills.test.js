@@ -272,6 +272,21 @@ test('умения: реструктуризация, досрочное пог�
     assert.match(r.reply, /кнопка «Отправить чек»/);
     await assistant.cancelAction('owner', r.actions.find(a => a.tool === 'create_payment').id);
 
+    // Прод 25.10: «закуп 92300, на год по 12300 в месяц, оплата 12 числа» — товар-заглушка не проходит,
+    // цена — из ежемесячного платежа, первый платёж — 12-го следующего месяца
+    const said = 'Иванову закуп 92300, на год без первого взноса, каждый месяц по 12300, оплата 12 числа';
+    script.push({ tool: 'prepare_contract', args: { customerId: 'cust', productName: 'Товар (рассрочка)', buyPrice: 92300, months: 12, monthlyPayment: 12300, paymentDay: 12 } }, { content: 'Какой товар оформляем?' });
+    r = await assistant.reply({ user, text: said, mode: 'confirm', silent: true });
+    assert.equal(r.actions.some(a => a.kind === 'contract_form'), false);
+    assert.match(lastToolResult(), /не хватает обязательного: товар/);
+    assert.equal(r.reply, 'Какой товар оформляем?', 'уточняющий вопрос не подменяется');
+    script.push({ tool: 'prepare_contract', args: { customerId: 'cust', productName: 'iPhone 15', buyPrice: 92300, months: 12, monthlyPayment: 12300, paymentDay: 12 } }, { content: 'Черновик готов.' });
+    r = await assistant.reply({ user, text: `${said}, айфон 15`, mode: 'confirm', silent: true });
+    const dr = r.actions.find(a => a.kind === 'contract_form')?.draft;
+    assert.equal(dr?.totalPrice, 147600, JSON.stringify(dr));
+    assert.equal(dr.firstPaymentDate, c.addMonthsDay(`${today.slice(0, 8)}01`, 1, 12));
+    assert.equal(dr.monthlyPayment, undefined);
+
     // 10. Срок датами (разговор с прода 23.10): «С 14.10.2026 по 14.03.2027» — 5 месяцев, договор готовится
     const draftArgs = { newCustomer: { name: 'Абдурзакова Зарема Расуловна', phone: '+79618851515' }, productName: 'iPhone 17 Pro Max', buyPrice: 117000, markupPercent: 25, downPayment: 25000, months: 5 };
     const history = [{ role: 'user', text: 'Абдурзакова Зарема Расуловна, айфон 17 про макс, закуп 117000, взнос 25000, наценка 25%' }, { role: 'assistant', text: 'Уточните срок и телефон.' }];

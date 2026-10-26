@@ -242,6 +242,18 @@ global.fetch = async (...args) => {
         const r = await say('дубля нет, я проверил. так из-за чего минус?', 'confirm', history);
         return !/дубл/i.test(r.reply);
       }],
+      // Прод 25.10 (…8310): «на год по 12 300 в месяц, оплата 12 числа» — дважды «наценка или цена?», товар-заглушка, день оплаты потерян
+      ['«Закуп 92200, на год по 12300 в месяц, оплата 12 числа, диван» → черновик сразу: цена 147 600, первый платёж 12-го', async () => {
+        const r = await say('Оформи Дудаевой Марьям диван: закуп 92200, на год без первого взноса, каждый месяц по 12300, оплата 12 числа');
+        const d = (r.actions || []).find(a => a.kind === 'contract_form')?.draft || null;
+        const want = c.addMonthsDay(`${today.slice(0, 8)}01`, 1, 12);
+        return !!d && Number(d.totalPrice) === 147600 && Number(d.months) === 12 && d.firstPaymentDate === want && /диван/i.test(d.productName || '');
+      }],
+      ['Без товара: «закуп 92200, на год по 12300 в месяц» → спрашивает товар, без заглушки «Товар»', async () => {
+        const r = await say('Оформи Дудаевой Марьям: закуп 92200, на год без первого взноса, каждый месяц по 12300');
+        const d = (r.actions || []).find(a => a.kind === 'contract_form')?.draft || null;
+        return !d && /товар|что оформ|какой/i.test(r.reply) && !/наценк[а-я]* или цен/i.test(r.reply);
+      }],
       ['«Спиши чехол» без причины → спрашивает причину, ничего не списывает', async () => {
         const r = await say('спиши один чехол');
         return !card(r, 'stock_write_off') || card(r, 'stock_write_off').kind !== 'done'
