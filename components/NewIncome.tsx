@@ -15,6 +15,7 @@ import { isStaleBundleError, reloadForNewBuild } from '../src/staleBundle';
 import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './feedback';
 import { isIOSApp } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
+import { dateFromInput, toInputDate } from '../src/saleMath';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -55,7 +56,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [targetAccountId, setTargetAccountId] = useState(initialData?.accountId || '');
   const [amount, setAmount] = useState('');
   const [note, setNote] = useState('');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(toInputDate(new Date()));
   const [sendHistory, setSendHistory] = useState(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
@@ -346,7 +347,7 @@ const isConfirmingRef = useRef(false);
       const same = selectedSale.paymentPlan.find(p =>
         p.isPaid && p.isRealPayment &&
         Math.abs(p.amount - numAmount) < 0.01 &&
-        new Date(p.date).toDateString() === new Date(date).toDateString()
+        new Date(p.date).toDateString() === dateFromInput(date).toDateString()
       );
       if (same) {
         const at = (same as any).actualDate
@@ -354,7 +355,7 @@ const isConfirmingRef = useRef(false);
           : '';
         appConfirm({
           title: 'Такой платёж уже внесён',
-          message: `${numAmount.toLocaleString('ru-RU')} ₽ за ${new Date(date).toLocaleDateString('ru-RU')} уже зачислен${at}. Это ещё один, отдельный платёж?`,
+          message: `${numAmount.toLocaleString('ru-RU')} ₽ за ${dateFromInput(date).toLocaleDateString('ru-RU')} уже зачислен${at}. Это ещё один, отдельный платёж?`,
           confirmLabel: 'Да, внести ещё',
           cancelLabel: 'Нет',
         }).then(ok => {
@@ -388,11 +389,12 @@ const isConfirmingRef = useRef(false);
       const numAmount = Number(amount);
       let finalDate = date;
       const now = new Date();
-      const selectedDate = new Date(date);
+      const selectedDate = dateFromInput(date);
       const isToday = selectedDate.getDate() === now.getDate() &&
         selectedDate.getMonth() === now.getMonth() &&
         selectedDate.getFullYear() === now.getFullYear();
-      if (isToday) { finalDate = now.toISOString(); }
+      // Другой день — полдень: «2026-10-12» как полночь по Гринвичу западнее него было бы 11-м
+      if (isToday) { finalDate = now.toISOString(); } else if (date) { selectedDate.setHours(12, 0, 0, 0); finalDate = selectedDate.toISOString(); }
 
       // 🔒 ЗАЩИТА: Применяем скидку только если сумма совпадает с рассчитанной
       // Если менеджер изменил сумму вручную — скидка игнорируется

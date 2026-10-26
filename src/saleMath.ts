@@ -20,6 +20,14 @@ export const parseInputDate = (value: string): Date => {
 };
 export const toInputDate = (date: Date): string =>
   `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+// Дата из поля («2026-11-15») — местная полночь, полная дата ISO — как есть.
+// new Date('2026-11-15') — полночь по Гринвичу: западнее него (прод 26.10, телефон
+// в поясе США) это ещё 14-е, и выбранный день первого платежа уезжал на сутки раньше.
+export const dateFromInput = (value: string | Date): Date =>
+  value instanceof Date ? new Date(value) : /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? parseInputDate(String(value)) : new Date(value);
+// Обратно в поле: местный календарный день (toISOString().split('T') даёт день по Гринвичу)
+export const inputDateOf = (value: string | Date): string =>
+  /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? String(value) : toInputDate(new Date(value));
 
 /**
  * Цена в рассрочку: закуп + наценка. Наценка — от закупа или, если так
@@ -114,7 +122,7 @@ export const regeneratePaymentPlan = (
     const n = Math.max(1, Number(saleData.installments) || 1);
     const base = Math.floor(totalDue / n);
     const last = Math.round((totalDue - base * (n - 1)) * 100) / 100;
-    const firstDate = new Date(newFirstPaymentDate);
+    const firstDate = dateFromInput(newFirstPaymentDate);
     const rows: Payment[] = Array.from({ length: n }, (_, i) => ({
       id: `pay_${Date.now()}_${i}_${Math.random().toString(36).substr(2, 6)}`,
       saleId: saleData.id,
@@ -162,7 +170,7 @@ export const regeneratePaymentPlan = (
     : 0;
 
   // 🔹 7. Генерируем новые даты для будущих платежей
-  const firstDate = new Date(newFirstPaymentDate);
+  const firstDate = dateFromInput(newFirstPaymentDate);
 
   // 🔹 8. Пропускаем месяцы, которые уже заняты сохранёнными платежами
   const usedMonths = new Set(preservedPayments.map(p => new Date(p.date).toISOString().slice(0, 7)));
@@ -282,7 +290,7 @@ export const buildAssistantSale = (opts: {
     accountId,
     startDate: now.toISOString(),
     paymentDate,
-    paymentDay: new Date(paymentDate).getDate(),
+    paymentDay: parseInputDate(paymentDate).getDate(),
     downPayment,
     installments,
     interestRate,

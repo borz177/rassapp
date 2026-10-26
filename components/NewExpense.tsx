@@ -7,6 +7,7 @@ import { ICONS } from '../constants';
 import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance, accountInvestment } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { appConfirm } from '../src/dialogs';
+import { dateFromInput, toInputDate } from '../src/saleMath';
 
 interface NewExpenseProps {
   investors: Investor[];
@@ -56,7 +57,7 @@ const checkDuplicateExpense = (
   if (!Array.isArray(expenses) || expenses.length === 0) return undefined;
   if (typeof amount !== 'number' || isNaN(amount)) return undefined;
 
-  const expenseDate = new Date(date).toDateString();
+  const expenseDate = dateFromInput(date).toDateString();
 
   return expenses.find(exp => {
     if (!exp) return false;
@@ -87,7 +88,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [amount, setAmount] = useState(initialData?.amount ? String(initialData.amount) : '');
   const [title, setTitle] = useState(initialData?.title || '');
   const [category, setCategory] = useState(initialData?.category || 'General');
-  const [date, setDate] = useState(new Date().toISOString().split('T')[0]);
+  const [date, setDate] = useState(toInputDate(new Date()));
   // Комментарий к расходу (Expense.description): видно в «Все операции»
   const [comment, setComment] = useState(initialData?.description || '');
   const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(initialData?.payoutType || null);
@@ -312,12 +313,16 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     // Handle Date with Time
     let finalDate = date;
     const now = new Date();
-    const selectedDate = new Date(date);
+    const selectedDate = dateFromInput(date);
     const isToday = selectedDate.getDate() === now.getDate() &&
                     selectedDate.getMonth() === now.getMonth() &&
                     selectedDate.getFullYear() === now.getFullYear();
     if (isToday) {
         finalDate = now.toISOString();
+    } else if (date) {
+        // Полдень выбранного дня — тот же день в любом часовом поясе
+        selectedDate.setHours(12, 0, 0, 0);
+        finalDate = selectedDate.toISOString();
     }
 
     const commonData = { amount: numAmount, date: finalDate, description: comment.trim() || undefined };

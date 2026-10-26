@@ -12,7 +12,7 @@ import { sendWhatsAppDocument } from '../services/whatsapp';
 import { api } from '../services/api';
 import { getSellerPhone, formatRuPhone, contractNumberFor, escapeHtml, formatDate, addMonthsClamped, stockOnWarehouse, formatCurrency, normalizePhoneForWhatsApp } from '../src/utils';
 import { contractScheduleRows } from '../src/contractSchedule';
-import { checkDuplicateSale, isLegacyPaidSlot, regeneratePaymentPlan, markupPrice, parseInputDate, toInputDate } from '../src/saleMath';
+import { checkDuplicateSale, isLegacyPaidSlot, regeneratePaymentPlan, markupPrice, parseInputDate, toInputDate, dateFromInput, inputDateOf } from '../src/saleMath';
 import { buildContractHtml, resolveContractTemplate, type ContractData } from '../src/contractTemplates';
 import { contractDocumentTitle, contractFileName, contractPdfBlob } from '../src/contractPdf';
 import { templateForSale, TEMPLATE_FIELDS, layoutOf, layoutTokens } from '../shared/contractTemplate.js';
@@ -142,7 +142,7 @@ const NewSale: React.FC<NewSaleProps> = ({
       buyPrice: 0,
       price: 0,
       accountId: mainAccount ? mainAccount.id : (accounts.length > 0 ? accounts[0].id : ''),
-      startDate: new Date().toISOString().split('T')[0],
+      startDate: toInputDate(new Date()),
       paymentDate: '',
       paymentDay: '',
       downPayment: 0,
@@ -170,10 +170,10 @@ const NewSale: React.FC<NewSaleProps> = ({
       interestRate: initialData.interestRate || 30,
       stockItems: initialData.stockItems || [],
       startDate: initialData.startDate
-        ? new Date(initialData.startDate).toISOString().split('T')[0]
-        : new Date().toISOString().split('T')[0],
+        ? inputDateOf(initialData.startDate)
+        : toInputDate(new Date()),
       paymentDate: initialData.paymentDate
-        ? new Date(initialData.paymentDate).toISOString().split('T')[0]
+        ? inputDateOf(initialData.paymentDate)
         : '',
       roundingMode: initialData.roundingMode || 'NONE',
     };
@@ -252,7 +252,7 @@ const impliedOriginalPaymentDate = useMemo(() => {
   if (!initialData.paymentDay || !initialData.startDate) return '';
   // Формула обязана совпадать с эффектом автозаполнения выше, иначе сравнение
   // «менял ли пользователь дату вручную» начнёт врать. Обе используют addMonthsClamped.
-  const base = addMonthsClamped(new Date(initialData.startDate), 1);
+  const base = addMonthsClamped(dateFromInput(initialData.startDate), 1);
   const lastDay = new Date(base.getFullYear(), base.getMonth() + 1, 0).getDate();
   base.setDate(Math.min(Number(initialData.paymentDay), lastDay));
   return toInputDate(base);
@@ -304,7 +304,7 @@ const impliedOriginalPaymentDate = useMemo(() => {
     // «переливается» в следующий месяц (31 января + 1 мес = 3 марта, потому что
     // 31 февраля не существует). Хелпер прижимает день к последнему числу месяца.
     const next = toInputDate(addMonthsClamped(parseInputDate(formData.startDate), 1));
-    setFormData(prev => (prev.paymentDate === next ? prev : { ...prev, paymentDate: next, paymentDay: String(new Date(next).getDate()) }));
+    setFormData(prev => (prev.paymentDate === next ? prev : { ...prev, paymentDate: next, paymentDay: String(parseInputDate(next).getDate()) }));
   }, [formData.startDate, initialData.id]);
 
   // 🔹 1. Базовая цена (Закуп + Наценка)
@@ -515,7 +515,7 @@ const impliedOriginalPaymentDate = useMemo(() => {
     setFormData(prev => ({
       ...prev,
       paymentDate: dateVal,
-      paymentDay: dateVal ? new Date(dateVal).getDate().toString() : ''
+      paymentDay: dateVal ? parseInputDate(dateVal).getDate().toString() : ''
     }));
   };
 
@@ -635,21 +635,26 @@ const impliedOriginalPaymentDate = useMemo(() => {
 
     try {
       const pDay = formData.paymentDate
-        ? new Date(formData.paymentDate).getDate()
-        : new Date(formData.startDate).getDate();
+        ? dateFromInput(formData.paymentDate).getDate()
+        : dateFromInput(formData.startDate).getDate();
 
       const saleId = formData.id
         || (newSaleIdRef.current ??= `sale_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`);
 
       let finalStartDate = formData.startDate;
       const now = new Date();
-      const selectedDate = new Date(formData.startDate);
+      const selectedDate = dateFromInput(formData.startDate);
       const isToday = selectedDate.getDate() === now.getDate() &&
                       selectedDate.getMonth() === now.getMonth() &&
                       selectedDate.getFullYear() === now.getFullYear();
 
       if (isToday) {
         finalStartDate = now.toISOString();
+      } else if (formData.startDate) {
+        // Полдень выбранного дня: «2026-10-12» читается как полночь по Гринвичу и в поясах
+        // западнее него показывалось 11-м; полдень — тот же день в любом поясе
+        selectedDate.setHours(12, 0, 0, 0);
+        finalStartDate = selectedDate.toISOString();
       }
 
       const submissionData = {
