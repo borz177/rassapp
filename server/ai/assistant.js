@@ -243,6 +243,16 @@ const EXCEL_REPORT_TOOL = {
     account: { type: 'string', description: 'Только по счёту: название или id из list_accounts' },
   },
 };
+// База клиентов Excel — строка на клиента; файл собирает приложение (shared/excelReport.js
+// buildCustomersExcel), здесь — только сколько клиентов попадёт (тот же buildCustomerRows)
+const CUSTOMERS_REPORT_TOOL = {
+  name: 'customers_report',
+  description: 'База клиентов в Excel — строка на клиента: ФИО, телефоны, адрес, паспорт, дата рождения, заметка, число договоров, остаток долга, просрочка. «Выгрузи базу клиентов», «файл с клиентами», «все данные клиентов», «должники списком в Excel». Под ответом карточка «Скачать». Договоры и платежи по периодам — excel_report.',
+  input: {
+    onlyActive: { type: 'boolean', description: 'Только клиенты с действующими договорами' },
+    onlyOverdue: { type: 'boolean', description: 'Только клиенты с просрочкой' },
+  },
+};
 // Удаление договора — по нажатию «Удалить», и делает его приложение (тем же
 // handleDeleteSale, что вручную: возврат взноса, закуп, склад, совместные счета)
 const DELETE_CONTRACT_TOOL = {
@@ -480,7 +490,7 @@ const TOOL_WORDS = {
   create_customer: 'новый клиент', update_customer: 'карточка клиента', update_expense: 'исправление расхода',
   delete_payment: 'удаление платежа', delete_expense: 'удаление расхода', delete_contract: 'удаление договора',
   create_task: 'задача', send_reminder: 'напоминание', remind_all_overdue: 'напоминания должникам',
-  send_document: 'отправка документа', excel_report: 'отчёт Excel', prepare_contract: 'черновик договора',
+  send_document: 'отправка документа', excel_report: 'отчёт Excel', customers_report: 'база клиентов', prepare_contract: 'черновик договора',
   set_guarantor: 'поручитель', change_payment_date: 'перенос графика', update_contract: 'правка договора', ask_choice: 'вопрос с вариантами', whoami: 'данные аккаунта',
   cash_forecast: 'прогноз поступлений', compare_periods: 'сравнение периодов', sales_breakdown: 'разбивка договоров', monthly_report: 'отчёт по месяцам', collection_queue: 'очередь взыскания', promise_payment: 'обещание оплаты',
   send_collection_message: 'письмо должнику', payoff_quote: 'расчёт досрочного погашения', early_payoff: 'досрочное погашение',
@@ -600,7 +610,7 @@ const PROMISE_RE = /нажм(ите|и)[^.\n]{0,20}«?(Подтвердить|О
 // Основные инструменты для повтора с обязательным вызовом (см. forceTool в replyText)
 const FORCE_TOOL_NAMES = new Set(['customer_overview', 'create_payment', 'record_payments', 'prepare_contract', 'ask_choice', 'send_document',
   'due_payments', 'list_payments', 'change_payment_date', 'create_expense', 'collection_queue', 'cash_forecast', 'get_summary', 'early_payoff', 'update_contract']);
-const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'delete_contract', 'reschedule', 'template_draft']);
+const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'customers_report', 'delete_contract', 'reschedule', 'template_draft']);
 // Агент отказал: не умеет или отправил делать в приложении — это просьба о новом
 // умении, а не ошибка. Пишем отдельно (cant_do), чтобы видеть, что добавлять
 const CANT_DO_RE = /(не умею|не могу|недоступн|не поддержива|нет (такой |этой )?возможност|пока нельзя|нельзя (сделать|изменить|удалить)|(делается|правят|правится|меняется|меняют|исправ[а-яё]+) в (самом )?приложени|в приложении вручную|не входит в мои)/i;
@@ -614,7 +624,7 @@ const STEP_LABELS = {
   list_expenses: 'Смотрю расходы…', list_products: 'Смотрю склад…', list_investors: 'Смотрю инвесторов…',
   get_summary: 'Считаю итоги…', whoami: 'Смотрю аккаунт…',
   update_customer: 'Меняю карточку клиента…', create_task: 'Добавляю задачу…', send_reminder: 'Готовлю напоминание…',
-  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…', delete_contract: 'Смотрю договор…', set_guarantor: 'Записываю поручителя…', change_payment_date: 'Считаю новый график…', update_contract: 'Смотрю договор…',
+  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…', customers_report: 'Собираю базу клиентов…', delete_contract: 'Смотрю договор…', set_guarantor: 'Записываю поручителя…', change_payment_date: 'Считаю новый график…', update_contract: 'Смотрю договор…',
   delete_payment: 'Готовлю удаление платежа…', update_expense: 'Исправляю расход…', delete_expense: 'Готовлю удаление расхода…',
   create_payment: 'Провожу платёж…', create_expense: 'Записываю расход…', create_income: 'Записываю приход…',
   create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…', create_contract_template: 'Читаю образец, до минуты…',
@@ -1953,9 +1963,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении. «Удали договор» — delete_contract (договор через customer_overview; несколько — ask_choice): под ответом карточка «Удалить», скажи «Проверьте и нажмите «Удалить» — удаление не отменить».',
     'НЕСКОЛЬКО ФОТО — подписаны «Фото 1», «Фото 2»… по порядку. «Первый — клиент, второй — поручитель»: договор — prepare_contract, newCustomer — с фото клиента, поручитель — guarantorName с фото поручителя (буква в букву) и guarantorPhoto — его номер. Не перепутай, чей паспорт на каком фото; неясно — спроси.',
     'ПОРУЧИТЕЛЬ И ГРАФИК. Фото паспорта и «это поручитель (по договору …)», «добавь поручителя» — set_guarantor (не создавай клиента!): в договор ФИО (с фото — буква в букву) и телефон, если человек его назвал; фото само ляжет в документы клиента. «Перенеси первый платёж на …», «сдвинь дату платежа», «отсрочка на месяц» — change_payment_date с датой ГГГГ-ММ-ДД (отсрочку считай от ближайшего платежа по графику); скажи «Проверьте и нажмите «Перенести»».',
+    'ПРИЛОЖЕНИЕ. Кнопки, разделы и экраны приложения называй, только если они есть в этих правилах или в ответе инструмента — не выдумывай («там есть кнопка экспорта»). Не знаешь, где это в приложении, — так и скажи и предложи «Настройки» → «Обучение» (инструкции со снимками экрана). Не можешь сделать сам — честно скажи, что такого умения пока нет; не ссылайся на «ограничения доступа» или тариф, если инструмент этого не сообщил.',
     'ПРАВКА ДОГОВОРА. «Исправь товар на …», «поменяй закуп на …», «добавь комментарий в договор», «договор оформили не на того — переведи на …» — update_contract: только меняющиеся поля, другой клиент — его customerId из customer_overview (не создавай нового, если он есть). Деньги клиента и график не трогает; цена/наценка/срок — restructure_contract или в приложении. Карточка всегда ждёт «Подтвердить»; назови, что изменится, из её текста.',
     'ПРОВЕРКА КЛИЕНТА. «Стоит ли давать …», «надёжный ли …», «как платит …» — customer_overview, ответ по history: сколько договоров и закрыто, сколько платежей с опозданием и самое долгое, есть ли просрочка сейчас. Вывод одной фразой (платит аккуратно / бывают опоздания / сейчас должник), решение — за человеком. Клиента нет в базе — скажи, что истории нет.',
-    'ПРОГНОЗ. «Сколько придёт на неделе / в этом месяце», «какой прогноз», «хватит ли денег» — cash_forecast (days: неделя — 7, месяц — до конца месяца или 30): ожидаемо по графику, реалистично (по аккуратности клиентов) и по неделям; просрочку называй отдельно — её в прогнозе нет; кто часто опаздывает (risky) — одной строкой. Один названный месяц («в ноябре», «в следующем месяце») — cash_forecast с month: ГГГГ-ММ (весь месяц). count — число платежей, customers — число клиентов: «N клиентов» — только из customers. Месяц с fullMonth: false обрезан — не называй его суммой «за месяц». «По месяцам», «до конца договоров», «распиши, сколько получу» — cash_forecast с untilEnd: true, месяцы и суммы — ровно из byMonth: не досчитывай, не округляй по-своему, месяцев сверх byMonth не называй. «Ожидаемая прибыль» — expectedProfit (за месяц — profit в byMonth). Человек усомнился («точно все?», «почему не все») — вызови инструмент снова; цифры по памяти не исправляй и не пиши «перепроверил», если не вызывал.',
+    'ПРОГНОЗ. «Сколько придёт на неделе / в этом месяце», «какой прогноз», «хватит ли денег», а также прибыль вперёд — «ожидаемая прибыль», «прибыль с платежей в ноябре», «сколько заработаю в следующем месяце», «прогноз прибыли» — cash_forecast (days: неделя — 7, месяц — до конца месяца или 30): ожидаемо по графику, реалистично (по аккуратности клиентов) и по неделям; просрочку называй отдельно — её в прогнозе нет; кто часто опаздывает (risky) — одной строкой. Один названный месяц («в ноябре», «в следующем месяце») — cash_forecast с month: ГГГГ-ММ (весь месяц). count — число платежей, customers — число клиентов: «N клиентов» — только из customers. Месяц с fullMonth: false обрезан — не называй его суммой «за месяц». «По месяцам», «до конца договоров», «распиши, сколько получу» — cash_forecast с untilEnd: true, месяцы и суммы — ровно из byMonth: не досчитывай, не округляй по-своему, месяцев сверх byMonth не называй. Спросили прибыль — назови её числом сразу: expectedProfit (за один месяц — profit в byMonth) — это наценка в платежах по графику; не переспрашивай «какой показатель», не предлагай вместо ответа Excel и не говори, что прибыль бывает только по факту. Человек усомнился («точно все?», «почему не все») — вызови инструмент снова; цифры по памяти не исправляй и не пиши «перепроверил», если не вызывал.',
     'ГДЕ ЧТО В ПРИЛОЖЕНИИ (не выдумывай разделы и кнопки; не знаешь — так и скажи). Этот чат — фиолетовый шар в шапке рядом с поиском, на любом экране (на компьютере — «FinUchetGPT» в меню слева под поиском); уведомление утренней сводки тоже открывает чат. Закят — Главная → плитка «В обороте» → «Закят» (расчёт и запись выплаты). Свой образец договора — Настройки → Печатная форма. WhatsApp — Настройки → WhatsApp. Подсказки и утренняя сводка агента — меню «⋯» в этом чате → Настройки.',
     'ПОЧЕМУ. «Почему упала прибыль / сборы», «сравни с прошлым месяцем», «откуда такие расходы», «стало лучше или хуже» — compare_periods (без дат — месяц по сегодня против того же отрезка прошлого; «за сентябрь против августа» — полные месяцы в from/to и compareFrom/compareTo). Ответ: сначала главное изменение одной фразой с цифрами обоих периодов, потом 2–4 причины из drivers по величине — статьи расходов (expenseCategories, biggestExpenses), закуп по новым договорам (purchases, newContracts), кто перестал платить (stoppedPaying — ФИО и сколько платил), просрочка на конец периода. Причин не выдумывай: нет в drivers — не называй; данных мало — так и скажи.',
     'ВЗЫСКАНИЕ. «Кому звонить» (и «кому сегодня звонить»), «по долгам», «кто не платит, что делать», «разбери просрочку» — collection_queue, а не due_payments (тот — кто должен внести по графику в эти дни): строкой на клиента — ФИО — товар — просрочка и дни — что сделать (сорвал обещание → позвонить; soft → мягко напомнить; firm → настойчиво, попросить дату оплаты; final → претензия). Клиент обещал заплатить («обещал 10 000 до пятницы», «заплатит 25-го») — promise_payment: сумма и дата ГГГГ-ММ-ДД (дни недели считай от сегодняшней даты); суммы нет — спроси, не подставляй. Письмо должнику — send_collection_message с текстом, который пишешь сам по стадии договора из collection_queue: обращение по имени, товар и сумма просрочки из данных, просьба оплатить или назвать дату; soft — вежливо, firm — твёрдо, final — официально: срок оплаты и что иначе продавец будет вынужден обратиться в суд. Без угроз и давления, без упоминаний работы, родственников, полиции и коллекторов, без выдуманных реквизитов и сумм. Сначала collection_queue (стадия), потом письмо. «Напиши …», «составь письмо», названный тон («вежливо», «построже», «официально», «претензию») — это send_collection_message; send_reminder (шаблон из настроек) — только «отправь/напомни» без слов о тексте и тоне.',
@@ -1964,7 +1975,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'ДОСРОЧНОЕ ПОГАШЕНИЕ. «Сколько закрыть досрочно», «какую скидку можно дать» — payoff_quote: остаток, наценка в остатке (скидка больше неё — договор уйдёт ниже закупа), сумма со скидкой. Клиент гасит или закрывает договор («гасит всё», «закрывает полностью», «закрой со скидкой 10 процентов / 5000») — сразу early_payoff (скидка в процентах от остатка или в рублях; без скидки — весь остаток), payoff_quote перед ним не нужен — сумма будет в карточке; карточка всегда ждёт «Подтвердить». Скидку сам не предлагай, если о ней не спросили.',
     'РЕСТРУКТУРИЗАЦИЯ. «Разбей остаток на 6 месяцев», «уменьши платёж — растяни на год», «клиенту тяжело, сделай платёж поменьше» — restructure_contract: months и дата первого нового платежа; дата не названа — ближайший неоплаченный платёж по графику (customer_overview, nextPayment), если он не в прошлом, иначе спроси. Новый платёж в месяц назови из карточки. Карточка всегда ждёт «Подтвердить». Только сдвинуть дату без смены срока — change_payment_date.',
     'СКЛАД И МАГАЗИН. Товар — id из list_products (ищи по-русски и по-английски). «Пришёл товар от …», «оприходуй» — stock_receive (поставщик обязателен — не назван, спроси; цена закупа за штуку — если назвали). «Спиши …» — stock_write_off с причиной (Порча, Брак, Потеря, Недостача, Другое; не названа — спроси через ask_choice). «Продал за наличные / картой …» — retail_sale (цена из каталога, если не назвали другую). Рассрочка на товар — prepare_contract, не retail_sale; в долг агент не продаёт. Товара нет в каталоге — скажи, что его сначала заводят в приложении (Склад → Товары).',
-    'ЕЩЁ: update_customer (телефон, адрес, заметка, паспорт), create_task («напомни завтра позвонить» — даты считай от сегодняшней), send_reminder (просрочка в WhatsApp), remind_all_overdue (всем должникам, всегда с подтверждением), investor_profit, list_products (склад), excel_report (можно только по инвестору или счёту — investor / account). Если отчёт запрошен за названный месяц, передай полный календарный месяц от первого до последнего дня, даже если месяц ещё не закончился. Дату сегодня используй как конец только при просьбе «по сегодня».',
+    'ЕЩЁ: update_customer (телефон, адрес, заметка, паспорт), create_task («напомни завтра позвонить» — даты считай от сегодняшней), send_reminder (просрочка в WhatsApp), remind_all_overdue (всем должникам, всегда с подтверждением), investor_profit, list_products (склад), excel_report (можно только по инвестору или счёту — investor / account). «Выгрузи базу клиентов», «файл с клиентами», «все данные клиентов» — customers_report (только должники — onlyOverdue), а не excel_report и не «сделайте в приложении». Если отчёт запрошен за названный месяц, передай полный календарный месяц от первого до последнего дня, даже если месяц ещё не закончился. Дату сегодня используй как конец только при просьбе «по сегодня».',
     'ЛЮДИ ИЗ РАЗГОВОРА («он», «она», «первый клиент», «тот, что на фото») — по фото паспортов и пометкам [Черновик договора …] в истории; нет в базе — снова передай данные в newCustomer. Клиента из базы по порядку или наугад не бери — не уверен, спроси. Фото паспорта без задания — назови, кого распознал, и спроси, что оформить.',
     'ФОТО ЧЕКА (кассовый чек, квитанция, накладная, скрин оплаты) — это расход: create_expense. Сумма — ИТОГ к оплате (не строка товара и не сдача), дата — с чека (нет — сегодня), title — коротко что это («Бензин», «Аренда офиса», «Чехлы для телефонов»), description — магазин и главное из покупки, category — из тех, что уже есть в расходах (list_expenses), не подходит ни одна — «Прочее». Счёт — по правилу расходов. Итог не читается или чек — не оплата (паспорт, договор, просто фото) — не выдумывай, спроси. Такой расход всегда ждёт «Подтвердить» — одной фразой назови сумму, дату и что куплено.',
     'ПОХОЖИЕ ИМЕНА. Инструмент вернул suggestions (точного совпадения нет) — не проси написать заново, а сразу ask_choice «Возможно, вы имели в виду:» с этими вариантами (label — ФИО и последние 4 цифры телефона, ref — id) и последним вариантом «Другой — напишу сам». Так же со счетами и инвесторами из list_accounts / list_investors: названное не совпало дословно, но есть похожее — варианты кнопками.',
@@ -2143,6 +2154,14 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     const due = Math.round(collections.openRows(sale)[0]?.open || 0);
     if (!(due >= 1 && due < left)) return null;
     return { question: lines.slice(0, qi + 1).join('\n'), options: [{ label: `Платёж по графику — ${money(due)}` }, { label: `Весь остаток — ${money(left)}` }] };
+  };
+  // Сколько клиентов попадёт в «Базу клиентов» — тем же кодом, что соберёт файл в приложении
+  let excelModule = null;
+  const customersCount = async (userId, args) => {
+    excelModule ||= import(require('url').pathToFileURL(require('path').join(__dirname, '..', '..', 'shared', 'excelReport.js')).href);
+    const { buildCustomerRows } = await excelModule;
+    const [customers, sales, investors] = await Promise.all(['customers', 'sales', 'investors'].map(t => loadItems(userId, t)));
+    return buildCustomerRows({ customers, sales, investors }, { onlyActive: !!args.onlyActive, onlyOverdue: !!args.onlyOverdue }).length;
   };
   const unaskedPayoff = async (userId, args, userText) => {
     const sale = await loadItem(userId, 'sales', args.contractId);
@@ -2538,7 +2557,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       { role: 'user', content },
     ];
     const tools = [...TOOLS.map(toOpenAiTool), ...RECONCILIATION_TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(CREATE_TEMPLATE_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL),
-      ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL,
+      ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL, CUSTOMERS_REPORT_TOOL,
         DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL, SET_GUARANTOR_TOOL, CHANGE_PAYMENT_DATE_TOOL, UPDATE_CONTRACT_TOOL,
         COLLECTION_QUEUE_TOOL, PROMISE_PAYMENT_TOOL, COLLECTION_MESSAGE_TOOL, PAYOFF_QUOTE_TOOL, EARLY_PAYOFF_TOOL, RESTRUCTURE_TOOL,
         STOCK_RECEIVE_TOOL, STOCK_WRITE_OFF_TOOL, RETAIL_SALE_TOOL, RECORD_PAYMENTS_TOOL].map(toOpenAiTool)]
@@ -2860,6 +2879,12 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
             args.buyPrice = Number(args.totalPrice);
             delete args.totalPrice;
           }
+          // Наценку человек не называл, а платёж в месяц назвал — модель подставляла «наценка 0»
+          // (ai:gate 27.10), и цена бралась не из платежа × срок. Выдуманную наценку не берём
+          if (args.markupPercent != null && Number(args.monthlyPayment) > 0 && !saidTexts.some(t => /наценк|%|процент/i.test(String(t || '')))) {
+            flag(user.id, 'guard_markup_unsaid', { tool: name, question: text, detail: String(args.markupPercent) });
+            delete args.markupPercent;
+          }
           // Наценка названа, а число без слова «закуп» («117000 / 25%») модель положила в цену:
           // с наценкой цену считает форма, значит число — закуп (разговор с прода 23.10)
           if (!(Number(args.buyPrice) > 0) && Number(args.totalPrice) > 0 && args.markupPercent != null && Number(args.markupPercent) > 0
@@ -3028,6 +3053,16 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
               ...(scope ? { accountIds: scope.accountIds, scopeLabel: scope.label } : {}),
               summary: `${period.length ? `За ${period.join(' — ')}` : 'За всё время'}${scope ? ` · ${scope.label}` : ''}${args.onlyActive ? ', только действующие договоры' : ''}` });
             result = 'Под ответом карточка «Скачать» — отчёт соберёт приложение. Скажи коротко, что отчёт готов к скачиванию.';
+          }
+        } else if (name === 'customers_report') {
+          const n = await customersCount(user.id, args);
+          if (!n) {
+            result = args.onlyOverdue ? 'Клиентов с просрочкой нет — файл не нужен.' : 'Таких клиентов в базе нет — файл не нужен.';
+          } else {
+            const what = args.onlyOverdue ? 'с просрочкой' : args.onlyActive ? 'с действующими договорами' : 'все';
+            actions.push({ id: newActionId(), kind: 'customers_report', title: 'База клиентов Excel', onlyActive: !!args.onlyActive, onlyOverdue: !!args.onlyOverdue,
+              summary: `Клиенты ${what}: ${n} — ФИО, телефоны, адрес, паспорт, договоры, долг и просрочка` });
+            result = `Под ответом карточка «Скачать» — файл соберёт приложение, в нём ${n} клиентов (${what}). Скажи коротко, что файл готов к скачиванию.`;
           }
         } else if (name === 'change_payment_date') {
           result = readOnly ? READ_ONLY_TEXT : await prepareReschedule(user.id, args, actions);

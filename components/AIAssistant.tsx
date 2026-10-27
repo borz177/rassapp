@@ -67,6 +67,7 @@ interface Props {
   onShowContract: (saleId: string, customerId?: string) => void;
   /** Отчёт Excel за период — собрать и сохранить (по нажатию «Скачать») */
   onExportReport: (opts: { from: string | null; to: string | null; onlyActive?: boolean; accountIds?: string[]; scopeLabel?: string }) => Promise<{ ok: boolean; text: string }>;
+  onExportCustomers: (opts: { onlyActive?: boolean; onlyOverdue?: boolean }) => Promise<{ ok: boolean; text: string }>;
   whatsappEnabled: boolean;
   /** Счёт, на который ляжет договор: названный агентом или по умолчанию (как при оформлении) */
   contractAccountName?: (draft: any) => string;
@@ -297,7 +298,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onOpenTemplate, onReschedule }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, onExportCustomers, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onOpenTemplate, onReschedule }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -1164,9 +1165,11 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     if (r.ok) onDataChanged();
   };
   const downloadReport = async (msgId: string, a: Action) => {
-    if (a.kind !== 'report') return;
+    if (a.kind !== 'report' && a.kind !== 'customers_report') return;
     patchAction(msgId, a.id, { state: 'busy' });
-    const r = await onExportReport({ from: a.from, to: a.to, onlyActive: a.onlyActive, accountIds: a.accountIds, scopeLabel: a.scopeLabel });
+    const r = a.kind === 'customers_report'
+      ? await onExportCustomers({ onlyActive: a.onlyActive, onlyOverdue: a.onlyOverdue })
+      : await onExportReport({ from: a.from, to: a.to, onlyActive: a.onlyActive, accountIds: a.accountIds, scopeLabel: a.scopeLabel });
     patchAction(msgId, a.id, { state: r.ok ? 'done' : 'error', result: r.text });
   };
 

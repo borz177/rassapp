@@ -23,6 +23,7 @@ const MONEY_FORMAT = '#,##0';
 const OVERVIEW_MONEY_COLUMNS = [
     'Цена закупа', 'Цена рассрочки', 'Прибыль', 'Взнос', 'Остаток долга', 'Просрочка'
 ];
+const CUSTOMER_MONEY_COLUMNS = ['Сумма договоров', 'Остаток долга', 'Просрочка'];
 const INVESTOR_MONEY_COLUMNS = [
     'Сумма договоров', 'Закуп', 'Прибыль', 'Получено', 'Остаток долга'
 ];
@@ -91,6 +92,37 @@ const applySheetViewSettings = (XLSX, base64) => {
 };
 
 /**
+ * Долг и просрочка договора — одни и те же для «Обзора клиентов» и «Базы клиентов».
+ * Просрочка: сколько по графику должно было быть оплачено к сегодняшнему дню
+ * (плановые строки, дата которых уже прошла) против фактически полученных денег.
+ * Первый непокрытый месяц даёт дату, от которой считаются дни задержки.
+ */
+const saleDebt = (sale, nowTs) => {
+    const paymentPlan = sale.paymentPlan || [];
+    const totalRealPaid = paymentPlan
+        .filter(p => p.isRealPayment && p.isPaid)
+        .reduce((sum, p) => sum + (p.amount || 0), 0);
+    const currentDebt = Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - totalRealPaid);
+    const scheduledSorted = paymentPlan
+        .filter(p => !p.isRealPayment)
+        .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
+    let dueByNow = 0;
+    let cumulative = 0;
+    let firstUnpaidDate = null;
+    for (const m of scheduledSorted) {
+        if (new Date(m.date).getTime() <= nowTs) dueByNow += m.amount || 0;
+        cumulative += m.amount || 0;
+        if (!firstUnpaidDate && cumulative > totalRealPaid + 0.01) firstUnpaidDate = m.date;
+    }
+    const overdueAmount = Math.max(0, dueByNow - totalRealPaid);
+    let overdueDays = 0;
+    if (sale.status !== 'COMPLETED' && overdueAmount > 0.01 && firstUnpaidDate) {
+        overdueDays = Math.max(0, Math.floor((nowTs - new Date(firstUnpaidDate).getTime()) / 86400000));
+    }
+    return { totalRealPaid, currentDebt, overdueAmount, overdueDays };
+};
+
+/**
  * Считает строки всех листов. Вынесено отдельно от сборки книги, чтобы логику
  * можно было проверить без библиотеки xlsx.
  *
@@ -155,11 +187,7 @@ export function buildReportRows(data, options = {}) {
         const statusStr = sale.status === 'COMPLETED' ? 'Завершен' : (sale.status === 'DRAFT' ? 'Оформлен' : 'Активен');
         const paymentPlan = sale.paymentPlan || [];
 
-        const totalRealPaid = paymentPlan
-            .filter(p => p.isRealPayment && p.isPaid)
-            .reduce((sum, p) => sum + (p.amount || 0), 0);
-
-        const currentDebt = Math.max(0, (sale.totalAmount || 0) - (sale.downPayment || 0) - totalRealPaid);
+        const { currentDebt, overdueAmount, overdueDays } = saleDebt(sale, nowTs);
         totalClientDebt += currentDebt;
 
         const revenue = sale.totalAmount || 0;
@@ -171,26 +199,6 @@ export function buildReportRows(data, options = {}) {
         if (hasBuyPrice) {
             totalBuyPrice += buyPrice;
             totalProfit += profit;
-        }
-
-        // Просрочка: сколько по графику должно было быть оплачено к сегодняшнему дню
-        // (плановые строки, дата которых уже прошла) против фактически полученных денег.
-        // Первый непокрытый месяц даёт дату, от которой считаются дни задержки.
-        const scheduledSorted = paymentPlan
-            .filter(p => !p.isRealPayment)
-            .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
-        let dueByNow = 0;
-        let cumulative = 0;
-        let firstUnpaidDate = null;
-        for (const m of scheduledSorted) {
-            if (new Date(m.date).getTime() <= nowTs) dueByNow += m.amount || 0;
-            cumulative += m.amount || 0;
-            if (!firstUnpaidDate && cumulative > totalRealPaid + 0.01) firstUnpaidDate = m.date;
-        }
-        const overdueAmount = Math.max(0, dueByNow - totalRealPaid);
-        let overdueDays = 0;
-        if (sale.status !== 'COMPLETED' && overdueAmount > 0.01 && firstUnpaidDate) {
-            overdueDays = Math.max(0, Math.floor((nowTs - new Date(firstUnpaidDate).getTime()) / 86400000));
         }
 
         // Совместный договор (shared/funding.js): в итогах каждого инвестора — его доля
@@ -410,4 +418,80 @@ export function buildExcelReport(XLSX, data, options = {}) {
 
     const base64 = applySheetViewSettings(XLSX, XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }));
     return { base64, salesCount: rows.filteredSalesCount };
+}
+
+/**
+ * База клиентов — по строке на клиента: контакты, паспорт, договоры, долг и просрочка.
+ * Нужна, когда просят «выгрузи базу клиентов» (агент, customers_report): в «Обзоре
+ * клиентов» строка — договор, клиентов без договоров и паспортных данных там нет.
+ * Исключения — как у отчёта: системные записи и инвесторы в роли клиента.
+ *
+ * @param {{customers: any[], sales: any[], investors?: any[]}} data
+ * @param {{onlyActive?: boolean, onlyOverdue?: boolean, now?: number}} options
+ *   onlyActive — только с действующими договорами, onlyOverdue — только с просрочкой
+ */
+export function buildCustomerRows(data, options = {}) {
+    const nowTs = options.now || Date.now();
+    const investorIds = new Set((data.investors || []).map(i => i.id));
+    const salesOf = new Map();
+    for (const sale of data.sales || []) {
+        const id = String(sale.customerId || '');
+        if (!id || id.startsWith('system_') || investorIds.has(id)) continue;
+        if (!salesOf.has(id)) salesOf.set(id, []);
+        salesOf.get(id).push(sale);
+    }
+    const day = (d) => {
+        if (!d) return '';
+        const m = String(d).match(/^(\d{4})-(\d{2})-(\d{2})/);
+        return m ? `${m[3]}.${m[2]}.${m[1]}` : new Date(d).toLocaleDateString('ru-RU');
+    };
+    const rows = [];
+    for (const c of data.customers || []) {
+        if (String(c.id || '').startsWith('system_') || investorIds.has(c.id)) continue;
+        const own = salesOf.get(c.id) || [];
+        const active = own.filter(s => s.type === 'INSTALLMENT' && s.status !== 'COMPLETED');
+        let debt = 0, overdue = 0;
+        for (const s of active) {
+            const d = saleDebt(s, nowTs);
+            debt += d.currentDebt;
+            if (d.overdueDays > 0) overdue += d.overdueAmount;
+        }
+        if (options.onlyActive && !active.length) continue;
+        if (options.onlyOverdue && !(overdue >= 1)) continue;
+        const first = own.map(s => new Date(s.startDate).getTime()).filter(Number.isFinite).sort((a, b) => a - b)[0];
+        rows.push({
+            'Клиент': c.name || '',
+            'Телефон': c.phone || '',
+            'Доп. телефоны': (c.extraPhones || []).map(p => (typeof p === 'string' ? p : p?.phone)).filter(Boolean).join(', '),
+            'Адрес': c.address || '',
+            'Дата рождения': day(c.birthDate),
+            'Паспорт': [c.passportSeries, c.passportNumber].filter(Boolean).join(' '),
+            'Кем выдан': c.passportIssuedBy || '',
+            'Договоров': own.length,
+            'Действующих': active.length,
+            'Сумма договоров': Math.round(own.filter(s => s.type === 'INSTALLMENT').reduce((sum, s) => sum + (s.totalAmount || 0), 0)),
+            'Остаток долга': Math.round(debt),
+            'Просрочка': Math.round(overdue),
+            'Первый договор': first ? new Date(first).toLocaleDateString('ru-RU') : '',
+            'Заметка': c.notes || '',
+        });
+    }
+    return rows.sort((a, b) => a['Клиент'].localeCompare(b['Клиент'], 'ru'));
+}
+
+/**
+ * Книга «База клиентов» в base64, как buildExcelReport.
+ * @returns {{base64: string|null, count: number}} base64 === null, если клиентов нет
+ */
+export function buildCustomersExcel(XLSX, data, options = {}) {
+    const rows = buildCustomerRows(data, options);
+    if (!rows.length) return { base64: null, count: 0 };
+    const wb = XLSX.utils.book_new();
+    const ws = XLSX.utils.json_to_sheet(rows);
+    ws['!cols'] = calculateColumnWidths(rows);
+    ws['!autofilter'] = autofilterRef(XLSX, rows);
+    applyMoneyFormat(XLSX, ws, rows, CUSTOMER_MONEY_COLUMNS);
+    XLSX.utils.book_append_sheet(wb, ws, 'База клиентов');
+    const base64 = applySheetViewSettings(XLSX, XLSX.write(wb, { type: 'base64', bookType: 'xlsx' }));
+    return { base64, count: rows.length };
 }

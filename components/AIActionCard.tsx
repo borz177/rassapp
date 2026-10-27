@@ -31,6 +31,9 @@ export type AIAction =
       /** Отчёт по одному инвестору или счёту */
       accountIds?: string[]; scopeLabel?: string;
       state?: 'busy' | 'done' | 'error'; result?: string }
+  /** База клиентов Excel — строка на клиента; файл собирает приложение (buildCustomersExcel) */
+  | { id: string; kind: 'customers_report'; title: string; summary: string; onlyActive?: boolean; onlyOverdue?: boolean;
+      state?: 'busy' | 'done' | 'error'; result?: string }
   /** Удалить договор — по нажатию, всё делает приложение (handleDeleteSale) */
   | { id: string; kind: 'delete_contract'; title: string; summary: string; saleId: string; note?: string;
       state?: 'busy' | 'done' | 'error' | 'cancelled'; result?: string }
@@ -192,7 +195,7 @@ const AIActionCard: React.FC<Props> = (p) => {
     );
   }
 
-  if (a.kind === 'report') {
+  if (a.kind === 'report' || a.kind === 'customers_report') {
     return (
       <div className={shell}>
         {title}

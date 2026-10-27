@@ -305,6 +305,46 @@ global.fetch = async (...args) => {
         await cancel(r);
         return (r.actions || []).some(x => x.kind === 'reschedule') && !card(r, 'update_contract');
       }],
+      // Прод 26.10 (…210654): «база клиентов» — агент трижды сослался на несуществующую кнопку экспорта
+      ['«Подготовь файл база клиентов» → карточка базы клиентов, без выдуманной кнопки', async () => {
+        const r = await say('Подготовь файл база клиентов');
+        return !!(r.actions || []).find(a => a.kind === 'customers_report') && !/кнопк[а-я]*\s+экспорт|в разделе «?Клиенты»?/i.test(r.reply);
+      }],
+      ['Прод 26.10: «Нет там этого» после выдуманной кнопки → файл, без «ограничений доступа»', async () => {
+        const history = [{ role: 'user', text: 'Все данные клиентов' },
+          { role: 'assistant', text: 'Я не могу выгрузить всю базу клиентов одним файлом через чат. Вы можете сделать это самостоятельно в приложении: перейдите в раздел «Клиенты» — там есть кнопка экспорта в Excel.' }];
+        const r = await say('Нет там этого', 'confirm', history);
+        return !!(r.actions || []).find(a => a.kind === 'customers_report') && !/ограничен|тариф/i.test(r.reply);
+      }],
+      ['«Должников списком в Excel» → база клиентов только с просрочкой', async () => {
+        const r = await say('скинь мне должников списком в эксель');
+        const a = (r.actions || []).find(x => x.kind === 'customers_report');
+        return !!a && a.onlyOverdue === true;
+      }],
+      ['Сосед: «Отчёт по договорам за октябрь» → отчёт по договорам, не база клиентов', async () => {
+        const r = await say('сделай отчёт по договорам и платежам за октябрь в Excel');
+        return (r.actions || []).some(a => a.kind === 'report') && !(r.actions || []).some(a => a.kind === 'customers_report');
+      }],
+      // Прод 24.10 (…643777): «ожидаемая прибыль с платежей в ноябре» — переспросы и Excel вместо цифры
+      ...(() => {
+        const next = c.addMonthsDay(`${today.slice(0, 8)}01`, 1, 1).slice(0, 7);
+        const f = c.forecast({ sales: data.sales, customers: data.customers, month: next });
+        const profit = Math.round(f.profit || 0); // month — один месяц: поля месяца сразу (profit, total)
+        const hasProfit = (r) => (r.reply || '').replace(/[\s\u00a0]/g, '').includes(String(profit)) && !(r.actions || []).some(a => a.kind === 'report');
+        const monthRu = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'][Number(next.slice(5)) - 1];
+        return [
+          [`«Ожидаемая прибыль с платежей в ${monthRu}» → прибыль числом (${profit}), без Excel`, async () => {
+            const r = await say(`ожидаемая прибыль с платежей сколько в ${monthRu}?`);
+            return profit > 0 && used(r, 'cash_forecast') && hasProfit(r);
+          }],
+          ['Прод 24.10: «я про ожидаемую прибыль с этих платежей» → прибыль числом, без переспроса', async () => {
+            const history = [{ role: 'user', text: `ожидаемые платежи сколько в ${monthRu}?` },
+              { role: 'assistant', text: `Ожидаемая сумма платежей по графику на ${monthRu.replace(/е$/, 'ь').replace(/ае$/, 'ай')}: ${Math.round(f.total || 0).toLocaleString('ru-RU')} ₽.` }];
+            const r = await say('я про ожидаемую прибыль с этих платежей ?', 'confirm', history);
+            return profit > 0 && hasProfit(r) && !/какой (именно )?показатель/i.test(r.reply);
+          }],
+        ];
+      })(),
       ['Сосед: «Ахмадов оплатил 10 000» → платёж, не правка договора', async () => {
         const r = await say('Ахмадов оплатил 10 000 за телевизор');
         await cancel(r);

@@ -4480,6 +4480,27 @@ const handleQuickAddCustomer = async (data: {
     }
   };
 
+  /** База клиентов Excel по карточке агента — строка на клиента (shared/excelReport.js buildCustomersExcel) */
+  const exportCustomersFromAssistant = async (opts: { onlyActive?: boolean; onlyOverdue?: boolean }): Promise<{ ok: boolean; text: string }> => {
+    try {
+      const [xlsxModule, { buildCustomersExcel }, { saveFile }] = await Promise.all([
+        import('xlsx'), import('./shared/excelReport.js'), import('./src/contractPdf'),
+      ]);
+      const XLSX = (xlsxModule as any).default || xlsxModule;
+      const data = await api.fetchAllData();
+      const { base64, count } = buildCustomersExcel(XLSX, data, { onlyActive: !!opts.onlyActive, onlyOverdue: !!opts.onlyOverdue });
+      if (!base64) return { ok: false, text: 'Таких клиентов нет.' };
+      const bytes = Uint8Array.from(atob(base64), c => c.charCodeAt(0));
+      const mime = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      const what = opts.onlyOverdue ? ' — с просрочкой' : opts.onlyActive ? ' — действующие' : '';
+      await saveFile(new Blob([bytes], { type: mime }), `База клиентов${what} ${new Date().toISOString().slice(0, 10)}.xlsx`, mime);
+      return { ok: true, text: `Файл готов: клиентов — ${count}` };
+    } catch (e: any) {
+      if (isStaleBundleError(e)) { reloadForNewBuild(); return { ok: false, text: 'Приложение обновилось — повторите.' }; }
+      return { ok: false, text: e?.message ? `Не удалось собрать файл: ${e.message}` : 'Не удалось собрать файл.' };
+    }
+  };
+
   /**
    * Перенос даты первого платежа по просьбе агенту — тот же пересчёт графика, что
    * при смене даты в форме договора (regeneratePaymentPlan): полученные платежи
@@ -5516,6 +5537,7 @@ if (!user && !showSplash) {
                         onReschedule={rescheduleFromAssistant}
                         onShowContract={openContractById}
                         onExportReport={exportReportFromAssistant}
+                        onExportCustomers={exportCustomersFromAssistant}
                         whatsappEnabled={!!assistantWhatsApp?.enabled}
                         contractAccountName={(draft: any) => accounts.find((x: Account) => x.id === draftAccountId(draft))?.name || ''}
                       />

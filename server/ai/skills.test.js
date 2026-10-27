@@ -286,6 +286,10 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal(dr?.totalPrice, 147600, JSON.stringify(dr));
     assert.equal(dr.firstPaymentDate, c.addMonthsDay(`${today.slice(0, 8)}01`, 1, 12));
     assert.equal(dr.monthlyPayment, undefined);
+    // Наценку не называли, а модель поставила 0 — цена всё равно из платежа × срок
+    script.push({ tool: 'prepare_contract', args: { customerId: 'cust', productName: 'iPhone 15', months: 12, monthlyPayment: 12300, paymentDay: 12, markupPercent: 0 } }, { content: 'Черновик готов.' });
+    r = await assistant.reply({ user, text: `${said}, айфон 15`, mode: 'confirm', silent: true });
+    assert.equal(r.actions.find(a => a.kind === 'contract_form')?.draft?.totalPrice, 147600);
 
     // Платежи по графику: частично оплаченная строка — к оплате остаток (прод 26.10: «10 000» при внесённых 5 000)
     await ask('Кто должен заплатить?', [{ tool: 'due_payments', args: { includeOverdue: true } }, { content: 'Список.' }]);
@@ -391,6 +395,16 @@ test('умения: реструктуризация, досрочное пог�
     script.push({ content: 'Какую сумму принять?' });
     r = await assistant.reply({ user, text: 'прими платёж от Иванова', mode: 'confirm', silent: true });
     assert.equal(r.actions.some(a => a.kind === 'choices'), false, 'договор не выбран — не угадываем');
+    // База клиентов Excel: карточка «Скачать» с числом клиентов; пусто — без карточки
+    r = await ask('выгрузи базу клиентов', [{ tool: 'customers_report', args: {} }, { content: 'Файл готов к скачиванию.' }]);
+    const base = r.actions.find(a => a.kind === 'customers_report');
+    assert.match(base?.summary || '', /Клиенты все: \d+ — ФИО, телефоны/);
+    assert.equal(base.onlyOverdue, false);
+    await pool.query(`UPDATE data_items SET data = data || '{"status":"COMPLETED"}' WHERE type = 'sales'`);
+    r = await ask('должников в Excel', [{ tool: 'customers_report', args: { onlyOverdue: true } }, { content: 'Должников нет.' }]);
+    assert.equal(r.actions.some(a => a.kind === 'customers_report'), false);
+    assert.match(lastToolResult(), /Клиентов с просрочкой нет/);
+    await pool.query(`UPDATE data_items SET data = data || '{"status":"ACTIVE"}' WHERE type = 'sales'`);
     // Выключатель AI_DISABLED_TOOLS: модель не видит умение, вызов — «выключено», показанная карточка не выполняется
     script.push({ tool: 'update_contract', args: { contractId: 'r', notes: 'до выключения' } }, { content: 'Проверьте.' });
     const before = (await assistant.reply({ user, text: 'комментарий в айфон', mode: 'confirm', silent: true })).actions.find(a => a.tool === 'update_contract');

@@ -121,6 +121,9 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
     };
     // Число клиентов (не рублей) — проверяется отдельно: «81 клиент» вместо 60 (прод 25.10)
     const nextMonthForecast = (() => { const d = new Date(`${monthStart}T12:00:00Z`); d.setUTCMonth(d.getUTCMonth() + 1); return c.forecast({ sales, customers, today, month: d.toISOString().slice(0, 7) }); })();
+    // Прод 24.10 (…643777): «ожидаемая прибыль с платежей сколько в ноябре?» — вместо прибыли сумма платежей по неделям
+    truth[21] = [nextMonthForecast.profit];
+    const nextMonthRu = ['январе', 'феврале', 'марте', 'апреле', 'мае', 'июне', 'июле', 'августе', 'сентябре', 'октябре', 'ноябре', 'декабре'][Number(nextMonthForecast.month.slice(5)) - 1];
     const extraCheck = {
       19: (reply) => new RegExp(`(^|\\D)${nextMonthForecast.customers}\\s*клиент`).test(reply) && !new RegExp(`(^|\\D)${nextMonthForecast.count}\\s*клиент`).test(reply),
       20: (reply) => /закуп|категор|аренд|зарплат|реклам|бензин/i.test(reply) && !/^[^.]*сравн[а-яё]* период/i.test(reply)
@@ -163,6 +166,7 @@ const pick = (a) => a[Math.floor(rnd() * a.length)];
       [18, 'Сколько я заработал в прошлом году?'],
       [19, 'Сколько клиентов должны заплатить в следующем месяце и на какую сумму?'],
       [20, 'Почему у меня касса в минусе?'],
+      [21, `ожидаемая прибыль с платежей сколько в ${nextMonthRu} ?`],
     ];
     const money = (t) => [...String(t).replace(/[  ]/g, ' ').matchAll(/(\d{1,3}(?: \d{3})+|\d{4,})(?:[.,]\d+)?\s*(?:₽|руб|р\.)/g)].map(m => Number(m[1].replace(/ /g, '')));
     const grounded = (n, nums) => nums.some(x => Math.abs(x - n) <= 1);
