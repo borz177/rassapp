@@ -260,6 +260,30 @@ global.fetch = async (...args) => {
           ? ((r.actions || []).some(x => x.kind === 'choices') || /причин|брак|порч/i.test(r.reply)) && !(r.actions || []).some(x => x.kind === 'done')
           : false;
       }],
+      ['«Исправь товар в договоре» → правка договора, ждёт «Подтвердить»', async () => {
+        const r = await say('у Ахмадова в договоре не Samsung, а телевизор LG — исправь название', 'auto');
+        const a = card(r, 'update_contract');
+        await cancel(r);
+        return !!a && a.kind === 'confirm' && /LG/.test(a.summary) && !card(r, 'restructure_contract');
+      }],
+      ['«Закуп был 90 000, а не 100 000» → правка закупа с расходом', async () => {
+        const r = await say('по дивану Дудаевой закуп был 90 000, а не 100 000, поправь');
+        const a = card(r, 'update_contract');
+        await cancel(r);
+        return !!a && /закуп 100\s000\s₽ → 90\s000\s₽/.test(a.summary);
+      }],
+      ['«Договор оформили не на того» → перевод на другого клиента, без нового клиента', async () => {
+        const r = await say('договор на диван по ошибке оформили на Дудаеву, на самом деле это Ахмадова Ахмада — переведи');
+        const a = card(r, 'update_contract');
+        await cancel(r);
+        return !!a && /Дудаева Марьям → Ахмадов Ахмад/.test(a.summary) && !used(r, 'create_customer');
+      }],
+      ['«Добавь комментарий в договор» → комментарий в договор, не в карточку клиента', async () => {
+        const r = await say('добавь в договор телевизора Ахмадова комментарий: гарантия 1 год');
+        const a = card(r, 'update_contract');
+        await cancel(r);
+        return !!a && /гарантия 1 год/i.test(a.summary) && !card(r, 'update_customer');
+      }],
     ];
 
     const only = process.env.AI_EVAL_ONLY ? new Set(process.env.AI_EVAL_ONLY.split(',').map(Number)) : null;

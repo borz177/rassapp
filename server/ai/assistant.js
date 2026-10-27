@@ -273,6 +273,19 @@ const CHANGE_PAYMENT_DATE_TOOL = {
   },
   required: ['contractId', 'firstPaymentDate'],
 };
+// Правка договора без денег клиента и графика — как форма договора в приложении
+const UPDATE_CONTRACT_TOOL = {
+  name: 'update_contract',
+  description: 'Исправить договор: название товара, комментарий, закуп (себестоимость), перевести договор на другого клиента (оформили не на того). Полученные деньги, цена и график не меняются. Срок и платёж в месяц — restructure_contract, дата — change_payment_date, поручитель — set_guarantor, данные самого клиента — update_customer. Передавай только то, что меняется. Всегда ждёт «Подтвердить». Договор — через customer_overview.',
+  input: {
+    contractId: { type: 'string', description: 'id договора' },
+    productName: { type: 'string', description: 'Новое название товара' },
+    notes: { type: 'string', description: 'Комментарий к договору целиком; пустая строка — убрать' },
+    buyPrice: { type: 'number', description: 'Новый закуп, ₽' },
+    customerId: { type: 'string', description: 'id другого клиента из customer_overview — перевести договор на него' },
+  },
+  required: ['contractId'],
+};
 // Исправление ошибок — и старше получаса, когда «Отменить» уже нет
 const DELETE_PAYMENT_TOOL = {
   name: 'delete_payment',
@@ -428,7 +441,7 @@ const RETAIL_SALE_TOOL = {
 };
 // Карточка всегда ждёт «Подтвердить», даже в «Авто»: рассылка многим, деньги
 // со скидкой, весь график, письмо клиенту от имени продавца
-const ALWAYS_CONFIRM = new Set(['remind_all_overdue', 'transfer_contracts', 'early_payoff', 'restructure_contract', 'send_collection_message', 'record_payments']);
+const ALWAYS_CONFIRM = new Set(['remind_all_overdue', 'transfer_contracts', 'early_payoff', 'restructure_contract', 'send_collection_message', 'record_payments', 'update_contract']);
 // Просят написать самому — не шаблон напоминания
 const WRITE_OWN_RE = /напиш|состав|вежлив|мягк|построж|строже|жёстч|жестч|официальн|претензи/i;
 // Причина списания названа человеком (или кнопкой)
@@ -445,7 +458,7 @@ const RECONCILIATION_TOOLS = [
   { name: 'transfer_contracts', description: 'Только по явной просьбе перенести договоры: подготовить перенос вместе с закупами в общий пул. Всегда требует подтверждения человеком. Вложения инвесторов не переносит.', input: { contractIds: { type: 'array', items: { type: 'string' }, maxItems: 100 }, accountId: { type: 'string' } }, required: ['contractIds', 'accountId'] },
 ];
 const CUSTOM_WRITE_NAMES = new Set(['transfer_contracts', 'update_customer', 'create_task', 'send_reminder', 'remind_all_overdue', 'delete_payment', 'update_expense', 'delete_expense', 'set_guarantor',
-  'promise_payment', 'send_collection_message', 'early_payoff', 'restructure_contract', 'record_payments', ...SHOP_WRITE_NAMES]);
+  'promise_payment', 'send_collection_message', 'early_payoff', 'restructure_contract', 'record_payments', 'update_contract', ...SHOP_WRITE_NAMES]);
 
 // Основа слова без окончания падежа/рода: «ахмадову», «ахмадова» → «ахмад»
 // Слова из команд и названий товаров — не имя, даже с заглавной
@@ -464,7 +477,7 @@ const TOOL_WORDS = {
   delete_payment: 'удаление платежа', delete_expense: 'удаление расхода', delete_contract: 'удаление договора',
   create_task: 'задача', send_reminder: 'напоминание', remind_all_overdue: 'напоминания должникам',
   send_document: 'отправка документа', excel_report: 'отчёт Excel', prepare_contract: 'черновик договора',
-  set_guarantor: 'поручитель', change_payment_date: 'перенос графика', ask_choice: 'вопрос с вариантами', whoami: 'данные аккаунта',
+  set_guarantor: 'поручитель', change_payment_date: 'перенос графика', update_contract: 'правка договора', ask_choice: 'вопрос с вариантами', whoami: 'данные аккаунта',
   cash_forecast: 'прогноз поступлений', compare_periods: 'сравнение периодов', sales_breakdown: 'разбивка договоров', monthly_report: 'отчёт по месяцам', collection_queue: 'очередь взыскания', promise_payment: 'обещание оплаты',
   send_collection_message: 'письмо должнику', payoff_quote: 'расчёт досрочного погашения', early_payoff: 'досрочное погашение',
   restructure_contract: 'реструктуризация', record_payments: 'несколько платежей', stock_receive: 'приход товара', stock_write_off: 'списание', retail_sale: 'продажа в магазине',
@@ -582,7 +595,7 @@ const CLAIMS_DONE_RE = /черновик[а-яё ]{0,12} (?<!не )готов|д
 const PROMISE_RE = /нажм(ите|и)[^.\n]{0,20}«?(Подтвердить|Открыть форму договора|Перенести|Отправить)|черновик[^.\n]{0,90}(?<!не )готов|(^|[^а-яё])(записываю|провожу|принимаю|оформляю|отправляю|добавляю|удаляю|создаю|вношу)([^а-яё]|$)|(кнопк|карточк)[а-яё]*[^.\n]{0,40}(подтвер|ниже|под (этим|ответом|сообщением))/i;
 // Основные инструменты для повтора с обязательным вызовом (см. forceTool в replyText)
 const FORCE_TOOL_NAMES = new Set(['customer_overview', 'create_payment', 'record_payments', 'prepare_contract', 'ask_choice', 'send_document',
-  'due_payments', 'list_payments', 'change_payment_date', 'create_expense', 'collection_queue', 'cash_forecast', 'get_summary']);
+  'due_payments', 'list_payments', 'change_payment_date', 'create_expense', 'collection_queue', 'cash_forecast', 'get_summary', 'early_payoff', 'update_contract']);
 const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'delete_contract', 'reschedule', 'template_draft']);
 // Агент отказал: не умеет или отправил делать в приложении — это просьба о новом
 // умении, а не ошибка. Пишем отдельно (cant_do), чтобы видеть, что добавлять
@@ -597,7 +610,7 @@ const STEP_LABELS = {
   list_expenses: 'Смотрю расходы…', list_products: 'Смотрю склад…', list_investors: 'Смотрю инвесторов…',
   get_summary: 'Считаю итоги…', whoami: 'Смотрю аккаунт…',
   update_customer: 'Меняю карточку клиента…', create_task: 'Добавляю задачу…', send_reminder: 'Готовлю напоминание…',
-  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…', delete_contract: 'Смотрю договор…', set_guarantor: 'Записываю поручителя…', change_payment_date: 'Считаю новый график…',
+  remind_all_overdue: 'Считаю, кому напомнить…', investor_profit: 'Считаю прибыль инвестора…', excel_report: 'Готовлю отчёт…', delete_contract: 'Смотрю договор…', set_guarantor: 'Записываю поручителя…', change_payment_date: 'Считаю новый график…', update_contract: 'Смотрю договор…',
   delete_payment: 'Готовлю удаление платежа…', update_expense: 'Исправляю расход…', delete_expense: 'Готовлю удаление расхода…',
   create_payment: 'Провожу платёж…', create_expense: 'Записываю расход…', create_income: 'Записываю приход…',
   create_customer: 'Завожу клиента…', prepare_contract: 'Готовлю договор…', send_document: 'Готовлю документ…', create_contract_template: 'Читаю образец, до минуты…',
@@ -648,6 +661,7 @@ const WRITE_TITLES = {
   update_expense: 'Исправить расход',
   delete_expense: 'Удалить расход',
   set_guarantor: 'Поручитель',
+  update_contract: 'Исправить договор',
   promise_payment: 'Обещание оплаты',
   send_collection_message: 'Письмо должнику в WhatsApp',
   early_payoff: 'Закрыть договор досрочно',
@@ -672,6 +686,7 @@ const DONE_TITLES = {
   update_expense: 'расход исправлен',
   delete_expense: 'расход удалён',
   set_guarantor: 'поручитель записан',
+  update_contract: 'договор исправлен',
   promise_payment: 'обещание записано',
   send_collection_message: 'письмо отправлено',
   early_payoff: 'договор закрыт',
@@ -916,6 +931,66 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   // Фото паспорта поручителя из сообщения — до выполнения действия (по id действия)
   const actionImages = new Map();
 
+  // Правка договора (update_contract) — как сохранение формы в приложении (handleSaveSale)
+  // без пересчёта графика: товар, комментарий, закуп, клиент. Расходы закупа идут следом:
+  // основной exp_sale_<id> и совместных счетов exp_sale_<id>__<счёт> (название «Закуп: …»)
+  const contractEdit = async (userId, args) => {
+    const sale = await loadItem(userId, 'sales', args.contractId);
+    if (!sale || String(sale.customerId || '').startsWith('system_')) return { error: 'Договор не найден — найди его через customer_overview.' };
+    const patch = {}, lines = [];
+    const name = typeof args.productName === 'string' ? args.productName.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
+    if (name && name !== (sale.productName || '')) {
+      if ((sale.stockItems || []).length) return { error: 'Товар взят со склада — состав договора меняется в приложении.' };
+      patch.productName = name;
+      lines.push(`товар «${sale.productName || '—'}» → «${name}»`);
+    }
+    if (typeof args.notes === 'string' && args.notes.trim().slice(0, 1000) !== (sale.notes || '')) {
+      patch.notes = args.notes.trim().slice(0, 1000);
+      lines.push(patch.notes ? `комментарий: «${patch.notes}»` : 'комментарий убрать');
+    }
+    if (args.buyPrice != null && args.buyPrice !== '') {
+      const b = Math.round(Number(args.buyPrice) * 100) / 100;
+      if (!Number.isFinite(b) || b < 0 || b > 1e9) return { error: 'Закуп — сумма в рублях, 0 или больше.' };
+      if (Math.abs(b - (Number(sale.buyPrice) || 0)) >= 0.01) {
+        // Как buyPriceExpenseAction: у поставщика это долг, со склада — уже оплачено при приходе
+        if (sale.supplierId) return { error: 'Товар взят у поставщика (закуп — долг перед ним) — меняется в приложении.' };
+        if ((sale.stockItems || []).length || sale.productId) return { error: 'Товар со склада — закуп берётся из склада, меняется в приложении.' };
+        if ((sale.funding || []).length > 1) return { error: 'Закуп оплачен с нескольких счетов — доли меняются в приложении.' };
+        patch.buyPrice = b;
+        lines.push(`закуп ${money(sale.buyPrice)} → ${money(b)}`);
+      }
+    }
+    let customer = await loadItem(userId, 'customers', sale.customerId);
+    if (args.customerId && args.customerId !== sale.customerId) {
+      const c = await loadItem(userId, 'customers', args.customerId);
+      if (!c || String(c.id).startsWith('system_')) return { error: 'Клиент не найден — возьми id из customer_overview.' };
+      patch.customerId = c.id;
+      lines.push(`клиент ${customer?.name || '—'} → ${c.name || 'клиент'}`);
+      customer = c;
+    }
+    if (!lines.length) return { error: 'Менять нечего — значения те же, что в договоре.' };
+    const own = (await pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'expenses' AND (id = $2 OR left(id, length($3)) = $3)`,
+      [userId, `exp_sale_${sale.id}`, `exp_sale_${sale.id}__`])).rows.map(r => r.data);
+    const expenses = [];
+    for (const e of own) {
+      const main = e.id === `exp_sale_${sale.id}`;
+      if (main && patch.buyPrice === 0) { expenses.push({ before: e, after: null }); continue; }
+      const p = {};
+      if (patch.productName && e.title === `Закуп: ${sale.productName}`) p.title = `Закуп: ${patch.productName}`;
+      if (main && patch.buyPrice != null) p.amount = patch.buyPrice;
+      if (Object.keys(p).length) expenses.push({ before: e, after: { ...e, ...p } });
+    }
+    if (patch.buyPrice != null) {
+      // Расхода нет (импорт, старый договор) — не заводим: касса этого закупа и не видела
+      const main = own.find(e => e.id === `exp_sale_${sale.id}`);
+      lines.push(!main ? 'расхода закупа у договора нет — касса не меняется'
+        : patch.buyPrice === 0 ? `расход закупа ${money(main.amount)} удалится — деньги вернутся на счёт`
+          : `расход закупа со счёта тоже ${money(patch.buyPrice)}`);
+      if (patch.buyPrice > (Number(sale.totalAmount) || 0)) lines.push('закуп выше цены договора — прибыль уйдёт в минус');
+    }
+    return { sale, patch, expenses, text: `${customer?.name || 'Клиент'}, ${patch.productName ? `договор «${sale.productName || '—'}»` : sale.productName || 'договор'}: ${lines.join('; ')}` };
+  };
+
   // ── Взыскание, досрочное погашение, склад ────────────────────────────────
   const contractWithCustomer = async (userId, contractId) => {
     const { rows } = await pool.query(
@@ -1114,6 +1189,10 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         return { text: `${p.count} договоров с закупами → «${p.target}». Общий остаток: ${money(p.before.totalCash)} → ${money(p.after.totalCash)}. После переноса: ${p.after.accounts.map(a => `${a.name}: ${money(a.balance)}`).join('; ')}. Вложения инвесторов не меняются.` };
       } catch (e) { return { error: e.message }; }
     }
+    if (name === 'update_contract') {
+      const p = await contractEdit(userId, args);
+      return p.error ? { error: p.error } : { text: p.text };
+    }
     if (name === 'set_guarantor') {
       const sale = await loadItem(userId, 'sales', args.contractId);
       if (!sale || String(sale.customerId || '').startsWith('system_')) return { error: 'Договор не найден — найди его через customer_overview.' };
@@ -1281,6 +1360,18 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       return { ok: true, undo: { kind: 'stock', ids: [...p.movements.map(m => m.id), ...(p.sale ? [p.sale.id] : [])],
         movements: p.movements.map(m => ({ id: m.id, productId: m.productId, warehouseId: m.warehouseId, quantity: m.quantity })),
         ...(name === 'stock_receive' ? { prevBuyPrice } : {}) } };
+    }
+    if (name === 'update_contract') {
+      const p = await contractEdit(userId, args);
+      if (p.error) return { ok: false, text: p.error };
+      await pool.query(`UPDATE data_items SET data = data || $1::jsonb, updated_at = NOW() WHERE user_id = $2 AND type = 'sales' AND id = $3`,
+        [JSON.stringify(p.patch), userId, p.sale.id]);
+      for (const x of p.expenses) {
+        if (x.after) await pool.query(`UPDATE data_items SET data = $1, updated_at = NOW() WHERE user_id = $2 AND type = 'expenses' AND id = $3`, [JSON.stringify(x.after), userId, x.before.id]);
+        else await pool.query(`DELETE FROM data_items WHERE user_id = $1 AND type = 'expenses' AND id = $2`, [userId, x.before.id]);
+      }
+      const prev = Object.fromEntries(Object.keys(p.patch).map(f => [f, p.sale[f] ?? null]));
+      return { ok: true, undo: { kind: 'contract_edit', saleId: p.sale.id, prev, expenses: p.expenses.map(x => x.before), ids: p.expenses.map(x => x.before.id) } };
     }
     if (name === 'set_guarantor') {
       const sale = await loadItem(userId, 'sales', args.contractId);
@@ -1599,7 +1690,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       if (await appExpired(userId)) return { ok: false, text: 'Срок подписки приложения истёк — изменения недоступны.' };
       if (row.payload.requiresPhoto && !actionImages.has(actionId)) return { ok: false, text: 'Фото больше недоступно после перезапуска. Прикрепите его заново.' };
       const perform = () => executeOnce(userId, actionId, row.payload.tool, row.payload.args, row.payload.summary);
-      return ['set_guarantor','create_task','restructure_contract',...SHOP_WRITE_NAMES].includes(row.payload.tool) ? withLockedState(userId,row.before_state,perform) : perform();
+      return ['set_guarantor','create_task','restructure_contract','update_contract',...SHOP_WRITE_NAMES].includes(row.payload.tool) ? withLockedState(userId,row.before_state,perform) : perform();
     }));
   };
   const confirmAction = async (userId, actionId) => {
@@ -1667,6 +1758,20 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         }
         r = { ok: true };
       }
+    } else if (d.undo?.kind === 'contract_edit') {
+      // Прежние поля договора и расходы закупа целиком (удалённый — обратно с тем же id)
+      const sale = await loadItem(userId, 'sales', d.undo.saleId);
+      if (!sale) r = { ok: false, text: 'Договор не найден — возможно, его удалили.' };
+      else {
+        const restored = { ...sale };
+        for (const [f, v] of Object.entries(d.undo.prev)) { if (v != null && v !== '') restored[f] = v; else delete restored[f]; }
+        await pool.query(`UPDATE data_items SET data = $1, updated_at = NOW() WHERE user_id = $2 AND type = 'sales' AND id = $3`, [JSON.stringify(restored), userId, sale.id]);
+        for (const e of d.undo.expenses || []) {
+          const u = await pool.query(`UPDATE data_items SET data = $1, updated_at = NOW() WHERE user_id = $2 AND type = 'expenses' AND id = $3`, [JSON.stringify(e), userId, e.id]);
+          if (!u.rowCount) await pool.query(`INSERT INTO data_items (id, user_id, type, data, updated_at) VALUES ($1, $2, 'expenses', $3, NOW()) ON CONFLICT DO NOTHING`, [e.id, userId, JSON.stringify(e)]);
+        }
+        r = { ok: true };
+      }
     } else if (d.undo?.kind === 'task') {
       const q = await pool.query(`DELETE FROM data_items WHERE user_id = $1 AND type = 'tasks' AND id = $2 RETURNING id`, [userId, d.undo.id]);
       r = q.rowCount ? { ok: true } : { ok: false, text: 'Задача не найдена — возможно, её уже удалили.' };
@@ -1731,6 +1836,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     if (d.undo?.kind === 'restructure') return { ok: true, text: 'Отменено: график договора — как был.' };
     if (d.undo?.kind === 'stock') return { ok: true, text: 'Отменено: документ удалён, остатки на складе — как были.' };
     if (d.undo?.kind === 'guarantor') return { ok: true, text: 'Отменено: поручитель в договоре — как был.' };
+    if (d.undo?.kind === 'contract_edit') return { ok: true, text: 'Отменено: договор — как был.' };
     if (d.undo?.kind === 'payment_back') return { ok: true, text: `Отменено: платёж ${d.summary.replace(/\. Остаток станет .*$/, '')} снова записан.` };
     if (d.undo?.kind === 'expense_prev') return { ok: true, text: `Отменено: расход ${d.summary.split(':')[0]} — прежние значения.` };
     if (d.undo?.kind === 'expense_back') return { ok: true, text: `Отменено: расход ${d.summary} снова на месте.` };
@@ -1842,6 +1948,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении. «Удали договор» — delete_contract (договор через customer_overview; несколько — ask_choice): под ответом карточка «Удалить», скажи «Проверьте и нажмите «Удалить» — удаление не отменить».',
     'НЕСКОЛЬКО ФОТО — подписаны «Фото 1», «Фото 2»… по порядку. «Первый — клиент, второй — поручитель»: договор — prepare_contract, newCustomer — с фото клиента, поручитель — guarantorName с фото поручителя (буква в букву) и guarantorPhoto — его номер. Не перепутай, чей паспорт на каком фото; неясно — спроси.',
     'ПОРУЧИТЕЛЬ И ГРАФИК. Фото паспорта и «это поручитель (по договору …)», «добавь поручителя» — set_guarantor (не создавай клиента!): в договор ФИО (с фото — буква в букву) и телефон, если человек его назвал; фото само ляжет в документы клиента. «Перенеси первый платёж на …», «сдвинь дату платежа», «отсрочка на месяц» — change_payment_date с датой ГГГГ-ММ-ДД (отсрочку считай от ближайшего платежа по графику); скажи «Проверьте и нажмите «Перенести»».',
+    'ПРАВКА ДОГОВОРА. «Исправь товар на …», «поменяй закуп на …», «добавь комментарий в договор», «договор оформили не на того — переведи на …» — update_contract: только меняющиеся поля, другой клиент — его customerId из customer_overview (не создавай нового, если он есть). Деньги клиента и график не трогает; цена/наценка/срок — restructure_contract или в приложении. Карточка всегда ждёт «Подтвердить»; назови, что изменится, из её текста.',
     'ПРОВЕРКА КЛИЕНТА. «Стоит ли давать …», «надёжный ли …», «как платит …» — customer_overview, ответ по history: сколько договоров и закрыто, сколько платежей с опозданием и самое долгое, есть ли просрочка сейчас. Вывод одной фразой (платит аккуратно / бывают опоздания / сейчас должник), решение — за человеком. Клиента нет в базе — скажи, что истории нет.',
     'ПРОГНОЗ. «Сколько придёт на неделе / в этом месяце», «какой прогноз», «хватит ли денег» — cash_forecast (days: неделя — 7, месяц — до конца месяца или 30): ожидаемо по графику, реалистично (по аккуратности клиентов) и по неделям; просрочку называй отдельно — её в прогнозе нет; кто часто опаздывает (risky) — одной строкой. Один названный месяц («в ноябре», «в следующем месяце») — cash_forecast с month: ГГГГ-ММ (весь месяц). count — число платежей, customers — число клиентов: «N клиентов» — только из customers. Месяц с fullMonth: false обрезан — не называй его суммой «за месяц». «По месяцам», «до конца договоров», «распиши, сколько получу» — cash_forecast с untilEnd: true, месяцы и суммы — ровно из byMonth: не досчитывай, не округляй по-своему, месяцев сверх byMonth не называй. «Ожидаемая прибыль» — expectedProfit (за месяц — profit в byMonth). Человек усомнился («точно все?», «почему не все») — вызови инструмент снова; цифры по памяти не исправляй и не пиши «перепроверил», если не вызывал.',
     'ГДЕ ЧТО В ПРИЛОЖЕНИИ (не выдумывай разделы и кнопки; не знаешь — так и скажи). Этот чат — фиолетовый шар в шапке рядом с поиском, на любом экране (на компьютере — «FinUchetGPT» в меню слева под поиском); уведомление утренней сводки тоже открывает чат. Закят — Главная → плитка «В обороте» → «Закят» (расчёт и запись выплаты). Свой образец договора — Настройки → Печатная форма. WhatsApp — Настройки → WhatsApp. Подсказки и утренняя сводка агента — меню «⋯» в этом чате → Настройки.',
@@ -2003,6 +2110,17 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     const n = Number(m[2].replace(/\D/g, ''));
     if (!n || Math.round(Number(args.amount) || 0) !== n) return null;
     return `Человек кнопкой выбрал договор, а не сумму: ${money(n)} — из подписи кнопки. Не бери её сам: спроси через ask_choice «Платёж по графику — N ₽» (ближайший из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму».`;
+  };
+  // «Закрывает полностью, дай скидку 10%» — модель считала payoff_quote и проводила
+  // обычный платёж на сумму со скидкой: договор остался бы с долгом на размер скидки
+  const discountedClose = async (userId, args, userText) => {
+    const t = String(userText || '').toLowerCase();
+    const asked = /скидк/.test(t) && /закры|погас|полност|досрочн|целиком|весь|всё|все /.test(t);
+    if (!asked && !/досрочн/i.test(String(args.note || ''))) return null;
+    const sale = await loadItem(userId, 'sales', args.contractId);
+    const left = Math.round(Number(sale?.remainingAmount) || 0);
+    if (!sale || !left || !(Math.round(Number(args.amount) || 0) < left)) return null;
+    return `Клиент закрывает договор со скидкой — это early_payoff (contractId ${sale.id}, скидка из слов человека: discountPercent или discountAmount), а не create_payment: обычный платёж на ${money(args.amount)} оставил бы долг ${money(left - Math.round(Number(args.amount) || 0))}. Ничего не записано — вызови early_payoff.`;
   };
   const unaskedPayoff = async (userId, args, userText) => {
     const sale = await loadItem(userId, 'sales', args.contractId);
@@ -2399,7 +2517,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     ];
     const tools = [...TOOLS.map(toOpenAiTool), ...RECONCILIATION_TOOLS.map(toOpenAiTool), toOpenAiTool(PREPARE_CONTRACT_TOOL), toOpenAiTool(CREATE_TEMPLATE_TOOL), toOpenAiTool(DUE_PAYMENTS_TOOL), toOpenAiTool(ASK_CHOICE_TOOL), toOpenAiTool(SEND_DOCUMENT_TOOL), toOpenAiTool(CUSTOMER_OVERVIEW_TOOL),
       ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL,
-        DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL, SET_GUARANTOR_TOOL, CHANGE_PAYMENT_DATE_TOOL,
+        DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL, SET_GUARANTOR_TOOL, CHANGE_PAYMENT_DATE_TOOL, UPDATE_CONTRACT_TOOL,
         COLLECTION_QUEUE_TOOL, PROMISE_PAYMENT_TOOL, COLLECTION_MESSAGE_TOOL, PAYOFF_QUOTE_TOOL, EARLY_PAYOFF_TOOL, RESTRUCTURE_TOOL,
         STOCK_RECEIVE_TOOL, STOCK_WRITE_OFF_TOOL, RETAIL_SALE_TOOL, RECORD_PAYMENTS_TOOL].map(toOpenAiTool)];
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
@@ -2899,7 +3017,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
             if (name === 'set_guarantor' && args.phone && (notAPhone(args.phone) || !phoneSaid(args.phone))) delete args.phone;
             const key = `${name}:${require('./canonical').hash(args)}`;
             const cs = custom ? await customSummary(user.id, name, args) : null;
-            const payoff = name === 'create_payment' ? (labelAmount(args, text, history) || await unaskedPayoff(user.id, args, text)) : null;
+            const payoff = name === 'create_payment' ? (labelAmount(args, text, history) || await discountedClose(user.id, args, text) || await unaskedPayoff(user.id, args, text)) : null;
             // Счёт выбирают кнопками и для продажи в магазине, если у склада свой счёт не задан
             const saleNeedsAccount = name === 'retail_sale' && !args.accountId
               && !(await loadItems(user.id, 'warehouses')).some(w => !w.isArchived && w.accountId && (w.isMain || !args.warehouse));

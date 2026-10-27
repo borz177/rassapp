@@ -341,6 +341,43 @@ test('умения: реструктуризация, досрочное пог�
     r = await assistant.reply({ user, text: '+7 961 885-15-15', history, mode: 'confirm', silent: true });
     assert.equal(r.actions.some(a => a.kind === 'contract_form'), false);
     assert.equal(r.reply, 'Договор ещё не подготовлен — уточните, пожалуйста: срок в месяцах.');
+
+    // 11. Правка договора: товар, закуп, другой клиент — расход закупа следом; отмена — всё как было
+    const put = (type, d) => pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', [d.id, 'owner', type, JSON.stringify(d)]);
+    await put('customers', { id: 'cust3', name: 'Сидоров Пётр' });
+    await put('expenses', { id: 'exp_sale_r', accountId: 'acc', title: 'Закуп: iPhone 16', amount: 100000, category: 'Себестоимость', date: at(-75) });
+    const rBefore = await row('sales', 'r');
+    r = await ask('В договоре айфона товар iPhone 16 Pro, закуп 95000 и он на Сидорова', [{ tool: 'update_contract', args: { contractId: 'r', productName: 'iPhone 16 Pro', buyPrice: 95000, customerId: 'cust3' } }, { content: 'Проверьте и нажмите «Подтвердить».' }], 'auto');
+    card = r.actions.find(a => a.tool === 'update_contract');
+    assert.equal(card?.kind, 'confirm', 'в «Авто» тоже ждёт подтверждения');
+    assert.match(card.summary, /товар «iPhone 16» → «iPhone 16 Pro»; закуп 100\s000\s₽ → 95\s000\s₽; клиент Иванов Иван → Сидоров Пётр; расход закупа со счёта тоже 95\s000\s₽/);
+    assert.equal((await assistant.confirmAction('owner', card.id)).ok, true);
+    let edited = await row('sales', 'r');
+    assert.deepEqual([edited.productName, edited.buyPrice, edited.customerId], ['iPhone 16 Pro', 95000, 'cust3']);
+    assert.deepEqual(edited.paymentPlan, rBefore.paymentPlan, 'график не тронут');
+    let buyExp = await row('expenses', 'exp_sale_r');
+    assert.deepEqual([buyExp.title, buyExp.amount], ['Закуп: iPhone 16 Pro', 95000]);
+    assert.equal((await assistant.undoAction('owner', card.id)).ok, true);
+    assert.deepEqual(await row('sales', 'r'), rBefore);
+    buyExp = await row('expenses', 'exp_sale_r');
+    assert.deepEqual([buyExp.title, buyExp.amount], ['Закуп: iPhone 16', 100000]);
+    // Закуп 0 — расход удаляется, отмена возвращает его; у поставщика и со склада — в приложение
+    script.push({ tool: 'update_contract', args: { contractId: 'r', buyPrice: 0 } }, { content: 'Проверьте.' });
+    card = (await assistant.reply({ user, text: 'закуп по айфону 0', mode: 'confirm', silent: true })).actions.find(a => a.tool === 'update_contract');
+    assert.match(card.summary, /удалится — деньги вернутся на счёт/);
+    assert.equal((await assistant.confirmAction('owner', card.id)).ok, true);
+    assert.equal(await row('expenses', 'exp_sale_r'), undefined);
+    assert.equal((await assistant.undoAction('owner', card.id)).ok, true);
+    assert.equal((await row('expenses', 'exp_sale_r')).amount, 100000);
+    await pool.query(`UPDATE data_items SET data = data || '{"supplierId":"s1"}' WHERE id='q'`);
+    await ask('закуп по самсунгу 90000', [{ tool: 'update_contract', args: { contractId: 'q', buyPrice: 90000 } }, { content: 'В приложении.' }]);
+    assert.match(lastToolResult(), /у поставщика/);
+    await ask('в самсунге всё то же', [{ tool: 'update_contract', args: { contractId: 'q', productName: 'Samsung S25' } }, { content: 'Ок.' }]);
+    assert.match(lastToolResult(), /Менять нечего/);
+    // «Закрывает полностью со скидкой», а модель проводит обычный платёж на сумму со скидкой — не даём, нужен early_payoff
+    r = await ask('Иванов закрывает айфон полностью, дай скидку 10%', [{ tool: 'create_payment', args: { contractId: 'r', amount: 94500 } }, { content: 'Ок.' }]);
+    assert.equal(r.actions.some(a => a.tool === 'create_payment'), false);
+    assert.match(lastToolResult(), /это early_payoff/);
   } finally {
     if (app?.server) await new Promise(r => app.server.close(r));
     await new Promise(r => model.close(r));
