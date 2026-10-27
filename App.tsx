@@ -78,7 +78,7 @@ import SupportChat from './components/SupportChat';
 import NotificationsPanel from './components/NotificationsPanel';
 import NotificationsPage from './components/NotificationsPage';
 import { expandFundedSales, saleTouchesAccount, primaryPurchaseView, coFundExpenses, isCoFundExpenseOf, fundingPieces } from './src/funding';
-import { mergeServerLists, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal, formatRuPhone, getSellerPhone, normalizePhoneForWhatsApp} from './src/utils';
+import { mergeServerLists, setShowCentsDefault, buyPriceExpenseAction, stockShipmentPlan, realAccountType, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getInvestorAccount, isAccountForInvestor, getCapitalShares, getActivePeriodAt, applyCapitalChange, revertCapitalChange, calculateSaleOverdue, addMonthsClamped, contractNumberFor, getManagerProfitDeduction, expenseProfitSplit, getEmployeeProfitAccrued, moneyInProfit, saleProfitMargin, participationDates, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, applyStockDelta, retailRemaining, stockAtWarehouse, computeAccountBalances, buildRetailReturn, employeeWarehouseScope, listedWarehouses, scopeStockMovements, scopeRetailSales, stockDocReversal, formatRuPhone, getSellerPhone, normalizePhoneForWhatsApp} from './src/utils';
 import { setUnsyncedIds, getUnsyncedIds } from './src/unsynced';
 import { useSwipeable } from "react-swipeable"
 
@@ -206,6 +206,8 @@ const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   // Заготовка задачи, переданная со страницы договоров или карточки клиента
   const [taskDraft, setTaskDraft] = useState<Partial<Task> | null>(null);
   const [appSettings, setAppSettings] = useState<AppSettings>({ companyName: 'FinUchet' });
+  // До отрисовки экранов: formatCurrency без второго аргумента берёт копейки отсюда
+  setShowCentsDefault(appSettings.showCents === true);
 
   const [whatsappRefreshKey, setWhatsAppRefreshKey] = useState<number>(0);
   const [templatesRefreshKey, setTemplatesRefreshKey] = useState<number>(0);

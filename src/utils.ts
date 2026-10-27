@@ -268,7 +268,15 @@ export const calculateSaleOverdue = (sale: Sale, today?: Date): number => {
   return overdue >= 1 ? overdue : 0;
 };
 
-export const formatCurrency = (amount: number | undefined | null, showCents: boolean = true): string => {
+// Копейки по умолчанию выключены (настройка «Показывать копейки», AppSettings.showCents).
+// Раньше умолчание здесь было «показывать», а переключатель без значения — «выключен»:
+// у новых пользователей копейки были видны при выключенном переключателе, а 32 вызова
+// без второго аргумента («Операции», формы, «Сотрудники») настройку не слушали вовсе.
+// Теперь вызов без аргумента следует настройке — App.tsx сообщает её сюда.
+let centsByDefault = false;
+export const setShowCentsDefault = (on: boolean) => { centsByDefault = on; };
+
+export const formatCurrency = (amount: number | undefined | null, showCents: boolean = centsByDefault): string => {
   if (amount === undefined || amount === null || isNaN(amount)) {
     return '0';
   }
