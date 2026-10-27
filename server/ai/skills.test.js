@@ -405,6 +405,12 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal(r.actions.some(a => a.kind === 'customers_report'), false);
     assert.match(lastToolResult(), /Клиентов с просрочкой нет/);
     await pool.query(`UPDATE data_items SET data = data || '{"status":"ACTIVE"}' WHERE type = 'sales'`);
+    // Модель зациклилась на инструментах — последний шаг без инструментов, ответ вместо «Не успел закончить»
+    const loopFrom = seen.length;
+    script.push(...Array.from({ length: 5 }, () => ({ tool: 'due_payments', args: { includeOverdue: true } })), { content: 'Нашёл платежи по графику, откуда остальная сумма — не видно.' });
+    r = await assistant.reply({ user, text: 'откуда в кассе столько денег', mode: 'confirm', silent: true });
+    assert.equal(seen.slice(loopFrom).pop().tool_choice, 'none');
+    assert.equal(r.reply, 'Нашёл платежи по графику, откуда остальная сумма — не видно.');
     // Выключатель AI_DISABLED_TOOLS: модель не видит умение, вызов — «выключено», показанная карточка не выполняется
     script.push({ tool: 'update_contract', args: { contractId: 'r', notes: 'до выключения' } }, { content: 'Проверьте.' });
     const before = (await assistant.reply({ user, text: 'комментарий в айфон', mode: 'confirm', silent: true })).actions.find(a => a.tool === 'update_contract');

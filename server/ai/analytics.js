@@ -208,4 +208,94 @@ const monthly = ({ sales, expenses, investors = [], withoutDownPayment = false, 
     basis: 'Прошедшие месяцы — как сводка приложения (текущий — по сегодня). Будущие месяцы — это прогноз (cash_forecast), не этот отчёт.' };
 };
 
-module.exports = { resolvePeriods, overdueOn, comparePeriods, breakdown, monthly };
+/**
+ * Выписка по счёту: из чего сложился остаток — каждая операция с датой и суммой,
+ * остаток на начало и конец периода. Операции — ровно те, что считает остаток
+ * (domain.accountBalances): первые взносы и платежи (moneyIn по долям счетов),
+ * прочие приходы и взносы инвесторов, расходы, магазин. Поэтому начальный остаток
+ * + все операции = остаток на экране.
+ *
+ * Прод 22.10: «днём в кассе было 17 400, потом стало 307 000 — откуда?» — агент видел
+ * только платежи дня и ответил «технический сбой». Скачки дают записи «задним числом»:
+ * приход или расход, внесённый сегодня, но с датой другого дня, правка суммы, новый
+ * начальный остаток счёта. changedAt (id → когда менялась запись) отдаёт их отдельно.
+ *
+ * Возвращает { accounts: [{ id, name, opening, in, out, closing, current }], items, changedElsewhere } или { error }.
+ */
+const MOVEMENT_LIMIT = 60;
+const movements = ({ accounts = [], sales = [], expenses = [], retailSales = [], customers = [], investors = [], changedAt = new Map(),
+  accountId = null, from, to, today = mskDay() }) => {
+  const start = from || today, end = to || from || today;
+  if (!isDay(start) || !isDay(end) || start > end) return { error: 'Период — даты ГГГГ-ММ-ДД, from не позже to.' };
+  const live = accounts.filter(a => !a.isArchived || a.id === accountId);
+  const scope = accountId ? live.filter(a => a.id === accountId) : live;
+  if (accountId && !scope.length) return { error: 'Счёт не найден — возьми id из list_accounts.' };
+  const inScope = new Set(scope.map(a => a.id));
+  const names = new Map(customers.map(c => [c.id, c.name]));
+  const investorName = new Map(investors.map(i => [i.id, i.name]));
+  const accName = new Map(accounts.map(a => [a.id, a.name || 'Счёт']));
+  const all = [];
+  const push = (m) => { if (inScope.has(m.accountId) && Math.abs(m.amount) >= 0.01) all.push({ ...m, day: m.date ? mskDay(m.date) : '' }); };
+
+  for (const s of domain.expandFundedSales(sales)) {
+    const cid = String(s.customerId || '');
+    const inv = cid.startsWith('system_deposit_') ? cid.slice('system_deposit_'.length) : investorName.has(cid) ? cid : null;
+    const sourceId = String(s.id).split('__')[0];
+    for (const m of domain.moneyIn(s)) {
+      const isDown = m.id === `${s.id}_dp`;
+      const kind = inv ? 'Взнос инвестора' : cid === 'system_income' || (cid.startsWith('system_') && s.type === 'CASH') ? 'Приход'
+        : s.type === 'CASH' ? 'Продажа за наличные' : isDown ? 'Первый взнос' : 'Платёж';
+      push({ id: m.id, sourceId, accountId: s.accountId, date: m.date, amount: m.amount, kind,
+        title: inv ? investorName.get(inv) || 'инвестор' : kind === 'Приход' ? s.productName || 'Приход' : `${names.get(cid) || 'клиент'} — ${s.productName || 'договор'}` });
+    }
+  }
+  for (const e of expenses) {
+    if (e.isRefund === true) continue;
+    const kind = String(e.id).startsWith('exp_sale_') ? 'Закуп' : e.payoutType || e.investorId ? 'Выплата инвестору' : 'Расход';
+    push({ id: e.id, sourceId: e.id, accountId: e.accountId, date: e.date, amount: -(Number(e.amount) || 0), kind, title: e.title || e.category || 'Расход' });
+  }
+  for (const r of retailSales) {
+    if (r.isCancelled) continue;
+    if (r.returnOf) push({ id: r.id, sourceId: r.id, accountId: r.accountId, date: r.date, amount: -Math.max(0, Number(r.refund ?? -r.total) || 0), kind: 'Возврат в магазине', title: 'Возврат покупателю' });
+    else if (!r.isCredit) push({ id: r.id, sourceId: r.id, accountId: r.accountId, date: r.date, amount: Number(r.total) || 0, kind: 'Продажа в магазине', title: 'Чек' });
+    for (const pm of r.payments || []) push({ id: `${r.id}_${pm.id || pm.date}`, sourceId: r.id, accountId: pm.accountId, date: pm.date || r.date, amount: Number(pm.amount) || 0, kind: 'Оплата долга магазину', title: 'Оплата чека в долг' });
+  }
+
+  const round = n => Math.round(n * 100) / 100;
+  const summary = scope.map(a => {
+    const own = all.filter(m => m.accountId === a.id);
+    const sum = f => round(own.filter(f).reduce((n, m) => n + m.amount, 0));
+    const initial = Number(a.initialBalance) || 0;
+    const opening = round(initial + sum(m => m.day < start));
+    const inP = own.filter(m => m.day >= start && m.day <= end);
+    return {
+      id: a.id, name: a.name || 'Счёт', initialBalance: initial, opening,
+      in: round(inP.filter(m => m.amount > 0).reduce((n, m) => n + m.amount, 0)),
+      out: round(-inP.filter(m => m.amount < 0).reduce((n, m) => n + m.amount, 0)),
+      closing: round(opening + inP.reduce((n, m) => n + m.amount, 0)),
+      current: round(initial + own.reduce((n, m) => n + m.amount, 0)),
+      ...(changedAt.has(a.id) && mskDay(changedAt.get(a.id)) >= start && mskDay(changedAt.get(a.id)) <= end
+        ? { accountChanged: 'Счёт правили в этот период — начальный остаток мог измениться' } : {}),
+    };
+  });
+  const inPeriod = all.filter(m => m.day >= start && m.day <= end).sort((a, b) => String(b.date).localeCompare(String(a.date)));
+  const view = m => ({ date: m.date, kind: m.kind, title: m.title, amount: round(m.amount), ...(scope.length > 1 ? { account: accName.get(m.accountId) } : {}) });
+  // Изменены в периоде, а датированы другим днём — то, что «вдруг» сдвинуло остаток.
+  // Только записи «одна запись — одна операция»: договор меняется с каждым платежом,
+  // и все его старые платежи выглядели бы правленными
+  const single = new Set(['Приход', 'Взнос инвестора', 'Продажа за наличные', 'Расход', 'Закуп', 'Выплата инвестору', 'Продажа в магазине', 'Возврат в магазине']);
+  const changedElsewhere = all
+    .filter(m => { if (!single.has(m.kind)) return false; const c = changedAt.get(m.sourceId); if (!c) return false; const d = mskDay(c); return d >= start && d <= end && (m.day < start || m.day > end); })
+    .sort((a, b) => String(changedAt.get(b.sourceId)).localeCompare(String(changedAt.get(a.sourceId))))
+    .slice(0, 20)
+    .map(m => ({ ...view(m), changedAt: changedAt.get(m.sourceId) }));
+  return {
+    from: start, to: end, accounts: summary,
+    items: inPeriod.slice(0, MOVEMENT_LIMIT).map(view),
+    ...(inPeriod.length > MOVEMENT_LIMIT ? { more: inPeriod.length - MOVEMENT_LIMIT } : {}),
+    changedElsewhere,
+    note: 'Удалённые записи здесь не видны: остаток мог вырасти от удалённого расхода (или закупа вместе с договором) и уменьшиться от удалённого прихода или платежа.',
+  };
+};
+
+module.exports = { resolvePeriods, overdueOn, comparePeriods, breakdown, monthly, movements };

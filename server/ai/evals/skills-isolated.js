@@ -81,7 +81,8 @@ global.fetch = async (...args) => {
     server = await new Promise(resolve => { const s = app.listen(0, '127.0.0.1', () => resolve(s)); });
     assistant = require('../assistant').createAssistant({ pool, jwt, jwtSecret: secret, port: server.address().port, checkFeatureAccess: async () => ({ allowed: true }) });
     const user = { id: 'eval', name: 'Тестовый владелец' };
-    const say = async (text, mode = 'confirm', history = []) => { calls = []; const r = await assistant.reply({ user, text, mode, history, silent: true }); r.calls = calls; return r; };
+    let lastReply = '';
+    const say = async (text, mode = 'confirm', history = []) => { calls = []; const r = await assistant.reply({ user, text, mode, history, silent: true }); r.calls = calls; lastReply = r.reply || ''; return r; };
     const used = (r, name) => r.calls.some(x => x.name === name);
     const card = (r, tool) => (r.actions || []).find(a => a.tool === tool);
     const noIds = (r) => !/\b(cust|sale|prod|sup|acc|pay)_[\w-]+/.test(r.reply || '');
@@ -345,6 +346,26 @@ global.fetch = async (...args) => {
           }],
         ];
       })(),
+      // Прод 22.10 (…417564): «днём в кассе было 17 400, потом стало 307 000 — откуда?» — агент видел только платежи
+      // дня и ответил «технический сбой». Здесь приход 290 000 внесли сегодня, но датой 10 дней назад
+      ['«Было мало, стало много — откуда?» → выписка по счёту, приход «задним числом» назван, без «сбоя»', async () => {
+        const inc = { id: 'inc_back', customerId: 'system_income', type: 'CASH', accountId: 'main', productName: 'Возврат займа от Магомеда', totalAmount: 290000, downPayment: 290000,
+          remainingAmount: 0, startDate: `${c.addDays(today, -10)}T09:00:00.000Z`, status: 'COMPLETED', paymentPlan: [] };
+        await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', [inc.id, 'eval', 'sales', JSON.stringify(inc)]);
+        try {
+          const r = await say('я запутался, утром в кассе было мало, а сейчас почти 400 тысяч. откуда эти деньги? поступлений сегодня не было');
+          const text = (r.reply || '').replace(/[\s\u00a0]/g, '');
+          return used(r, 'account_movements') && text.includes('290000') && /Магомед|займ/i.test(r.reply) && !/сбо[йя]/i.test(r.reply);
+        } finally { await pool.query("DELETE FROM data_items WHERE id='inc_back'"); }
+      }],
+      ['«Что прошло по кассе сегодня» → выписка за сегодня, без id', async () => {
+        const r = await say('что сегодня прошло по основному счёту?');
+        return used(r, 'account_movements') && noIds(r);
+      }],
+      ['Сосед: «Почему касса в минусе» → сверка за всё время, как раньше', async () => {
+        const r = await say('почему у меня касса в минусе?');
+        return used(r, 'reconcile_accounts') || used(r, 'account_movements');
+      }],
       ['Сосед: «Ахмадов оплатил 10 000» → платёж, не правка договора', async () => {
         const r = await say('Ахмадов оплатил 10 000 за телевизор');
         await cancel(r);
@@ -363,6 +384,7 @@ global.fetch = async (...args) => {
       ran++; if (!ok) failed++;
       console.log(`${ok ? '✓' : '✗'} ${String(i + 1).padStart(2)}. ${name}  ${((Date.now() - t) / 1000).toFixed(1)} с${err ? `  — ${err}` : ''}`);
       if ((!ok || process.env.AI_EVAL_DEBUG) && calls.length) console.log(`     вызовы: ${calls.map(x => `${x.name} ${JSON.stringify(x.args)}`).join(' | ').slice(0, 900)}`);
+      if ((!ok || process.env.AI_EVAL_DEBUG) && lastReply) console.log(`     ответ: ${lastReply.replace(/\n+/g, ' / ').slice(0, 700)}`);
     }
     console.log(`\n${ran - failed} из ${ran} прошли`);
     process.exitCode = failed ? 1 : 0;

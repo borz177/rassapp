@@ -917,6 +917,22 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     ok(res, r);
   }));
 
+  // ── выписка по счёту («откуда в кассе столько») ──────────────────────────
+  // Каждая операция, из которых сложился остаток, и записи, изменённые в периоде
+  // «задним числом» (server/ai/analytics.js movements). Без дат — сегодня
+  router.get('/reports/movements', requireScope('read'), route(async (req, res) => {
+    const userId = tenant(req);
+    const { rows } = await pool.query(
+      `SELECT type, data, updated_at FROM data_items WHERE user_id = $1
+         AND type IN ('accounts', 'sales', 'expenses', 'retailSales', 'customers', 'investors')`, [userId]);
+    const of = t => rows.filter(r => r.type === t).map(r => r.data);
+    const changedAt = new Map(rows.filter(r => r.type !== 'customers' && r.updated_at).map(r => [r.data.id, new Date(r.updated_at).toISOString()]));
+    const r = require('../ai/analytics').movements({ accounts: of('accounts'), sales: of('sales'), expenses: of('expenses'), retailSales: of('retailSales'),
+      customers: of('customers'), investors: of('investors'), changedAt, accountId: req.query.accountId || null, from: req.query.from, to: req.query.to });
+    if (r.error) return fail(res, 400, CODES.VALIDATION, r.error);
+    ok(res, r);
+  }));
+
   // ── сравнение периодов («почему упала прибыль») ──────────────────────────
   // Цифры двух периодов теми же формулами, что сводка, и что объясняет разницу
   // (server/ai/analytics.js). Без дат — месяц по сегодня против того же отрезка прошлого

@@ -548,6 +548,18 @@ const openApiSpec = {
         responses: { 200: { description: 'Сравнение', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
       },
     },
+    '/reports/movements': {
+      get: {
+        tags: ['Отчёты'], summary: 'Выписка по счёту: из чего сложился остаток',
+        description: 'Каждая операция за период (первые взносы, платежи, приходы, взносы и выплаты инвесторов, расходы, закупы, магазин), остаток на начало и конец периода по каждому счёту и записи, изменённые в периоде, но датированные другим днём (changedElsewhere). Начальный остаток плюс все операции равен остатку счёта. Без дат — сегодня. Удалённые записи не видны.',
+        parameters: [
+          { name: 'accountId', in: 'query', schema: { type: 'string' }, description: 'Только этот счёт; не задан — все' },
+          { name: 'from', in: 'query', schema: { type: 'string' }, description: 'С какого дня (YYYY-MM-DD), по умолчанию сегодня' },
+          { name: 'to', in: 'query', schema: { type: 'string' }, description: 'По какой день включительно, по умолчанию = from' },
+        ],
+        responses: { 200: { description: 'Выписка', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
+      },
+    },
     '/reports/forecast': {
       get: {
         tags: ['Отчёты'], summary: 'Прогноз поступлений по графику платежей',

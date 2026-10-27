@@ -744,7 +744,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     let alive = true;
     let busy = false;
     const receive = async () => {
-      if (busy) return;
+      if (busy || document.hidden) return;
       busy = true;
       try {
         const { messages: inbox } = await api.aiAssistant.aliceInbox();
@@ -772,7 +772,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     };
     void receive();
     const timer = setInterval(receive, 5000);
-    return () => { alive = false; clearInterval(timer); };
+    const onVisible = () => { if (!document.hidden) void receive(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [userId, status?.allowedRole, status?.aliceEnabled, status?.sharedHistory]);
   const sharedThread = useRef<string | null>((() => { try { return localStorage.getItem(`finuchet_ai_thread_${userId}`); } catch { return null; } })());
   useEffect(() => {
@@ -780,7 +782,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     let alive = true;
     let busy = false;
     const receive = async () => {
-      if (busy || running.current) return;
+      // Свёрнутое окно не опрашивает сервер (в логе — запрос раз в 4 с от забытых вкладок);
+      // вернулись — догоняем сразу (visibilitychange ниже)
+      if (busy || running.current || document.hidden) return;
       busy = true;
       try {
         const remote = await api.aiAssistant.history();
@@ -809,7 +813,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     };
     void receive();
     const timer = setInterval(receive, 8000);
-    return () => { alive = false; clearInterval(timer); };
+    const onVisible = () => { if (!document.hidden) void receive(); };
+    document.addEventListener('visibilitychange', onVisible);
+    return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [userId, status?.sharedHistory, status?.allowedRole, sending]);
 
   // Что листается: слой страницы PagePush, на Mac — карточка, иначе окно
