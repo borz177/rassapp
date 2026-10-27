@@ -441,6 +441,10 @@ const RETAIL_SALE_TOOL = {
 };
 // Карточка всегда ждёт «Подтвердить», даже в «Авто»: рассылка многим, деньги
 // со скидкой, весь график, письмо клиенту от имени продавца
+// Выключатель умений без деплоя: AI_DISABLED_TOOLS=update_contract,early_payoff (+ pm2 restart --update-env).
+// Модель их не видит, вызов отвечает «выключено», уже показанная карточка по «Подтвердить» не выполняется
+const disabledTools = () => new Set(String(process.env.AI_DISABLED_TOOLS || '').split(',').map(x => x.trim()).filter(Boolean));
+const DISABLED_TEXT = 'Это умение агента сейчас выключено — сделайте это в приложении.';
 const ALWAYS_CONFIRM = new Set(['remind_all_overdue', 'transfer_contracts', 'early_payoff', 'restructure_contract', 'send_collection_message', 'record_payments', 'update_contract']);
 // Просят написать самому — не шаблон напоминания
 const WRITE_OWN_RE = /напиш|состав|вежлив|мягк|построж|строже|жёстч|жестч|официальн|претензи/i;
@@ -1688,6 +1692,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     await pending.set(actionId, { userId, tool: toolName, args, summary, at: Date.now() });
     return actionStore.run(userId, actionId, row => executionContext.run(actionId, async () => {
       if (await appExpired(userId)) return { ok: false, text: 'Срок подписки приложения истёк — изменения недоступны.' };
+      if (disabledTools().has(row.payload.tool)) return { ok: false, text: DISABLED_TEXT };
       if (row.payload.requiresPhoto && !actionImages.has(actionId)) return { ok: false, text: 'Фото больше недоступно после перезапуска. Прикрепите его заново.' };
       const perform = () => executeOnce(userId, actionId, row.payload.tool, row.payload.args, row.payload.summary);
       return ['set_guarantor','create_task','restructure_contract','update_contract',...SHOP_WRITE_NAMES].includes(row.payload.tool) ? withLockedState(userId,row.before_state,perform) : perform();
@@ -2122,6 +2127,23 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     if (!sale || !left || !(Math.round(Number(args.amount) || 0) < left)) return null;
     return `Клиент закрывает договор со скидкой — это early_payoff (contractId ${sale.id}, скидка из слов человека: discountPercent или discountAmount), а не create_payment: обычный платёж на ${money(args.amount)} оставил бы долг ${money(left - Math.round(Number(args.amount) || 0))}. Ничего не записано — вызови early_payoff.`;
   };
+  // Договор выбран кнопкой («Телевизор · остаток 60 000 ₽ [sale_a]»), а сумму модель спросила
+  // текстом — кнопки суммы ставит сервер, как велит подсказка (ai:gate 27.10: через раз без кнопок)
+  // Варианты модель бывает перечисляет списком под вопросом («* Платёж по графику — …») —
+  // тогда остаётся только вопрос, варианты становятся кнопками. Возвращает { question, options }
+  const amountChoices = async (userId, askedText, reply) => {
+    const lines = String(reply || '').split('\n').map(l => l.trim()).filter(Boolean);
+    const qi = lines.findIndex(l => /\?$/.test(l) && /(как(ую|ой|ая)|сколько)[^?]{0,40}(сумм|принять|прим|внес|заплат|оплат)/i.test(l));
+    // После вопроса — только варианты: списком, строкой «по графику — …, остаток — …», «или напишите свою»
+    if (qi < 0 || !lines.slice(qi + 1).every(l => /^([*•-]|\d+[.)])\s|график|остат|₽|руб|напишите|свою сумм/i.test(l))) return null;
+    const ref = String(askedText || '').match(/\[([\w.:-]{1,120})\]\s*$/)?.[1];
+    const sale = ref ? await loadItem(userId, 'sales', ref) : null;
+    if (!sale || sale.type !== 'INSTALLMENT' || sale.status === 'COMPLETED' || String(sale.customerId || '').startsWith('system_')) return null;
+    const left = Math.round(Number(sale.remainingAmount) || 0);
+    const due = Math.round(collections.openRows(sale)[0]?.open || 0);
+    if (!(due >= 1 && due < left)) return null;
+    return { question: lines.slice(0, qi + 1).join('\n'), options: [{ label: `Платёж по графику — ${money(due)}` }, { label: `Весь остаток — ${money(left)}` }] };
+  };
   const unaskedPayoff = async (userId, args, userText) => {
     const sale = await loadItem(userId, 'sales', args.contractId);
     const left = Math.round(Number(sale?.remainingAmount) || 0);
@@ -2519,7 +2541,8 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       ...[UPDATE_CUSTOMER_TOOL, CREATE_TASK_TOOL, SEND_REMINDER_TOOL, REMIND_ALL_TOOL, INVESTOR_PROFIT_TOOL, EXCEL_REPORT_TOOL,
         DELETE_PAYMENT_TOOL, UPDATE_EXPENSE_TOOL, DELETE_EXPENSE_TOOL, DELETE_CONTRACT_TOOL, SET_GUARANTOR_TOOL, CHANGE_PAYMENT_DATE_TOOL, UPDATE_CONTRACT_TOOL,
         COLLECTION_QUEUE_TOOL, PROMISE_PAYMENT_TOOL, COLLECTION_MESSAGE_TOOL, PAYOFF_QUOTE_TOOL, EARLY_PAYOFF_TOOL, RESTRUCTURE_TOOL,
-        STOCK_RECEIVE_TOOL, STOCK_WRITE_OFF_TOOL, RETAIL_SALE_TOOL, RECORD_PAYMENTS_TOOL].map(toOpenAiTool)];
+        STOCK_RECEIVE_TOOL, STOCK_WRITE_OFF_TOOL, RETAIL_SALE_TOOL, RECORD_PAYMENTS_TOOL].map(toOpenAiTool)]
+      .filter(t => !disabledTools().has(t.function.name));
     // Одна и та же запись за одно сообщение — один раз: в «Авто» повтор модели стал бы вторым платежом
     const writes = new Set();
     let claimChecked = false;
@@ -2535,7 +2558,8 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     // Ответ до повтора по проверке цифр: повтор вернул пусто — лучше прежний с пометкой, чем «Ничего не сделано»
     let beforeGroundRetry = '';
     // Тексты, из которых могут взяться цифры ответа: что сказал человек, история, ответы инструментов
-    const groundTexts = [text, ...history.map(m => m?.text)];
+    // и память разговора — её остатки только что прочитаны из базы
+    const groundTexts = [text, ...history.map(m => m?.text), ...(memoryText ? [memoryText] : [])];
     // Чего не хватило договору в последнем prepare_contract (null — подготовлен или не вызывался)
     let contractMissing = null;
     const actions = [];
@@ -2600,6 +2624,16 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         flag(user.id, 'empty_reply', { question: text, detail: promiseRetried ? 'после повтора за обещание' : '' });
         messages.push({ role: 'system', content: 'Ответ пустой. Выполни просьбу человека инструментами: клиента и договор найди через customer_overview, затем нужное действие (платёж — create_payment). Не хватает данных — ask_choice.' });
         continue;
+      }
+      // Сумму платежа спросили текстом — кнопки суммы ставит сервер; до проверки цифр:
+      // суммы на кнопках посчитаны здесь, в тексте остаётся только вопрос
+      if (!calls.length && !actions.some(a => a.kind === 'choices' || ACTION_KINDS.has(a.kind))) {
+        const ask = await amountChoices(user.id, text, msg.content);
+        if (ask) {
+          flag(user.id, 'guard_amount_choices', { question: text, answer: msg.content });
+          actions.push({ id: newActionId(), kind: 'choices', title: ask.question, options: ask.options });
+          msg.content = `${ask.question} Или напишите свою сумму.`;
+        }
       }
       // Суммы, которых нет в данных, — один раз переделать: взять готовые итоги
       // Слова человека — и «50к», «12 тыс», «закуп 500» (= 500 000); карточки — целиком (черновик договора)
@@ -2777,7 +2811,9 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         let result;
         if (process.env.AI_DEBUG_USAGE) console.log(`AI tool: ${name} ${JSON.stringify(args).slice(0, 400)}`);
         step(name === 'create_payment' && !auto ? 'Готовлю платёж…' : STEP_LABELS[name]);
-        if (name === 'customer_overview') {
+        if (disabledTools().has(name)) {
+          result = `${DISABLED_TEXT} Скажи человеку об этом одной фразой; не обходи другими инструментами.`;
+        } else if (name === 'customer_overview') {
           result = await customerOverview(user.id, args);
         } else if (name === 'due_payments') {
           result = await duePayments(user.id, args);

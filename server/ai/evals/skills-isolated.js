@@ -284,6 +284,32 @@ global.fetch = async (...args) => {
         await cancel(r);
         return !!a && /гарантия 1 год/i.test(a.summary) && !card(r, 'update_customer');
       }],
+      // Соседи правки договора: похожие просьбы, которые должны уйти в прежние умения
+      ['Сосед: «поменяй срок на 6 месяцев» → реструктуризация (или вопрос о дате), не правка договора', async () => {
+        const r = await say('поменяй срок договора на диван у Дудаевой на 6 месяцев');
+        await cancel(r);
+        return !card(r, 'update_contract') && (!!card(r, 'restructure_contract') || /дат|когда|числ/i.test(r.reply));
+      }],
+      ['Сосед: «у Ахмадова новый телефон» → карточка клиента, не договор', async () => {
+        const r = await say('у Ахмадова новый номер телефона +7 900 111-22-33, исправь');
+        await cancel(r);
+        return !!card(r, 'update_customer') && !card(r, 'update_contract');
+      }],
+      ['Сосед: «добавь поручителя в договор» → поручитель, не правка договора', async () => {
+        const r = await say('добавь в договор на диван Дудаевой поручителя Исаев Магомед, телефон +7 928 555-44-33');
+        await cancel(r);
+        return !!card(r, 'set_guarantor') && !card(r, 'update_contract');
+      }],
+      ['Сосед: «перенеси платёж по телевизору» → перенос даты, не правка договора', async () => {
+        const r = await say(`перенеси Ахмадову ближайший платёж за телевизор на ${c.addDays(today, 12).split('-').reverse().join('.')}`);
+        await cancel(r);
+        return (r.actions || []).some(x => x.kind === 'reschedule') && !card(r, 'update_contract');
+      }],
+      ['Сосед: «Ахмадов оплатил 10 000» → платёж, не правка договора', async () => {
+        const r = await say('Ахмадов оплатил 10 000 за телевизор');
+        await cancel(r);
+        return !!card(r, 'create_payment') && !card(r, 'update_contract');
+      }],
     ];
 
     const only = process.env.AI_EVAL_ONLY ? new Set(process.env.AI_EVAL_ONLY.split(',').map(Number)) : null;

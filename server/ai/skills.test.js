@@ -374,6 +374,35 @@ test('умения: реструктуризация, досрочное пог�
     assert.match(lastToolResult(), /у поставщика/);
     await ask('в самсунге всё то же', [{ tool: 'update_contract', args: { contractId: 'q', productName: 'Samsung S25' } }, { content: 'Ок.' }]);
     assert.match(lastToolResult(), /Менять нечего/);
+    // Договор выбран кнопкой, а сумму модель спросила текстом — кнопки суммы ставит сервер
+    script.push({ content: 'Какую сумму принять от Иванова по договору «iPhone 16»?' });
+    r = await assistant.reply({ user, text: 'iPhone 16 · остаток 105 000 ₽ [r]', mode: 'confirm', silent: true });
+    assert.deepEqual(r.actions.find(a => a.kind === 'choices')?.options.map(o => o.label.replace(/\u00a0/g, ' ')), ['Платёж по графику — 5 000 ₽', 'Весь остаток — 105 000 ₽']);
+    assert.match(r.reply, /Или напишите свою сумму\.$/);
+    // Варианты списком в тексте — тоже кнопки, в ответе только вопрос
+    script.push({ tool: 'customer_overview', args: { query: 'Иванов' } }, { content: 'Какую сумму принять по айфону?\n\n*   Платёж по графику — 5 000 ₽\n*   Весь остаток — 105 000 ₽' });
+    r = await assistant.reply({ user, text: 'iPhone 16 · остаток 105 000 ₽ [r]', mode: 'confirm', silent: true });
+    assert.equal(r.actions.find(a => a.kind === 'choices')?.options.length, 2);
+    assert.equal(r.reply, 'Какую сумму принять по айфону? Или напишите свою сумму.');
+    // Варианты строкой без маркеров
+    script.push({ tool: 'customer_overview', args: { query: 'Иванов' } }, { content: 'Какую сумму принять по айфону?\nПо графику — 5 000 ₽, весь остаток — 105 000 ₽.' });
+    r = await assistant.reply({ user, text: 'iPhone 16 · остаток 105 000 ₽ [r]', mode: 'confirm', silent: true });
+    assert.equal(r.actions.find(a => a.kind === 'choices')?.options.length, 2);
+    script.push({ content: 'Какую сумму принять?' });
+    r = await assistant.reply({ user, text: 'прими платёж от Иванова', mode: 'confirm', silent: true });
+    assert.equal(r.actions.some(a => a.kind === 'choices'), false, 'договор не выбран — не угадываем');
+    // Выключатель AI_DISABLED_TOOLS: модель не видит умение, вызов — «выключено», показанная карточка не выполняется
+    script.push({ tool: 'update_contract', args: { contractId: 'r', notes: 'до выключения' } }, { content: 'Проверьте.' });
+    const before = (await assistant.reply({ user, text: 'комментарий в айфон', mode: 'confirm', silent: true })).actions.find(a => a.tool === 'update_contract');
+    process.env.AI_DISABLED_TOOLS = 'update_contract, stock_receive';
+    try {
+      await ask('комментарий в айфон: тест', [{ tool: 'update_contract', args: { contractId: 'r', notes: 'тест' } }, { content: 'Выключено.' }]);
+      assert.equal(seen[seen.length - 1].tools.some(t => t.function.name === 'update_contract'), false);
+      assert.ok(seen[seen.length - 1].tools.some(t => t.function.name === 'restructure_contract'));
+      assert.match(lastToolResult(), /сейчас выключено/);
+      assert.match((await assistant.confirmAction('owner', before.id)).text, /сейчас выключено/);
+      assert.equal((await row('sales', 'r')).notes, undefined);
+    } finally { delete process.env.AI_DISABLED_TOOLS; }
     // «Закрывает полностью со скидкой», а модель проводит обычный платёж на сумму со скидкой — не даём, нужен early_payoff
     r = await ask('Иванов закрывает айфон полностью, дай скидку 10%', [{ tool: 'create_payment', args: { contractId: 'r', amount: 94500 } }, { content: 'Ок.' }]);
     assert.equal(r.actions.some(a => a.tool === 'create_payment'), false);

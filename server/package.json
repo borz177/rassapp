@@ -6,7 +6,8 @@
   "scripts": {
     "start": "node index.js",
     "dev": "nodemon index.js",
-    "ai:eval": "node ai/evals/run.js"
+    "ai:eval": "node ai/evals/run.js",
+    "ai:gate": "node ai/evals/gate.js"
   },
   "dependencies": {
     "@xmldom/xmldom": "0.9.12",
