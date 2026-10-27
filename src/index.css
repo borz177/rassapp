@@ -1025,6 +1025,12 @@ input, textarea, [contenteditable] {
 /* ============================================
    PAGE PUSH — mobile-app style push navigation
    ============================================ */
+/* Отложенное окно (ModalPortal: inert + aria-hidden) скрывается сразу: transition-all
+   его кнопок иначе держал их видимыми до конца анимации поверх открытой страницы */
+[inert][aria-hidden="true"] * {
+  transition: none !important;
+}
+
 .page-push-layer {
   position: fixed;
   /* Слой начинается от самого верха экрана, а отступ под верхние пузыри даёт
@@ -1267,6 +1273,14 @@ input, textarea, [contenteditable] {
      там фон страниц сплошной, а отложенная видна при свайпе назад */
   .shell-floating .page-push-layer[aria-hidden="true"] {
     visibility: hidden;
+  }
+  /* Скрытое под открытой страницей пропадает сразу, а не по частям. У карточек и
+     кнопок transition-all — он анимирует и visibility, а она при анимации остаётся
+     visible до конца (у кого 300 мс, у кого секунда): главная после перехода из её
+     окна в карточку клиента просвечивала и «таяла» кусками. Анимации снимаем со
+     всего в разделе, кроме открытой (не отложенной) страницы и её содержимого */
+  .shell-floating .shell-content:has(.page-push-layer) *:not(.page-push-layer:not([aria-hidden="true"]), .page-push-layer:not([aria-hidden="true"]) *) {
+    transition: none !important;
   }
 
   /* Закреплённые внизу полосы — в пределах карточки, а не всего окна */
