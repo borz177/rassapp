@@ -6,7 +6,7 @@ import { Account, Investor, InvestorPermissions } from '../types';
 import { ICONS } from '../constants';
 import { getInvestorAccount, formatDate, formatCurrency, participationDates, participationDatesError, withParticipationDates } from '../src/utils';
 import { SuccessCheck, hapticSuccess, haptic } from './feedback';
-import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetSegmented, sheetInputClass } from './GlassSheet';
+import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetSegmented, SheetDateInput, sheetInputClass } from './GlassSheet';
 import { appConfirm } from '../src/dialogs';
 
 export type InvestorPoolChoice =
@@ -353,13 +353,7 @@ const Investors: React.FC<InvestorsProps> = ({
                             hint={editingId
                               ? 'С этой даты инвестор не получает долю будущей прибыли пула; история до неё сохранится. Пусто — ещё активен.'
                               : 'Пусто — инвестор ещё активен.'}>
-                  <span className="relative block">
-                    {!formLeftPoolDate && (
-                      <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600">Не указана</span>
-                    )}
-                    <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${formLeftPoolDate ? '' : 'text-transparent'}`}
-                           type="date" value={formLeftPoolDate} onChange={e => setFormLeftPoolDate(e.target.value)} />
-                  </span>
+                  <SheetDateInput value={formLeftPoolDate} onChange={setFormLeftPoolDate} />
                 </SheetField>
               )}
             </SheetSection>

@@ -82,6 +82,24 @@ export const SheetField: React.FC<{ label: React.ReactNode; hint?: React.ReactNo
 export const sheetInputClass =
   'mt-0.5 w-full bg-transparent outline-none text-[16px] text-slate-900 dark:text-white placeholder:text-slate-300 dark:placeholder:text-slate-600';
 
+/**
+ * Поле даты в SheetField с подписью, пока пусто («Не указана»). Пустое поле даты на
+ * iPhone — пустая полоса без подсказки, поэтому подпись лежит под прозрачным полем.
+ * В фокусе подпись прячется, а разметка браузера «дд.мм.гггг» становится видна: на
+ * компьютере выделенное «дд» иначе ложилось поверх «Не указана» кашей с синей плашкой.
+ */
+export const SheetDateInput: React.FC<{ value: string; onChange: (value: string) => void; max?: string; min?: string; placeholder?: string }> = ({
+  value, onChange, max, min, placeholder = 'Не указана',
+}) => (
+  <span className="relative block">
+    <input className={`${sheetInputClass} peer h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${value ? '' : 'text-transparent focus:text-slate-900 dark:focus:text-white'}`}
+           type="date" value={value} max={max} min={min} onChange={e => onChange(e.target.value)} />
+    {!value && (
+      <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600 peer-focus:hidden">{placeholder}</span>
+    )}
+  </span>
+);
+
 /** Переключатель строкой — как в настройках iOS */
 export const SheetToggle: React.FC<{
   label: React.ReactNode;

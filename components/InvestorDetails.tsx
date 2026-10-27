@@ -6,7 +6,7 @@ import { Investor, Sale, Expense, Account, Payment, AppSettings, Customer, Inves
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
 import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getAccountShares, getManagerSharePercent, getCapitalShares, getActivePeriodAt, getInvestorProfitDeduction, paymentProfitShares, expectedProfitShares, participationDates, participationDatesError, withParticipationDates, investorProfitOutflows, investorProfitAccruals } from '../src/utils';
-import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
+import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetDateInput, sheetInputClass } from './GlassSheet';
 import { appConfirm } from '../src/dialogs';
 
 // Модальное окно формы. Через портал в body: страница открыта внутри .page-push-layer,
@@ -1283,14 +1283,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               </SheetField>
               {isPoolMember && (
                 <SheetField label="Дата выхода из пула" hint="Пусто — инвестор ещё активен.">
-                  <span className="relative block">
-                    {!editLeftDate && (
-                      <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600">Не указана</span>
-                    )}
-                    <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${editLeftDate ? '' : 'text-transparent'}`}
-                           type="date" value={editLeftDate}
-                           onChange={e => { setEditLeftDate(e.target.value); setEditError(null); }} />
-                  </span>
+                  <SheetDateInput value={editLeftDate} onChange={v => { setEditLeftDate(v); setEditError(null); }} />
                 </SheetField>
               )}
             </SheetSection>

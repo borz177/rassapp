@@ -1,5 +1,5 @@
 import React, { useMemo, useRef, useState } from 'react';
-import GlassSheet, { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
+import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetDateInput, sheetInputClass } from './GlassSheet';
 import PassportScan, { type PassportFields } from './PassportScan';
 import { Customer, CustomerPhone } from '../types';
 import { cleanExtraPhones, MAX_EXTRA_PHONES, PHONE_LABELS } from '../src/customerPhones';
@@ -243,15 +243,7 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
                    placeholder="г. Москва, ул. Ленина, д. 1" />
           </SheetField>
           <SheetField label="Дата рождения">
-            {/* Пустое поле даты на iPhone — пустая полоса без подсказки: подпись под прозрачным полем */}
-            <span className="relative block">
-              {!form.birthDate && (
-                <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600">Не указана</span>
-              )}
-              <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${form.birthDate ? '' : 'text-transparent'}`}
-                     type="date" value={form.birthDate} max={new Date().toISOString().slice(0, 10)}
-                     onChange={e => set('birthDate', e.target.value)} />
-            </span>
+            <SheetDateInput value={form.birthDate} max={new Date().toISOString().slice(0, 10)} onChange={v => set('birthDate', v)} />
           </SheetField>
           <div className="grid grid-cols-2 divide-x divide-slate-100 dark:divide-slate-700/70">
             <SheetField label="Серия паспорта">
