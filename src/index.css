@@ -1260,6 +1260,14 @@ input, textarea, [contenteditable] {
   .shell-floating .page-push-layer:has(.page-push-layer) .page-push-layer:not(:has(.page-push-layer)):not(:has(~ .page-push-layer)) {
     visibility: visible;
   }
+  /* Отложенная страница (под открытой из неё, см. transitions/park.ts) — не соседка и
+     не родитель верхней: страница счёта живёт внутри «Кассы», а карточка клиента,
+     открытая из неё, — отдельно. Правила выше её не ловили, и сквозь прозрачную
+     карточку клиента просвечивали название и остаток счёта. На телефоне не трогаем:
+     там фон страниц сплошной, а отложенная видна при свайпе назад */
+  .shell-floating .page-push-layer[aria-hidden="true"] {
+    visibility: hidden;
+  }
 
   /* Закреплённые внизу полосы — в пределах карточки, а не всего окна */
   .shell-floating .shell-fixed-bar {
