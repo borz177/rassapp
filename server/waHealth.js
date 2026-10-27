@@ -19,6 +19,11 @@ const RETRY_LOST_EVERY_MS = 60 * 60 * 1000;
 const MASS_LOSS = 3;
 // Обновление запускается раз в неделю — две пропущенные недели уже тревога
 const UPDATE_STALE_DAYS = 16;
+// Номеров на одном IP сервиса стало много — пора прокси (резидентные/мобильные,
+// 1 на 3–5 номеров). Решение владельца 27.10.2026: «скажи, когда будет больше 20».
+// Дальше — каждые +10, каждый порог один раз (отметка в wa_milestones)
+const PROXY_FIRST = 20;
+const PROXY_STEP = 10;
 
 function startWaHealth({ pool, waTransport, notifyUser, notifyAdmins }) {
   if (!waTransport.builtinAvailable()) return;
@@ -34,6 +39,20 @@ function startWaHealth({ pool, waTransport, notifyUser, notifyAdmins }) {
        WHERE user_id = $1`,
       [userId, state]
     );
+
+  let milestonesReady;
+  const checkProxyMilestone = async (online) => {
+    if (online < PROXY_FIRST) return;
+    milestonesReady ||= pool.query('CREATE TABLE IF NOT EXISTS wa_milestones(key TEXT PRIMARY KEY, at TIMESTAMPTZ NOT NULL DEFAULT NOW())')
+      .catch(e => { milestonesReady = null; throw e; });
+    await milestonesReady;
+    const reached = PROXY_FIRST + Math.floor((online - PROXY_FIRST) / PROXY_STEP) * PROXY_STEP;
+    // Один раз на порог: вставка прошла — значит, этот порог ещё не объявляли
+    const fresh = await pool.query('INSERT INTO wa_milestones(key) VALUES($1) ON CONFLICT DO NOTHING RETURNING key', [`numbers_${reached}`]);
+    if (!fresh.rowCount) return;
+    await notifyAdmins(`Встроенный WhatsApp: на связи уже ${online} — пора прокси`,
+      `Все номера ходят в WhatsApp с одного адреса сервера wa.rassrochka.pro. Чтобы блокировка одного не задела остальных, поставьте резидентные или мобильные прокси (Казахстан), один на 3–5 номеров.`);
+  };
 
   const check = async () => {
     let sessions;
@@ -62,6 +81,9 @@ function startWaHealth({ pool, waTransport, notifyUser, notifyAdmins }) {
       FROM wa_builtin b JOIN users u ON u.id = b.user_id
       WHERE u.whatsapp_settings->>'provider' = 'builtin'
         AND u.whatsapp_settings->>'enabled' = 'true'`);
+
+    const online = rows.filter(row => { const s = byId.get(String(row.wuz_id)); return s && waField(s, 'loggedIn'); }).length;
+    await checkProxyMilestone(online).catch(e => console.warn('⚠️ WA health: порог номеров не проверен:', e.message));
 
     const newlyLost = [];
     for (const row of rows) {
