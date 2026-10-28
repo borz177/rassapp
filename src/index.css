@@ -1524,18 +1524,19 @@ input, textarea, [contenteditable] {
     box-shadow: inset 0 1.5px 0 rgba(255, 255, 255, 0.45), inset 0 0 0 1px rgba(255, 255, 255, 0.18), 0 12px 30px -6px rgba(0, 0, 0, 0.6);
   }
 
-  /* Мягкие карточки */
+  /* Мягкие карточки: ровное белое стекло 72 % — серый фон окна просвечивает, и
+     карточки не «бьют» белым (вариант А, выбран владельцем 27.10.2026; раньше —
+     почти непрозрачный белый градиент 95 → 90 %) */
   .shell-floating:not(.dark) :is(.shell-main, .page-push-layer) :is(
     :is(.rounded-xl, .rounded-2xl, .rounded-3xl):is(.bg-white, [class*="bg-white/8"], [class*="bg-white/9"]):not(.sticky),
     .mac-card, .dash-stat
   ) {
-    background: linear-gradient(165deg, rgba(255, 255, 255, 0.95) 0%, rgba(241, 244, 249, 0.92) 55%, rgba(230, 235, 243, 0.9) 100%) !important;
-    border: 1px solid rgba(255, 255, 255, 0.55) !important;
+    background: rgba(255, 255, 255, 0.72) !important;
+    border: 1px solid rgba(255, 255, 255, 0.45) !important;
     box-shadow:
-      inset 0 1px 0 rgba(255, 255, 255, 0.9),
-      inset 0 -1px 0 rgba(15, 23, 42, 0.04),
-      0 18px 40px -18px rgba(0, 0, 0, 0.55),
-      0 2px 6px -2px rgba(0, 0, 0, 0.18) !important;
+      inset 0 1px 0 rgba(255, 255, 255, 0.85),
+      0 1px 2px rgba(2, 6, 23, 0.1),
+      0 16px 36px -20px rgba(2, 6, 23, 0.55) !important;
   }
 
   /* Плитки Главной: подпись и сумма по центру */
@@ -1640,7 +1641,7 @@ input, textarea, [contenteditable] {
    Метка (Получено, 66%…) сверху, сумма крупно по центру, под ней цветная черта,
    ниже подпись и пояснение. */
 @media (min-width: 768px) {
-  .shell-floating .rep-kpi { --dot: #94a3b8; display: flex; flex-direction: column; align-items: center; text-align: center; justify-content: center; min-height: 150px; padding: 18px 16px; border-radius: 22px; }
+  .shell-floating .rep-kpi { --dot: #94a3b8; display: flex; flex-direction: column; align-items: center; text-align: center; justify-content: center; min-height: 124px; padding: 18px 14px; border-radius: 22px; }
   .shell-floating .rep-kpi:hover { transform: translateY(-2px); }
   .shell-floating .rep-kpi-emerald, .shell-floating .rep-kpi-teal { --dot: #10b981; }
   .shell-floating .rep-kpi-sky { --dot: #0ea5e9; }
@@ -1649,14 +1650,28 @@ input, textarea, [contenteditable] {
   .shell-floating .rep-kpi-amber { --dot: #f59e0b; }
   .shell-floating .rep-kpi-red { --dot: #ef4444; }
 
-  .shell-floating .rep-kpi > div:first-child { justify-content: center; margin-bottom: 10px; order: 0; }
+  .shell-floating .rep-kpi > div:first-child { justify-content: center; margin-bottom: 8px; order: 0; }
+  /* Метка сверху (Получено, 40%, Норма) — без цветной плашки, мелким текстом цвета плитки */
+  .shell-floating .rep-kpi > div:first-child > span {
+    background: none !important;
+    padding: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--dot) !important;
+  }
+  /* Сумма — как на плитках Главной: тёмная, в одну строку, «₽» мелким серым;
+     цвет плитки — только в черте под суммой */
   .shell-floating .rep-kpi > p:nth-child(3) {
     order: 1;
-    font-size: 24px;
+    font-size: clamp(17px, 1.5vw, 22px);
     line-height: 1.15;
     letter-spacing: -0.02em;
     font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+    color: #1e293b !important;
   }
+  .dark.shell-floating .rep-kpi > p:nth-child(3) { color: #f1f5f9 !important; }
+  .shell-floating .rep-kpi .rep-kpi-cur { font-size: 0.6em; color: #94a3b8 !important; }
   .shell-floating .rep-kpi > p:nth-child(3)::after {
     content: "";
     display: block;

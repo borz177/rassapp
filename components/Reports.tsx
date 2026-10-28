@@ -91,6 +91,8 @@ interface KpiCardProps {
 }
 const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, subtext }) => {
     const c = COLOR_MAP[color];
+    // «12 049 971 ₽» — знак рубля отдельно, мелким серым, как на плитках Главной
+    const cur = /^(.*\S)\s*₽$/.exec(value);
     return (
         <div className={`rep-kpi rep-kpi-${color} group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1`}>
             <div className="flex items-center justify-between mb-3">
@@ -98,7 +100,7 @@ const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, sub
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.light}`}>{badge}</span>
             </div>
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 leading-tight">{label}</p>
-            <p className={`text-xl font-bold ${c.text} leading-tight`}>{value}</p>
+            <p className={`rep-kpi-value text-xl font-bold ${c.text} leading-tight`}>{cur ? <>{cur[1]}<span className="rep-kpi-cur text-sm text-slate-400 ml-1 font-bold">₽</span></> : value}</p>
             {subtext && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtext}</p>}
         </div>
     );
