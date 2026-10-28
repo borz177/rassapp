@@ -51,3 +51,23 @@ test('скидка делится по процентам: у инвестора
   const got = investorProfitAccruals(account, investors, [s], 'inv').reduce((n, a) => n + a.amount, 0);
   assert.equal(Math.round(got), Math.round(14000 * 0.6));
 });
+
+test('общий пул: скидка из прибыли делится между участниками и менеджером, вместе — 14 000', async () => {
+  const P = await load();
+  const account = { id: 'pool', type: 'POOL', poolMemberIds: ['a', 'b'] };
+  const investors = [
+    { id: 'a', name: 'А', profitPercentage: 50, initialAmount: 60000, joinedDate: '2025-01-01' },
+    { id: 'b', name: 'Б', profitPercentage: 50, initialAmount: 40000, joinedDate: '2025-01-01' },
+  ];
+  const s = { ...sale(true), accountId: 'pool', startDate: '2025-12-15' };
+  const inv = ['a', 'b'].map(id => P.investorProfitAccruals(account, investors, [s], id).reduce((n, x) => n + x.amount, 0));
+  const manager = s.paymentPlan.reduce((n, p) => n + P.moneyInProfit(s, p) * P.paymentManagerPercent(account, investors, s, p) / 100, 0);
+  assert.ok(inv[0] > 0 && inv[1] > 0, JSON.stringify(inv));
+  assert.equal(Math.round(inv[0] + inv[1] + manager), 14000, `участники ${inv.map(Math.round)}, менеджер ${Math.round(manager)}`);
+  // Без пометки (прежние) — те же доли от 19 000
+  const old = { ...sale(false), accountId: 'pool', startDate: '2025-12-15' };
+  const oldAll = ['a', 'b'].reduce((n, id) => n + P.investorProfitAccruals(account, investors, [old], id).reduce((m, x) => m + x.amount, 0), 0)
+    + old.paymentPlan.reduce((n, p) => n + P.moneyInProfit(old, p) * P.paymentManagerPercent(account, investors, old, p) / 100, 0);
+  assert.equal(Math.round(oldAll), 19000);
+  console.log(`   пул: участник А ${Math.round(inv[0])}, участник Б ${Math.round(inv[1])}, менеджер ${Math.round(manager)}`);
+});
