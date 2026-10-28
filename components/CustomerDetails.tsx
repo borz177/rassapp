@@ -394,7 +394,13 @@ ${customer.name}!
         const paidAmount = totalRealPaid + totalDiscounts;
         const profit = selectedSale.buyPrice > 0 ? selectedSale.totalAmount - selectedSale.buyPrice : 0;
         const monthlyProfit = selectedSale.installments > 0 && profit > 0 ? profit / selectedSale.installments : 0;
-        const firstPaymentDate = (selectedSale.paymentPlan && selectedSale.paymentPlan.length > 0) ? selectedSale.paymentPlan[0].date : null;
+        // Дата первого платежа по графику — самая ранняя плановая строка. Раньше брали
+        // paymentPlan[0], а там вперемешку плановые строки и полученные платежи (и
+        // достроенные при пересчёте месяцы) — первой могла оказаться не та запись.
+        const firstPaymentDate = (selectedSale.paymentPlan || [])
+            .filter(p => p.isRealPayment !== true && p.date)
+            .map(p => p.date)
+            .sort((a, b) => new Date(a).getTime() - new Date(b).getTime())[0] || null;
         const isClosed = selectedSale.status === 'COMPLETED' || selectedSale.remainingAmount <= 0;
 
         return (
