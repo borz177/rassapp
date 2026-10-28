@@ -22,7 +22,8 @@ const moneyIn = sale => [
   { id: `${sale.id}_dp`, date: sale.startDate, amount: Number(sale.downPayment) || 0 },
   ...(sale.paymentPlan || [])
     .filter(p => p.isPaid && p.isRealPayment !== false)
-    .map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0 })),
+    // Скидка и её пометка — для прибыли (moneyInProfit: скидка из прибыли)
+    .map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0, discountAmount: p.discountAmount, discountFromProfit: p.discountFromProfit })),
 ];
 
 const collected = sale => moneyIn(sale).reduce((sum, p) => sum + p.amount, 0);
@@ -37,9 +38,19 @@ const profitMargin = (sale, paymentsOnly = false) => {
   return base > 0 ? profit / base : 0;
 };
 
+// Скидка из прибыли — дословно как moneyInProfit в shared/profit.js: только у платежей
+// с discountFromProfit (новые с 28.10.2026), не ниже нуля по договору, убыточный — по-старому
 const moneyInProfit = (sale, money, paymentsOnly = false) => {
   if (paymentsOnly && money.id === `${sale.id}_dp`) return 0;
-  return (Number(money.amount) || 0) * profitMargin(sale, paymentsOnly);
+  const margin = profitMargin(sale, paymentsOnly);
+  const base = (Number(money.amount) || 0) * margin;
+  const discount = money && money.discountFromProfit ? Math.max(0, Number(money.discountAmount) || 0) : 0;
+  if (!discount || margin <= 0) return base;
+  const withDiscount = base + discount * margin - discount;
+  const others = (paymentsOnly ? 0 : Number(sale.downPayment) || 0) + (sale.paymentPlan || [])
+    .filter(p => p.isPaid && p.isRealPayment !== false && p.id !== money.id)
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  return Math.max(withDiscount, -others * margin);
 };
 
 const receivedProfit = (sale, paymentsOnly = false) =>

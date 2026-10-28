@@ -1,6 +1,6 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
 import * as Profit from '../shared/profit.js';
-import { Account, Investor, InvestmentPeriod, CapitalChange, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation, StockMovement} from '../types';
+import { Account, Investor, InvestmentPeriod, CapitalChange, Payment, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation, StockMovement} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
   String(str ?? '')
@@ -43,7 +43,7 @@ export const expectedProfitShares: (account: Account | undefined, investors: Inv
 export const expectedManagerPercent: (account: Account | undefined, investors: Investor[], sale?: SaleSchedule) => number = Profit.expectedManagerPercent;
 export const saleProfitMargin: (sale: Pick<Sale, 'totalAmount' | 'buyPrice' | 'downPayment'>, paymentsOnly?: boolean) => number = Profit.saleProfitMargin;
 export const isDownPaymentOf: (sale: Pick<Sale, 'id'>, moneyId?: string) => boolean = Profit.isDownPaymentOf;
-export const moneyInProfit: (sale: Pick<Sale, 'id' | 'totalAmount' | 'buyPrice' | 'downPayment'>, money: { id?: string; amount: number }, paymentsOnly?: boolean) => number = Profit.moneyInProfit;
+export const moneyInProfit: (sale: Pick<Sale, 'id' | 'totalAmount' | 'buyPrice' | 'downPayment'> & { paymentPlan?: Payment[] }, money: { id?: string; amount: number; discountAmount?: number; discountFromProfit?: boolean }, paymentsOnly?: boolean) => number = Profit.moneyInProfit;
 /** Начисления прибыли инвестору по поступлениям на его счёт (экран инвестора, FinUchetGPT) */
 export const investorProfitAccruals: (account: Account | undefined, investors: Investor[], sales: Sale[], investorId: string, paymentsOnly?: boolean) =>
   { id: string; date: string; amount: number; sale: Sale; paymentAmount: number; isDownPayment: boolean }[] = Profit.investorProfitAccruals;
@@ -227,7 +227,8 @@ export const saleMoneyIn = (sale: Pick<Sale, 'id' | 'startDate' | 'downPayment' 
   { id: `${sale.id}_dp`, date: sale.startDate, amount: Number(sale.downPayment) || 0 },
   ...(sale.paymentPlan || [])
     .filter(p => p.isPaid && p.isRealPayment !== false)
-    .map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0 })),
+    // Скидка и её пометка — для прибыли (moneyInProfit: скидка из прибыли)
+    .map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0, discountAmount: p.discountAmount, discountFromProfit: p.discountFromProfit })),
 ];
 
 // Участвует ли данный инвестор в этом счёте — как единоличный владелец или как участник пула.

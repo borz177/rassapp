@@ -604,7 +604,8 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
         isPaid: true, isRealPayment: true,
         note: value.note || (discount > 0 ? `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discount} ₽)`
           : req.apiAuth?.key?.isAgent ? 'FinUchetGPT' : 'Платёж через API'),
-        ...(discount > 0 ? { discountAmount: discount, discountPercent } : {}),
+        // Скидка — из прибыли, по процентам инвесторов и менеджера (shared/profit.js moneyInProfit)
+        ...(discount > 0 ? { discountAmount: discount, discountPercent, discountFromProfit: true } : {}),
         ...viaAi(req),
       };
       sale.paymentPlan.push(payment);

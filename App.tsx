@@ -2607,6 +2607,8 @@ const handleIncomeSubmit = async (data: any) => {
                     // 🆕 Метаданные скидки — для истории и отчётов
                     discountAmount: discountAmount,
                     discountPercent: discountPercent,
+                    // Скидка — из прибыли, по процентам инвесторов и менеджера (shared/profit.js)
+                    discountFromProfit: true,
                     note: `Полное погашение со скидкой ${discountPercent.toFixed(1)}% (−${discountAmount} ₽)`
                 } as any);
             }

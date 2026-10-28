@@ -1,5 +1,5 @@
 import { Customer, Sale } from '../types';
-import { saleProfitMargin } from './utils';
+import { moneyInProfit, saleProfitMargin } from './utils';
 
 /**
  * Прибыль за всё время: итог и его разбор по договорам.
@@ -91,7 +91,12 @@ export const profitTotals = (
     // Копим итог из тех же округлённых значений, что показываем строками:
     // иначе на длинном списке итог карточки и сумма строк расходятся на рубли,
     // и человек справедливо решит, что где-то ошибка.
-    const gotProfit = kopeks(profitBearing * profitMargin);
+    // Платёж со скидкой из прибыли (discountFromProfit) приносит меньше — разница
+    // считается тем же moneyInProfit, что и везде
+    const discountCut = (sale.paymentPlan || [])
+      .filter(p => p.isPaid && p.isRealPayment !== false && p.discountFromProfit)
+      .reduce((sum, p) => sum + moneyInProfit(sale, p, profitFromPaymentsOnly) - (Number(p.amount) || 0) * profitMargin, 0);
+    const gotProfit = kopeks(profitBearing * profitMargin + discountCut);
     receivedProfit += gotProfit;
 
     const progress = sale.totalAmount > 0

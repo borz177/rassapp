@@ -381,10 +381,37 @@ export const saleProfitMargin = (sale, paymentsOnly = false) => {
 /** Первый взнос договора — у него особый порядковый номер поступления. */
 export const isDownPaymentOf = (sale, moneyId) => !!moneyId && moneyId === `${sale.id}_dp`;
 
-/** Прибыль одного поступления: платежа или первого взноса. */
+/**
+ * Скидка поступления, которая идёт из прибыли. Только у платежей с пометкой
+ * discountFromProfit (ставится при записи с 28.10.2026): решение владельца — прежние
+ * скидки считаются как раньше, чтобы не сдвинуть уже начисленное и выплаченное.
+ */
+export const profitDiscount = (money) =>
+  money && money.discountFromProfit ? Math.max(0, Number(money.discountAmount) || 0) : 0;
+
+/**
+ * Прибыль одного поступления: платежа или первого взноса.
+ *
+ * Скидка из прибыли (profitDiscount): уступку клиенту оплачивает прибыль, а не
+ * вложенное — платёж со скидкой приносит (сумма + скидка) × наценку − скидку, и её
+ * делят инвесторы и менеджер по своим процентам, как саму прибыль. Раньше прибыль
+ * уменьшалась только на скидку × наценку, остальное молча ложилось на капитал (касса
+ * недосчитывалась вложенного). Ниже нуля по договору прибыль не уходит: скидка сверх
+ * всей наценки (договор ниже закупа) уменьшает вложенное, как и раньше. Договор в
+ * убыток (наценка ≤ 0) считается по-старому.
+ */
 export const moneyInProfit = (sale, money, paymentsOnly = false) => {
   if (paymentsOnly && isDownPaymentOf(sale, money.id)) return 0;
-  return (Number(money.amount) || 0) * saleProfitMargin(sale, paymentsOnly);
+  const margin = saleProfitMargin(sale, paymentsOnly);
+  const base = (Number(money.amount) || 0) * margin;
+  const discount = profitDiscount(money);
+  if (!discount || margin <= 0) return base;
+  const withDiscount = base + discount * margin - discount;
+  // Прибыль остальных поступлений договора — нижняя граница этого
+  const others = (paymentsOnly ? 0 : Number(sale.downPayment) || 0) + (sale.paymentPlan || [])
+    .filter(p => p.isPaid && p.isRealPayment !== false && p.id !== money.id)
+    .reduce((sum, p) => sum + (Number(p.amount) || 0), 0);
+  return Math.max(withDiscount, -others * margin);
 };
 
 /**

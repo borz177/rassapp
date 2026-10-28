@@ -621,6 +621,12 @@ export interface Payment {
   isRealPayment?: boolean;
   importedAt?: string;
   recordedByUserId?: string; // Who actually logged this payment (manager or employee id) — for audit/visibility
+  /** Скидка клиенту при досрочном погашении (деньгами не пришла) */
+  discountAmount?: number;
+  discountPercent?: number;
+  /** Скидка идёт из прибыли — делят инвесторы и менеджер (см. moneyInProfit в shared/profit.js).
+   *  Ставится на новые платежи со скидкой с 28.10.2026; у прежних нет — они считаются как раньше */
+  discountFromProfit?: boolean;
 }
 
 export interface Expense {

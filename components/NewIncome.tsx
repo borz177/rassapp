@@ -6,7 +6,7 @@ import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppDocument } from '../services/whatsapp';
-import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, saleProfitMargin } from '../src/utils';
+import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, moneyInProfit } from '../src/utils';
 import { fundingShares } from '../src/funding';
 import { contractScheduleRows } from '../src/contractSchedule';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
@@ -206,14 +206,6 @@ const isConfirmingRef = useRef(false);
     return 0;
   }, [selectedSale]);
 
-  const currentPaymentProfit = useMemo(() => {
-    if (!selectedSale || !amount) return 0;
-    const numAmount = Number(amount);
-    if (selectedSale.totalAmount <= 0) return 0;
-    const profit = numAmount * saleProfitMargin(selectedSale, !!appSettings?.profitFromPaymentsOnly);
-    return showCents ? profit : Math.round(profit);
-  }, [selectedSale, amount, showCents, appSettings]);
-
   const fullDebt = selectedSale?.remainingAmount || 0;
   const discountNum = parseFloat(discountValue) || 0;
 
@@ -225,6 +217,15 @@ const isConfirmingRef = useRef(false);
       return Math.min(fullDebt, discountNum);
     }
   }, [discountType, discountValue, fullDebt, selectedSale]);
+
+  // Прибыль этого платежа — тем же moneyInProfit, что в отчётах: со скидкой она из прибыли
+  const currentPaymentProfit = useMemo(() => {
+    if (!selectedSale || !amount) return 0;
+    if (selectedSale.totalAmount <= 0) return 0;
+    const profit = moneyInProfit(selectedSale, { id: 'preview', amount: Number(amount),
+      ...(discountAmount > 0 ? { discountAmount, discountFromProfit: true } : {}) }, !!appSettings?.profitFromPaymentsOnly);
+    return showCents ? profit : Math.round(profit);
+  }, [selectedSale, amount, showCents, appSettings, discountAmount]);
 
   const finalPaymentAmount = Math.max(0, fullDebt - discountAmount);
   const discountPercentDisplay = fullDebt > 0 ? (discountAmount / fullDebt) * 100 : 0;

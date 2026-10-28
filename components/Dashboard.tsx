@@ -641,7 +641,7 @@ const ProfitDetailsModal = ({
                 customerName: customer?.name || 'Неизвестно',
                 customerId: sale.customerId,
                 paymentAmount: payment.amount,
-                profitAmount: payment.amount * profitMargin,
+                profitAmount: moneyInProfit(sale, payment, profitFromPaymentsOnly),
                 date: payment.date,
                 isPaid: true,
                 isDownPayment: false,
@@ -1502,7 +1502,7 @@ const receivedProfitThisMonth = useMemo(() => {
                 const paymentDate = new Date(payment.date);
                 paymentDate.setHours(0, 0, 0, 0);
                 if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    receivedProfit += payment.amount * profitMargin;
+                    receivedProfit += moneyInProfit(sale, payment, profitFromPaymentsOnly);
                 }
             }
         });
