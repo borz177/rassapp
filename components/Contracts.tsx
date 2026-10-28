@@ -223,10 +223,11 @@ const handleSendReminder = async () => {
 
    return <Sheet onClose={onClose} closeRef={closeRef} className="sm:max-w-sm overflow-hidden max-h-[85vh] flex flex-col">
         {/* 🔥 ШАПКА С КНОПКОЙ «НАПОМНИТЬ» */}
-        <div className="px-4 py-3 bg-gradient-to-r from-blue-600 to-indigo-600 flex items-center justify-between shrink-0">
+        {/* Шапка — однотонная, как у остальных окон (раньше — сине-фиолетовый градиент) */}
+        <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 flex items-center justify-between shrink-0">
           <div className="flex items-center gap-3">
-            <div className="text-white bg-white/20 p-2 rounded-xl"><FileText size={18} /></div>
-            <h3 className="text-base font-bold text-white">Информация о договоре</h3>
+            <div className="text-slate-500 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 p-2 rounded-xl"><FileText size={18} /></div>
+            <h3 className="text-base font-bold text-slate-800 dark:text-white">Информация о договоре</h3>
           </div>
 
           {/* 🔔 Кнопка «Напомнить» в шапке — по реальной просрочке договора, а не по вкладке,
