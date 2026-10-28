@@ -708,9 +708,17 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     return totalProfit;
 }, [sales, accounts, investors, profitFilterAccountId, profitFromPaymentsOnly]);
 
+  // На сколько скидка клиенту из прибыли (discountFromProfit) уменьшила прибыль платежа —
+  // против того, что он принёс бы без скидки; доля каждого — по его проценту
+  const discountCut = (sale: Sale, p: any): number => {
+    if (!p?.discountFromProfit || !(Number(p.discountAmount) > 0)) return 0;
+    const full = ((Number(p.amount) || 0) + Number(p.discountAmount)) * saleProfitMargin(sale, profitFromPaymentsOnly);
+    return Math.max(0, full - moneyInProfit(sale, p, profitFromPaymentsOnly));
+  };
+
   // 🔹 Прибыль менеджера (полученная и выплаты)
   const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, isDownPayment: boolean}[] = [];
+    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, isDownPayment: boolean, discount?: number, discountShare?: number}[] = [];
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
         if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
@@ -734,7 +742,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                     const managerProfitSharePercent = paymentManagerPercent(account, investors, sale, p) / 100;
                     const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
                     const managerShare = profitFromPayment * managerProfitSharePercent;
-                    if(managerShare > 0) {
+                    const cut = discountCut(sale, p);
+                    if(managerShare > 0 || cut > 0) {
                         accruals.push({
                             id: p.id,
                             date: p.date,
@@ -742,7 +751,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                             customerId: sale.customerId,
                             customerName,
                             productName: sale.productName,
-                            isDownPayment: isDownPaymentOf(sale, p.id)
+                            isDownPayment: isDownPaymentOf(sale, p.id),
+                            ...(cut > 0 ? { discount: Number((p as any).discountAmount) || 0, discountShare: cut * managerProfitSharePercent } : {}),
                         });
                     }
                 }
@@ -804,6 +814,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
   }, [sales, expenses, accounts, investors, customers, profitFilterAccountId, myProfitPeriod, profitFromPaymentsOnly]);
 
   const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
+  // Скидки клиентам из прибыли за период: сколько всего и сколько пришлось на долю
+  const managerDiscounts = managerProfitAccruals.reduce((t, a) => ({ total: t.total + (a.discount || 0), share: t.share + (a.discountShare || 0) }), { total: 0, share: 0 });
 
 
 
@@ -812,7 +824,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
 // (тогда прибыль с одного платежа распределяется на несколько начислений, по одному на каждого
 // участника пула, с его долей — см. getAccountShares).
 const investorProfitAccruals = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, investorId: string, investorName: string, isDownPayment: boolean}[] = [];
+    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, investorId: string, investorName: string, isDownPayment: boolean, discount?: number, discountShare?: number}[] = [];
 
     sales.forEach(sale => {
         if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
@@ -838,9 +850,10 @@ const investorProfitAccruals = useMemo(() => {
                 if (pDate >= startDate && pDate <= endDate) {
                     const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
                     const shares = paymentProfitShares(account, investors, sale, p);
+                    const cut = discountCut(sale, p);
                     shares.forEach(({ investor, percentage }) => {
                         const investorAmount = profitFromPayment * (percentage / 100);
-                        if (investorAmount > 0) {
+                        if (investorAmount > 0 || cut > 0) {
                             accruals.push({
                                 id: `${p.id}_${investor.id}`,
                                 date: p.date,
@@ -850,7 +863,8 @@ const investorProfitAccruals = useMemo(() => {
                                 productName: sale.productName,
                                 investorId: investor.id,
                                 investorName: investor.name,
-                                isDownPayment: isDownPaymentOf(sale, p.id)
+                                isDownPayment: isDownPaymentOf(sale, p.id),
+                                ...(cut > 0 ? { discount: Number((p as any).discountAmount) || 0, discountShare: cut * percentage / 100 } : {}),
                             });
                         }
                     });
@@ -862,6 +876,8 @@ const investorProfitAccruals = useMemo(() => {
     const filtered = profitFilterInvestorId === 'ALL' ? accruals : accruals.filter(a => a.investorId === profitFilterInvestorId);
     return filtered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
 }, [sales, accounts, investors, customers, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod, profitFromPaymentsOnly]);
+// Скидки клиентам из прибыли за период — доля инвестора(ов) по текущему фильтру
+const investorDiscountShare = investorProfitAccruals.reduce((n, a) => n + (a.discountShare || 0), 0);
 
 // 🔹 Выплаты инвестора
 const investorProfitPayouts = useMemo(() => {
@@ -1854,6 +1870,11 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(totalManagerProfitEarned, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
+                    {managerDiscounts.share > 0.5 && (
+                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1.5 leading-tight">
+                            скидки клиентам {formatCurrency(managerDiscounts.total, appSettings.showCents)} ₽ · ваша доля −{formatCurrency(managerDiscounts.share, appSettings.showCents)} ₽
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -1951,6 +1972,11 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(investorProfitStats.receivedProfit, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
+                    {investorDiscountShare > 0.5 && (
+                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1.5 leading-tight">
+                            скидки клиентам · доля инвестора −{formatCurrency(investorDiscountShare, appSettings.showCents)} ₽
+                        </p>
+                    )}
                 </div>
             </div>
 
@@ -2088,9 +2114,15 @@ const investorProfitPayouts = useMemo(() => {
                                                 </span>
                                             )}
                                         </p>
+                                        {!!p.discount && (
+                                            // Скидка клиенту из прибыли: сколько всего и сколько пришлось на эту долю
+                                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                                                скидка клиенту {formatCurrency(p.discount, appSettings.showCents)} ₽ · ваша доля −{formatCurrency(p.discountShare || 0, appSettings.showCents)} ₽
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="text-right ml-3 shrink-0">
-                                        <p className="font-bold text-sm text-emerald-600 dark:text-emerald-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</p>
+                                        <p className={`font-bold text-sm ${p.amount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{p.amount < 0 ? '−' : '+'}{formatCurrency(Math.abs(p.amount), appSettings.showCents)} ₽</p>
                                         <p className="text-[10px] text-slate-400">{formatDate(p.date)}</p>
                                     </div>
                                 </div>
@@ -2240,9 +2272,15 @@ const investorProfitPayouts = useMemo(() => {
                                                 </span>
                                             )}
                                         </p>
+                                        {!!p.discount && (
+                                            // Скидка клиенту из прибыли: сколько всего и сколько пришлось на эту долю
+                                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                                                скидка клиенту {formatCurrency(p.discount, appSettings.showCents)} ₽ · доля инвестора −{formatCurrency(p.discountShare || 0, appSettings.showCents)} ₽
+                                            </p>
+                                        )}
                                     </div>
                                     <div className="text-right ml-3 shrink-0">
-                                        <p className="font-bold text-sm text-purple-600 dark:text-purple-400">+{formatCurrency(p.amount, appSettings.showCents)} ₽</p>
+                                        <p className={`font-bold text-sm ${p.amount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-purple-600 dark:text-purple-400'}`}>{p.amount < 0 ? '−' : '+'}{formatCurrency(Math.abs(p.amount), appSettings.showCents)} ₽</p>
                                         <p className="text-[10px] text-slate-400">{formatDate(p.date)}</p>
                                     </div>
                                 </div>

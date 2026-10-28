@@ -130,7 +130,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
 
     const investorSalesFiltered = investorSales.filter(sale => sale.buyPrice > 0);
     let profitSum = 0;
-    const accruals: {id: string, date: string, amount: number, source: string}[] = [];
+    const accruals: {id: string, date: string, amount: number, source: string, discount?: number, discountShare?: number}[] = [];
 
     investorSalesFiltered.forEach(sale => {
       const totalSaleProfit = sale.totalAmount - sale.buyPrice;
@@ -147,13 +147,21 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
           const share = paymentProfitShares(account, investors, sale, p).find(m => m.investor.id === investor.id);
           const myPercent = share ? share.percentage : 0;
           if (myPercent <= 0) return;
-          const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly) * myPercent / 100;
+          const paymentProfit = moneyInProfit(sale, p, profitFromPaymentsOnly);
+          const profitFromPayment = paymentProfit * myPercent / 100;
           profitSum += profitFromPayment;
+          // Скидка клиенту из прибыли: на сколько она уменьшила мою долю
+          const pp = p as any;
+          const discount = pp.discountFromProfit ? Number(pp.discountAmount) || 0 : 0;
+          const cut = discount > 0
+            ? Math.max(0, ((Number(p.amount) || 0) + discount) * saleProfitMargin(sale, profitFromPaymentsOnly) - paymentProfit) * myPercent / 100
+            : 0;
           accruals.push({
             id: p.id,
             date: p.date,
             amount: profitFromPayment,
-            source: `Платеж по '${sale.productName}'`
+            source: `Платеж по '${sale.productName}'`,
+            ...(cut > 0 ? { discount, discountShare: cut } : {}),
           });
         }
       });
@@ -710,9 +718,14 @@ const expectedTotalProfit = useMemo(() => {
                       <div className="min-w-0">
                         <p className="font-semibold text-sm text-slate-800 dark:text-white truncate">{accrual.source}</p>
                         <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{formatDate(accrual.date)}</p>
+                        {!!accrual.discount && (
+                          <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
+                            скидка клиенту {formatCurrency(accrual.discount, appSettings.showCents)} ₽ · ваша доля −{formatCurrency(accrual.discountShare || 0, appSettings.showCents)} ₽
+                          </p>
+                        )}
                       </div>
-                      <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400 shrink-0 ml-3">
-                        +{formatCurrency(accrual.amount, appSettings.showCents)} ₽
+                      <span className={`text-sm font-bold shrink-0 ml-3 ${accrual.amount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>
+                        {accrual.amount < 0 ? '−' : '+'}{formatCurrency(Math.abs(accrual.amount), appSettings.showCents)} ₽
                       </span>
                     </div>
                   ))}
