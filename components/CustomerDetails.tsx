@@ -1,3 +1,4 @@
+import CopyablePhone from './CopyablePhone';
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import SaleActionsMenu from './SaleActionsMenu';
@@ -511,20 +512,28 @@ ${customer.name}!
                         </div>
                     )}
 
-                    {selectedSale.guarantorName && (
+                    {selectedSale.customerPhone2 && <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3 border-b border-slate-50 dark:border-slate-700 pb-2">
+                      <span className="text-slate-500 dark:text-slate-400">Доп. телефон клиента</span>
+                      <CopyablePhone phone={selectedSale.customerPhone2} className="font-medium text-slate-800 dark:text-white" />
+                    </div>}
+                    {(selectedSale.guarantorName || selectedSale.guarantorPhone || selectedSale.guarantorPhone2) && (
                         <>
-                            <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2 pt-2">
+                            {selectedSale.guarantorName && <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2 pt-2">
                                 <span className="text-slate-500 dark:text-slate-400">Поручитель</span>
                                 <span className="font-medium text-slate-800 dark:text-white">{selectedSale.guarantorName}</span>
-                            </div>
+                            </div>}
                             {selectedSale.guarantorPhone && (
-                                <div className="flex justify-between border-b border-slate-50 dark:border-slate-700 pb-2">
+                                <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3 border-b border-slate-50 dark:border-slate-700 pb-2">
                                     <span className="text-slate-500 dark:text-slate-400">Телефон поручителя</span>
-                                    <span className="font-medium text-slate-800 dark:text-white">{selectedSale.guarantorPhone}</span>
+                                    <CopyablePhone phone={selectedSale.guarantorPhone} className="font-medium text-slate-800 dark:text-white" />
                                 </div>
                             )}
                         </>
                     )}
+                    {selectedSale.guarantorPhone2 && <div className="flex flex-col gap-1 sm:flex-row sm:justify-between sm:gap-3 border-b border-slate-50 dark:border-slate-700 pb-2">
+                      <span className="text-slate-500 dark:text-slate-400">Доп. телефон поручителя</span>
+                      <CopyablePhone phone={selectedSale.guarantorPhone2} className="font-medium text-slate-800 dark:text-white" />
+                    </div>}
                     <div className="pt-2 mt-2 border-t border-slate-100 dark:border-slate-700 grid grid-cols-2 gap-4">
                         <div className="bg-emerald-50 dark:bg-emerald-900/30 p-3 rounded-xl">
                             <p className="text-xs text-emerald-600 dark:text-emerald-400 mb-1">Прибыль (Общ)</p>
@@ -783,12 +792,12 @@ ${customer.name}!
                             </div>
                         )}
                         <div>
-                            <label className="text-xs text-slate-400 uppercase">{(customer.extraPhones?.length || 0) > 0 ? 'Телефоны' : 'Телефон'}</label>
-                            <p className="text-lg font-medium text-slate-800 dark:text-white">{customer.phone}</p>
-                            {/* Дополнительные номера — с подписью, по нажатию набираются */}
+                            <label className="block text-xs text-slate-400 uppercase">{(customer.extraPhones?.length || 0) > 0 ? 'Телефоны' : 'Телефон'}</label>
+                            <CopyablePhone phone={customer.phone} className="text-lg font-medium text-slate-800 dark:text-white" />
+                            {/* Основной и дополнительные номера копируются по нажатию. */}
                             {(customer.extraPhones || []).map((p, i) => (
                                 <p key={i} className="mt-0.5 flex items-baseline gap-2 text-base font-medium text-slate-700 dark:text-slate-200">
-                                    <a href={`tel:${String(p.phone).replace(/[^\d+]/g, '')}`} className="active:opacity-60">{p.phone}</a>
+                                    <CopyablePhone phone={p.phone} />
                                     {p.label && <span className="text-xs font-semibold text-slate-400 dark:text-slate-500">{p.label}</span>}
                                 </p>
                             ))}

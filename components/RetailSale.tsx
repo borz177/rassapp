@@ -819,7 +819,7 @@ const RetailSale: React.FC<RetailSaleProps> = ({
             <SelectionList
               title="Выберите клиента"
               canScanPassport={canScanPassport}
-              items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone }))}
+              items={customers.map(c => ({ id: c.id, title: c.name, subtitle: c.phone, phone: c.phone }))}
               secondaryIds={customerSecondaryIds}
               secondaryLabel="Клиенты рассрочки"
               onSelect={id => { setCustomerId(id); setIsCredit(true); close(); }}

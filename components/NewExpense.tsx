@@ -1,13 +1,15 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
-import { Account, Investor, Expense, User, Supplier, Sale, StockMovement, Product } from '../types';
+import { Account, Investor, Expense, User, Supplier, Sale, StockMovement, Product, RetailSale } from '../types';
 import { supplierSupplyBalances } from '../src/supplierLedger';
 import { ICONS } from '../constants';
-import { getInvestorAccount, getAccountShares, getManagerSharePercent, formatCurrency, getAccountProfitBalance, accountInvestment } from '../src/utils';
+import { getInvestorAccount, formatCurrency, accountInvestment } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { appConfirm } from '../src/dialogs';
 import { dateFromInput, toInputDate } from '../src/saleMath';
+import { expensePreview, expenseChoiceKey, canReturnOwnCapital, type ExpenseChoice } from '../src/expensePreview';
+import ExpenseBeforeAfter from './ExpenseBeforeAfter';
 
 interface NewExpenseProps {
   investors: Investor[];
@@ -21,6 +23,8 @@ interface NewExpenseProps {
   products?: Product[];
   showSupplierCategory?: boolean;
   appSettings?: any;
+  retailSales?: RetailSale[];
+  userId?: string;
   initialData?: {
     accountId?: string;
     supplierId?: string;
@@ -33,6 +37,7 @@ interface NewExpenseProps {
     supplierDebt?: number;
     /** Выплата закята из окна «Закят»: сразу из прибыли */
     fromProfit?: boolean;
+    profitSource?: ExpenseChoice;
     /** Закят за инвестора: выплата инвестору из его прибыли */
     investorId?: string;
     payoutType?: 'INVESTMENT' | 'PROFIT';
@@ -74,7 +79,7 @@ const checkDuplicateExpense = (
 
 const NewExpense: React.FC<NewExpenseProps> = ({
   investors, accounts, expenses, employees, suppliers, sales, movements = [], products = [], showSupplierCategory, initialData, onClose, onSubmit
-, categories = [], appSettings}) => {
+, categories = [], appSettings, retailSales = [], userId}) => {
   const employeeList: User[] = employees || [];
   const supplierList: Supplier[] = suppliers || [];
   const saleList: Sale[] = sales || [];
@@ -94,12 +99,16 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const [payoutType, setPayoutType] = useState<'INVESTMENT' | 'PROFIT' | null>(initialData?.payoutType || null);
   const [managerPayoutSource, setManagerPayoutSource] = useState<'CAPITAL' | 'PROFIT' | null>(null);
   // Общий расход списывается из заработанной прибыли (делится по долям счёта)
-  const [fromProfit, setFromProfit] = useState(!!initialData?.fromProfit);
+  const [profitSource, setProfitSource] = useState<ExpenseChoice | null>(null);
+  const [acceptNegative, setAcceptNegative] = useState(false);
+  const [pendingSignature, setPendingSignature] = useState('');
   // Чью прибыль уменьшает: MANAGER — только менеджера, SHARED — общее дело (делится по долям)
-  const [profitSource, setProfitSource] = useState<'MANAGER' | 'SHARED'>('SHARED');
+  const ordinaryExpense = !isSupplierPayment && sourceType === 'OTHER' && category !== 'Моя выплата' && category !== 'Оплата партнёру';
+  const fromProfit = ordinaryExpense && profitSource !== null;
 
   // 🔥 НОВЫЕ СТЕЙТЫ для защиты от дублей и подтверждения
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const saving = useRef(false);
   const [showConfirmModal, setShowConfirmModal] = useState(false);
   // Подтверждение списания: раньше окно просто закрывалось, и было непонятно,
   // прошла операция или нет — из-за этого расход проводили повторно.
@@ -122,35 +131,28 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // выбирать вслепую, не зная, есть ли что возвращать.
   const investment = accountInvestment(selectedAccount, saleList, expenses || []);
 
-  // Остаток прибыли по счёту — чтобы предупредить, если из неё списывают больше,
-  // чем заработано. Не блокируем: в учёте бывают ситуации, когда так и надо,
-  // но уходить в минус молча человек не должен.
-  const profitBalance = (fromProfit && sourceAccountId)
-    ? getAccountProfitBalance(sourceAccountId, saleList, expenses || [], investors, !!appSettings?.profitFromPaymentsOnly)
-    : null;
-  const profitShortfall = (() => {
-    if (!profitBalance) return null;
-    const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) return null;
-    return numAmount > profitBalance.available ? numAmount - profitBalance.available : null;
-  })();
-
-  // Показываем разбивку до сохранения: списание из прибыли — не самая очевидная
-  // операция, и увидеть «сколько уйдёт с кого» лучше заранее, а не в отчёте потом.
-  const profitSplitPreview = (() => {
-    if (!fromProfit) return null;
-    const numAmount = Number(amount);
-    if (!numAmount || numAmount <= 0) return null;
-    if (profitSource === 'MANAGER') {
-      return `Спишется целиком с вашей прибыли: ${formatCurrency(numAmount)} ₽`;
-    }
-    const mgrPct = getManagerSharePercent(selectedAccount, investors, date);
-    const parts = [`менеджер ${formatCurrency(numAmount * mgrPct / 100)} ₽`];
-    getAccountShares(selectedAccount, investors, date).forEach(({ investor, percentage }) => {
-      if (percentage > 0) parts.push(`${investor.name} ${formatCurrency(numAmount * percentage / 100)} ₽`);
+  const previewOf = (data: any) => expensePreview({
+    expense: { ...data, id: '__expense_preview__', userId: userId || '' },
+    accounts, sales: saleList, expenses: expenses || [], investors, retailSales,
+    profitFromPaymentsOnly: !!appSettings?.profitFromPaymentsOnly,
+  });
+  const readyForPreview = isSupplierPayment ? true
+    : sourceType === 'INVESTOR' ? !!payoutType
+    : category === 'Моя выплата' ? !!managerPayoutSource
+    : category === 'Оплата партнёру' || !!profitSource;
+  const formPreview = useMemo(() => {
+    if (!readyForPreview || !sourceAccountId || !Number.isFinite(Number(amount)) || Number(amount) <= 0 || !date) return null;
+    return previewOf({ amount:Number(amount), accountId:sourceAccountId, date:dateFromInput(date).toISOString(),
+      category:isSupplierPayment?'Оплата партнёру':sourceType==='INVESTOR'?'Выплата инвестора':category,
+      fromProfit:fromProfit || undefined, profitSource:fromProfit ? profitSource : undefined,
+      managerPayoutSource:sourceType==='OTHER'&&category==='Моя выплата'?managerPayoutSource:undefined,
+      investorId:sourceType==='INVESTOR'?selectedInvestorId:undefined, payoutType:sourceType==='INVESTOR'?payoutType:undefined,
     });
-    return 'Спишется: ' + parts.join(', ');
-  })();
+  },[readyForPreview,sourceAccountId,amount,date,category,fromProfit,profitSource,managerPayoutSource,sourceType,selectedInvestorId,payoutType,accounts,sales,expenses,investors,retailSales,appSettings?.profitFromPaymentsOnly]);
+  const confirmPreview = useMemo(() => pendingExpenseData ? previewOf(pendingExpenseData) : null,
+    [pendingExpenseData,accounts,sales,expenses,investors,retailSales,appSettings?.profitFromPaymentsOnly]);
+  const needsNegativeConsent = !!(confirmPreview || formPreview)?.warnings.length;
+  useEffect(()=>setAcceptNegative(false),[formPreview?.signature]);
 
   // Открытые (непогашенные) долги выбранного поставщика — для опциональной привязки оплаты к конкретному договору
   const supplierOpenDebts = selectedSupplierId
@@ -183,7 +185,9 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   // Default account
   useEffect(() => {
       if (accounts.length > 0 && !sourceAccountId) {
-          const mainAccount = accounts.find(a => a.isMain || a.type === 'MAIN') || accounts[0];
+          const availableAccounts = accounts.filter(a=>!a.isArchived);
+          const mainAccount = availableAccounts.find(a => a.isMain || a.type === 'MAIN') || availableAccounts[0];
+          if (!mainAccount) return;
           setSourceAccountId(mainAccount.id);
       }
   }, [accounts, sourceAccountId]);
@@ -195,33 +199,40 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     }
   }, [sourceType]);
 
-  // Reset manager payout source if category changes
-    useEffect(() => {
-      if (category !== 'Моя выплата') {
-          setManagerPayoutSource(null);
-      } else {
-          // У «Моей выплаты» источник выбирается отдельными кнопками ниже
-          setFromProfit(false);
-      }
-      // 🔥 Сбрасываем сотрудника, если категория не "Зарплата"
-      if (category !== 'Salary') {
-          setSelectedEmployeeId('');
-      }
-      // Зарплата сотрудника — расход менеджера: он нанял, ему и платить из своей доли.
-      // Прочие расходы по умолчанию считаются расходом общего дела.
-      // Закят владелец платит со своей доли — инвесторы платят свой сами
-      setProfitSource(category === 'Salary' || category === 'Закят' ? 'MANAGER' : 'SHARED');
-      // Сбрасываем поставщика/договор, если категория не "Партнер"
-      if (category !== 'Оплата партнёру') {
-          setSelectedSupplierId('');
-          setSelectedDebtSaleId('');
-          setSelectedSupplyDocId('');
-      } else {
-          // Долг поставщику — возврат закупа, а не расход из прибыли. Галочка, поставленная
-          // до смены категории, иначе молча уехала бы в сохранённый расход.
-          setFromProfit(false);
-      }
+  useEffect(() => {
+    if (category !== 'Моя выплата') setManagerPayoutSource(null);
+    if (category !== 'Salary') setSelectedEmployeeId('');
+    if (category !== 'Оплата партнёру') {
+      setSelectedSupplierId('');
+      setSelectedDebtSaleId('');
+      setSelectedSupplyDocId('');
+    }
   }, [category]);
+
+  // Первый выбор явный; после успешной записи запоминаем его для пользователя,
+  // категории и счёта. Данные старых расходов не переписываются.
+  useEffect(() => {
+    if (!ordinaryExpense) return;
+    if (initialData?.fromProfit && (!initialData.accountId || initialData.accountId===sourceAccountId) && (!initialData.category || initialData.category===category)) {
+      setProfitSource(initialData.profitSource || (category==='Salary'||category==='Закят'?'MANAGER':'SHARED')); return;
+    }
+    const key=expenseChoiceKey(userId,sourceAccountId,category);
+    let saved: string | null = null;
+    try { if(key) saved=localStorage.getItem(key); } catch { /* Недоступное хранилище не мешает форме. */ }
+    setProfitSource(saved==='MANAGER'||saved==='SHARED'?saved:category==='Salary'||category==='Закят'?'MANAGER':null);
+  },[category,sourceAccountId,sourceType,userId]);
+  useEffect(()=>{
+    if(managerPayoutSource==='CAPITAL'&&!canReturnOwnCapital(selectedAccount))setManagerPayoutSource(null);
+  },[sourceAccountId,accounts,managerPayoutSource]);
+
+  const prepareConfirmation = (data: any) => {
+    const preview=previewOf(data);
+    if(preview.errors.length){alert(preview.errors[0]);return;}
+    setAcceptNegative(false);
+    setPendingSignature(preview.signature);
+    setPendingExpenseData(data);
+    setShowConfirmModal(true);
+  };
 
   // Сбрасываем выбранный договор при смене поставщика
   useEffect(() => {
@@ -257,7 +268,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     if (isSubmitting) return;
     
     const numAmount = Number(amount);
-    if (numAmount <= 0) {
+    if (!Number.isFinite(numAmount) || numAmount <= 0) {
         alert("Введите сумму больше нуля");
         return;
     }
@@ -284,10 +295,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             saleId: initialData?.saleId,
             description: comment.trim() || undefined,
         };
-        setPendingExpenseData(supplierExpenseData);
-        setShowConfirmModal(true);
+        prepareConfirmation(supplierExpenseData);
         return;
     }
+
+    if (ordinaryExpense && !profitSource) { alert('Выберите: общий расход или за мой счёт.'); return; }
 
     // 🔍 ПРОВЕРКА НА ДУБЛИКАТ (если есть массив расходов)
     if (expenses && expenses.length > 0) {
@@ -424,19 +436,26 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     }
 
     // 💾 Сохраняем данные и показываем модал подтверждения
-    setPendingExpenseData(expenseData);
-    setShowConfirmModal(true);
+    prepareConfirmation(expenseData);
   };
 
   // 🔥 Подтверждение отправки расхода
   const handleConfirm = async () => {
-    if (isSubmitting || !pendingExpenseData) return;
+    if (saving.current || isSubmitting || !pendingExpenseData) return;
     
+    const current=previewOf(pendingExpenseData);
+    if (current.signature!==pendingSignature) { alert('Данные изменились. Проверьте расчёт ещё раз.'); handleCancel(); return; }
+    if(current.errors.length || current.warnings.length&&!acceptNegative)return;
+    saving.current = true;
     setIsSubmitting(true);
     
     try {
       // 🔥 ОТПРАВКА НА СЕРВЕР
       await onSubmit(pendingExpenseData);
+      if(pendingExpenseData.fromProfit) {
+        const key=expenseChoiceKey(userId,pendingExpenseData.accountId,pendingExpenseData.category);
+        try{if(key)localStorage.setItem(key,pendingExpenseData.profitSource);}catch{}
+      }
 
       // ✅ Успех — показываем подтверждение и только потом уходим с экрана
       setExpenseDone(true);
@@ -454,6 +473,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
       
     } finally {
       // 🔓 Всегда разблокируем
+      saving.current = false;
       setIsSubmitting(false);
     }
   };
@@ -498,7 +518,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 sourceType === 'OTHER' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'
             }`}
         >
-            Общие расходы
+            Расходы
         </button>
         {investors.length > 0 && (
             <button
@@ -519,7 +539,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Списать со счета</label>
                 <select
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                    value={sourceAccountId}
+                    aria-label="Счёт списания" value={sourceAccountId}
                     onChange={e => setSourceAccountId(e.target.value)}
                 >
                     {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -544,7 +564,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Списать со счета</label>
                      <select
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                        value={sourceAccountId}
+                        aria-label="Счёт списания" value={sourceAccountId}
                         onChange={e => setSourceAccountId(e.target.value)}
                      >
                          {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
@@ -554,11 +574,11 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                       <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник списания</label>
                       <div className="grid grid-cols-2 gap-2">
                           <button type="button" onClick={() => setPayoutType('INVESTMENT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'INVESTMENT' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
-                              <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Из Инвестиций</span>
-                              <span className="text-xs text-slate-500 dark:text-slate-400 block">Уменьшить тело вклада</span>
+                              <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Вернуть вложения</span>
+                              <span className="text-xs text-slate-500 dark:text-slate-400 block">Уменьшит вложения</span>
                           </button>
                           <button type="button" onClick={() => setPayoutType('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
-                              <span className="font-bold text-sm text-emerald-800 dark:text-emerald-300">Из Прибыли</span>
+                              <span className="font-bold text-sm text-emerald-800 dark:text-emerald-300">Выплатить прибыль</span>
                               <span className="text-xs text-slate-500 dark:text-slate-400 block">Выплатить доход</span>
                           </button>
                       </div>
@@ -573,7 +593,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                     <div>
                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Название / Назначение</label>
                          <input
-                            placeholder="Например: Аренда офиса"
+                            aria-label="Назначение расхода" placeholder="Например: Аренда офиса"
                             className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                             value={title}
                             onChange={e => setTitle(e.target.value)}
@@ -584,7 +604,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Категория</label>
                      <select
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                        value={category}
+                        aria-label="Категория расхода" value={category}
                         onChange={e => setCategory(e.target.value)}
                      >
                          <option value="General">Общее</option>
@@ -709,104 +729,38 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Списать со счета</label>
                      <select
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                        value={sourceAccountId}
+                        aria-label="Счёт списания" value={sourceAccountId}
                         onChange={e => setSourceAccountId(e.target.value)}
                      >
                          {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                      </select>
                  </div>
-                 {/* Общий расход можно списать не из оборотных денег, а из уже заработанной
-                     прибыли. Тогда сумма делится между менеджером и инвесторами по их долям
-                     в счёте — так же, как по этому счёту начисляется прибыль.
-                     У «Моей выплаты» для этого есть свой выбор источника ниже. */}
-                 {/* У оплаты поставщику блока прибыли нет: долг за товар гасится из
-                     оборотных денег — это возврат закупа, а не расход из заработанного. */}
-                 {category !== 'Моя выплата' && category !== 'Оплата партнёру' && (
-                     <div className="pt-2">
-                         <label className={`flex items-start gap-3 p-3 rounded-xl border-2 cursor-pointer transition-colors ${
-                             fromProfit
-                                 ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30'
-                                 : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'
-                         }`}>
-                             <input
-                                 type="checkbox"
-                                 checked={fromProfit}
-                                 onChange={e => setFromProfit(e.target.checked)}
-                                 className="mt-0.5 w-4 h-4 rounded border-slate-300 dark:border-slate-600 text-emerald-600 focus:ring-emerald-500"
-                             />
-                             <span className="min-w-0">
-                                 <span className="block font-bold text-sm text-emerald-800 dark:text-emerald-300">Списать из прибыли</span>
-                                 <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-                                     {profitSplitPreview
-                                         ? profitSplitPreview
-                                         : 'Уменьшит заработанную прибыль'}
-                                 </span>
-                                 {profitBalance && (
-                                     <span className="block text-xs text-slate-500 dark:text-slate-400 mt-1">
-                                         Доступно прибыли по счёту: <b>{formatCurrency(Math.max(0, profitBalance.available))} ₽</b>
-                                     </span>
-                                 )}
-                             </span>
-                         </label>
-
-                         {/* Чью прибыль уменьшаем. Для зарплаты по умолчанию — менеджера:
-                             сотрудник нанят им, и доли инвесторов от найма меняться не должны. */}
-                         {fromProfit && (
-                             <div className="mt-3 space-y-2">
-                                 {([
-                                   { key: 'MANAGER', label: 'Из моей прибыли', hint: 'Инвесторы не затрагиваются' },
-                                   { key: 'SHARED', label: 'Расход общего дела', hint: 'Делится по долям счёта — только по договорённости с инвесторами' },
-                                 ] as const).map(opt => (
-                                   <label key={opt.key} className={`flex items-start gap-2.5 p-3 rounded-xl border-2 cursor-pointer ${
-                                       profitSource === opt.key
-                                         ? 'border-emerald-600 bg-white dark:bg-slate-900'
-                                         : 'border-slate-200 dark:border-slate-600 bg-white/60 dark:bg-slate-900/40'
-                                   }`}>
-                                       <input
-                                         type="radio"
-                                         name="expenseProfitSource"
-                                         className="mt-0.5 w-4 h-4 text-emerald-600 focus:ring-emerald-500"
-                                         checked={profitSource === opt.key}
-                                         onChange={() => setProfitSource(opt.key)}
-                                       />
-                                       <span className="min-w-0">
-                                           <span className="block text-sm font-medium text-slate-700 dark:text-slate-300">{opt.label}</span>
-                                           <span className="block text-xs text-slate-500 dark:text-slate-400">{opt.hint}</span>
-                                       </span>
-                                   </label>
-                                 ))}
-                             </div>
-                         )}
-
-                         {/* Списать больше, чем заработано, не запрещаем — в учёте так бывает,
-                             но уходить в минус молча человек не должен. */}
-                         {profitShortfall !== null && (
-                             <div className="mt-2 flex items-start gap-2 p-3 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-900/50">
-                                 <span className="shrink-0 text-amber-600 dark:text-amber-400">{ICONS.Alert}</span>
-                                 <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-                                     Сумма больше заработанной прибыли на <b>{formatCurrency(profitShortfall)} ₽</b>.
-                                     Прибыль уйдёт в минус — проверьте, точно ли расход нужно списывать отсюда,
-                                     а не из оборотных средств.
-                                 </p>
-                             </div>
-                         )}
-                     </div>
-                 )}
+                 {ordinaryExpense && <div className="pt-2">
+                   <p className="text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Как учесть</p>
+                   <div className="grid grid-cols-2 gap-2">
+                     {([{key:'SHARED',label:'Общий расход',hint:'По долям счёта'},{key:'MANAGER',label:'За мой счёт',hint:'Только ваша прибыль'}] as const).map(opt=><button
+                       key={opt.key} type="button" aria-pressed={profitSource===opt.key} onClick={()=>setProfitSource(opt.key)}
+                       className={`p-3 rounded-xl border-2 text-left ${profitSource===opt.key?'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/20':'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
+                       <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">{opt.label}</span>
+                       <span className="block text-xs text-slate-500 mt-1">{opt.hint}</span>
+                     </button>)}
+                   </div>
+                 </div>}
                  {category === 'Моя выплата' && (
                      <div className="pt-2">
                           <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник списания</label>
-                          <div className={`grid ${selectedAccount?.ownerId ? 'grid-cols-1' : 'grid-cols-2'} gap-2`}>
-                              {!selectedAccount?.ownerId && (
+                          <div className={`grid ${canReturnOwnCapital(selectedAccount) ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
+                              {canReturnOwnCapital(selectedAccount) && (
                                   <button type="button" onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
                                       {/* Раньше называлось «Из Капитала» — слово ничего не
                                           говорило о том, откуда деньги и что уменьшается.
                                           Сохранённое значение прежнее, менять историю незачем. */}
-                                      <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Из инвестиций</span>
+                                      <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Вернуть вложенное</span>
                                       <span className="text-xs text-slate-500 dark:text-slate-400 block">Возврат вложенного</span>
                                   </button>
                               )}
                               <button type="button" onClick={() => setManagerPayoutSource('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
-                                  <span className="font-bold text-sm text-emerald-800 dark:text-emerald-300">Из Прибыли</span>
+                                  <span className="font-bold text-sm text-emerald-800 dark:text-emerald-300">Забрать прибыль</span>
                                   <span className="text-xs text-slate-500 dark:text-slate-400 block">Заработанные</span>
                               </button>
                           </div>
@@ -818,7 +772,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                   {investment.left > 0
                                       ? `Вложено в счёт: ${formatCurrency(investment.left, false)} ₽`
                                       : 'По этому счёту вложенного не числится'}
-                                  {Number(amount) > investment.left && ' — выплата больше вложенного, остальное уйдёт из оборота'}
+                                  {Number(amount) > investment.left && ' — сумма больше вложенного'}
                               </p>
                           )}
                      </div>
@@ -834,6 +788,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                     <span className="absolute left-4 top-3.5 text-slate-400 dark:text-slate-500 text-lg">₽</span>
                     <input
                         type="number"
+                        aria-label="Сумма расхода" min="0.01" step="0.01" required
                         placeholder="0"
                         className="w-full p-3 pl-8 text-2xl font-bold border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                         value={amount}
@@ -844,7 +799,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             <div>
                 <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Дата</label>
                 <input
-                    type="date"
+                    type="date" aria-label="Дата расхода" required
                     className="w-full p-3 text-lg border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                     value={date}
                     onChange={e => setDate(e.target.value)}
@@ -865,6 +820,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             </div>
         </div>
 
+        {formPreview && <ExpenseBeforeAfter preview={formPreview} showCents={appSettings?.showCents} />}
+
         {/* 🔔 Предупреждение о возможном дубликате */}
         {duplicateWarning && (
           <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex gap-3 items-start">
@@ -882,8 +839,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
         <button
           type="submit"
-          disabled={isSubmitting}
-          className={`w-full text-white py-4 rounded-xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2 ${
+          disabled={isSubmitting || !!formPreview?.errors.length || ordinaryExpense && !profitSource}
+          className={`w-full disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2 ${
             isSubmitting 
               ? 'bg-slate-400 cursor-not-allowed' 
               : 'bg-red-600 hover:bg-red-700'
@@ -910,7 +867,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
           onClick={() => { if (!isSubmitting && !expenseDone) handleCancel(); }}
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
+            className="bg-white dark:bg-slate-800 w-full max-w-md max-h-[90dvh] overflow-y-auto rounded-2xl shadow-2xl p-5 space-y-4 animate-dialog-in"
             onClick={e => e.stopPropagation()}
           >
             {/* Расход проведён. Галочка красная, а не зелёная: списание не должно
@@ -931,8 +888,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             ) : (
             <>
             {/* Иконка */}
-            <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl">
-              {ICONS.Expenses}
+            <div className="w-12 h-12 bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-400 rounded-full flex items-center justify-center mx-auto text-3xl">
+              {ICONS.Expense}
             </div>
 
             {/* Заголовок */}
@@ -945,7 +902,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Тип:</span>
                 <span className="font-bold text-slate-800 dark:text-white">
-                  {pendingExpenseData.type === 'INVESTOR_WITHDRAWAL' ? 'Выплата инвестору' : pendingExpenseData.category === 'Оплата партнёру' ? 'Оплата поставщику' : 'Общий расход'}
+                  {pendingExpenseData.type === 'INVESTOR_WITHDRAWAL' ? 'Выплата инвестору' : pendingExpenseData.category === 'Оплата партнёру' ? 'Оплата поставщику' : pendingExpenseData.category === 'Моя выплата' ? 'Выплата себе' : pendingExpenseData.profitSource==='MANAGER' ? 'За мой счёт' : 'Общий расход'}
                 </span>
               </div>
 
@@ -1013,6 +970,12 @@ const NewExpense: React.FC<NewExpenseProps> = ({
               </div>
             </div>
             
+            {confirmPreview && <ExpenseBeforeAfter preview={confirmPreview} showCents={appSettings?.showCents} />}
+            {needsNegativeConsent && !confirmPreview?.errors.length && <label className="flex items-center gap-2 text-sm text-amber-800 dark:text-amber-300">
+              <input type="checkbox" checked={acceptNegative} onChange={e=>setAcceptNegative(e.target.checked)} className="w-4 h-4" />
+              Провести с минусом
+            </label>}
+
             {/* Предупреждение о дубликате */}
             {duplicateWarning && (
               <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex gap-2 items-start">
@@ -1032,8 +995,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
               </button>
               <button 
                 onClick={handleConfirm}
-                disabled={isSubmitting}
-                className={`btn-press flex-1 py-3 rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 ${
+                disabled={isSubmitting || !!confirmPreview?.errors.length || needsNegativeConsent && !acceptNegative}
+                className={`btn-press flex-1 py-3 disabled:opacity-50 disabled:cursor-not-allowed rounded-xl font-bold shadow-lg flex items-center justify-center gap-2 ${
                   isSubmitting 
                     ? 'bg-slate-400 cursor-not-allowed text-white' 
                     : 'bg-red-600 hover:bg-red-700 text-white shadow-red-200'

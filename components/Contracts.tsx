@@ -1,3 +1,4 @@
+import CopyablePhone from './CopyablePhone';
 import React, { useMemo, useRef, useState, useEffect } from 'react';
 import { useProgressiveList } from '../src/hooks/useProgressiveList';
 import Sheet from './Sheet';
@@ -7,6 +8,7 @@ import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../ty
 import { ICONS } from '../constants';
 import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
 import { contractNumbers, formatCurrency, formatDate, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu } from '../src/utils';
+import { allPhones } from '../src/customerPhones';
 import { saleTouchesAccount } from '../src/funding';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { printContract as printContractDocument } from './contractPrint';
@@ -249,6 +251,18 @@ const handleSendReminder = async () => {
             <label className="text-[11px] text-slate-500 dark:text-slate-400 block mb-1">Товар</label>
             <p className="font-semibold text-slate-800 dark:text-white text-sm">{sale.productName}</p>
           </div>
+
+          {(customer?.phone || customer?.extraPhones?.length || sale.customerPhone2 || sale.guarantorPhone || sale.guarantorPhone2) && (
+            <div className="space-y-2 rounded-xl border border-slate-100 dark:border-slate-700 p-3">
+              {allPhones(customer).map((p,i)=><div key={i} className="flex justify-between gap-3 text-sm">
+                <span className="text-slate-500 dark:text-slate-400">{p.label || (p.phone === customer?.phone ? 'Клиент' : 'Доп. телефон')}</span>
+                <CopyablePhone phone={p.phone} className="font-medium text-slate-800 dark:text-white" />
+              </div>)}
+              {sale.customerPhone2 && <div className="flex justify-between gap-3 text-sm"><span className="text-slate-500 dark:text-slate-400">Доп. телефон клиента</span><CopyablePhone phone={sale.customerPhone2} /></div>}
+              {sale.guarantorPhone && <div className="flex justify-between gap-3 text-sm"><span className="text-slate-500 dark:text-slate-400">Поручитель</span><CopyablePhone phone={sale.guarantorPhone} /></div>}
+              {sale.guarantorPhone2 && <div className="flex justify-between gap-3 text-sm"><span className="text-slate-500 dark:text-slate-400">Доп. телефон поручителя</span><CopyablePhone phone={sale.guarantorPhone2} /></div>}
+            </div>
+          )}
 
           <div className="grid grid-cols-2 gap-2">
             <InfoItem label="Срок" value={`${sale.installments} мес.`} />

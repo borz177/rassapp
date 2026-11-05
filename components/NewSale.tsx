@@ -1,3 +1,4 @@
+import CopyablePhone from './CopyablePhone';
 import React, {useState, useMemo, useEffect, useRef} from 'react';
 import { useModeOrder } from '../src/modeOrder';
 import { Customer, Product, Account, AppSettings, Sale, SaleStockItem, Payment, Supplier, StockLocation } from '../types';
@@ -1674,7 +1675,7 @@ if (mode === 'CASH') {
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Телефон:</span>
-                <span className="font-medium text-slate-800 dark:text-white">{formatPhone(selectedCustomer?.phone)}</span>
+                <CopyablePhone phone={selectedCustomer?.phone} className="font-medium text-slate-800 dark:text-white">{formatPhone(selectedCustomer?.phone)}</CopyablePhone>
               </div>
               <div className="flex justify-between">
                 <span className="text-slate-500 dark:text-slate-400">Договор:</span>

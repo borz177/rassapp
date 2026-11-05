@@ -1310,9 +1310,9 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v43';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v44';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
-  // Сейчас в окне — шаблоны договоров и FinUchetGPT: оба только у владельца аккаунта
+  // Изменения кассы и расходов показываем владельцу аккаунта.
   if (user.role !== 'manager' && user.role !== 'admin') return;
 
   let seen = false;
@@ -5472,7 +5472,7 @@ if (!user && !showSplash) {
               {currentView === 'CREATE_EXPENSE' && (
                   <PagePush onClose={() => { setCurrentView(formReturnView); setDraftExpenseData(null); }}>
                     {(requestClose: () => void) => (
-                      <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={moneySales}
+                      <NewExpense investors={investors} accounts={accounts} expenses={expenses} suppliers={suppliers} sales={moneySales} retailSales={retailSales} userId={user?.id}
                               movements={stockMovements} products={products}
                               showSupplierCategory={checkAccess('SUPPLIERS')} categories={appSettings.customCategories || []} initialData={draftExpenseData} onClose={requestClose}
                               onSubmit={handleExpenseSubmit} appSettings={appSettings} employees={employees} />
@@ -5498,7 +5498,8 @@ if (!user && !showSplash) {
               {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({
                   id: c.id,
                   title: c.name,
-                  subtitle: c.phone
+                  subtitle: c.phone,
+                  phone: c.phone
               }))} canScanPassport={checkAccess('PASSPORT_SCAN')} onSelect={(id) => handleSelection('customerId', id)}
                                                                    secondaryIds={notInstallmentIds} secondaryLabel="Покупатели розницы"
                                                                    onCancel={() => setCurrentView(previousView === 'CREATE_INCOME' ? 'CREATE_INCOME' : 'CREATE_SALE')}
@@ -6502,14 +6503,20 @@ if (!user && !showSplash) {
             {
               tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
               icon: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
-              title: 'Свои шаблоны договоров',
-              text: 'Загрузите образец — ИИ соберёт такой же, или составьте сами. Настройки → Печатная форма.',
+              title: 'Расходы',
+              text: 'Перед списанием видно, сколько останется денег и прибыли.',
             },
             {
               tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
-              icon: <><path d="M12 3l1.8 4.7L18.5 9.5l-4.7 1.8L12 16l-1.8-4.7L5.5 9.5l4.7-1.8z" /><path d="M19 15l.8 2.2L22 18l-2.2.8L19 21l-.8-2.2L16 18l2.2-.8z" /></>,
-              title: 'Агент стал умнее',
-              text: 'Несколько фото сразу (клиент и поручитель), перенос платежа, журнал действий.',
+              icon: <><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 9h18M7 14h2M13 14h4M7 17h2" /></>,
+              title: 'Остаток в обороте',
+              text: 'Нажмите на сумму — покажем, из чего она складывается.',
+            },
+            {
+              tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
+              icon: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></>,
+              title: 'Копирование номеров',
+              text: 'Нажмите на телефон клиента или поручителя — номер скопируется.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
@@ -6526,25 +6533,10 @@ if (!user && !showSplash) {
           ))}
         </div>
 
-        {/* «Попробовать» — сразу чат агента; агент недоступен (сотрудник,
-            не открыт на сервере) — просто закрыть */}
-        {aiAvailable ? (
-          <>
-            <button onClick={() => { setShowTemplateUpdateModal(false); openAssistant(); }}
-                    className="mt-7 w-full h-12 bg-violet-600 text-white text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
-              Открыть агента
-            </button>
-            <button onClick={() => setShowTemplateUpdateModal(false)}
-                    className="mt-2 w-full h-11 text-[15px] font-semibold text-slate-500 dark:text-slate-400 active:opacity-60">
-              Закрыть
-            </button>
-          </>
-        ) : (
-          <button onClick={() => setShowTemplateUpdateModal(false)}
-                  className="mt-7 w-full h-12 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
-            Понятно
-          </button>
-        )}
+        <button onClick={() => setShowTemplateUpdateModal(false)}
+                className="mt-7 w-full h-12 bg-violet-600 text-white text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">
+          Понятно
+        </button>
       </div>
     </div>
   </div>

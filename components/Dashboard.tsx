@@ -17,6 +17,7 @@ import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
 import { turnoverBreakdown, type TurnoverBreakdown } from '../src/turnoverBreakdown';
+import TurnoverRestSheet from './TurnoverRestSheet';
 import GlassSheet, { SheetSection } from './GlassSheet';
 import Sheet from './Sheet';
 import ZakatSheet from './ZakatSheet';
@@ -874,7 +875,7 @@ const CardChevron: React.FC = () => (
   </svg>
 );
 
-const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onZakat?: () => void; onClose: () => void }> = ({ data, showCents, accountName, onZakat, onClose }) => {
+const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onZakat?: () => void; onRest: () => void; onClose: () => void }> = ({ data, showCents, accountName, onZakat, onRest, onClose }) => {
   const m = (n: number) => `${formatCurrency(n, showCents)} ₽`;
   const pct = (n: number) => (data.total > 0 ? Math.max(0, n / data.total * 100) : 0);
   const Row: React.FC<{ label: string; hint?: string; value: number; tone?: string; strong?: boolean }> = ({ label, hint, value, tone, strong }) => (
@@ -924,8 +925,11 @@ const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; ac
             <Row label="Прибыль инвесторов" hint={`к выплате ${m(data.investors.toPay)} · ожидается ${m(data.investors.expected)}`}
                  value={data.investors.toPay + data.investors.expected} tone="text-amber-600 dark:text-amber-400" />
           )}
-          <Row label="Остаток" hint={data.rest >= 0 ? 'Ваши вложения и прочее' : 'Расходы, не списанные ни с чьей прибыли'}
-               value={data.rest} tone={data.rest >= 0 ? 'text-slate-700 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400'} />
+          <button type="button" onClick={onRest} className="w-full text-left flex items-center pr-4 active:bg-slate-50 dark:active:bg-slate-700/50">
+            <div className="flex-1 min-w-0"><Row label="Остаток" hint="Из чего сложился · посмотреть записи"
+              value={data.rest} tone={data.rest >= 0 ? 'text-slate-700 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400'} /></div>
+            <ChevronRight aria-hidden className="w-4 h-4 shrink-0 text-slate-400" />
+          </button>
         </SheetSection>
 
         {onZakat && (
@@ -1243,6 +1247,7 @@ const currentMonthName = useMemo(() => {
 
   // «В обороте» по частям: где деньги и чьи (src/turnoverBreakdown.ts)
   const [showTurnover, setShowTurnover] = useState(false);
+  const [showTurnoverRest, setShowTurnoverRest] = useState(false);
   const [showZakat, setShowZakat] = useState(false);
   // Скрытые счета — как в карточке «В обороте» и в кассе: не участвуют в общем итоге
   const turnoverAccountIds = useMemo(
@@ -1271,9 +1276,9 @@ const currentMonthName = useMemo(() => {
     const accountIds = turnoverAccountIds;
     return turnoverBreakdown({
       accounts, accountIds, accountBalances, sales: moneySales, expenses, investors,
-      profitFromPaymentsOnly,
+      profitFromPaymentsOnly, retailSales,
     });
-  }, [showTurnover, turnoverAccountIds, accounts, accountBalances, moneySales, expenses, investors, profitFromPaymentsOnly]);
+  }, [showTurnover, turnoverAccountIds, accounts, accountBalances, moneySales, expenses, investors, profitFromPaymentsOnly, retailSales]);
 
   const lastFiveSales = useMemo(() => {
       let filtered = sales;
@@ -1830,10 +1835,19 @@ useEffect(() => {
   </div>
 
   {showTurnover && turnover && (
+    <ModalParkContext.Provider value={parked || showTurnoverRest}>
     <TurnoverSheet data={turnover} showCents={appSettings.showCents}
                    accountName={selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : undefined}
                    onZakat={() => setShowZakat(true)}
-                   onClose={() => { setShowTurnover(false); setShowZakat(false); }} />
+                   onRest={() => { setShowZakat(false); setShowTurnoverRest(true); }}
+                   onClose={() => { setShowTurnover(false); setShowTurnoverRest(false); setShowZakat(false); }} />
+    </ModalParkContext.Provider>
+  )}
+  {showTurnoverRest && turnover && (
+    <TurnoverRestSheet data={turnover} accounts={accounts} customers={customers} sales={allSales}
+      expenses={expenses} investors={investors} retailSales={retailSales} showCents={appSettings.showCents}
+      accountName={selectedAccountId ? accounts.find(a=>a.id===selectedAccountId)?.name : undefined}
+      onViewSale={onViewSchedule} onClose={()=>setShowTurnoverRest(false)} />
   )}
   {showZakat && turnover && (
     <ZakatSheet breakdown={turnover} showCents={appSettings.showCents}

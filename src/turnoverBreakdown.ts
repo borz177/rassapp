@@ -1,7 +1,8 @@
-import type { Account, Expense, Investor, Sale } from '../types';
+import type { Account, Expense, Investor, RetailSale, Sale } from '../types';
+import { turnoverRestDetails, type TurnoverRestDetails } from './turnoverRest';
 import {
   expectedProfitShares, getActivePeriodAt, getInvestorProfitDeduction, getManagerProfitDeduction,
-  moneyInProfit, paymentProfitShares, saleProfitMargin,
+  moneyInProfit, paymentProfitShares, saleMoneyIn, saleProfitMargin,
 } from './utils';
 
 /**
@@ -30,6 +31,7 @@ export interface TurnoverBreakdown {
   /** То же по каждому внешнему инвестору (владелец «Это я» входит в manager) */
   perInvestor: { id: string; name: string; capital: number; toPay: number; expected: number }[];
   rest: number;
+  restDetails: TurnoverRestDetails;
   /**
    * Долг по договорам, где платёж просрочен больше чем на DOUBTFUL_DAYS дней, —
    * для закята (сомнительный долг). profit — ожидаемая наценка в нём.
@@ -50,6 +52,7 @@ export const turnoverBreakdown = (args: {
   sales: Sale[];
   expenses: Expense[];
   investors: Investor[];
+  retailSales?: RetailSale[];
   profitFromPaymentsOnly?: boolean;
   now?: number;
 }): TurnoverBreakdown => {
@@ -77,6 +80,7 @@ export const turnoverBreakdown = (args: {
 
   let receivable = 0, receivableProfit = 0;
   let mgrEarned = 0, mgrExpected = 0, invEarned = 0, invExpected = 0;
+  const profitBySale = new Map<Sale, number>();
 
   for (const sale of sales) {
     if (!ids.has(sale.accountId) || !isRealCustomerSale(sale, investorIds)) continue;
@@ -95,6 +99,7 @@ export const turnoverBreakdown = (args: {
     // Ожидаемая прибыль — с остатка долга, как «Ожидается» в кассе
     if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
       const expected = remaining * margin;
+      profitBySale.set(sale, expected);
       receivableProfit += expected;
       if (isDoubtful) doubtfulProfit += expected;
       const shares = expectedProfitShares(account, investors, sale);
@@ -105,14 +110,11 @@ export const turnoverBreakdown = (args: {
     }
 
     // Полученная прибыль — по каждому поступлению, доли на его дату
-    const money = [
-      { id: `${sale.id}_dp`, date: sale.startDate, amount: Number(sale.downPayment) || 0 },
-      ...(sale.paymentPlan || []).filter(p => p.isPaid && p.isRealPayment !== false)
-        .map(p => ({ id: p.id, date: p.date, amount: Number(p.amount) || 0 })),
-    ];
+    const money = saleMoneyIn(sale);
     for (const m of money) {
       if (m.amount <= 0) continue;
       const profit = moneyInProfit(sale, m, profitFromPaymentsOnly);
+      profitBySale.set(sale, (profitBySale.get(sale) || 0) + profit);
       const shares = paymentProfitShares(account, investors, sale, m);
       const invPct = outsidePct(shares);
       invEarned += profit * invPct / 100;
@@ -123,9 +125,11 @@ export const turnoverBreakdown = (args: {
 
   // Выплаты и расходы «из прибыли» — как в кассе
   let mgrOut = 0, invOut = 0;
+  const expenseDeductions = new Map<Expense, number>();
   for (const e of expenses) {
     if (!ids.has(e.accountId)) continue;
     const account = accountOf(e.accountId);
+    const beforeDeductions = mgrOut + invOut;
     if (e.category === 'Моя выплата') {
       if (e.managerPayoutSource !== 'CAPITAL') mgrOut += Number(e.amount) || 0;
     } else if (e.fromProfit) {
@@ -142,6 +146,7 @@ export const turnoverBreakdown = (args: {
         else { invOut += part; if (part) perOf(inv.id).out += part; }
       }
     }
+    expenseDeductions.set(e, mgrOut + invOut - beforeDeductions);
   }
 
   // Вложения инвесторов в эти счета — текущие суммы (после довложений и возвратов)
@@ -192,6 +197,7 @@ export const turnoverBreakdown = (args: {
       .filter(x => Math.abs(x.capital) + Math.abs(x.toPay) + Math.abs(x.expected) >= 0.01)
       .sort((a, b) => (b.capital + b.toPay + b.expected) - (a.capital + a.toPay + a.expected)),
     rest: round(rest),
+    restDetails: turnoverRestDetails({ ...args, profitBySale, expenseDeductions, capitalBy, rest: round(rest) }),
     doubtful: { receivable: round(doubtfulReceivable), profit: round(doubtfulProfit), contracts: doubtfulContracts },
   };
 };

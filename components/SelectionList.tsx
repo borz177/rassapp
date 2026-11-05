@@ -1,3 +1,4 @@
+import CopyablePhone from './CopyablePhone';
 import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import CustomerFormSheet from './CustomerFormSheet';
@@ -6,6 +7,7 @@ interface SelectionItem {
   id: string;
   title: string;
   subtitle?: string;
+  phone?: string;
 }
 
 interface SelectionListProps {
@@ -64,7 +66,7 @@ const SelectionList: React.FC<SelectionListProps> = ({
     >
         <div>
         <h3 className="font-bold text-slate-800 dark:text-white">{item.title}</h3>
-        {item.subtitle && <p className="text-sm text-slate-500 dark:text-slate-400">{item.subtitle}</p>}
+        {item.phone ? <CopyablePhone phone={item.phone} className="text-sm text-slate-500 dark:text-slate-400" /> : item.subtitle && <p className="text-sm text-slate-500 dark:text-slate-400">{item.subtitle}</p>}
         </div>
         <div className="text-slate-300 dark:text-slate-600">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="9 18 15 12 9 6"/></svg>

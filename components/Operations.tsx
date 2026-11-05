@@ -5,6 +5,7 @@ import { Sale, Expense, Account, Customer, User, Investor, RetailSale} from '../
 import { formatCurrency, formatDate, getManagerSharePercent, getAccountShares, expenseProfitSplit, CLIENT_DISCOUNT, clientDiscountLabel } from '../src/utils';
 import { incomeCancelPlan } from '../src/incomeCancel';
 import { buildMoneyOperations } from '../src/moneyOperations';
+import { hasUnassignedExpenseSource } from '../src/expenseAccounting';
 import { ICONS } from '../constants';
 import SelectSheet from './SelectSheet';
 import UnsyncedMark from './UnsyncedMark';
@@ -381,8 +382,11 @@ const Operations: React.FC<OperationsProps> = ({
                     непонятно, почему прибыль просела. Помечаем прямо в списке. */}
                 {op.raw?.fromProfit && (
                     <span className="inline-block mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
-                        Из прибыли
+                        {op.raw.profitSource==='MANAGER'?'За мой счёт':'Общий расход'}
                     </span>
+                )}
+                {op.type==='EXPENSE' && !op.isRetail && hasUnassignedExpenseSource(op.raw) && (
+                  <span className="inline-block mt-1 text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/20 px-1.5 py-0.5 rounded">Источник не указан</span>
                 )}
                 {op.raw?.category === 'Моя выплата' && op.raw?.managerPayoutSource === 'PROFIT' && (
                     <span className="inline-block mt-1 text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
