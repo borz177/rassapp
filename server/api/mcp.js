@@ -29,7 +29,7 @@ const TOOLS = [
   {
     name: 'list_contracts',
     title: 'Договоры',
-    description: 'Список договоров рассрочки с фильтрами по состоянию, клиенту, счёту, дате оформления и поиску по товару или ФИО (search). В meta — total и итоги sums по ВСЕМ отобранным договорам (не только по этой странице); для подсчётов и разбивок — sales_breakdown.',
+    description: 'Список договоров рассрочки. «Кто платит 16 800 в месяц?» — scheduledPaymentAmount:16800: точное совпадение с графиком по всем договорам до пагинации, с именем клиента и числом совпавших плановых платежей. Другие фильтры: состояние, клиент, счёт, даты, товар или ФИО (search). В meta — total и sums по ВСЕМ отобранным договорам; для разбивок — sales_breakdown.',
     scope: 'read',
     input: {
       status: { type: 'string', enum: ['ACTIVE', 'COMPLETED', 'DEFAULTED', 'DRAFT'], description: 'Состояние договора' },
@@ -38,6 +38,7 @@ const TOOLS = [
       from: { type: 'string', description: 'Оформлены с даты, YYYY-MM-DD' },
       to: { type: 'string', description: 'Оформлены по дату, YYYY-MM-DD' },
       search: { type: 'string', description: 'Слова из товара или ФИО: «iphone», «Дудаев»' },
+      scheduledPaymentAmount: { type: 'number', exclusiveMinimum: 0, description: 'Точная сумма ПЛАНОВОГО/ЕЖЕМЕСЯЧНОГО платежа из графика, ₽. «Кто внёс/оплатил» — фактические оплаты через list_payments, не этот фильтр. Сравнивается с плановыми строками, включая оплаченные; фактические оплаты и первые взносы не подходят. Для действующих договоров добавь status:ACTIVE. Не вычисляй платёж делением цены на срок.' },
       limit: { type: 'integer' },
       offset: { type: 'integer' },
     },

@@ -14,6 +14,7 @@ const { CODES, ok, created, noContent, fail, route, readPaging, paginate } = req
 const { validate } = require('./validate');
 const { requireScope } = require('./auth');
 const domain = require('./domain');
+const { scheduledPaymentAmounts, matchingScheduledPayments } = require('./scheduledPayments');
 const { collectionPayments, isCustomerSale } = require('../../shared/collections.js');
 
 const newId = prefix => `${prefix}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
@@ -98,6 +99,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     overdueAmount: num(domain.overdueAmount(s)),
     interestRate: Number(s.interestRate) || 0,
     installments: Number(s.installments) || 0,
+    scheduledPaymentAmounts: scheduledPaymentAmounts(s),
     startDate: s.startDate,
     paymentDay: s.paymentDay ?? null,
     notes: s.notes || '',
@@ -414,12 +416,20 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
 
   router.get('/contracts', requireScope('read'), route(async (req, res) => {
     const p = paging(req, res); if (!p) return;
+    const rawAmount = req.query.scheduledPaymentAmount;
+    const scheduledAmount = rawAmount === undefined ? null : Number(rawAmount);
+    if (rawAmount !== undefined && (typeof rawAmount !== 'string' || !/^\d+(?:\.\d{1,2})?$/.test(rawAmount)
+        || !Number.isFinite(scheduledAmount) || scheduledAmount <= 0 || !Number.isSafeInteger(Math.round(scheduledAmount * 100)))) {
+      return fail(res, 400, CODES.VALIDATION, 'Укажите положительную сумму планового платежа с точностью до копейки.');
+    }
     const { status, customerId, accountId, from, to } = req.query;
     const search = String(req.query.search || '').trim().toLowerCase();
     let items = await loadAll(tenant(req), 'sales');
     // Прочий приход хранится теми же записями, что и договоры, но договором не
     // является — в списке договоров ему не место.
     items = items.filter(s => !String(s.customerId || '').startsWith('system_'));
+    if (scheduledAmount !== null) items = items.filter(s => (s.type || 'INSTALLMENT') === 'INSTALLMENT'
+      && matchingScheduledPayments(s, scheduledAmount).count > 0);
     if (status) items = items.filter(s => s.status === status);
     if (customerId) items = items.filter(s => s.customerId === customerId);
     if (accountId) items = items.filter(s => domain.saleTouchesAccount(s, accountId));
@@ -433,7 +443,12 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     }
     items.sort((a, b) => new Date(b.startDate) - new Date(a.startDate));
     const { page, meta } = paginate(items, p);
-    ok(res, page.map(s => mapContract(s)), { ...meta, sums: {
+    const customerNames = scheduledAmount === null ? null
+      : new Map((await loadAll(tenant(req), 'customers')).map(c => [c.id, c.name || '']));
+    ok(res, page.map(s => ({ ...mapContract(s), ...(customerNames ? {
+      customerName: customerNames.get(s.customerId) || null,
+      matchingScheduledPayments: matchingScheduledPayments(s, scheduledAmount),
+    } : {}) })), { ...meta, sums: {
       totalAmount: num(items.reduce((n, s) => n + num(s.totalAmount), 0)),
       remainingAmount: num(items.reduce((n, s) => n + num(s.remainingAmount), 0)),
       collectedAmount: num(items.reduce((n, s) => n + domain.collected(s), 0)),

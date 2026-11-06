@@ -220,11 +220,11 @@ test('умения: реструктуризация, досрочное пог�
     assert.equal(exp2.meta.sumAffectingBalance, 1000);
     assert.equal(exp2.data.find(e => e.id === 'e_refund').isRefund, true);
 
-    // Проверка цифр: повтор вернул пустой ответ — человек получает прежний с пометкой, а не «Ничего не сделано» (прод 25.10)
+    // Проверка цифр: пустой повтор не возвращает человеку исходную неподтверждённую сумму.
     script.push({ content: 'Пришло 987 654 ₽ за всё время.' }, { content: '' });
     r = await assistant.reply({ user, text: 'Сколько пришло за всё время?', mode: 'confirm', silent: true });
-    assert.match(r.reply, /^Пришло 987\s654 ₽ за всё время\./);
-    assert.match(r.reply, /сверьте их в приложении/);
+    assert.match(r.reply, /^Не удалось надёжно проверить суммы/);
+    assert.doesNotMatch(r.reply, /987\s?654/);
 
     // Несколько платежей одной карточкой: оба записаны, «Отменить» — база как была
     await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)', ['cust2', 'owner', 'customers', JSON.stringify({ id: 'cust2', name: 'Петров Пётр', phone: '79001112233' })]);

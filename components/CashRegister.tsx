@@ -1,5 +1,8 @@
 import React, { useMemo, useState } from 'react';
 import Sheet from './Sheet';
+import CashProfitSheet, { type CashProfitView } from './CashProfitSheet';
+import { cashProfitLedgers, combineCashProfitLedgers } from '../src/cashProfitLedger';
+import { toInputDate } from '../src/saleMath';
 import ManagementShareSheet from './ManagementShareSheet';
 import PagePush, { useBackInterceptor } from './transitions/PagePush';
 import TabPill from './TabPill';
@@ -9,7 +12,7 @@ import AccountCashTab from './AccountCashTab';
 import { accountCashSummary, accountWarehouses, cashPeriodFor } from '../src/accountCash';
 import { Sale, Account, Expense, Investor, AppSettings, Customer, RetailSale, Product, StockLocation, StockMovement, Supplier } from '../types';
 import { ICONS } from '../constants';
-import { moneyInProfit, saleProfitMargin, isDownPaymentOf, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getManagerProfitDeduction, getInvestorProfitDeduction, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn, computeAccountBalances, CLIENT_DISCOUNT, clientDiscountLabel } from '../src/utils';
+import { saleProfitMargin, formatCurrency, formatDate, getManagerSharePercent, getAccountShares, getActivePeriodAt, accountInvestment, SYSTEM_INCOME_CUSTOMER, realAccountType, expectedProfitShares, expectedManagerPercent, computeAccountBalances } from '../src/utils';
 import { appConfirm } from '../src/dialogs';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
@@ -26,9 +29,9 @@ type PeriodMode = 'ALL' | 'TODAY' | 'WEEK' | 'MONTH' | 'CUSTOM';
 // поэтому очищать поле нельзя, иначе получится Invalid Date и прибыль обнулится.
 const ALL_TIME_START = '2023-01-01';
 
-const todayStr = () => new Date().toISOString().split('T')[0];
-const weekAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 7); return d.toISOString().split('T')[0]; };
-const monthStartStr = () => { const d = new Date(); d.setDate(1); return d.toISOString().split('T')[0]; };
+const todayStr = () => toInputDate(new Date());
+const weekAgoStr = () => { const d = new Date(); d.setDate(d.getDate() - 7); return toInputDate(d); };
+const monthStartStr = () => { const d = new Date(); d.setDate(1); return toInputDate(d); };
 
 const PERIOD_CONFIG: { key: PeriodMode; label: string }[] = [
   { key: 'ALL', label: 'Всё время' },
@@ -55,6 +58,7 @@ interface CashRegisterProps {
   onSetMainAccount: (accountId: string) => void;
   onUpdateAccount?: (account: Account) => void;
   onSelectCustomer?: (customerId: string) => void;
+  onOpenContract?: (saleId: string) => void;
   /** Счета инвесторов сверх лимита тарифа — операции по ним закрыты до его повышения */
   lockedAccountIds?: string[];
   isManager: boolean;
@@ -515,7 +519,7 @@ const AccountActionModal = ({
 
 const CashRegister: React.FC<CashRegisterProps> = ({
     accounts, sales, expenses, investors, customers, retailSales = [], onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
-    onSelectCustomer, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
+    onSelectCustomer, onOpenContract, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
     lockedAccountIds = [], accountUsage = {}, onDeleteAccount,
     isInvestor: viewerIsInvestor = false,
     warehouses = [], stockMovements = [], products = [], suppliers = [], onOpenJournalDoc,
@@ -647,9 +651,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
     isMasked(accountId) ? '•••••• ₽' : `${formatCurrency(value, appSettings.showCents)} ₽`;
 
  // 🔹 Добавьте новые состояния в начало компонента (после других useState)
-const [showProfitDetails, setShowProfitDetails] = useState(false);
-const [showInvestorProfitDetails, setShowInvestorProfitDetails] = useState(false);
-const [profitDetailsTab, setProfitDetailsTab] = useState<'accruals' | 'payouts'>('accruals');
+const [profitDialog, setProfitDialog] = useState<{who:'manager'|'investors';view:CashProfitView}|null>(null);
 const [profitFilterAccountId, setProfitFilterAccountId] = useState<string>('ALL');
 const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('ALL');
 
@@ -658,10 +660,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
   // и окно оставалось висеть над списком счетов. Порядок проверок — от самого
   // верхнего слоя к нижнему.
   useBackInterceptor(
-    !!(showProfitDetails || showInvestorProfitDetails || selectedSharedAccount || editingAccount || managementAccount || activeMenuAccount),
+    !!(selectedSharedAccount || editingAccount || managementAccount || activeMenuAccount),
     () => {
-      if (showProfitDetails) { setShowProfitDetails(false); return; }
-      if (showInvestorProfitDetails) { setShowInvestorProfitDetails(false); return; }
       if (selectedSharedAccount) { setSelectedSharedAccount(null); return; }
       if (editingAccount) { setEditingAccount(null); return; }
       if (managementAccount) { setManagementAccount(null); return; }
@@ -708,335 +708,42 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     return totalProfit;
 }, [sales, accounts, investors, profitFilterAccountId, profitFromPaymentsOnly]);
 
-  // На сколько скидка клиенту из прибыли (discountFromProfit) уменьшила прибыль платежа —
-  // против того, что он принёс бы без скидки; доля каждого — по его проценту
-  const discountCut = (sale: Sale, p: any): number => {
-    if (!p?.discountFromProfit || !(Number(p.discountAmount) > 0)) return 0;
-    const full = ((Number(p.amount) || 0) + Number(p.discountAmount)) * saleProfitMargin(sale, profitFromPaymentsOnly);
-    return Math.max(0, full - moneyInProfit(sale, p, profitFromPaymentsOnly));
-  };
+  // Один отчёт для карточек, окон и состава пула. Предустановленные периоды
+  // следуют местному календарю, включая переход через полночь.
+  const profitPeriod = periodMode === 'CUSTOM' ? myProfitPeriod
+    : periodMode === 'ALL' ? {start:ALL_TIME_START,end:todayStr()} : cashPeriod;
+  const profitLedgers = useMemo(() => cashProfitLedgers({sales,expenses,accounts,investors,customers,
+    accountId:profitFilterAccountId,period:profitPeriod,profitFromPaymentsOnly}),
+    [sales,expenses,accounts,investors,customers,profitFilterAccountId,profitPeriod.start,profitPeriod.end,profitFromPaymentsOnly]);
+  const managerLedger=profitLedgers.manager;
+  const investorLedger=useMemo(()=>combineCashProfitLedgers(
+    profitFilterInvestorId === 'ALL' ? [...profitLedgers.investors.values()]
+      : [profitLedgers.investors.get(profitFilterInvestorId)].filter((l):l is NonNullable<typeof l>=>!!l)
+  ),[profitLedgers,profitFilterInvestorId]);
+  const totalManagerProfitEarned=managerLedger.received;
+  const totalManagerProfitWithdrawn=managerLedger.paid;
+  const managerProfitBalance=managerLedger.available;
 
-  // 🔹 Прибыль менеджера (полученная и выплаты)
-  const { managerProfitAccruals, managerProfitPayouts, totalManagerProfitEarned, totalManagerProfitWithdrawn } = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, isDownPayment: boolean, discount?: number, discountShare?: number}[] = [];
-    sales.forEach(sale => {
-        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
-        if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-        const account = accounts.find(a => a.id === sale.accountId);
-        // SHARED-счета считаются отдельно (по внесённому капиталу), а не по фиксированному %.
-        if (account?.type === 'SHARED') return;
-        const customerName = customers.find(c => c.id === sale.customerId)?.name || 'Неизвестно';
-        const allPayments = [
-            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp`, isRealPayment: true },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        ];
-        allPayments.forEach(p => {
-            if (p.amount > 0) {
-                const pDate = new Date(p.date);
-                const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-                const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-                endDate.setHours(23, 59, 59, 999);
-                if (pDate >= startDate && pDate <= endDate) {
-                    // 🔒 Доля — на дату этого платежа, чтобы новый участник пула не получил
-                    // задним числом долю от прибыли, полученной до его вступления.
-                    const managerProfitSharePercent = paymentManagerPercent(account, investors, sale, p) / 100;
-                    const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
-                    const managerShare = profitFromPayment * managerProfitSharePercent;
-                    const cut = discountCut(sale, p);
-                    if(managerShare > 0 || cut > 0) {
-                        accruals.push({
-                            id: p.id,
-                            date: p.date,
-                            amount: managerShare,
-                            customerId: sale.customerId,
-                            customerName,
-                            productName: sale.productName,
-                            isDownPayment: isDownPaymentOf(sale, p.id),
-                            ...(cut > 0 ? { discount: Number((p as any).discountAmount) || 0, discountShare: cut * managerProfitSharePercent } : {}),
-                        });
-                    }
-                }
-            }
-        });
-    });
-    // Из прибыли менеджера уходят не только выплаты себе, но и общие расходы,
-    // отмеченные «Списать из прибыли». Без них баланс в этом блоке был бы завышен:
-    // расход прибыль уменьшает, а список о нём не знал. У общего расхода берём
-    // ДОЛЮ МЕНЕДЖЕРА — остальное приходится на инвесторов счёта.
-    const inPeriod = (dateStr: string) => {
-        const eDate = new Date(dateStr);
-        const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-        const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-        endDate.setHours(23, 59, 59, 999);
-        return eDate >= startDate && eDate <= endDate;
-    };
-
-    const payouts = expenses
-        // Выплата себе «Из Капитала» — это личные вложенные деньги, а не заработок,
-        // и уменьшать ею баланс прибыли неверно: раньше блок вычитал её наравне
-        // с выплатой из прибыли, из-за чего касса и отчёты расходились.
-        // Записи без указанного источника (сделанные до появления выбора) оставляем
-        // в прибыли, как было, — иначе задним числом изменится история.
-        .filter(e => !(e.category === 'Моя выплата' && e.managerPayoutSource === 'CAPITAL'))
-        .filter(e => (e.category === 'Моя выплата' || e.fromProfit) &&
-                     (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
-        .filter(e => inPeriod(e.date))
-        .map(e => {
-            const account = accounts.find(a => a.id === e.accountId);
-            const isShared = !!e.fromProfit && e.category !== 'Моя выплата';
-            const managerAmount = isShared
-                ? getManagerProfitDeduction(e, account, investors)
-                : Number(e.amount);
-            return {
-                id: e.id,
-                date: e.date,
-                title: e.title,
-                category: e.category,
-                accountName: account?.name,
-                amount: managerAmount,
-                // Сколько стоил расход целиком — чтобы было видно, что списана только доля
-                fullAmount: isShared ? Number(e.amount) : null,
-                isShared,
-                // Скидка клиенту: кому и по какому договору
-                discountFor: e.category === CLIENT_DISCOUNT ? clientDiscountLabel(e, customers, sales) : null,
-            };
-        })
-        .filter(e => e.amount > 0.009)
-        .sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-    const totalEarned = accruals.reduce((sum, item) => sum + item.amount, 0);
-    const totalWithdrawn = payouts.reduce((sum, item) => sum + Number(item.amount), 0);
-    return {
-        managerProfitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime()),
-        managerProfitPayouts: payouts,
-        totalManagerProfitEarned: totalEarned,
-        totalManagerProfitWithdrawn: totalWithdrawn
-    };
-  }, [sales, expenses, accounts, investors, customers, profitFilterAccountId, myProfitPeriod, profitFromPaymentsOnly]);
-
-  const managerProfitBalance = totalManagerProfitEarned - totalManagerProfitWithdrawn;
-  // Скидки клиентам из прибыли за период: сколько всего и сколько пришлось на долю
-  const managerDiscounts = managerProfitAccruals.reduce((t, a) => ({ total: t.total + (a.discount || 0), share: t.share + (a.discountShare || 0) }), { total: 0, share: 0 });
-
-
-
-
-// 🔹 Начисления инвестора(ов) — работает и для одиночного счёта инвестора, и для общего пула
-// (тогда прибыль с одного платежа распределяется на несколько начислений, по одному на каждого
-// участника пула, с его долей — см. getAccountShares).
-const investorProfitAccruals = useMemo(() => {
-    const accruals: {id: string, date: string, amount: number, customerId: string, customerName: string, productName: string, investorId: string, investorName: string, isDownPayment: boolean, discount?: number, discountShare?: number}[] = [];
-
-    sales.forEach(sale => {
-        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
-        if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-
-        const account = accounts.find(a => a.id === sale.accountId);
-        if (!account) return;
-        if (account.type === 'SHARED') return;
-
-        const customerName = customers.find(c => c.id === sale.customerId)?.name || 'Неизвестно';
-        const allPayments = [
-            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        ];
-
-        allPayments.forEach(p => {
-            if (p.amount > 0) {
-                const pDate = new Date(p.date);
-                const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-                const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-                endDate.setHours(23, 59, 59, 999);
-
-                if (pDate >= startDate && pDate <= endDate) {
-                    const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
-                    const shares = paymentProfitShares(account, investors, sale, p);
-                    const cut = discountCut(sale, p);
-                    shares.forEach(({ investor, percentage }) => {
-                        const investorAmount = profitFromPayment * (percentage / 100);
-                        if (investorAmount > 0 || cut > 0) {
-                            accruals.push({
-                                id: `${p.id}_${investor.id}`,
-                                date: p.date,
-                                amount: investorAmount,
-                                customerId: sale.customerId,
-                                customerName,
-                                productName: sale.productName,
-                                investorId: investor.id,
-                                investorName: investor.name,
-                                isDownPayment: isDownPaymentOf(sale, p.id),
-                                ...(cut > 0 ? { discount: Number((p as any).discountAmount) || 0, discountShare: cut * percentage / 100 } : {}),
-                            });
-                        }
-                    });
-                }
-            }
-        });
-    });
-
-    const filtered = profitFilterInvestorId === 'ALL' ? accruals : accruals.filter(a => a.investorId === profitFilterInvestorId);
-    return filtered.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [sales, accounts, investors, customers, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod, profitFromPaymentsOnly]);
-// Скидки клиентам из прибыли за период — доля инвестора(ов) по текущему фильтру
-const investorDiscountShare = investorProfitAccruals.reduce((n, a) => n + (a.discountShare || 0), 0);
-
-// 🔹 Выплаты инвестора
-const investorProfitPayouts = useMemo(() => {
-    const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-    const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-    endDate.setHours(23, 59, 59, 999);
-    const inPeriod = (e: Expense) => {
-        const d = new Date(e.date);
-        return d >= startDate && d <= endDate;
-    };
-    const inAccount = (e: Expense) => profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId;
-
-    type PayoutRow = { id: string; title: string; date: string; amount: number; investorId: string; isShared?: boolean; fullAmount?: number; discountFor?: string | null };
-
-    // 1) Адресные выплаты инвестору — как и раньше.
-    const direct: PayoutRow[] = expenses
-        .filter(e => e.investorId && e.payoutType === 'PROFIT' && inAccount(e))
-        .filter(e => profitFilterInvestorId === 'ALL' || e.investorId === profitFilterInvestorId)
-        .filter(inPeriod)
-        .map(e => ({ id: e.id, title: e.title, date: e.date, amount: Number(e.amount), investorId: e.investorId! }));
-
-    // 2) 🔒 Общие расходы «из прибыли» (fromProfit) — они уменьшают прибыль инвесторов по их
-    // долям в счёте, но раньше в этот список не попадали вовсе: фильтр смотрел только на
-    // payoutType === 'PROFIT'. Из-за этого расход из прибыли по общему делу не отображался в
-    // блоке инвестора, хотя его долю из прибыли уже вычли. Считаем долю тем же помощником,
-    // что и карточка инвестора (InvestorDetails.tsx), чтобы цифры сходились.
-    const shared: PayoutRow[] = [];
-    expenses
-        .filter(e => e.fromProfit && e.profitSource !== 'MANAGER' && inAccount(e))
-        .filter(inPeriod)
-        .forEach(e => {
-            const account = accounts.find(a => a.id === e.accountId);
-            getAccountShares(account, investors, e.date).forEach(({ investor }) => {
-                if (profitFilterInvestorId !== 'ALL' && investor.id !== profitFilterInvestorId) return;
-                const share = getInvestorProfitDeduction(e, account, investors, investor.id);
-                if (share <= 0.01) return;
-                shared.push({ id: `${e.id}_${investor.id}`, title: e.title, date: e.date,
-                              amount: share, investorId: investor.id, isShared: true, fullAmount: Number(e.amount),
-                              discountFor: e.category === CLIENT_DISCOUNT ? clientDiscountLabel(e, customers, sales) : null });
-            });
-        });
-
-    return [...direct, ...shared].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
-}, [expenses, accounts, investors, customers, sales, profitFilterAccountId, profitFilterInvestorId, myProfitPeriod]);
-
-
-
-  // 🔹🔹🔹 БЛОК: Прибыль инвестора(ов), в разбивке по каждому инвестору 🔹🔹🔹
-  // Работает единообразно и для обычного счёта (один владелец), и для общего пула
-  // (несколько инвесторов через getAccountShares) — раньше здесь проверялся только
-  // account.ownerId, поэтому при выборе счёта-пула блок был пуст.
-  const investorProfitBreakdown = useMemo(() => {
-    const startDate = myProfitPeriod.start ? new Date(myProfitPeriod.start) : new Date(0);
-    const endDate = myProfitPeriod.end ? new Date(myProfitPeriod.end) : new Date(2100, 0, 1);
-    endDate.setHours(23, 59, 59, 999);
-
-    const map = new Map<string, { investor: Investor; expectedProfit: number; receivedProfit: number; totalWithdrawn: number }>();
-    const ensure = (investor: Investor) => {
-        let entry = map.get(investor.id);
-        if (!entry) {
-            entry = { investor, expectedProfit: 0, receivedProfit: 0, totalWithdrawn: 0 };
-            map.set(investor.id, entry);
-        }
-        return entry;
-    };
-
-    // Если выбран конкретный счёт — сразу заносим ВСЕХ его участников, даже с нулевой
-    // прибылью. Раньше список строился только из тех, у кого прибыль набежала, и участник
-    // пула, вошедший позже (а значит пока без своей доли), из фильтра просто исчезал —
-    // отфильтровать по нему было нельзя.
-    if (profitFilterAccountId !== 'ALL') {
-        const selected = accounts.find(a => a.id === profitFilterAccountId);
-        if (selected) {
-            const memberIds = selected.type === 'POOL'
-                ? (selected.poolMemberIds || [])
-                : (selected.ownerId ? [selected.ownerId] : []);
-            memberIds.forEach(id => {
-                const inv = investors.find(i => i.id === id);
-                if (inv) ensure(inv);
-            });
-        }
+  // Ожидаемая прибыль сохраняет прежнее правило. Полученная и списанная
+  // берутся из тех же строк, которые открываются по нажатию на карточки.
+  const investorProfitBreakdown=useMemo(()=>{
+    const map=new Map<string,{investor:Investor;expectedProfit:number}>();
+    const ensure=(investor:Investor)=>{let r=map.get(investor.id);if(!r){r={investor,expectedProfit:0};map.set(investor.id,r);}return r;};
+    const selected=accounts.find(a=>a.id===profitFilterAccountId);
+    if(selected)(selected.type==='POOL'?(selected.poolMemberIds||[]):selected.ownerId?[selected.ownerId]:[])
+      .forEach(id=>{const i=investors.find(i=>i.id===id);if(i)ensure(i);});
+    for(const id of profitLedgers.investors.keys()){const i=investors.find(i=>i.id===id);if(i)ensure(i);}
+    for(const sale of sales){
+      if(profitFilterAccountId!=='ALL'&&sale.accountId!==profitFilterAccountId)continue;
+      if(sale.buyPrice<=0||sale.totalAmount<=sale.buyPrice||!['ACTIVE','DRAFT'].includes(sale.status))continue;
+      const account=accounts.find(a=>a.id===sale.accountId);if(!account||account.type==='SHARED')continue;
+      const profit=sale.remainingAmount*saleProfitMargin(sale,profitFromPaymentsOnly);
+      for(const {investor,percentage} of expectedProfitShares(account,investors,sale))ensure(investor).expectedProfit+=profit*percentage/100;
     }
-
-
-    sales.forEach(sale => {
-        if (profitFilterAccountId !== 'ALL' && sale.accountId !== profitFilterAccountId) return;
-        if (sale.buyPrice <= 0 || sale.totalAmount <= sale.buyPrice) return;
-
-        const account = accounts.find(a => a.id === sale.accountId);
-        if (!account || account.type === 'SHARED') return;
-
-        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
-
-        // Ожидаемая прибыль: от остатка (ACTIVE/DRAFT) — прогноз по текущему составу кассы
-        if (sale.status === 'ACTIVE' || sale.status === 'DRAFT') {
-            expectedProfitShares(account, investors, sale).forEach(({ investor, percentage }) => {
-                ensure(investor).expectedProfit += sale.remainingAmount * profitMargin * (percentage / 100);
-            });
-        }
-
-        // 🔧 Полученная прибыль: платежи в выбранном периоде, доли — на дату каждого платежа
-        const allPayments = [
-            { date: sale.startDate, amount: Number(sale.downPayment), id: `${sale.id}_dp` },
-            ...sale.paymentPlan.filter(p => p.isPaid && p.isRealPayment !== false)
-        ];
-        allPayments.forEach(p => {
-            if (p.amount <= 0) return;
-            const pDate = new Date(p.date);
-            if (pDate < startDate || pDate > endDate) return;
-            const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
-            paymentProfitShares(account, investors, sale, p).forEach(({ investor, percentage }) => {
-                ensure(investor).receivedProfit += profitFromPayment * (percentage / 100);
-            });
-        });
-    });
-
-    // Выплаты инвесторам (уже фильтруются по периоду — ок)
-    expenses
-        .filter(e => e.investorId && e.payoutType === 'PROFIT' &&
-                    (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
-        .filter(e => {
-            const eDate = new Date(e.date);
-            return eDate >= startDate && eDate <= endDate;
-        })
-        .forEach(e => {
-            const investor = investors.find(i => i.id === e.investorId);
-            if (!investor) return;
-            ensure(investor).totalWithdrawn += Number(e.amount);
-        });
-
-    // 🔒 Плюс доля инвестора в общих расходах «из прибыли» — она тоже уменьшает его прибыль.
-    // Без этого «Выплачено» и остаток по инвестору в кассе были завышены и расходились с
-    // карточкой инвестора, где такие расходы учитываются (InvestorDetails.tsx).
-    expenses
-        .filter(e => e.fromProfit && e.profitSource !== 'MANAGER' &&
-                    (profitFilterAccountId === 'ALL' || e.accountId === profitFilterAccountId))
-        .filter(e => {
-            const eDate = new Date(e.date);
-            return eDate >= startDate && eDate <= endDate;
-        })
-        .forEach(e => {
-            const account = accounts.find(a => a.id === e.accountId);
-            getAccountShares(account, investors, e.date).forEach(({ investor }) => {
-                const share = getInvestorProfitDeduction(e, account, investors, investor.id);
-                if (share <= 0) return;
-                ensure(investor).totalWithdrawn += share;
-            });
-        });
-
-    return Array.from(map.values())
-        .map(m => ({
-            investor: m.investor,
-            expectedProfit: Math.round(m.expectedProfit * 100) / 100,
-            receivedProfit: Math.round(m.receivedProfit * 100) / 100,
-            totalWithdrawn: Math.round(m.totalWithdrawn * 100) / 100,
-            balance: Math.round((m.receivedProfit - m.totalWithdrawn) * 100) / 100
-        }))
-        .sort((a, b) => b.receivedProfit - a.receivedProfit);
-}, [sales, accounts, investors, expenses, profitFilterAccountId, myProfitPeriod, profitFromPaymentsOnly]);
+    return [...map.values()].map(r=>{const l=profitLedgers.investors.get(r.investor.id);
+      return {...r,expectedProfit:Math.round(r.expectedProfit*100)/100,receivedProfit:l?.received||0,totalWithdrawn:l?.deducted||0,balance:l?.available||0};
+    }).sort((a,b)=>b.receivedProfit-a.receivedProfit);
+  },[sales,accounts,investors,profitFilterAccountId,profitFromPaymentsOnly,profitLedgers]);
 
   // 🔹 Состав пула — тот же разрез, что в отчётах: чей это капитал, какая у человека
   // доля и что с неё набежало за выбранный период. На странице общего счёта до сих пор
@@ -1137,11 +844,11 @@ const investorProfitPayouts = useMemo(() => {
         Math.round(relevant.reduce((s, m) => s + m[key], 0) * 100) / 100;
     return {
         expectedProfit: sum('expectedProfit'),
-        receivedProfit: sum('receivedProfit'),
-        totalWithdrawn: sum('totalWithdrawn'),
-        balance: sum('balance')
+        receivedProfit: investorLedger.received,
+        totalWithdrawn: investorLedger.deducted,
+        balance: investorLedger.available
     };
-}, [investorProfitBreakdown, profitFilterInvestorId]);
+}, [investorProfitBreakdown, profitFilterInvestorId, investorLedger]);
 
   const handleCreateAccount = (name: string, type: Account['type'], partners?: string[]) => {
       onAddAccount(name, type, partners);
@@ -1857,7 +1564,7 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* 2. Полученная прибыль */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
+            <button type="button" aria-label="Получено менеджеру: открыть операции" onClick={() => setProfitDialog({who:'manager',view:'received'})} className="group text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-pointer">
 
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-emerald-100 dark:bg-emerald-900/30 rounded-xl flex items-center justify-center text-emerald-600 dark:text-emerald-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1870,16 +1577,12 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(totalManagerProfitEarned, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
-                    {managerDiscounts.share > 0.5 && (
-                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1.5 leading-tight">
-                            скидки клиентам {formatCurrency(managerDiscounts.total, appSettings.showCents)} ₽ · ваша доля −{formatCurrency(managerDiscounts.share, appSettings.showCents)} ₽
-                        </p>
-                    )}
+
                 </div>
-            </div>
+            </button>
 
             {/* 3. Выплачено */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
+            <button type="button" aria-label="Выплачено менеджеру: открыть операции" onClick={() => setProfitDialog({who:'manager',view:'paid'})} className="group text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-pointer">
 
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1893,12 +1596,12 @@ const investorProfitPayouts = useMemo(() => {
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
-            </div>
+            </button>
 
             {/* 4. Доступно к выводу (кликабельно) */}
-            <div
-                onClick={() => setShowProfitDetails(true)}
-                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-700 flex flex-col relative overflow-hidden cursor-pointer"
+            <button type="button" aria-label="К выводу менеджеру: открыть операции"
+                onClick={() => setProfitDialog({who:'manager',view:'available'})}
+                className="group text-left bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-700 flex flex-col relative overflow-hidden cursor-pointer"
             >
                 <div
                     className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative transition-colors duration-300 shadow-sm">
@@ -1916,7 +1619,7 @@ const investorProfitPayouts = useMemo(() => {
                     </p>
                     <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
                 </div>
-            </div>
+            </button>
 
         </div>
     </div>
@@ -1959,7 +1662,7 @@ const investorProfitPayouts = useMemo(() => {
             </div>
 
             {/* 2. Полученная прибыль инвестора */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-violet-200 flex flex-col relative overflow-hidden cursor-default">
+            <button type="button" aria-label="Получено инвесторам: открыть операции" onClick={() => setProfitDialog({who:'investors',view:'received'})} className="group text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 hover:border-violet-200 flex flex-col relative overflow-hidden cursor-pointer">
 
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-violet-100 dark:bg-violet-900/30 rounded-xl flex items-center justify-center text-violet-600 dark:text-violet-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1972,16 +1675,12 @@ const investorProfitPayouts = useMemo(() => {
                         {formatCurrency(investorProfitStats.receivedProfit, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
-                    {investorDiscountShare > 0.5 && (
-                        <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-1.5 leading-tight">
-                            скидки клиентам · доля инвестора −{formatCurrency(investorDiscountShare, appSettings.showCents)} ₽
-                        </p>
-                    )}
+
                 </div>
-            </div>
+            </button>
 
             {/* 3. Выплачено инвестору */}
-            <div className="group bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-default">
+            <button type="button" aria-label="Выплачено инвесторам: открыть операции" onClick={() => setProfitDialog({who:'investors',view:'paid'})} className="group text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-pointer">
 
                 <div className="w-10 h-10 sm:w-12 sm:h-12 bg-rose-100 dark:bg-rose-900/30 rounded-xl flex items-center justify-center text-rose-600 dark:text-rose-400 mb-4 z-10 relative transition-colors duration-300 shadow-sm">
                     <svg className="w-5 h-5 sm:w-6 sm:h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -1991,16 +1690,16 @@ const investorProfitPayouts = useMemo(() => {
                 <div className="z-10 relative mt-auto">
                     <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Выплачено</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-                        {formatCurrency(investorProfitStats.totalWithdrawn, appSettings.showCents)}
+                        {formatCurrency(investorLedger.paid, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
-            </div>
+            </button>
 
             {/* 4. Доступно инвестору (кликабельно) */}
-            <div
-                onClick={() => setShowInvestorProfitDetails(true)}
-                className="group bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-700 flex flex-col relative overflow-hidden cursor-pointer"
+            <button type="button" aria-label="К выводу инвесторам: открыть операции"
+                onClick={() => setProfitDialog({who:'investors',view:'available'})}
+                className="group text-left bg-gradient-to-br from-slate-800 to-slate-900 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-700 flex flex-col relative overflow-hidden cursor-pointer"
             >
                 <div
                     className="w-10 h-10 sm:w-12 sm:h-12 bg-white/20 rounded-xl flex items-center justify-center text-white mb-4 z-10 relative transition-colors duration-300 shadow-sm">
@@ -2018,7 +1717,7 @@ const investorProfitPayouts = useMemo(() => {
                     </p>
                     <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
                 </div>
-            </div>
+            </button>
 
         </div>
     </div>
@@ -2033,308 +1732,13 @@ const investorProfitPayouts = useMemo(() => {
       )}
 
 
-{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли менеджера — на мобильных выезжает снизу, как модалка
-    "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
-{showProfitDetails && (
-    <Sheet onClose={() => setShowProfitDetails(false)} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
-            {/* Header */}
-            <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-emerald-500 to-emerald-600">
-                <div className="flex items-center gap-3">
-                    <div className="text-white bg-white/20 p-2 rounded-xl">
-                        {ICONS.TrendingUp}
-                    </div>
-                    <div>
-                        <h3 className="text-base font-bold text-white">Моя прибыль</h3>
-                        <p className="text-emerald-100 text-xs">
-                            Баланс: <span className="font-bold text-white">{formatCurrency(managerProfitBalance, appSettings.showCents)} ₽</span>
-                        </p>
-                    </div>
-                </div>
-                <button onClick={() => setShowProfitDetails(false)} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 shrink-0">
-                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl">
-                    <button
-                        onClick={() => setProfitDetailsTab('accruals')}
-                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'accruals'
-                                ? 'bg-white dark:bg-slate-800 text-emerald-600 dark:text-emerald-400 shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                        }`}
-                    >
-                        Начисления ({managerProfitAccruals.length})
-                    </button>
-                    <button
-                        onClick={() => setProfitDetailsTab('payouts')}
-                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'payouts'
-                                ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                        }`}
-                    >
-                        Выплаты ({managerProfitPayouts.length})
-                    </button>
-                </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {profitDetailsTab === 'accruals' && (
-                    managerProfitAccruals.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
-                            </div>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
-                        </div>
-                    ) : (
-                        managerProfitAccruals.map(p => (
-                            <div
-                                key={p.id}
-                                // Окно не закрываем: касса остаётся под карточкой клиента, и «назад»
-                                // возвращает в это окно на то же место
-                                onClick={() => { if (onSelectCustomer) onSelectCustomer(p.customerId); }}
-                                className={`bg-white dark:bg-slate-800 p-3 rounded-xl border border-emerald-100 dark:border-emerald-900/50 transition-all ${onSelectCustomer ? 'cursor-pointer hover:shadow-md' : ''}`}
-                            >
-                                <div className="flex justify-between items-start">
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{p.customerName}</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                                            {p.productName}
-                                            {p.isDownPayment && (
-                                                <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-[9px] font-bold">
-                                                    Взнос
-                                                </span>
-                                            )}
-                                        </p>
-                                        {!!p.discount && (
-                                            // Скидка клиенту из прибыли: сколько всего и сколько пришлось на эту долю
-                                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
-                                                скидка клиенту {formatCurrency(p.discount, appSettings.showCents)} ₽ · ваша доля −{formatCurrency(p.discountShare || 0, appSettings.showCents)} ₽
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="text-right ml-3 shrink-0">
-                                        <p className={`font-bold text-sm ${p.amount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-emerald-600 dark:text-emerald-400'}`}>{p.amount < 0 ? '−' : '+'}{formatCurrency(Math.abs(p.amount), appSettings.showCents)} ₽</p>
-                                        <p className="text-[10px] text-slate-400">{formatDate(p.date)}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
-                    )
-                )}
-
-                {profitDetailsTab === 'payouts' && (
-                    managerProfitPayouts.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
-                            </div>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат за этот период</p>
-                        </div>
-                    ) : (
-                        managerProfitPayouts.map(e => (
-                            <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
-                                <div className="flex justify-between items-start gap-3">
-                                    <div className="min-w-0">
-                                        <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.discountFor != null ? 'Скидка клиенту' : e.title}</p>
-                                        {e.discountFor && (
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{e.discountFor}</p>
-                                        )}
-                                    </div>
-                                    <span className="font-bold text-sm text-rose-600 dark:text-rose-400 shrink-0">-{formatCurrency(e.amount, appSettings.showCents)} ₽</span>
-                                </div>
-                                {/* Куда ушло: категория расхода и счёт. Без этого в списке
-                                    висела бы безымянная сумма, и понять причину было нельзя. */}
-                                <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                                    <span className="text-[10px] text-slate-400">{formatDate(e.date)}</span>
-                                    {e.discountFor != null ? (
-                                        <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                                            Скидка
-                                        </span>
-                                    ) : e.category && e.category !== 'Моя выплата' && (
-                                        <span className="text-[10px] font-medium text-slate-600 dark:text-slate-300 bg-slate-100 dark:bg-slate-700 px-1.5 py-0.5 rounded">
-                                            {e.category}
-                                        </span>
-                                    )}
-                                    {e.accountName && (
-                                        <span className="text-[10px] text-slate-400">• {e.accountName}</span>
-                                    )}
-                                    {e.isShared && (
-                                        <span className="text-[10px] font-semibold text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 px-1.5 py-0.5 rounded">
-                                            Из прибыли
-                                        </span>
-                                    )}
-                                </div>
-                                {/* У общего расхода списана только доля менеджера — показываем полную сумму,
-                                    иначе цифра в списке не сойдётся с суммой расхода в операциях. */}
-                                {e.isShared && e.fullAmount != null && (
-                                    <p className="text-[10px] text-slate-400 mt-0.5">
-                                        Ваша доля от {e.discountFor != null ? 'скидки' : 'расхода'} на {formatCurrency(e.fullAmount, appSettings.showCents)} ₽
-                                    </p>
-                                )}
-                            </div>
-                        ))
-                    )
-                )}
-            </div>
-        </Sheet>
+{profitDialog && (
+  <CashProfitSheet key={`${profitDialog.who}:${profitDialog.view}:${profitFilterAccountId}:${profitFilterInvestorId}`}
+    view={profitDialog.view} ledger={profitDialog.who==='manager'?managerLedger:investorLedger}
+    subtitle={[detailsAccount?.name || 'Все счета',profitDialog.who==='investors'?(profitFilterInvestorId==='ALL'?'Все инвесторы':investors.find(i=>i.id===profitFilterInvestorId)?.name):'Моя прибыль'].filter(Boolean).join(' · ')}
+    periodLabel={periodMode==='ALL'?'За всё время':`${formatDate(profitPeriod.start)} — ${formatDate(profitPeriod.end)}`}
+    showCents={appSettings.showCents} onClose={()=>setProfitDialog(null)} onOpenContract={onOpenContract} />
 )}
-
-{/* 🔹 МОДАЛЬНОЕ ОКНО: Детали прибыли инвестора — на мобильных выезжает снизу, как модалка
-    "Получено прибыли" на главном экране (Dashboard.tsx, ProfitDetailsModal) */}
-{showInvestorProfitDetails && investorProfitStats && (
-    <Sheet onClose={() => setShowInvestorProfitDetails(false)} className="sm:max-w-lg overflow-hidden max-h-[85vh] flex flex-col">
-            {/* Header */}
-            <div className="px-4 py-3 flex items-center justify-between shrink-0 bg-gradient-to-r from-purple-500 to-purple-600">
-                <div className="flex items-center gap-3">
-                    <div className="text-white bg-white/20 p-2 rounded-xl">
-                        {ICONS.Users}
-                    </div>
-                    <div>
-                        <h3 className="text-base font-bold text-white">Прибыль инвестора</h3>
-                        <p className="text-purple-100 text-xs">
-                            Баланс: <span className="font-bold text-white">{formatCurrency(investorProfitStats.balance, appSettings.showCents)} ₽</span>
-                        </p>
-                    </div>
-                </div>
-                <button onClick={() => setShowInvestorProfitDetails(false)} className="p-2 text-white/80 hover:text-white hover:bg-white/10 rounded-xl transition-colors">
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                        <line x1="18" y1="6" x2="6" y2="18"/>
-                        <line x1="6" y1="6" x2="18" y2="18"/>
-                    </svg>
-                </button>
-            </div>
-
-            {/* Tabs */}
-            <div className="px-4 py-3 border-b border-slate-100 dark:border-slate-700 shrink-0">
-                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-700 rounded-xl">
-                    <button
-                        onClick={() => setProfitDetailsTab('accruals')}
-                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'accruals'
-                                ? 'bg-white dark:bg-slate-800 text-purple-600 dark:text-purple-400 shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                        }`}
-                    >
-                        Начисления ({investorProfitAccruals.length})
-                    </button>
-                    <button
-                        onClick={() => setProfitDetailsTab('payouts')}
-                        className={`flex-1 py-2.5 text-sm font-bold rounded-lg transition-all ${
-                            profitDetailsTab === 'payouts'
-                                ? 'bg-white dark:bg-slate-800 text-rose-600 dark:text-rose-400 shadow-sm'
-                                : 'text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200'
-                        }`}
-                    >
-                        Выплаты ({investorProfitPayouts.length})
-                    </button>
-                </div>
-            </div>
-
-            {/* Content */}
-            <div className="flex-1 overflow-y-auto p-4 space-y-2">
-                {profitDetailsTab === 'accruals' && (
-                    investorProfitAccruals.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.TrendingUp}</span>
-                            </div>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет начислений за этот период</p>
-                        </div>
-                    ) : (
-                        investorProfitAccruals.map(p => (
-                            <div
-                                key={p.id}
-                                onClick={() => { if (onSelectCustomer) onSelectCustomer(p.customerId); }}
-                                className={`bg-white dark:bg-slate-800 p-3 rounded-xl border border-purple-100 dark:border-purple-900/50 transition-all ${onSelectCustomer ? 'cursor-pointer hover:shadow-md' : ''}`}
-                            >
-                                <div className="flex justify-between items-start">
-                                    <div className="min-w-0 flex-1">
-                                        <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{p.customerName}</p>
-                                        <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">
-                                            {p.productName}
-                                            {p.isDownPayment && (
-                                                <span className="ml-1.5 px-1.5 py-0.5 bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400 rounded text-[9px] font-bold">
-                                                    Взнос
-                                                </span>
-                                            )}
-                                            {profitFilterInvestorId === 'ALL' && investorProfitBreakdown.length > 1 && (
-                                                <span className="ml-1.5 px-1.5 py-0.5 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-400 rounded text-[9px] font-bold">
-                                                    {p.investorName}
-                                                </span>
-                                            )}
-                                        </p>
-                                        {!!p.discount && (
-                                            // Скидка клиенту из прибыли: сколько всего и сколько пришлось на эту долю
-                                            <p className="text-[11px] text-rose-600 dark:text-rose-400 mt-0.5">
-                                                скидка клиенту {formatCurrency(p.discount, appSettings.showCents)} ₽ · доля инвестора −{formatCurrency(p.discountShare || 0, appSettings.showCents)} ₽
-                                            </p>
-                                        )}
-                                    </div>
-                                    <div className="text-right ml-3 shrink-0">
-                                        <p className={`font-bold text-sm ${p.amount < 0 ? 'text-rose-600 dark:text-rose-400' : 'text-purple-600 dark:text-purple-400'}`}>{p.amount < 0 ? '−' : '+'}{formatCurrency(Math.abs(p.amount), appSettings.showCents)} ₽</p>
-                                        <p className="text-[10px] text-slate-400">{formatDate(p.date)}</p>
-                                    </div>
-                                </div>
-                            </div>
-                        ))
-                    )
-                )}
-
-                {profitDetailsTab === 'payouts' && (
-                    investorProfitPayouts.length === 0 ? (
-                        <div className="text-center py-16">
-                            <div className="w-20 h-20 bg-slate-100 dark:bg-slate-700 rounded-2xl flex items-center justify-center mx-auto mb-4">
-                                <span className="text-4xl text-slate-400">{ICONS.Wallet}</span>
-                            </div>
-                            <p className="text-slate-500 dark:text-slate-400 font-medium">Нет выплат инвестору за этот период</p>
-                        </div>
-                    ) : (
-                        investorProfitPayouts.map(e => {
-                            const investor = investors.find(i => i.id === e.investorId);
-                            return (
-                                <div key={e.id} className="bg-white dark:bg-slate-800 p-3 rounded-xl border border-rose-100 dark:border-rose-900/50">
-                                    <div className="flex justify-between items-start">
-                                        <div className="min-w-0 flex-1">
-                                            <p className="font-semibold text-slate-800 dark:text-white text-sm truncate">{e.discountFor != null ? 'Скидка клиенту' : e.title}</p>
-                                            {e.discountFor && (
-                                                <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{e.discountFor}</p>
-                                            )}
-                                            <p className="text-xs text-slate-500 dark:text-slate-400 truncate mt-0.5">{investor?.name || 'Инвестор'}</p>
-                                        </div>
-                                        <span className="font-bold text-sm text-rose-600 dark:text-rose-400 ml-3 shrink-0">-{formatCurrency(Number(e.amount), appSettings.showCents)} ₽</span>
-                                    </div>
-                                    <div className="flex items-center gap-1.5 flex-wrap mt-1">
-                                        <span className="text-[10px] text-slate-400">{formatDate(e.date)}</span>
-                                        {e.discountFor != null && (
-                                            <span className="text-[10px] font-semibold text-amber-700 dark:text-amber-400 bg-amber-50 dark:bg-amber-900/30 px-1.5 py-0.5 rounded">
-                                                Скидка
-                                            </span>
-                                        )}
-                                    </div>
-                                    {e.isShared && e.fullAmount != null && (
-                                        <p className="text-[10px] text-slate-400 mt-0.5">
-                                            Доля инвестора от {e.discountFor != null ? 'скидки' : 'расхода'} на {formatCurrency(e.fullAmount, appSettings.showCents)} ₽
-                                        </p>
-                                    )}
-                                </div>
-                            );
-                        })
-                    )
-                )}
-            </div>
-        </Sheet>
-)}
-
-
 
 
     </div>

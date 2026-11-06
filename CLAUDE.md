@@ -8,6 +8,10 @@ FinUchet ("рассрочка"/installment-plan SaaS): React 19 + Vite app shipp
 
 ## Commands
 
+Paid AI evaluation commands below require the separate budget approval and
+test-key policy in `AGENTS.md`. They must never run automatically on the
+production key or balance; use mocked-model tests by default.
+
 ```bash
 npm install && npm run dev      # Vite on :3000
 npm run build                   # web build (build:web)

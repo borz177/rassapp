@@ -98,6 +98,11 @@ const Contract = {
     notes: { type: 'string' },
     guarantor: { type: ['object', 'null'], properties: { name: { type: ['string', 'null'] }, phone: { type: ['string', 'null'] } } },
     schedule: { type: 'array', items: ScheduleRow, description: 'Только в ответе на запрос одного договора' },
+    scheduledPaymentAmounts: { type: 'array', items: { type: 'number' }, description: 'Уникальные суммы плановых платежей из сохранённого графика, без фактических оплат' },
+    customerName: { type: ['string', 'null'], description: 'Имя клиента при поиске по scheduledPaymentAmount' },
+    matchingScheduledPayments: { type: 'object', description: 'При поиске по scheduledPaymentAmount: совпавшие строки графика', properties: {
+      amount: money('Искомая сумма'), count: { type: 'integer' }, unpaidCount: { type: 'integer' },
+    } },
   },
 };
 
@@ -402,6 +407,7 @@ const openApiSpec = {
           { name: 'customerId', in: 'query', schema: { type: 'string' } },
           { name: 'accountId', in: 'query', schema: { type: 'string' } },
           { name: 'overdue', in: 'query', schema: { type: 'boolean' }, description: 'Только просроченные' },
+          { name: 'scheduledPaymentAmount', in: 'query', schema: { type: 'number', exclusiveMinimum: 0 }, description: 'Точное совпадение по сумме строки сохранённого графика (до пагинации), без фактических оплат' },
           { name: 'from', in: 'query', schema: { type: 'string' }, description: 'Дата договора от (YYYY-MM-DD)' },
           { name: 'to', in: 'query', schema: { type: 'string' }, description: 'Дата договора до' },
         ],

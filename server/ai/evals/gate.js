@@ -13,7 +13,7 @@
 //   cd server && npm run ai:gate                    (3 прогона, база origin/main)
 //   --runs 1          быстрый прогон
 //   --base HEAD~1     другая база;  --no-base — без сравнения (всё должно проходить всегда)
-//   --suites actions,skills   только эти наборы (actions, skills, numbers, local)
+//   --suites actions,skills   только эти наборы (actions, skills, numbers, local, search)
 //   --jobs 4          сколько наборов идёт одновременно
 // Нужны локальный PostgreSQL (DATABASE_URL в server/.env) и ключ OpenRouter. Стоимость —
 // около доллара за 3 прогона с базой; время — 15–30 минут.
@@ -38,6 +38,7 @@ const SUITES = {
   skills: { file: 'ai/evals/skills-isolated.js', parse: marks },
   numbers: { file: 'ai/evals/numbers-audit.js', parse: numbers },
   local: { file: 'ai/evals/local-isolated.js', parse: localMarks },
+  search: { file: 'ai/evals/payment-search.js', parse: marks },
 };
 const wanted = String(arg('suites', Object.keys(SUITES).join(','))).split(',').filter(s => SUITES[s]);
 
@@ -101,6 +102,7 @@ const baseTree = (ref) => {
 
 (async () => {
   const t0 = Date.now();
+  const logsDir = fs.mkdtempSync(path.join(os.tmpdir(), 'finuchet-gate-logs-'));
   // 1. Автотесты — без модели, быстро; красные — дальше не идём
   console.log('1. Автотесты…');
   const unit = await new Promise(resolve => {
@@ -135,6 +137,8 @@ const baseTree = (ref) => {
   }
   const results = await pool(tasks.map(t => async () => {
     const r = await t();
+    r.log = path.join(logsDir, `${r.side}-${r.s}-${Date.now()}-${Math.random().toString(16).slice(2, 8)}.log`);
+    fs.writeFileSync(r.log, r.out);
     process.stdout.write(`   ${r.side === 'cur' ? 'новая' : 'база '} ${r.s.padEnd(7)} ${r.sec} с${r.code !== 0 && !/прошли|Проблемных/.test(r.out) ? ` — не дошёл до конца: ${r.out.trim().split('\n').pop().slice(0, 160)}` : ''}\n`);
     return r;
   }));
@@ -176,7 +180,9 @@ const baseTree = (ref) => {
   const total = Object.values(table).filter(r => r.cur.length).length;
   const bad = regress.length + fresh.length + silent.length;
   const report = path.join(os.tmpdir(), 'finuchet-gate-last.json');
-  fs.writeFileSync(report, JSON.stringify({ at: new Date().toISOString(), base: base?.sha || null, runs: RUNS, table }, null, 1));
+  fs.writeFileSync(report, JSON.stringify({ at: new Date().toISOString(), base: base?.sha || null, runs: RUNS, table,
+    logsDir, runsDetail: results.map(({ s, side, code, sec, log }) => ({ suite:s, side, code, sec, log })),
+  }, null, 1));
   console.log(`\n${bad ? '✗ НЕЛЬЗЯ ДЕПЛОИТЬ' : '✓ МОЖНО ДЕПЛОИТЬ'}: ${total} сценариев × ${RUNS}, ${Math.round((Date.now() - t0) / 60000)} мин. Подробно: ${report}`);
   process.exit(bad ? 1 : 0);
 })().catch(e => { console.error(e); process.exit(1); });

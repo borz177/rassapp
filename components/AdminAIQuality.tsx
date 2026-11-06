@@ -3,24 +3,23 @@ import { api, type AdminAiQuality } from '../services/api';
 import { friendlyError } from '../src/friendlyError';
 import { toast } from '../src/toast';
 
-/**
- * Самоулучшение FinUchetGPT без участия пользователей (server/ai/quality.js):
- * где агент ошибался (сигналы собирает сервер), что он из этого вывел и какие
- * выводы уже действуют. Выводы дописываются в подсказку агента у всех сразу —
- * поэтому по умолчанию их применяет админ; «Применять автоматически» отдаёт
- * это серверу.
- */
-
-const TONE: Record<string, string> = {
-  undo_soon: 'bg-amber-400', stop: 'bg-slate-400', honesty_fix: 'bg-rose-500', guard_payoff: 'bg-orange-500',
-  guard_bad_customer: 'bg-fuchsia-500', guard_lookalike: 'bg-violet-400', tool_error: 'bg-red-600', model_fallback: 'bg-sky-500',
-  cant_do: 'bg-emerald-500',
-};
-const when = (iso: string | null) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' }) : '—';
+/** Сигналы сервера, проверки ответа и срабатывания защит. Новые правила
+ * начинают действовать только после проверок и решения администратора. */
+type SignalGroup = 'all' | 'quality' | 'guard' | 'user';
+const GROUPS = [
+  { key: 'quality', label: 'Проверки ответа', tone: 'bg-rose-500' },
+  { key: 'guard', label: 'Сработала защита', tone: 'bg-amber-400' },
+  { key: 'user', label: 'Действия пользователя', tone: 'bg-slate-400' },
+] as const;
+const groupOf = (kind: string, q: AdminAiQuality | null) => q?.kindGroups?.[kind]
+  || (kind === 'cant_do' ? 'wish' : kind === 'stop' || kind === 'undo_soon' ? 'user' : kind.startsWith('guard_') ? 'guard' : 'quality');
+const toneOf = (kind: string, q: AdminAiQuality | null) => GROUPS.find(g => g.key === groupOf(kind, q))?.tone || 'bg-slate-400';
+const when = (iso: string | null) => iso ? new Date(iso).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Moscow' }) : '—';
 
 const AdminAIQuality: React.FC = () => {
   const [q, setQ] = useState<AdminAiQuality | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [group, setGroup] = useState<SignalGroup>('all');
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = async () => {
@@ -29,19 +28,21 @@ const AdminAIQuality: React.FC = () => {
   };
   useEffect(() => { load(); }, []);
 
-  const totals = useMemo(() => {
+  const totals: Record<string, number> = useMemo(() => {
     const t: Record<string, number> = {};
-    for (const r of q?.byDay || []) t[r.kind] = (t[r.kind] || 0) + r.n;
+    for (const r of q?.byDay || []) {
+      if (groupOf(r.kind, q) !== 'wish') t[r.kind] = (t[r.kind] || 0) + r.n;
+    }
     return t;
   }, [q]);
   const days = useMemo(() => {
     const out: { day: string; n: number }[] = [];
     for (let i = 13; i >= 0; i--) {
       const d = new Date(Date.now() - i * 864e5).toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' });
-      out.push({ day: d, n: (q?.byDay || []).filter(r => r.day === d).reduce((s, r) => s + r.n, 0) });
+      out.push({ day: d, n: (q?.byDay || []).filter(r => r.day === d && groupOf(r.kind, q) !== 'wish' && (group === 'all' || groupOf(r.kind, q) === group)).reduce((s, r) => s + r.n, 0) });
     }
     return out;
-  }, [q]);
+  }, [q, group]);
   const max = Math.max(1, ...days.map(d => d.n));
 
   const act = async (key: string, fn: () => Promise<unknown>, ok?: string) => {
@@ -53,6 +54,7 @@ const AdminAIQuality: React.FC = () => {
 
   const proposed = (q?.lessons || []).filter(l => l.status === 'proposed');
   const active = (q?.lessons || []).filter(l => l.status === 'active');
+  const recent = (q?.recent || []).filter(r => group === 'all' || groupOf(r.kind, q) === group);
 
   return (
     <div className="space-y-4">
@@ -61,8 +63,8 @@ const AdminAIQuality: React.FC = () => {
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
-            <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">Сигналы ошибок · 14 дней</div>
-            <div className="text-[11px] text-slate-400 mt-0.5">Собирает сервер сам — пользователи ничего не делают</div>
+            <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">Сигналы качества · 14 дней</div>
+            <div className="text-[11px] text-slate-400 mt-0.5">Один запрос может дать несколько сигналов. Защита не означает ошибочную операцию.</div>
           </div>
           <div className="flex items-center gap-2">
             <span className="text-xs text-slate-500">Новые правила — после проверки и вашего решения</span>
@@ -74,6 +76,14 @@ const AdminAIQuality: React.FC = () => {
             </button>
           </div>
         </div>
+        <div className="mt-4 flex flex-wrap gap-2" aria-label="Фильтр сигналов">
+          <button type="button" aria-pressed={group === 'all'} onClick={() => setGroup('all')}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold border ${group === 'all' ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}>Все</button>
+          {GROUPS.map(g => <button type="button" key={g.key} aria-pressed={group === g.key} onClick={() => setGroup(g.key)}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold border ${group === g.key ? 'border-indigo-400 bg-indigo-50 text-indigo-700 dark:bg-indigo-500/15 dark:text-indigo-300' : 'border-slate-200 dark:border-slate-700 text-slate-500'}`}>
+            <span className={`inline-block w-2 h-2 rounded-full mr-1.5 ${g.tone}`} />{g.label} · {Object.entries(totals).filter(([kind]) => groupOf(kind, q) === g.key).reduce((sum, [, n]) => sum + n, 0)}
+          </button>)}
+        </div>
         <div className="mt-4 flex items-end gap-1 h-20">
           {days.map(d => (
             <div key={d.day} className="flex-1 flex flex-col items-center gap-1" title={`${d.day}: ${d.n}`}>
@@ -83,13 +93,14 @@ const AdminAIQuality: React.FC = () => {
           ))}
         </div>
         <div className="mt-3 flex flex-wrap gap-2">
-          {Object.entries(q?.kinds || {}).map(([k, label]) => (
+          {Object.entries(totals).filter(([k, n]) => n > 0 && (group === 'all' || groupOf(k, q) === group)).map(([k, n]) => (
             <span key={k} className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-slate-50 dark:bg-slate-900/60 text-xs text-slate-600 dark:text-slate-300">
-              <span className={`w-2 h-2 rounded-full ${TONE[k] || 'bg-slate-400'}`} />{label}: <b className="tabular-nums">{totals[k] || 0}</b>
+              <span className={`w-2 h-2 rounded-full ${toneOf(k, q)}`} />{q?.kinds[k] || 'Другое событие'}: <b className="tabular-nums">{n}</b>
             </span>
           ))}
         </div>
-        <div className="mt-2 text-[11px] text-slate-400">Последний разбор: {when(q?.lastReviewAt || null)} · ночной разбор — в 03:00 по Москве</div>
+        <div className="mt-2 text-[11px] text-slate-400">Последний разбор: {when(q?.lastReviewAt || null)} · время по Москве</div>
+        <p className="mt-1 text-[11px] text-slate-400">Ночной разбор — от {q?.autoReviewMinSignals || 3} сигналов, около 03:00. Кнопкой «Разобрать сейчас» можно запустить раньше.</p>
       </div>
 
       {proposed.length > 0 && (
@@ -112,7 +123,7 @@ const AdminAIQuality: React.FC = () => {
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-4 space-y-2">
         <div className="text-xs font-bold text-slate-400 uppercase tracking-wide">Действующие выводы · {active.length}</div>
-        {!active.length && <p className="text-sm text-slate-400">Пока нет — появятся после разбора ошибок</p>}
+        {!active.length && <p className="text-sm text-slate-400">Пока нет — предложенные правила начнут действовать после проверки и вашего решения</p>}
         {active.map(l => (
           <div key={l.id} className="flex items-start justify-between gap-3 py-2 border-t border-slate-100 dark:border-slate-700 first:border-0">
             <div className="min-w-0">
@@ -154,12 +165,12 @@ const AdminAIQuality: React.FC = () => {
         <div className="px-4 pt-4 text-xs font-bold text-slate-400 uppercase tracking-wide">Свежие случаи (данные клиентов скрыты)</div>
         <table className="w-full text-sm mt-2">
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
-            {(q?.recent || []).map((r, i) => (
+            {recent.map((r, i) => (
               <tr key={i} className="align-top">
                 <td className="px-4 py-2.5 whitespace-nowrap text-xs text-slate-400 tabular-nums">{when(r.created_at)}</td>
                 <td className="px-4 py-2.5 whitespace-nowrap">
                   <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200">
-                    <span className={`w-2 h-2 rounded-full ${TONE[r.kind] || 'bg-slate-400'}`} />{q?.kinds[r.kind] || r.kind}
+                    <span className={`w-2 h-2 rounded-full ${toneOf(r.kind, q)}`} />{q?.kinds[r.kind] || 'Другое событие'}
                   </span>
                   {r.tool && <div className="text-[11px] text-slate-400">{r.tool}</div>}
                 </td>
@@ -170,7 +181,7 @@ const AdminAIQuality: React.FC = () => {
                 </td>
               </tr>
             ))}
-            {!(q?.recent || []).length && <tr><td className="px-4 py-6 text-center text-slate-400">Ошибок не было</td></tr>}
+            {!recent.length && <tr><td colSpan={3} className="px-4 py-6 text-center text-slate-400">В этой группе свежих сигналов нет</td></tr>}
           </tbody>
         </table>
       </div>

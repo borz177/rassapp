@@ -1844,7 +1844,7 @@ useEffect(() => {
     </ModalParkContext.Provider>
   )}
   {showTurnoverRest && turnover && (
-    <TurnoverRestSheet data={turnover} accounts={accounts} customers={customers} sales={allSales}
+    <TurnoverRestSheet data={turnover} accounts={accounts} accountIds={turnoverAccountIds} customers={customers} sales={allSales}
       expenses={expenses} investors={investors} retailSales={retailSales} showCents={appSettings.showCents}
       accountName={selectedAccountId ? accounts.find(a=>a.id===selectedAccountId)?.name : undefined}
       onViewSale={onViewSchedule} onClose={()=>setShowTurnoverRest(false)} />

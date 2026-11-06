@@ -503,7 +503,7 @@ const FIELD_WORDS = {
   guarantorPhone: 'телефон поручителя', guarantorPhoto: 'фото поручителя', paymentPlan: 'график платежей',
   productName: 'товар', noPhone: 'без телефона', sendToWhatsApp: 'отправка в WhatsApp',
 };
-const TECH_RE = /`|\b[a-z]+_[a-z_]+\b|\b(?:newCustomer|customerId|contractId|buyPrice|totalPrice|markupPercent)\b|инструмент[а-яё]*\s+[«"`]?[a-z_]{3,}|\b(JSON|null|undefined|true|false)\b/;
+const TECH_RE = /\b[a-z]+_[a-z_]+\b|\b(?:newCustomer|customerId|contractId|buyPrice|totalPrice|markupPercent)\b|инструмент[а-яё]*\s+[«"`]?[a-z_]{3,}|\b(JSON|null|undefined|true|false)\b/;
 // Предложения про отправку договора в WhatsApp, когда отправку не заказывали
 const stripUnaskedSend = (text) => String(text || '')
   .replace(/[^.!?\n]*(отправ|уйд[её]т|придёт|пришл)[^.!?\n]*(whatsapp|ватсап|вотсап|ватс)[^.!?\n]*[.!?]?/gi, '')
@@ -608,7 +608,7 @@ const CLAIMS_DONE_RE = /черновик[а-яё ]{0,12} (?<!не )готов|д
 // второй шанс — уже с инструментами
 const PROMISE_RE = /нажм(ите|и)[^.\n]{0,20}«?(Подтвердить|Открыть форму договора|Перенести|Отправить)|черновик[^.\n]{0,90}(?<!не )готов|(^|[^а-яё])(записываю|провожу|принимаю|оформляю|отправляю|добавляю|удаляю|создаю|вношу)([^а-яё]|$)|(кнопк|карточк)[а-яё]*[^.\n]{0,40}(подтвер|ниже|под (этим|ответом|сообщением))/i;
 // Основные инструменты для повтора с обязательным вызовом (см. forceTool в replyText)
-const FORCE_TOOL_NAMES = new Set(['customer_overview', 'create_payment', 'record_payments', 'prepare_contract', 'ask_choice', 'send_document',
+const FORCE_TOOL_NAMES = new Set(['list_contracts', 'customer_overview', 'create_payment', 'record_payments', 'prepare_contract', 'ask_choice', 'send_document',
   'due_payments', 'list_payments', 'change_payment_date', 'create_expense', 'collection_queue', 'cash_forecast', 'get_summary', 'early_payoff', 'update_contract']);
 const ACTION_KINDS = new Set(['done', 'confirm', 'contract_form', 'send_doc', 'report', 'customers_report', 'delete_contract', 'reschedule', 'template_draft']);
 // Агент отказал: не умеет или отправил делать в приложении — это просьба о новом
@@ -740,6 +740,9 @@ const toolText = (payload) => {
 // Суммы в рублях из ответа модели должны быть в данных: в ответах инструментов,
 // карточках, словах человека или истории. Иначе модель их досчитала или придумала
 // (аудит 24.10: 9 ответов из 12 с неверными суммами — складывала первые 50 строк)
+const uncheckedAmountsReply = actions => 'Не удалось надёжно проверить суммы по данным учёта. '
+  + (actions.some(a => a.kind === 'done' && a.ok) ? 'Результаты проведённых действий — в карточках ниже.'
+    : actions.length ? 'Проверьте данные в карточках ниже.' : 'Уточните счёт, договор или период — я проверю ещё раз.');
 const MONEY_RE = /(\d{1,3}(?:[ \u00a0\u202f]\d{3})+|\d{4,})(?:[.,]\d{1,2})?\s*(?:₽|руб)/g;
 const amountsInReply = (t) => [...new Set([...String(t || '').matchAll(MONEY_RE)].map(m => Number(m[1].replace(/\D/g, ''))))].filter(n => n >= 100);
 const numbersInData = (t) => {
@@ -1959,6 +1962,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     'СВЕРКА. Для расхождений кассы и договоров без счёта используй reconcile_accounts; называй отдельно остаток каждого счёта и общий итог, включая отрицательные остатки. «Почему касса в минусе / откуда минус» — сразу, за всё время, период не спрашивай: reconcile_accounts. Из чего остаток — его цифры по счёту (initial + receipts − expenses + retailNet); на что ушли деньги — topExpenseCategories этого счёта (закуп по договорам — «Закуп»), суммы ровно оттуда. Возвраты клиентам (refundsNotInBalance, isRefund) в остаток не входят — их причиной минуса не называй и с расходами не складывай. Без предложений «сравнить периоды» вместо ответа. Человек сказал, что дубля / ошибки нет, — больше о нём не повторяй. Просьба «только посчитай» — preview_transfer и ответ с расчётом. Просьба «перенеси» или «подготовь подтверждение переноса» — после preview_transfer обязательно вызови transfer_contracts в этом же ответе: он создаёт карточку, а не проводит перенос сразу. Без transfer_contracts карточка не подготовлена. Запись происходит только после нажатия пользователем «Подтвердить». Возможный дубль не называй доказанным и не удаляй автоматически.',
     'СЧЕТА И ИНВЕСТОРЫ. «Счёт <имя>», «<имя> счёт», «по счёту Гагаева» — это счёт, а не клиент: list_accounts, ищи имя в названии счёта, во владельце (ownerInvestorName) и в участниках пула (poolMembers); инвестор в пуле — значит, его счёт этот пул, так и скажи. Нет среди счетов и инвесторов — тогда уже клиенты. Сколько получено/потрачено по счёту за период — get_summary с accountId; «по каким счетам» — list_payments за период и сложи по accountName (или get_summary по каждому счёту). Прибыль инвестора — investor_profit.',
     'ЗАПИСИ (платёж, расход, приход, клиент, задача, напоминание). «Подтверждать»: под ответом карточка «Подтвердить» — скажи одной фразой «Проверьте и нажмите «Подтвердить»», без слов про формы и окна. «Авто»: выполняется сразу — скажи коротко, что сделано (под ответом «Отменить»), ничего не проси подтверждать, но сначала убедись, что клиент, договор, сумма и счёт верные. Каждую запись — один вызов. У клиента один действующий договор — он и есть договор платежа: не спрашивай «какой договор» и не делай ask_choice с одним вариантом. Если человек уже назвал сумму платежа и договор однозначен, сразу используй эту сумму: в режиме «Подтверждать» подготовь карточку, не спрашивай сумму повторно и не подменяй её платежом по графику. Платёж без суммы — не бери сам и не бери весь остаток (остаток в подписи кнопки договора — не сумма платежа): ask_choice «Платёж по графику — N ₽» (ближайший неоплаченный из due_payments с includeOverdue) и «Весь остаток — M ₽», в вопросе «или напишите свою сумму». Расход и приход — по счёту: не назван и счетов несколько — спроси (list_accounts), один — бери его.',
+    'ПОИСК ПЛАНОВОГО ПЛАТЕЖА. Различай план и полученные деньги: «кто внёс/заплатил/оплатил», «от кого пришёл платёж» — list_payments, это фактические оплаты; фильтр scheduledPaymentAmount к таким вопросам не относится. Период не назван — не подставляй «сегодня», проверь историю без from/to. Платежей не нашлось — не подменяй их плановым графиком. Только «в месяц», «ежемесячно», «по графику», «плановый платёж» — list_contracts с scheduledPaymentAmount. «Кто платит 16 800 в месяц?» — list_contracts с scheduledPaymentAmount:16800 (если спрашивают, кто сейчас платит — также status:ACTIVE). Совпадение берётся из сохранённого графика по всем договорам, не только первой странице. Имя — customerName, суммы — scheduledPaymentAmounts, число совпадений — matchingScheduledPayments. Не дели цену договора на срок: первый взнос, последний платёж и изменения графика делают такое вычисление неверным. Не нашлось — скажи, что совпадений в графиках не найдено; не заменяй поиск приблизительным расчётом.',
     'ДОГОВОР — prepare_contract. Обязательны клиент, товар (как назвал человек; не назвал — спроси, заглушки «Товар» не пиши), закуп, срок в месяцах, наценка или цена («по 12 300 в месяц» — monthlyPayment, цену посчитает сервер, не переспрашивай); «оплата 12 числа» — paymentDay, точная дата первого платежа — firstPaymentDate: чего-то нет — спроси до вызова, в любом режиме, не подставляй. «Закуп 100», «закуп 500» без единиц — это тысячи (100 000 ₽, 500 000 ₽), не переспрашивай. Телефон, адрес и счёт не обязательны — не задерживай ими. Паспорт с фото — в newCustomer буква в букву. «Подтверждать»: скажи «Черновик готов — нажмите «Открыть форму договора»» (не «форма открыта», не «откройте приложение»). «Авто»: скажи «Оформляю договор». «Оформи и отправь» — sendToWhatsApp; договор или чек клиенту в WhatsApp — send_document.',
     'ЧЕРНОВИК ЕЩЁ НЕ СОХРАНЁН. В истории пометка [Черновик договора …], а договора у клиента нет, и просят поменять в нём что-то («первый платёж на 20 ноября», «срок 8 месяцев», «наценка 30») — снова prepare_contract с теми же данными из разговора и этим изменением: будет новый черновик. Не отвечай «сначала сохраните черновик».',
     'ИСПРАВЛЕНИЯ. «Удали/убери платёж …», «платёж записан по ошибке» — delete_payment (id из list_payments с contractId). «Исправь расход», «не 3 000, а 30 000» — update_expense; «удали расход» — delete_expense (id из list_expenses за нужные даты). Подходящих записей несколько — ask_choice, не бери наугад. Первый взнос, закуп по договору, выплаты инвесторам и оплаты поставщику агент не меняет — скажи, что это правят в приложении. «Удали договор» — delete_contract (договор через customer_overview; несколько — ask_choice): под ответом карточка «Удалить», скажи «Проверьте и нажмите «Удалить» — удаление не отменить».',
@@ -2575,7 +2579,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     let singleChoiceSkipped = false;
     // Несколько документов за сообщение: сами (в «Авто») уходят только «всем» после пачки
     let multiDocsOk = false;
-    // Ответ до повтора по проверке цифр: повтор вернул пусто — лучше прежний с пометкой, чем «Ничего не сделано»
+    // Непроверенный ответ хранится только для диагностики; человеку его не возвращаем.
     let beforeGroundRetry = '';
     // Тексты, из которых могут взяться цифры ответа: что сказал человек, история, ответы инструментов
     // и память разговора — её остатки только что прочитаны из базы
@@ -2646,7 +2650,7 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         msg.content = `Договор ещё не подготовлен — уточните, пожалуйста: ${contractMissing.map(m => m.replace(/\s*\(.*$|\s*—.*$/, '')).join(', ')}.`;
       }
       // Пустой ответ без действий — ещё раз, с обязательным вызовом инструмента, а не «Ничего не сделано»
-      // (Пустой повтор проверки цифр — не сюда: там показываем прежний ответ с пометкой)
+      // Пустой повтор проверки цифр обрабатывается ниже без возврата сомнительного ответа.
       if (!calls.length && !String(msg.content || '').trim() && !actions.length && !emptyRetried && !beforeGroundRetry && round < MAX_TOOL_ROUNDS - 1) {
         emptyRetried = true;
         forceTool = true;
@@ -2668,17 +2672,19 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
       // Слова человека — и «50к», «12 тыс», «закуп 500» (= 500 000); карточки — целиком (черновик договора)
       const saidNums = [asked, ...history.filter(m => m?.role !== 'assistant').map(m => m?.text)].flatMap(t => amountsSaid(t).flatMap(n => [n, n * 1000]));
       const ungrounded = !calls.length ? ungroundedAmounts(msg.content, [...groundTexts, ...actions.map(a => JSON.stringify(a))], saidNums) : [];
-      if (ungrounded.length && !groundRetried && round < MAX_TOOL_ROUNDS - 1) {
-        groundRetried = true;
-        beforeGroundRetry = String(msg.content || '');
-        flag(user.id, 'ungrounded_number', { question: text, answer: msg.content, detail: ungrounded.map(money).join(', ') });
-        messages.push({ role: 'assistant', content: msg.content || '' });
-        messages.push({ role: 'system', content: `Проверка цифр: в ответе суммы, которых нет в данных учёта: ${ungrounded.map(money).join(', ')}. Сам не складывай, не умножай и не усредняй строки списков. Возьми готовые итоги — meta.sum, meta.sums, totals, get_summary, sales_breakdown, monthly_report, cash_forecast (вызови нужный инструмент) — и перепиши ответ. Точную цифру получить нельзя — так и скажи, без неё.` });
-        continue;
-      }
-      if (ungrounded.length && groundRetried) {
-        flag(user.id, 'ungrounded_after_retry', { question: text, answer: msg.content, detail: ungrounded.map(money).join(', ') });
-        msg.content = `${msg.content || ''}\n\n⚠️ Часть сумм в ответе не найдена в учёте — сверьте их в приложении.`;
+      if (ungrounded.length) {
+        flag(user.id, groundRetried ? 'ungrounded_after_retry' : 'ungrounded_number', {
+          question: asked, answer: msg.content, detail: ungrounded.map(money).join(', '),
+        });
+        if (!groundRetried && round < MAX_TOOL_ROUNDS - 1) {
+          groundRetried = true;
+          beforeGroundRetry = String(msg.content || '');
+          messages.push({ role: 'assistant', content: msg.content || '' });
+          messages.push({ role: 'system', content: `Проверка цифр: в ответе суммы, которых нет в данных учёта: ${ungrounded.map(money).join(', ')}. Сам не складывай, не умножай и не усредняй строки списков. Возьми готовые итоги — meta.sum, meta.sums, totals, get_summary, sales_breakdown, monthly_report, cash_forecast (вызови нужный инструмент); сумма платежа из графика — list_contracts с scheduledPaymentAmount. Перепиши ответ. Точную цифру получить нельзя — так и скажи, без неё.` });
+          continue;
+        }
+        msg.content = uncheckedAmountsReply(actions);
+        onStream?.({ reset: true });
       }
       if (!calls.length && !claimChecked && CLAIMS_DONE_RE.test(msg.content || '') && !actions.some(a => ACTION_KINDS.has(a.kind))) {
         // Отчитался о деле, которого в этом ответе не было. Переспрашиваем с
@@ -2744,7 +2750,8 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         }
         if (!text && beforeGroundRetry) {
           flag(user.id, 'ungrounded_after_retry', { question: askedText, answer: beforeGroundRetry, detail: 'повтор вернул пустой ответ' });
-          text = `${beforeGroundRetry}\n\n⚠️ Часть сумм в ответе не найдена в учёте — сверьте их в приложении.`;
+          text = uncheckedAmountsReply(actions);
+          onStream?.({ reset: true });
         }
         // Пустой ответ: «Готово» — только если что-то правда сделано
         if (!text) text = auto && actions.some(a => a.kind === 'contract_form') ? 'Оформляю договор.'
@@ -2791,6 +2798,16 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
             const gp = Number(dr.guarantorPhoto);
             if (!dr.guarantorName || !(Number.isInteger(gp) && gp >= 1 && gp <= imgs.length)) delete dr.guarantorPhoto;
           }
+        }
+        // Проверяем и итог после исправления обещаний: дополнительный ответ
+        // модели тоже может содержать новые неподтверждённые суммы.
+        const finalUngrounded = ungroundedAmounts(text, [...groundTexts, ...actions.map(a => JSON.stringify(a))], saidNums);
+        if (finalUngrounded.length) {
+          flag(user.id, groundRetried ? 'ungrounded_after_retry' : 'ungrounded_number', {
+            question: askedText, answer: text, detail: finalUngrounded.map(money).join(', '),
+          });
+          text = uncheckedAmountsReply(actions);
+          onStream?.({ reset: true });
         }
         // Названия инструментов и полей — человеческими словами (сигнал — чтобы чинить промпт)
         if (TECH_RE.test(text)) { flag(user.id, 'tech_words', { question: askedText, answer: text }); text = humanize(text); }
@@ -2842,6 +2859,11 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
         step(name === 'create_payment' && !auto ? 'Готовлю платёж…' : STEP_LABELS[name]);
         if (disabledTools().has(name)) {
           result = `${DISABLED_TEXT} Скажи человеку об этом одной фразой; не обходи другими инструментами.`;
+        } else if (name === 'list_contracts' && args.scheduledPaymentAmount != null
+            && /вн[её]с|вносил|заплатил|оплатил|поступил|получен[а-яё]*\s+плат/i.test(asked)
+            && !/(?:в|на)\s+месяц|ежемесяч/i.test(asked)) {
+          flag(user.id, 'guard_payment_kind', { tool: name, question: asked });
+          result = 'Этот поиск не выполнен: человек спрашивает о ФАКТИЧЕСКИ ПОЛУЧЕННОМ платеже, а не о графике. Вызови list_payments, найди нужную сумму и клиента. Не добавляй from/to, если человек не назвал период. Пустой результат за сегодня не означает отсутствие платежа во всей истории. Не отвечай плановым платежом вместо фактического.';
         } else if (name === 'customer_overview') {
           result = await customerOverview(user.id, args);
         } else if (name === 'due_payments') {

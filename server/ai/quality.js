@@ -10,7 +10,7 @@
 //    примеры, ищет повторяющиеся причины и предлагает короткие правила.
 // 3. Выводы. Принятые правила дописываются в общую часть подсказки агента
 //    («ВЫВОДЫ ИЗ ОШИБОК») — у всех одинаково, кэш не ломается. Принимает
-//    админ кнопкой либо, если включено «применять автоматически», сам сервер.
+//    админ после проверок; автоматического применения нет.
 //    Правила, которые ослабляют защиты (подтверждения, порог, суммы), сервер
 //    отбрасывает в любом режиме.
 
@@ -21,18 +21,7 @@ const MAX_LESSON_CHARS = 220;
 // Ослабить защиту выводы не могут — такие правила не принимаем вовсе
 const UNSAFE_RE = /(не (спрашивай|переспрашивай|уточняй|проси) (подтвержд|сумм|счёт|счет)|без подтвержд|сразу (проводи|принимай|записывай)|весь остаток без|игнорир|не провер|обходи|порог.*(не |игнор)|выполняй (команд|указан).*(заметк|данн))/i;
 
-const KIND_LABELS = {
-  undo_soon: 'Отменили действие агента',
-  stop: 'Остановили ответ',
-  honesty_fix: 'Сказал «сделал», не сделав',
-  guard_payoff: 'Взял весь остаток без просьбы',
-  guard_bad_customer: 'Выдумал клиента',
-  guard_lookalike: '«Новый» клиент похож на клиента из базы',
-  tool_error: 'Ошибка инструмента',
-  model_fallback: 'Основная модель не ответила',
-  cant_do: 'Не умеет — просили новое умение',
-  tech_words: 'Показал человеку технические названия',
-};
+const { KIND_LABELS, KIND_GROUPS } = require('./qualityKinds');
 // Не ошибки агента, а просьбы о том, чего он пока не умеет: в разбор ошибок не идут
 // (иначе разбор придумал бы «не отказывай») и хранятся дольше — их считают за месяцы
 const WISH_KINDS = ['cant_do'];
@@ -161,19 +150,19 @@ module.exports = ({ pool }) => {
   const report = async () => {
     await ready;
     const byDay = (await pool.query(
-      `SELECT to_char(created_at AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD') AS day, kind, count(*)::int AS n
-         FROM ai_signals WHERE created_at > NOW() - INTERVAL '14 days' GROUP BY 1, 2 ORDER BY 1`)).rows;
+      `SELECT to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD') AS day, kind, count(*)::int AS n
+         FROM ai_signals WHERE created_at >= ((((NOW() AT TIME ZONE 'Europe/Moscow')::date - 13)::timestamp AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'UTC') GROUP BY 1, 2 ORDER BY 1`)).rows;
     const recent = (await pool.query(
-      `SELECT kind, tool, question, answer, detail, created_at FROM ai_signals WHERE kind <> ALL($1) ORDER BY id DESC LIMIT 50`, [WISH_KINDS])).rows;
+      `SELECT kind, tool, question, answer, detail, created_at AT TIME ZONE 'UTC' AS created_at FROM ai_signals WHERE kind <> ALL($1) ORDER BY id DESC LIMIT 50`, [WISH_KINDS])).rows;
     // Чего агент не умеет — за полгода: по ним решают, какие умения добавлять
     const wishes = (await pool.query(
-      `SELECT kind, tool, question, answer, created_at FROM ai_signals WHERE kind = ANY($1) ORDER BY id DESC LIMIT 100`, [WISH_KINDS])).rows;
+      `SELECT kind, tool, question, answer, created_at AT TIME ZONE 'UTC' AS created_at FROM ai_signals WHERE kind = ANY($1) ORDER BY id DESC LIMIT 100`, [WISH_KINDS])).rows;
     const lessons = (await pool.query(
-      `SELECT id, rule, why, kinds, cases, status, created_at, decided_at, validation FROM ai_lessons WHERE status <> 'removed' ORDER BY (status = 'proposed') DESC, id DESC LIMIT 50`)).rows;
-    const settings = (await pool.query('SELECT auto_apply, last_review_at FROM ai_quality_settings WHERE id = 1')).rows[0] || {};
+      `SELECT id, rule, why, kinds, cases, status, created_at AT TIME ZONE 'UTC' AS created_at, decided_at AT TIME ZONE 'UTC' AS decided_at, validation FROM ai_lessons WHERE status <> 'removed' ORDER BY (status = 'proposed') DESC, id DESC LIMIT 50`)).rows;
+    const settings = (await pool.query("SELECT auto_apply, last_review_at AT TIME ZONE 'UTC' AS last_review_at FROM ai_quality_settings WHERE id = 1")).rows[0] || {};
     const pendingReview = (await pool.query('SELECT count(*)::int AS n FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1)', [WISH_KINDS])).rows[0].n;
     const versions = (await pool.query('SELECT id,lesson_id,action,actor,created_at FROM ai_lesson_versions ORDER BY id DESC LIMIT 30')).rows;
-    return { versions, kinds: KIND_LABELS, byDay, recent, wishes, lessons, autoApply: false, lastReviewAt: settings.last_review_at, pendingReview };
+    return { versions, kinds: KIND_LABELS, kindGroups: KIND_GROUPS, autoReviewMinSignals: 3, byDay, recent, wishes, lessons, autoApply: false, lastReviewAt: settings.last_review_at, pendingReview };
   };
 
   const decide = async (id, action, actor = null) => {
@@ -229,7 +218,7 @@ module.exports = ({ pool }) => {
       cleanup();
       const hour = Number(new Date().toLocaleString('en-GB', { timeZone: 'Europe/Moscow', hour: '2-digit', hour12: false }));
       if (hour !== 3) return;
-      const last = (await pool.query('SELECT last_review_at FROM ai_quality_settings WHERE id = 1')).rows[0]?.last_review_at;
+      const last = (await pool.query("SELECT last_review_at AT TIME ZONE 'UTC' AS last_review_at FROM ai_quality_settings WHERE id = 1")).rows[0]?.last_review_at;
       if (last && Date.now() - new Date(last).getTime() < 20 * 60 * 60 * 1000) return;
       const r = await review({ callModel, staticPrompt });
       console.log(`🧠 AI self-review: случаев ${r.cases}, новых выводов ${r.proposed}`);

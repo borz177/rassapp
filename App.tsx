@@ -1,6 +1,7 @@
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { friendlyError } from './src/friendlyError';
+import { moneyOperationIssue } from './src/moneyAccountPolicy';
 import RetailSale from './components/RetailSale';
 import Warehouse from './components/Warehouse';
 import Journal from './components/Journal';
@@ -59,7 +60,7 @@ const LazyFallback: React.FC = () => (
   </div>
 );
 import { reconcileSalePaymentPlan } from './src/salePlan';
-import { regeneratePaymentPlan, parseInputDate } from './src/saleMath';
+import { regeneratePaymentPlan, parseInputDate, toInputDate } from './src/saleMath';
 import { cleanExtraPhones } from './src/customerPhones';
 import { Customer, CustomerPhone, CustomContractTemplate, Product, Sale, ViewState, Expense, User, Account, Investor, Payment, AppSettings, InvestorPermissions, Partnership, SubscriptionPlan, Supplier, Task, LossEvent, StockMovement, SaleStockItem, RetailSale as RetailSaleType, StockLocation, DEFAULT_WAREHOUSE_ID} from './types';
 import { getAppSettings, saveAppSettings } from './services/storage';
@@ -276,7 +277,7 @@ const [lostSession, setLostSession] = useState<{ email?: string } | null>(() => 
 const [paymentReturnStatus, setPaymentReturnStatus] = useState<'checking' | 'success' | 'timeout' | null>(null);
 
   const [myProfitPeriod, setMyProfitPeriod] = useState(() => {
-    const today = new Date().toISOString().split('T')[0];
+    const today = toInputDate(new Date());
     return { start: '2023-01-01', end: today };
   });
 
@@ -2571,6 +2572,8 @@ const handleDeleteSale = async (saleId: string) => {
 const handleViewSaleSchedule = (sale: Sale) => { setSelectedCustomerId(sale.customerId); setInitialSaleIdForDetails(sale.id); setInitialSaleDirect(true); setPreviousView(currentView); setCurrentView('CUSTOMER_DETAILS'); };
 const handleIncomeSubmit = async (data: any) => {
     if (!user) return;
+    const issue = moneyOperationIssue(data, accounts, investors);
+    if (issue) throw new Error(issue);
 
     if (data.type === 'RETAIL_PAYMENT') {
         await handleRetailPayment(data.retailSaleId, {
@@ -2716,7 +2719,7 @@ const handleIncomeSubmit = async (data: any) => {
             }
         }
     }
-};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, fromProfit: data.fromProfit, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId, supplyDocId: data.supplyDocId, employeeId: data.employeeId, profitSource: data.profitSource, description: data.description || undefined }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = applyInvestmentDelta(inv, -Number(data.amount), data.date, newExpense.id); const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
+};  const handleExpenseSubmit = async (data: any) => { if (!user) return; const issue = moneyOperationIssue(data, accounts, investors); if (issue) throw new Error(issue); const ownerId = isEmployee && user.managerId ? user.managerId : user.id; const newExpense: Expense = { id: crypto.randomUUID(), userId: ownerId, createdByUserId: user.id, accountId: data.accountId, title: data.title, amount: data.amount, category: data.category, date: data.date, payoutType: data.payoutType, managerPayoutSource: data.managerPayoutSource, fromProfit: data.fromProfit, investorId: data.investorId, supplierId: data.supplierId, saleId: data.saleId, supplyDocId: data.supplyDocId, employeeId: data.employeeId, profitSource: data.profitSource, description: data.description || undefined }; const savedExpense = await api.saveItem('expenses', newExpense); updateList(setExpenses, savedExpense); if(data.payoutType === 'INVESTMENT' && data.investorId) { const inv = investors.find(i => i.id === data.investorId); if (inv) { const updatedInv = applyInvestmentDelta(inv, -Number(data.amount), data.date, newExpense.id); const savedInv = await api.saveItem('investors', updatedInv); updateList(setInvestors, savedInv); } } if (data.category === 'Оплата партнёру' && data.saleId) { const sale = sales.find(s => s.id === data.saleId); if (sale) { const newPaid = (sale.partnerDebtPaidAmount || 0) + Number(data.amount); const updatedSale = { ...sale, partnerDebtPaidAmount: newPaid, isPartnerDebtPaid: newPaid >= sale.buyPrice }; const savedSale = await api.saveItem('sales', updatedSale); updateList(setSales, savedSale); } } setDraftExpenseData(null); setCurrentView('OPERATIONS'); };
  const handleAddEmployee = async (data: any) => {
   if (!user || !isManager) return;
 
@@ -5209,6 +5212,10 @@ if (!user && !showSplash) {
     customers={customers}
     retailSales={isInvestor ? [] : retailSales}
     onSelectCustomer={handleSelectCustomer}
+    onOpenContract={saleId => {
+      const sale = sales.find(s => s.id === saleId);
+      if (sale) handleViewSaleSchedule(sale);
+    }}
     onAddAccount={handleAddAccount}
     onAction={handleAction}
     onSelectAccount={handleSelectAccountForOperations}

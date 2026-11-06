@@ -6,7 +6,7 @@ import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
 import { ICONS } from '../constants';
 import { getAppSettings } from '../services/storage';
 import { sendWhatsAppMessage, sendWhatsAppDocument } from '../services/whatsapp';
-import { getInvestorAccount, retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, moneyInProfit } from '../src/utils';
+import { retailRemaining, getSellerPhone, formatRuPhone, contractNumberFor, moneyInProfit } from '../src/utils';
 import { fundingShares } from '../src/funding';
 import { contractScheduleRows } from '../src/contractSchedule';
 import { buildContractFragment, resolveContractTemplate, CONTRACT_SHEET_WIDTH_PX } from '../src/contractTemplates';
@@ -16,6 +16,7 @@ import { SuccessCheck, SendStageView, hapticSuccess, type SendStage } from './fe
 import { isIOSApp } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
 import { dateFromInput, toInputDate } from '../src/saleMath';
+import { investorMoneyAccounts, resolveInvestorMoneyAccount, allowsOtherIncome, moneyOperationIssue } from '../src/moneyAccountPolicy';
 
 interface NewIncomeProps {
   initialData?: any;
@@ -26,7 +27,7 @@ interface NewIncomeProps {
   /** Розничные продажи в долг — их гасят тем же приходом, что и рассрочку */
   retailSales?: RetailSale[];
   onClose: () => void;
-  onSubmit: ( any) => void;
+  onSubmit: (data: any) => void | Promise<void>;
   onSelectCustomer: () => void;
   user?: User;
   appSettings?: AppSettings; 
@@ -74,6 +75,7 @@ const NewIncome: React.FC<NewIncomeProps> = ({
   const [discountValue, setDiscountValue] = useState('');
 
   const isSubmittingRef = useRef(false);
+  const pendingRoute = useRef('');
   // Человек подтвердил, что платёж с той же суммой и датой — отдельный, а не повтор
   const repeatConfirmedRef = useRef(false);
 const isConfirmingRef = useRef(false);
@@ -131,7 +133,7 @@ const isConfirmingRef = useRef(false);
   }, [initialData]);
 
   useEffect(() => {
-    if (selectedSale) {
+    if (sourceType === 'CUSTOMER' && selectedSale) {
       const paidTotal = selectedSale.paymentPlan.filter(p => p.isPaid).reduce((sum, p) => sum + p.amount, 0);
       const scheduledPayments = selectedSale.paymentPlan.filter(p => !p.isPaid).sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime());
       let paymentPool = paidTotal;
@@ -148,26 +150,43 @@ const isConfirmingRef = useRef(false);
       }
       setTargetAccountId(selectedSale.accountId);
     }
-  }, [selectedSale, showCents]);
+  }, [selectedSale, showCents, sourceType]);
 
 
 
   useEffect(() => {
-    if (!selectedRetail) return;
+    if (sourceType !== 'CUSTOMER' || !selectedRetail) return;
     const left = retailRemaining(selectedRetail);
     setAmount(showCents ? left.toFixed(2) : Math.round(left).toString());
     setTargetAccountId(selectedRetail.accountId);
-  }, [selectedRetail, showCents]);
+  }, [selectedRetail, showCents, sourceType]);
 
+  const investorAccounts = investorMoneyAccounts(accounts, selectedInvestor?.id || '');
+  const otherAccounts = accounts.filter(a => !a.isArchived && allowsOtherIncome(a));
   useEffect(() => {
-    if (selectedInvestor) {
-      // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
-      // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего для инвестора из
-      // общего пула счёт не находился вообще и приход денег было невозможно оформить.
-      const invAccount = getInvestorAccount(selectedInvestor.id, accounts);
-      if (invAccount) setTargetAccountId(invAccount.id);
+    if (sourceType === 'INVESTOR') {
+      setTargetAccountId(current => resolveInvestorMoneyAccount(investorAccounts, current));
+    } else if (sourceType === 'OTHER' && !otherAccounts.some(a => a.id === targetAccountId)) {
+      setTargetAccountId((otherAccounts.find(a => a.isMain || a.type === 'MAIN') || otherAccounts[0])?.id || '');
     }
-  }, [selectedInvestor, accounts]);
+  }, [sourceType, selectedInvestorId, accounts, investors, targetAccountId]);
+
+  const changeSourceType = (next: 'CUSTOMER' | 'INVESTOR' | 'OTHER') => {
+    if (next === sourceType) return;
+    setSourceType(next);
+    setSelectedInvestorId('');
+    setTargetAccountId('');
+    setAmount('');
+    setDiscountValue('');
+    repeatConfirmedRef.current = false;
+  };
+
+  const routingIssue = () => moneyOperationIssue({
+    type: sourceType === 'INVESTOR' ? 'INVESTOR_DEPOSIT' : sourceType === 'OTHER' ? 'OTHER_INCOME' : 'CUSTOMER_PAYMENT',
+    amount: Number(amount), accountId: targetAccountId, investorId: selectedInvestorId,
+  }, accounts, investors);
+  const routingKey = () => JSON.stringify([sourceType, targetAccountId,
+    sourceType === 'INVESTOR' ? selectedInvestorId : selectedSaleId, amount, date]);
 
   useEffect(() => {
     setDiscountValue('');
@@ -176,12 +195,6 @@ const isConfirmingRef = useRef(false);
 
 
 
-
-  useEffect(() => {
-    if (sourceType === 'OTHER' && accounts.length > 0 && !targetAccountId) {
-      setTargetAccountId(accounts[0].id);
-    }
-  }, [sourceType, accounts, targetAccountId]);
 
   useEffect(() => {
     if (sourceType === 'INVESTOR' && investors.length === 0) {
@@ -334,10 +347,13 @@ const isConfirmingRef = useRef(false);
     if (isSubmittingRef.current) return;
 
     const numAmount = Number(amount);
-    if (numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
+    if (!Number.isFinite(numAmount) || numAmount <= 0) { alert("Введите сумму больше нуля"); return; }
     if (sourceType === 'CUSTOMER' && !selectedSaleId) { alert("Выберите долг"); return; }
     if (sourceType === 'INVESTOR' && (!selectedInvestorId || !targetAccountId)) { alert("Ошибка выбора инвестора или счета"); return; }
     if (sourceType === 'OTHER' && !targetAccountId) { alert("Выберите счет"); return; }
+
+    const issue = routingIssue();
+    if (issue) { alert(issue); return; }
 
     // Такой же платёж (сумма и день) уже есть. Раньше это был жёсткий запрет, и
     // клиент, который платит за два месяца двумя одинаковыми суммами в один день,
@@ -368,6 +384,7 @@ const isConfirmingRef = useRef(false);
       }
     }
 
+      pendingRoute.current = routingKey();
       isSubmittingRef.current = true;
   setIsSubmitting(true);
   setShowConfirmModal(true);
@@ -379,11 +396,17 @@ const isConfirmingRef = useRef(false);
     setPaymentDone(true);
     hapticSuccess();
     await new Promise(r => setTimeout(r, 1100));
-    onSubmit(payload);
+    await onSubmit(payload);
   };
 
   const handleConfirm = async () => {
     if (isConfirmingRef.current) return;
+    const issue = routingIssue();
+    if (issue || pendingRoute.current !== routingKey()) {
+      alert(issue || 'Данные изменились. Проверьте приход ещё раз.');
+      handleCancel();
+      return;
+    }
   isConfirmingRef.current = true;
   setIsConfirming(true);
     try {
@@ -399,7 +422,7 @@ const isConfirmingRef = useRef(false);
 
       // 🔒 ЗАЩИТА: Применяем скидку только если сумма совпадает с рассчитанной
       // Если менеджер изменил сумму вручную — скидка игнорируется
-      const isDiscountApplied = discountAmount > 0 
+      const isDiscountApplied = sourceType === 'CUSTOMER' && discountAmount > 0
   && Math.abs(numAmount - finalPaymentAmount) < 0.01;
 
 // 🆕 Проверяем переплату (сумма > долга, но без скидки)
@@ -474,6 +497,9 @@ const commonData = {
       } else {
         await finishWithSuccess({ ...commonData, type: 'OTHER_INCOME', accountId: targetAccountId, note: note || "Прочий приход", category: category || undefined });
       }
+    } catch (error) {
+      setPaymentDone(false);
+      alert(friendlyError(error, 'Не удалось провести приход.'));
     } finally {
       setShowConfirmModal(false);
       setIsSubmitting(false);
@@ -568,21 +594,21 @@ const commonData = {
       <div className="relative flex p-1 rounded-[22px] bg-white/60 dark:bg-slate-800/60 border border-white/70 dark:border-slate-700 shadow-sm">
         <TabPill index={Math.max(0, tabs.indexOf(sourceType))} count={tabs.length} />
         <button
-          onClick={() => { setSourceType('CUSTOMER'); setAmount(''); }}
+          onClick={() => changeSourceType('CUSTOMER')}
           className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
             sourceType === 'CUSTOMER' ? 'text-indigo-600 dark:text-indigo-300' : 'text-slate-500 dark:text-slate-400'
           }`}
         >Клиент</button>
         {investors.length > 0 && (
           <button
-            onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
+            onClick={() => changeSourceType('INVESTOR')}
             className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
               sourceType === 'INVESTOR' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'
             }`}
           >Инвестор</button>
         )}
         <button
-          onClick={() => { setSourceType('OTHER'); setAmount(''); }}
+          onClick={() => changeSourceType('OTHER')}
           className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
             sourceType === 'OTHER' ? 'text-emerald-600 dark:text-emerald-400' : 'text-slate-500 dark:text-slate-400'
           }`}
@@ -643,22 +669,25 @@ const commonData = {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Выберите инвестора</label>
               <select
                 className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                value={selectedInvestorId} onChange={e => setSelectedInvestorId(e.target.value)}>
+                aria-label="Инвестор" value={selectedInvestorId} onChange={e => { setSelectedInvestorId(e.target.value); setTargetAccountId(''); }}>
                 <option value="">-- Список инвесторов --</option>
                 {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
               </select>
             </div>
-            {targetAccountId && <div className="bg-purple-50 dark:bg-purple-900/30 p-3 rounded-lg border border-purple-100 dark:border-purple-900/50 text-sm flex gap-2 items-center">
-              <span className="text-purple-600 dark:text-purple-400 font-medium">Счет зачисления:</span>
-              <span className="font-bold text-purple-800 dark:text-purple-300">{getAccountName(targetAccountId)}</span>
-            </div>}
+            <div>
+              <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Счёт зачисления</label>
+              <div aria-label="Счёт зачисления" className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                {!selectedInvestor ? 'Сначала выберите инвестора' : targetAccountId ? getAccountName(targetAccountId) : 'Нет связанных счетов'}
+              </div>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Увеличит вклад инвестора и остаток счёта.</p>
+            </div>
           </div>
         )}
         {sourceType === 'OTHER' && (
           <div className="space-y-4 bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm animate-fade-in">
             <div>
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Назначение / Описание</label>
-              <input placeholder="Например: Внесение личных средств"
+              <input placeholder="Например: Возврат от поставщика"
                      className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl outline-none bg-white dark:bg-slate-900 text-slate-900 dark:text-white"
                      value={note} onChange={e => setNote(e.target.value)}/>
             </div>
@@ -704,10 +733,11 @@ const commonData = {
               <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Счет зачисления</label>
               <select
                 className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
-                {accounts.filter(a => !a.isArchived || a.id === targetAccountId)
-                         .map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
+                aria-label="Счёт зачисления" required value={targetAccountId} onChange={e => setTargetAccountId(e.target.value)}>
+                <option value="">Выберите счёт</option>
+                {otherAccounts.map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
               </select>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">Пополнение вклада — во вкладке «Инвестор».</p>
             </div>
           </div>
         )}
@@ -813,8 +843,8 @@ const commonData = {
         </div>
         <button
           type="submit"
-          disabled={isSubmitting || isSubscriptionExpired}
-          className={`w-full py-4 rounded-xl font-bold text-white  transition-transform active:scale-95 ${
+          disabled={isSubmitting || isSubscriptionExpired || sourceType !== 'CUSTOMER' && !!routingIssue()}
+          className={`w-full disabled:opacity-50 disabled:cursor-not-allowed py-4 rounded-xl font-bold text-white transition-transform active:scale-95 ${
             isSubmitting || isSubscriptionExpired
               ? isSubscriptionExpired
                 ? 'bg-slate-400 cursor-not-allowed shadow-none'
@@ -902,7 +932,7 @@ const commonData = {
               </div>
 
               {/* 🎁 ПОКАЗЫВАЕМ СКИДКУ В МОДАЛКЕ, ЕСЛИ ОНА ПРИМЕНЯЕТСЯ */}
-              {discountAmount > 0 && Math.abs(Number(amount) - finalPaymentAmount) < 0.01 && (
+              {sourceType === 'CUSTOMER' && discountAmount > 0 && Math.abs(Number(amount) - finalPaymentAmount) < 0.01 && (
                 <div className="flex justify-between items-center text-sm bg-amber-50 dark:bg-amber-900/30 px-3 py-2 rounded-lg border border-amber-100 dark:border-amber-900/50">
                   <span className="text-amber-800 dark:text-amber-300 font-medium">🎁 Скидка:</span>
                   <span className="font-bold text-red-600 dark:text-red-400">−{formatNum(discountAmount)} ₽ ({discountPercentDisplay.toFixed(1)}%)</span>

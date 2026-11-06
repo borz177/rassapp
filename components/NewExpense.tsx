@@ -4,12 +4,13 @@ import TopBarBack from './TopBarBack';
 import { Account, Investor, Expense, User, Supplier, Sale, StockMovement, Product, RetailSale } from '../types';
 import { supplierSupplyBalances } from '../src/supplierLedger';
 import { ICONS } from '../constants';
-import { getInvestorAccount, formatCurrency, accountInvestment } from '../src/utils';
+import { formatCurrency, accountInvestment } from '../src/utils';
 import { SuccessCheck, hapticSuccess } from './feedback';
 import { appConfirm } from '../src/dialogs';
 import { dateFromInput, toInputDate } from '../src/saleMath';
 import { expensePreview, expenseChoiceKey, canReturnOwnCapital, type ExpenseChoice } from '../src/expensePreview';
 import ExpenseBeforeAfter from './ExpenseBeforeAfter';
+import { investorMoneyAccounts, resolveInvestorMoneyAccount, moneyOperationIssue } from '../src/moneyAccountPolicy';
 
 interface NewExpenseProps {
   investors: Investor[];
@@ -45,7 +46,7 @@ interface NewExpenseProps {
     description?: string;
   } | null;
   onClose: () => void;
-  onSubmit: (data: any) => void;
+  onSubmit: (data: any) => void | Promise<void>;
   /** Свои категории из настроек — те же, что заводят в приходе */
   categories?: string[];
 }
@@ -167,37 +168,46 @@ const NewExpense: React.FC<NewExpenseProps> = ({
     : [];
   const selectedSupply = supplierOpenSupplies.find(d => d.id === selectedSupplyDocId);
 
-  // Auto-fill Account logic when Investor changes
-  useEffect(() => {
-      // Счёт уже выбран тем, кто открыл форму (закят за инвестора по этому счёту)
-      if (initialData?.accountId && initialData.investorId === selectedInvestorId) return;
-      if (selectedInvestor) {
-          // 🔒 getInvestorAccount учитывает и обычный счёт (ownerId), и общий пул (poolMemberIds) —
-          // раньше здесь был accounts.find(a => a.ownerId === ...), из-за чего выплата/списание
-          // для инвестора из общего пула не находило счёт вообще.
-          const invAccount = getInvestorAccount(selectedInvestor.id, accounts);
-          if (invAccount) {
-              setSourceAccountId(invAccount.id);
-          }
-      }
-  }, [selectedInvestorId, accounts, investors]);
+  const investorAccounts = investorMoneyAccounts(accounts, selectedInvestor?.id || '',
+    initialData?.investorId === selectedInvestorId ? initialData?.accountId : undefined);
 
-  // Default account
+  // Связанный счёт подставляется автоматически при выборе инвестора.
+  // Общий счёт из соседней вкладки не переносится в выплату инвестору.
   useEffect(() => {
-      if (accounts.length > 0 && !sourceAccountId) {
-          const availableAccounts = accounts.filter(a=>!a.isArchived);
-          const mainAccount = availableAccounts.find(a => a.isMain || a.type === 'MAIN') || availableAccounts[0];
-          if (!mainAccount) return;
-          setSourceAccountId(mainAccount.id);
-      }
-  }, [accounts, sourceAccountId]);
-  
-  // Reset payout type when switching away from investor
-  useEffect(() => {
-    if (sourceType !== 'INVESTOR') {
+    if (sourceType === 'INVESTOR') {
+      const next = resolveInvestorMoneyAccount(investorAccounts, sourceAccountId);
+      if (next !== sourceAccountId) {
+        setSourceAccountId(next);
         setPayoutType(null);
+      }
+    } else if (!accounts.some(a => a.id === sourceAccountId)) {
+      const active = accounts.filter(a => !a.isArchived);
+      setSourceAccountId((active.find(a => a.isMain || a.type === 'MAIN') || active[0])?.id || '');
+      setManagerPayoutSource(null);
     }
-  }, [sourceType]);
+  }, [sourceType, selectedInvestorId, accounts, investors, sourceAccountId]);
+
+  const changeSourceType = (next: 'INVESTOR' | 'OTHER') => {
+    if (next === sourceType) return;
+    setSourceType(next);
+    setSourceAccountId('');
+    setSelectedInvestorId('');
+    setPayoutType(null);
+    setManagerPayoutSource(null);
+    setAmount('');
+  };
+
+  const changeInvestor = (id: string) => {
+    setSelectedInvestorId(id);
+    setSourceAccountId('');
+    setPayoutType(null);
+  };
+
+  const changeAccount = (id: string) => {
+    setSourceAccountId(id);
+    setPayoutType(null);
+    setManagerPayoutSource(null);
+  };
 
   useEffect(() => {
     if (category !== 'Моя выплата') setManagerPayoutSource(null);
@@ -226,6 +236,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   },[sourceAccountId,accounts,managerPayoutSource]);
 
   const prepareConfirmation = (data: any) => {
+    const issue = moneyOperationIssue(data, accounts, investors);
+    if (issue) { alert(issue); return; }
     const preview=previewOf(data);
     if(preview.errors.length){alert(preview.errors[0]);return;}
     setAcceptNegative(false);
@@ -443,6 +455,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
   const handleConfirm = async () => {
     if (saving.current || isSubmitting || !pendingExpenseData) return;
     
+    const issue = moneyOperationIssue(pendingExpenseData, accounts, investors);
+    if (issue) { alert(issue); handleCancel(); return; }
     const current=previewOf(pendingExpenseData);
     if (current.signature!==pendingSignature) { alert('Данные изменились. Проверьте расчёт ещё раз.'); handleCancel(); return; }
     if(current.errors.length || current.warnings.length&&!acceptNegative)return;
@@ -513,7 +527,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
             капсула не рисуется — подсвечивать нечего. */}
         <TabPill index={sourceType === 'OTHER' ? 0 : 1} count={investors.length > 0 ? 2 : 1} />
         <button
-            onClick={() => { setSourceType('OTHER'); setAmount(''); }}
+            onClick={() => changeSourceType('OTHER')}
             className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
                 sourceType === 'OTHER' ? 'text-red-600 dark:text-red-400' : 'text-slate-500 dark:text-slate-400'
             }`}
@@ -522,7 +536,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
         </button>
         {investors.length > 0 && (
             <button
-                onClick={() => { setSourceType('INVESTOR'); setAmount(''); }}
+                onClick={() => changeSourceType('INVESTOR')}
                 className={`relative z-10 flex-1 py-2 text-sm font-semibold rounded-lg transition-colors ${
                     sourceType === 'INVESTOR' ? 'text-purple-600 dark:text-purple-400' : 'text-slate-500 dark:text-slate-400'
                 }`}
@@ -540,7 +554,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                 <select
                     className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
                     aria-label="Счёт списания" value={sourceAccountId}
-                    onChange={e => setSourceAccountId(e.target.value)}
+                    onChange={e => changeAccount(e.target.value)}
                 >
                     {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                 </select>
@@ -553,8 +567,8 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Выберите инвестора</label>
                      <select
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                        value={selectedInvestorId}
-                        onChange={e => setSelectedInvestorId(e.target.value)}
+                        aria-label="Инвестор" value={selectedInvestorId}
+                        onChange={e => changeInvestor(e.target.value)}
                      >
                          <option value="">-- Список инвесторов --</option>
                          {investors.map(inv => <option key={inv.id} value={inv.id}>{inv.name}</option>)}
@@ -562,22 +576,18 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                  </div>
                  <div>
                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-1">Списать со счета</label>
-                     <select
-                        className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
-                        aria-label="Счёт списания" value={sourceAccountId}
-                        onChange={e => setSourceAccountId(e.target.value)}
-                     >
-                         {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
-                     </select>
+                     <div aria-label="Счёт списания" className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-slate-50 dark:bg-slate-900 text-slate-900 dark:text-white">
+                         {!selectedInvestor ? 'Сначала выберите инвестора' : selectedAccount?.name || 'Нет связанных счетов'}
+                     </div>
                  </div>
                  <div className="pt-2">
-                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник списания</label>
+                      <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник выплаты · обязательно</label>
                       <div className="grid grid-cols-2 gap-2">
-                          <button type="button" onClick={() => setPayoutType('INVESTMENT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'INVESTMENT' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
+                          <button type="button" aria-pressed={payoutType === 'INVESTMENT'} onClick={() => setPayoutType('INVESTMENT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'INVESTMENT' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
                               <span className="font-bold text-sm text-purple-800 dark:text-purple-300">Вернуть вложения</span>
                               <span className="text-xs text-slate-500 dark:text-slate-400 block">Уменьшит вложения</span>
                           </button>
-                          <button type="button" onClick={() => setPayoutType('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
+                          <button type="button" aria-pressed={payoutType === 'PROFIT'} onClick={() => setPayoutType('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${payoutType === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
                               <span className="font-bold text-sm text-emerald-800 dark:text-emerald-300">Выплатить прибыль</span>
                               <span className="text-xs text-slate-500 dark:text-slate-400 block">Выплатить доход</span>
                           </button>
@@ -730,7 +740,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                      <select
                         className="w-full p-3 border border-slate-200 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-900 outline-none text-slate-900 dark:text-white"
                         aria-label="Счёт списания" value={sourceAccountId}
-                        onChange={e => setSourceAccountId(e.target.value)}
+                        onChange={e => changeAccount(e.target.value)}
                      >
                          {accounts.filter(a => !a.isArchived || a.id === sourceAccountId).map(a => <option key={a.id} value={a.id}>{a.name}</option>)}
                      </select>
@@ -748,10 +758,10 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                  </div>}
                  {category === 'Моя выплата' && (
                      <div className="pt-2">
-                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник списания</label>
+                          <label className="block text-sm font-medium text-slate-700 dark:text-slate-300 mb-2">Источник выплаты · обязательно</label>
                           <div className={`grid ${canReturnOwnCapital(selectedAccount) ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
                               {canReturnOwnCapital(selectedAccount) && (
-                                  <button type="button" onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
+                                  <button type="button" aria-pressed={managerPayoutSource === 'CAPITAL'} onClick={() => setManagerPayoutSource('CAPITAL')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'CAPITAL' ? 'border-purple-600 bg-purple-50 dark:bg-purple-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
                                       {/* Раньше называлось «Из Капитала» — слово ничего не
                                           говорило о том, откуда деньги и что уменьшается.
                                           Сохранённое значение прежнее, менять историю незачем. */}
@@ -759,7 +769,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                                       <span className="text-xs text-slate-500 dark:text-slate-400 block">Возврат вложенного</span>
                                   </button>
                               )}
-                              <button type="button" onClick={() => setManagerPayoutSource('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
+                              <button type="button" aria-pressed={managerPayoutSource === 'PROFIT'} onClick={() => setManagerPayoutSource('PROFIT')} className={`p-4 rounded-xl border-2 text-center ${managerPayoutSource === 'PROFIT' ? 'border-emerald-600 bg-emerald-50 dark:bg-emerald-900/30' : 'border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-900'}`}>
                                   <span className="font-bold text-sm text-emerald-800 dark:text-emerald-300">Забрать прибыль</span>
                                   <span className="text-xs text-slate-500 dark:text-slate-400 block">Заработанные</span>
                               </button>
@@ -839,7 +849,7 @@ const NewExpense: React.FC<NewExpenseProps> = ({
 
         <button
           type="submit"
-          disabled={isSubmitting || !!formPreview?.errors.length || ordinaryExpense && !profitSource}
+          disabled={isSubmitting || !sourceAccountId || !readyForPreview || sourceType === 'INVESTOR' && !selectedInvestor || !!formPreview?.errors.length}
           className={`w-full disabled:opacity-50 disabled:cursor-not-allowed text-white py-4 rounded-xl font-bold transition-transform active:scale-95 flex items-center justify-center gap-2 ${
             isSubmitting 
               ? 'bg-slate-400 cursor-not-allowed' 
@@ -911,6 +921,15 @@ const NewExpense: React.FC<NewExpenseProps> = ({
                   <span className="text-slate-500 dark:text-slate-400">Инвестор:</span>
                   <span className="font-medium text-slate-800 dark:text-white">
                     {investors.find(i => i.id === pendingExpenseData.investorId)?.name}
+                  </span>
+                </div>
+              )}
+
+              {(pendingExpenseData.payoutType || pendingExpenseData.managerPayoutSource) && (
+                <div className="flex justify-between">
+                  <span className="text-slate-500 dark:text-slate-400">Источник:</span>
+                  <span className="font-medium text-slate-800 dark:text-white">
+                    {pendingExpenseData.payoutType === 'INVESTMENT' || pendingExpenseData.managerPayoutSource === 'CAPITAL' ? 'Вложения' : 'Прибыль'}
                   </span>
                 </div>
               )}

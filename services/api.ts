@@ -382,6 +382,8 @@ export interface AdminWhatsAppRow {
 export interface AdminAiQuality {
     versions?: { id: number; lesson_id: number; action: string; actor: string | null; created_at: string }[];
     kinds: Record<string, string>;
+    kindGroups?: Record<string, 'quality' | 'guard' | 'user' | 'wish'>;
+    autoReviewMinSignals?: number;
     byDay: { day: string; kind: string; n: number }[];
     recent: { kind: string; tool: string | null; question: string | null; answer: string | null; detail: string | null; created_at: string }[];
     /** Что просили, а агент не умеет (cant_do) — за полгода */
