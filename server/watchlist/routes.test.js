@@ -377,6 +377,51 @@ test('общий список: реальная локальная PostgreSQL, �
       fs.writeFileSync(revocationFile, saved);
       const n = await adm('/overview'); await adm('/settings', { ...n.settings, mode: 'pilot', searchPaused: false, reason: 'Журнал восстановлен для синтетического теста' });
     });
+    await t.test('публикация до удаления: поиск и обращения после 120 дней, продление активных и запрет восстановления', async () => {
+      await pool.query("DELETE FROM client_watchlist_limits WHERE user_id='owner' AND action IN ('submit','search')");
+      const originalSettings=(await adm('/overview')).settings, ids=[];
+      const sourceIds=['term_client','term_auto_client'];
+      try {
+        for(const cid of sourceIds)await pool.query("INSERT INTO data_items(id,user_id,type,data) VALUES($1,'owner','customers',$2)",[cid,JSON.stringify({id:cid,name:cid==='term_client'?'Срочный Тестовый Клиент':'Бессрочный Тестовый Клиент',birthDate:'1992-01-01'})]);
+        let o=await adm('/overview');await adm('/settings',{...o.settings,autoPublish:false,reason:'Ручная публикация для проверки срока'});
+        const initial=await user('/entries',submit(await user('/preview',{customerId:sourceIds[0]})));ids.push(initial.id);
+        await adm(`/entries/${initial.id}/decision`,{action:'publish',version:initial.version,basisVerified:true,note:'Синтетическое проверенное основание'});
+        const finite=(await pool.query('SELECT * FROM client_watchlist_entries WHERE id=$1',[initial.id])).rows[0];assert(finite.expires_at);
+        const copies={};
+        for(const state of ['hidden','expired','revoked','overdue']){
+          const eid=crypto.randomUUID();ids.push(eid);copies[state]=eid;
+          await pool.query(`INSERT INTO client_watchlist_entries(id,owner_id,customer_id,payload,name_index,year_index,source_fingerprint,status,policy_version,published_at,expires_at)
+            VALUES($1,'owner',$2,$3,$4,$5,$6,$7,$8,now(),now()+interval '90 days')`,[eid,'term_'+state,vault.encrypt(eid,'entry',vault.decrypt(finite.id,'entry',finite.payload)),finite.name_index,finite.year_index,finite.source_fingerprint,['revoked','overdue'].includes(state)?'published':state,POLICY_VERSION]);
+          if(state==='revoked')require('./revocations').createRevocations(revocationFile).add(eid);
+          if(state==='overdue')await pool.query("UPDATE client_watchlist_entries SET expires_at=now()-interval '1 day' WHERE id=$1",[eid]);
+        }
+        o=await adm('/overview');await adm('/settings',{...o.settings,publicationUntilRemoved:'true',reason:'Неверный тип режима'},400);
+        await adm('/settings',{...o.settings,publicationUntilRemoved:true,reason:'Публикации до ручного удаления'});
+        const rows=(await pool.query('SELECT id,expires_at,status,payload FROM client_watchlist_entries WHERE id=ANY($1::text[])',[ids])).rows;
+        assert.equal(rows.find(r=>r.id===initial.id).expires_at,null);assert.deepEqual(rows.find(r=>r.id===initial.id).payload,finite.payload);
+        assert.equal(rows.find(r=>r.id===copies.hidden).expires_at,null);
+        assert(rows.find(r=>r.id===copies.expired).expires_at);assert(rows.find(r=>r.id===copies.revoked).expires_at);
+        assert(rows.find(r=>r.id===copies.overdue).expires_at,'Истёкшую дату не продлеваем даже до фонового снятия публикации');
+        await pool.query("UPDATE client_watchlist_entries SET published_at=now()-interval '120 days',updated_at=now()-interval '120 days' WHERE id=$1",[initial.id]);
+        await service.maintenance();
+        const live=(await pool.query('SELECT status,payload,expires_at FROM client_watchlist_entries WHERE id=$1',[initial.id])).rows[0];assert.equal(live.status,'published');assert(live.payload);assert.equal(live.expires_at,null);
+        const found=await user('/search',{name:'Срочный Тестовый Клиент'});assert(found.items.some(r=>r.id===initial.id));assert(!found.items.some(r=>r.id===copies.revoked));
+        const own=(await user('/mine')).items.find(r=>r.id===initial.id);assert.equal(own.status,'published');assert.equal(own.expiresAt,null);
+        await req('other','watchlist/appeals',{entryId:initial.id,message:'Синтетическое обращение о бессрочной публикации'});
+        o=await adm('/overview');assert.equal(o.settings.publicationUntilRemoved,true);
+        const oldClient={...o.settings,autoPublish:true,reason:'Старая версия сохраняет остальные настройки'};delete oldClient.publicationUntilRemoved;
+        await adm('/settings',oldClient);assert.equal((await adm('/overview')).settings.publicationUntilRemoved,true);
+        const automatic=await user('/entries',submit(await user('/preview',{customerId:sourceIds[1]})));ids.push(automatic.id);assert.equal(automatic.status,'published');assert.equal(automatic.expiresAt,null);
+        o=await adm('/overview');await adm('/settings',{...o.settings,publicationUntilRemoved:false,reason:'Ограниченный срок только для следующих публикаций'});
+        assert.equal((await pool.query('SELECT expires_at FROM client_watchlist_entries WHERE id=$1',[automatic.id])).rows[0].expires_at,null,'Сохранённая бессрочная публикация не получает срок задним числом');
+        await user(`/entries/${initial.id}/withdraw`,{});assert(!(await user('/search',{name:'Срочный Тестовый Клиент'})).items.some(r=>r.id===initial.id));
+      } finally {
+        await pool.query('DELETE FROM client_watchlist_entries WHERE id=ANY($1::text[])',[ids]);
+        await pool.query('DELETE FROM data_items WHERE id=ANY($1::text[])', [sourceIds]);
+        const o=await adm('/overview');await adm('/settings',{...o.settings,publicationUntilRemoved:originalSettings.publicationUntilRemoved,autoPublish:originalSettings.autoPublish,reason:'Завершение проверки срока публикации'});
+      }
+      assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows,snapshot);
+    });
     await t.test('ограничения не обходятся API; отзыв доступен при паузе/без новых правил; финансы неизменны', async () => {
       let o = await adm('/overview');
       await adm('/settings', { ...o.settings, searchLimit: 1, reason: 'Лимит синтетического теста' });

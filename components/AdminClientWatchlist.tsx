@@ -16,6 +16,7 @@ const EVENT_NAMES: Record<string, string> = {
   ADMIN_VERIFIED: 'Подтверждён вход', ADMIN_OVERVIEW_READ: 'Просмотрена сводка', ADMIN_ACCESS_READ: 'Просмотрены права',
   ADMIN_ENTRIES_READ: 'Просмотрены записи', ADMIN_ENTRY_READ: 'Прочитаны материалы записи', ADMIN_APPEALS_READ: 'Просмотрены обращения', SETTINGS_CHANGED: 'Изменены настройки',
   ENTRY_AUTO_PUBLISHED: 'Запись опубликована автоматически', ENTRY_DELETED: 'Запись удалена администратором',
+  PUBLICATION_TERM_REMOVED: 'Публикация продлена до удаления',
   AUTO_PUBLICATION_ENABLED: 'Автопубликация включена', AUTO_PUBLICATION_DISABLED: 'Автопубликация выключена',
 };
 const AdminClientWatchlist: React.FC = () => {
@@ -138,7 +139,9 @@ const AdminClientWatchlist: React.FC = () => {
         <label className="flex gap-3 text-sm"><input type="checkbox" checked={!!draft.autoPublish} onChange={e => setDraft({ ...draft, autoPublish: e.target.checked })} />Публиковать новые записи автоматически</label>
         <p className="text-xs text-slate-500 dark:text-slate-400">Без отдельного одобрения. Уже поданные заявки и записи с замечаниями проходят ручную проверку.</p>
         <WatchlistField label="Поисков в час на пользователя"><input type="number" min={1} max={100} className={wlInput} value={draft.searchLimit} onChange={e => setDraft({ ...draft, searchLimit: Number(e.target.value) })} required /></WatchlistField>
-        <WatchlistField label="Срок новой публикации, дней"><input type="number" min={7} max={90} className={wlInput} value={draft.publicationDays} onChange={e => setDraft({ ...draft, publicationDays: Number(e.target.value) })} required /></WatchlistField>
+        <label className="flex gap-3 text-sm"><input type="checkbox" checked={!!draft.publicationUntilRemoved} onChange={e => setDraft({ ...draft, publicationUntilRemoved: e.target.checked })} />Публиковать до удаления</label>
+        {draft.publicationUntilRemoved ? <p className="text-xs text-slate-500 dark:text-slate-400">Без автоматического снятия через 90 дней. Действующие публикации тоже продлеваются; отозванные и истёкшие не возвращаются.</p>
+          : <WatchlistField label="Срок новой публикации, дней"><input type="number" min={7} max={90} className={wlInput} value={draft.publicationDays} onChange={e => setDraft({ ...draft, publicationDays: Number(e.target.value) })} required /></WatchlistField>}
       </section><section className={`${wlCard} space-y-4`}><h3 className="font-bold">Основание и правила</h3><p className="text-sm text-slate-500">Версия: {overview.policyVersion}. Галочка участника не заменяет согласия его клиента. Перед включением нужны проверенное основание передачи и согласованные документы.</p>
         <label className="flex gap-3 text-sm"><input type="checkbox" checked={draft.legalReady} onChange={e => setDraft({ ...draft, legalReady: e.target.checked })} />Основание, круг получателей и документы проверены</label>
         <WatchlistField label="Документ, дата и результат проверки"><textarea className={wlInput} maxLength={1500} minLength={20} rows={4} required={draft.legalReady} value={draft.legalReference} onChange={e => setDraft({ ...draft, legalReference: e.target.value })} /></WatchlistField>

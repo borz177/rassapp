@@ -11,6 +11,7 @@ async function ensureTables(pool) {
       updated_at timestamptz NOT NULL DEFAULT now()
     );
     ALTER TABLE client_watchlist_settings ADD COLUMN IF NOT EXISTS auto_publish boolean NOT NULL DEFAULT false;
+    ALTER TABLE client_watchlist_settings ADD COLUMN IF NOT EXISTS publication_until_removed boolean NOT NULL DEFAULT false;
     INSERT INTO client_watchlist_settings(id) VALUES(1) ON CONFLICT DO NOTHING;
     CREATE TABLE IF NOT EXISTS client_watchlist_access (
       user_id text PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

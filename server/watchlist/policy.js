@@ -1,4 +1,4 @@
-const POLICY_VERSION = '2026-11-12-v3';
+const POLICY_VERSION = '2026-11-14-v4';
 const ACTIVE = ['pending', 'needs_info', 'published', 'hidden'];
 const STATUS = ['pending', 'needs_info', 'published', 'hidden', 'rejected', 'withdrawn', 'terminated', 'expired', 'deleted'];
 const REASONS = ['overdue', 'unfulfilled', 'other'];

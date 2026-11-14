@@ -1,4 +1,4 @@
-export const WATCHLIST_POLICY_VERSION = '2026-11-12-v3';
+export const WATCHLIST_POLICY_VERSION = '2026-11-14-v4';
 // Временный показ только администратору. Для открытия менеджерам достаточно
 // вернуть флаг; серверные допуски и принятие правил всё равно обязательны.
 export const WATCHLIST_USER_UI_ENABLED = false;
@@ -19,7 +19,7 @@ export interface WatchlistStatus {
 }
 export interface WatchlistEntry {
   id: string; customerId: string; name: string; birthYear: number | null; reason?: string; reasonDetails?: string; response?: string; basis?: string;
-  evidence?: string; note?: string; decision?: string; publicationMode?: 'auto' | 'manual'; status: string; version: number; createdAt: string; expiresAt?: string;
+  evidence?: string; note?: string; decision?: string; publicationMode?: 'auto' | 'manual'; status: string; version: number; createdAt: string; expiresAt?: string | null;
 }
 export interface WatchlistMatch { id: string; name: string; birthYear: number | null; reason?: string | null; reasonDetails?: string }
 export interface WatchlistPage<T> { items: T[]; hasMore: boolean }

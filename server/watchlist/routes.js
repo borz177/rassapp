@@ -71,7 +71,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     return { id: r.id, customerId: r.customer_id, name: d?.identity.name || 'Публикация удалена', birthYear: d?.identity.birthYear ?? null,
       reason: d?.reason, reasonDetails: d?.reasonDetails, response: d?.response, publicationMode: d?.publication?.mode,
       basis: d?.basis, evidence: d?.evidence, note: d?.note, decision: d?.decision,
-      status: r.deleted_at ? 'deleted' : r.status === 'published' && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
+      status: r.deleted_at ? 'deleted' : r.status === 'published' && r.expires_at != null && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
       version: r.version, createdAt: r.created_at, expiresAt: r.expires_at };
   }
   async function entry(db, entryId, owner = null) {
@@ -93,7 +93,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   async function maintenance() {
     // Никаких изменений в клиентах/договорах. Ограниченное хранение служебных дел.
     await pool.query(`UPDATE client_watchlist_entries SET status='expired',version=version+1,updated_at=now()
-      WHERE status IN ('published','hidden') AND expires_at<=now();
+      WHERE status IN ('published','hidden') AND expires_at IS NOT NULL AND expires_at<=now();
       UPDATE client_watchlist_entries SET payload=NULL,name_index=NULL,year_index=NULL,source_fingerprint=NULL
       WHERE payload IS NOT NULL AND ((status IN ('rejected','expired') AND updated_at<now()-interval '30 days')
         OR (status IN ('pending','needs_info') AND updated_at<now()-interval '90 days'));
@@ -171,7 +171,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const name = P.normalizeName(req.body?.name), year = P.birthYear(req.body?.birthYear);
     const match = year === null ? 'name_index=$1' : 'year_index=ANY($1::text[])';
     const key = year === null ? vault.index('name', name) : [vault.index('year', [name, year]), vault.index('year', [name, null])];
-    const r = await db.query(`SELECT id,payload FROM client_watchlist_entries WHERE ${match} AND status='published' AND expires_at>now()
+    const r = await db.query(`SELECT id,payload FROM client_watchlist_entries WHERE ${match} AND status='published' AND (expires_at IS NULL OR expires_at>now())
       AND NOT(id=ANY($2::text[])) ORDER BY id LIMIT 21`, [key, [...revocations.read()]]);
     // Для «Другой причины» выдаём только её отдельное описание, не старое note.
     // Основание, ответы автора, решения и прочие служебные поля закрыты.
@@ -209,9 +209,9 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       ...(autoPublish ? { publication: { mode: 'auto', settingsVersion: s.version, at: new Date().toISOString() } } : {}) };
     const r = await db.query(`INSERT INTO client_watchlist_entries(id,owner_id,customer_id,payload,name_index,year_index,source_fingerprint,status,policy_version,review_required,published_at,expires_at)
       VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $8='published' THEN now() ELSE NULL END,
-        CASE WHEN $8='published' THEN now()+($11::int * interval '1 day') ELSE NULL END) RETURNING *`, [entryId, req.user.id, b.customerId, vault.encrypt(entryId, 'entry', data),
+        CASE WHEN $8='published' AND NOT $12::boolean THEN now()+($11::int * interval '1 day') ELSE NULL END) RETURNING *`, [entryId, req.user.id, b.customerId, vault.encrypt(entryId, 'entry', data),
       vault.index('name', P.normalizeName(preview.name)), vault.index('year', [P.normalizeName(preview.name), preview.birthYear]), preview.fingerprint,
-      autoPublish ? 'published' : 'pending', P.POLICY_VERSION, review, s.publication_days]);
+      autoPublish ? 'published' : 'pending', P.POLICY_VERSION, review, s.publication_days, s.publication_until_removed]);
     await event(db, req.user.id, 'ENTRY_SUBMITTED', entryId);
     if (autoPublish) await event(db, req.user.id, 'ENTRY_AUTO_PUBLISHED', entryId);
     return ownEntry(r.rows[0]);
@@ -252,7 +252,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const b = req.body || {}, r = await entry(db, b.entryId);
     if (r.owner_id !== req.user.id) {
       const a = await access(db, req.user.id);
-      if (a?.status !== 'granted' || r.status !== 'published' || new Date(r.expires_at) <= new Date()) throw P.problem(404, 'Запись недоступна для обращения.');
+      if (a?.status !== 'granted' || r.status !== 'published' || (r.expires_at != null && new Date(r.expires_at) <= new Date())) throw P.problem(404, 'Запись недоступна для обращения.');
     }
     const message = P.text(b.message, 15, 1500, 'описание ошибки'), appealId = id();
     const result = await db.query(`INSERT INTO client_watchlist_appeals(id,entry_id,reporter_id,payload) VALUES($1,$2,$3,$4)
@@ -294,11 +294,11 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const counts = (await db.query(`SELECT
       (SELECT count(*)::int FROM client_watchlist_access WHERE status='requested') AS access,
       (SELECT count(*)::int FROM client_watchlist_entries WHERE status IN ('pending','needs_info')) AS pending,
-      (SELECT count(*)::int FROM client_watchlist_entries WHERE status='published' AND expires_at>now()) AS published,
+      (SELECT count(*)::int FROM client_watchlist_entries WHERE status='published' AND (expires_at IS NULL OR expires_at>now())) AS published,
       (SELECT count(*)::int FROM client_watchlist_appeals WHERE status<>'resolved') AS appeals`)).rows[0];
     await event(db, req.user.id, 'ADMIN_OVERVIEW_READ');
     return { counts, settings: { version: s.version, mode: s.mode, legalReady: s.legal_ready, searchPaused: s.search_paused, submissionsPaused: s.submissions_paused, autoPublish: s.auto_publish,
-      searchLimit: s.search_limit, publicationDays: s.publication_days, legalReference: s.legal_reference && vault ? vault.decrypt('settings', 'legal', s.legal_reference).reference : '' },
+      searchLimit: s.search_limit, publicationDays: s.publication_days, publicationUntilRemoved: s.publication_until_removed, legalReference: s.legal_reference && vault ? vault.decrypt('settings', 'legal', s.legal_reference).reference : '' },
       protection: { encryptionReady: !!vault, revocationsReady, keyVersion: vault?.version || null, secondFactor: true, restoreCheck: 'not_verified' }, policyVersion: P.POLICY_VERSION };
   });
   adminRoute('get', '/access', async (req, db) => {
@@ -368,7 +368,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       year_index=CASE WHEN $2='terminated' THEN NULL ELSE year_index END,
       source_fingerprint=CASE WHEN $2='terminated' THEN NULL ELSE source_fingerprint END,
       published_at=CASE WHEN $2='published' THEN now() ELSE published_at END,
-      expires_at=CASE WHEN $2='published' THEN now()+($4::int * interval '1 day') ELSE expires_at END WHERE id=$1`, [r.id, status, encrypted, s.publication_days]);
+      expires_at=CASE WHEN $2='published' THEN CASE WHEN $5::boolean THEN NULL ELSE now()+($4::int * interval '1 day') END ELSE expires_at END WHERE id=$1`, [r.id, status, encrypted, s.publication_days, s.publication_until_removed]);
     await event(db, req.user.id, 'ENTRY_' + b.action.toUpperCase(), r.id);
   });
   adminRoute('post', '/entries/:id/delete', async (req, db) => {
@@ -432,8 +432,9 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const s = (await db.query('SELECT * FROM client_watchlist_settings WHERE id=1 FOR UPDATE')).rows[0], b = req.body || {};
     revision(s, b.version);
     const autoPublish = b.autoPublish === undefined ? s.auto_publish : b.autoPublish;
+    const publicationUntilRemoved = b.publicationUntilRemoved === undefined ? s.publication_until_removed : b.publicationUntilRemoved;
     if (!['off', 'pilot', 'on'].includes(b.mode) || !['legalReady', 'searchPaused', 'submissionsPaused'].every(k => typeof b[k] === 'boolean') ||
-      typeof autoPublish !== 'boolean' ||
+      typeof autoPublish !== 'boolean' || typeof publicationUntilRemoved !== 'boolean' ||
       !Number.isInteger(b.searchLimit) || b.searchLimit < 1 || b.searchLimit > 100 || !Number.isInteger(b.publicationDays) || b.publicationDays < 7 || b.publicationDays > 90)
       throw P.problem(400, 'Проверьте настройки раздела.');
     const reason = P.text(b.reason, 5, 500, 'причину изменения');
@@ -447,8 +448,12 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       if (!vault || !b.legalReady) throw P.problem(400, 'Для включения нужны настроенная защита и проверенное основание обмена.');
       revocations.read();
     }
+    if (publicationUntilRemoved && !s.publication_until_removed) {
+      requireVault();
+      await require('./publication').keepActivePublications(db,req.user.id,[...revocations.read()]);
+    }
     await db.query(`UPDATE client_watchlist_settings SET mode=$1,legal_ready=$2,legal_reference=$3,search_paused=$4,submissions_paused=$5,
-      search_limit=$6,publication_days=$7,auto_publish=$8,version=version+1,updated_at=now() WHERE id=1`, [b.mode, b.legalReady, reference, b.searchPaused, b.submissionsPaused, b.searchLimit, b.publicationDays, autoPublish]);
+      search_limit=$6,publication_days=$7,auto_publish=$8,publication_until_removed=$9,version=version+1,updated_at=now() WHERE id=1`, [b.mode, b.legalReady, reference, b.searchPaused, b.submissionsPaused, b.searchLimit, b.publicationDays, autoPublish, publicationUntilRemoved]);
     await event(db, req.user.id, 'SETTINGS_CHANGED');
     if (autoPublish !== s.auto_publish) await event(db, req.user.id, autoPublish ? 'AUTO_PUBLICATION_ENABLED' : 'AUTO_PUBLICATION_DISABLED');
   });
