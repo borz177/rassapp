@@ -2,6 +2,9 @@ import CopyablePhone from './CopyablePhone';
 import React, { useState, useMemo, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import SaleActionsMenu from './SaleActionsMenu';
+import { UserX } from 'lucide-react';
+import { useWatchlistSubmitAccess } from '../src/hooks/useWatchlistSubmitAccess';
+import WatchlistQuickAddSheet from './WatchlistQuickAddSheet';
 import {Customer, Sale, Payment, Account, Investor, AppSettings, CustomerDocument, User, Supplier, Task, RetailSale} from '../types';
 import { ICONS } from '../constants';
 import TopBarBack from './TopBarBack';
@@ -54,6 +57,11 @@ const CustomerDetails: React.FC<CustomerDetailsProps> = ({
 }) => {
     const supplierList: Supplier[] = suppliers || [];
     const isEmployee = user?.role === 'employee';
+    const watchlistAllowed = useWatchlistSubmitAccess(user);
+    const [watchlistOpen, setWatchlistOpen] = useState(false);
+    const canWatchlist = watchlistAllowed && !customer.id.startsWith('system_');
+    useEffect(() => setWatchlistOpen(false), [user?.id, customer.id]);
+    useEffect(() => { if (!canWatchlist) setWatchlistOpen(false); }, [canWatchlist]);
     const [activeTab, setActiveTab] = useState<'INFO' | 'INSTALLMENTS' | 'HISTORY'>('INFO');
     const [selectedSaleId, setSelectedSaleId] = useState<string | null>(null);
     const [showEditModal, setShowEditModal] = useState(false);
@@ -424,6 +432,7 @@ ${customer.name}!
                             appSettings={appSettings}
                             user={user}
                             contractTemplatesAllowed={contractTemplatesAllowed}
+                            onAddToWatchlist={canWatchlist ? () => setWatchlistOpen(true) : undefined}
                             onDeleteSale={onDeleteSale && (async (saleId: string) => {
                                 await onDeleteSale(saleId);
                                 // Договора больше нет — страницу оставлять нельзя.
@@ -700,21 +709,10 @@ ${customer.name}!
             <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
                 <TopBarBack onClick={onBack} />
                 <h2 className="flex-1 text-xl font-bold text-slate-800 dark:text-white truncate">{customer.name}</h2>
-                {onCreateTask && (
-                    <button
-                        onClick={() => onCreateTask({
-                            title: `Связаться — ${customer.name}`,
-                            note: customer.phone ? `Телефон: ${customer.phone}` : undefined,
-                            customerId: customer.id,
-                            customerName: customer.name,
-                        })}
-                        className="shrink-0 flex items-center gap-1.5 bg-indigo-600 text-white px-3 py-2 rounded-lg font-semibold text-sm shadow-sm hover:bg-indigo-700 active:scale-95 transition"
-                        title="Создать задачу по клиенту"
-                    >
-                        {ICONS.Tasks}
-                        <span className="hidden sm:inline">Задача</span>
-                    </button>
-                )}
+                {canWatchlist && <button type="button" onClick={() => setWatchlistOpen(true)} aria-label="В чёрный список" title="В чёрный список"
+                    className="shrink-0 flex h-10 items-center justify-center gap-1.5 rounded-lg border border-slate-200 bg-white px-3 text-sm font-semibold text-slate-600 transition hover:bg-slate-50 active:scale-95 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300 dark:hover:bg-slate-700">
+                    <UserX size={18} aria-hidden="true" /><span className="hidden sm:inline">В ЧС</span>
+                </button>}
             </div>
             {(showInstallmentsTab || showHistoryTab) && (
             <div className="flex border-b border-slate-200 dark:border-slate-700">
@@ -738,7 +736,7 @@ ${customer.name}!
                         </div>
                     </div>
                     <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4 relative">
-                        {(onUpdateCustomer || onDeleteCustomer) && (
+                        {(onUpdateCustomer || onDeleteCustomer || onCreateTask) && (
                             <div className="absolute top-4 right-4 z-20">
                                 <button onClick={(e) => {
                                     e.stopPropagation();
@@ -760,6 +758,20 @@ ${customer.name}!
                                                     setShowEditModal(true);
                                                 }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
                                                     <span className="text-indigo-600 dark:text-indigo-400">{ICONS.Edit}</span> Редактировать
+                                                </button>
+                                            )}
+                                            {onCreateTask && (
+                                                <button type="button" onClick={() => {
+                                                    setShowActionsMenu(false);
+                                                    onCreateTask({
+                                                        title: `Связаться — ${customer.name}`,
+                                                        note: customer.phone ? `Телефон: ${customer.phone}` : undefined,
+                                                        customerId: customer.id,
+                                                        customerName: customer.name,
+                                                    });
+                                                }} className="w-full px-4 py-2.5 text-left text-sm text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-700 flex items-center gap-2">
+                                                    <span className="text-indigo-600 dark:text-indigo-400">{ICONS.Tasks}</span>
+                                                    <span>Создать задачу</span>
                                                 </button>
                                             )}
                                             {/* 🔹 НОВОЕ: пункт "Документы" в меню действий */}
@@ -978,6 +990,7 @@ ${customer.name}!
                                             appSettings={appSettings}
                                             user={user}
                                             contractTemplatesAllowed={contractTemplatesAllowed}
+                                            onAddToWatchlist={canWatchlist ? () => setWatchlistOpen(true) : undefined}
                                             onDeleteSale={onDeleteSale}
                                         />
                                     </div>
@@ -1078,6 +1091,7 @@ ${customer.name}!
                 {(close: () => void) => renderSale(selectedSale, initialSaleDirect && !!initialSaleId && selectedSale.id === initialSaleId ? onBack : close)}
             </SubPage>
         )}
+        {watchlistOpen && user && canWatchlist && <WatchlistQuickAddSheet userId={user.id} customerId={customer.id} onClose={() => setWatchlistOpen(false)} />}
         </>
     );
 };

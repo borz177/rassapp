@@ -1,3 +1,4 @@
+import type { AuditReport, AuditSource, AccountingAuditRequest } from '../src/accountingAudit';
 import { CalculatorCategory, DownDiscount, User, Sale, Customer, Product, Expense, Account, Investor, Partnership, SubscriptionPlan, AppSettings, WhatsAppSettings, AppNotification, BackupSettings, BackupFrequency, PlanLimits, PartnerRow, PartnerSummary, AdminPayment, PLAN_CONTRACT_LIMITS, ApiKeyInfo, ApiKeyCreated, ApiKeyScope, OAuthConnection, OAuthClientInfo, OAuthClientCreated} from "../types";
 import { offlineStorage, sessionOwnerId } from "./offlineStorage";
 import { withTimeout } from '../src/timeout';
@@ -383,12 +384,13 @@ export interface AdminAiQuality {
     versions?: { id: number; lesson_id: number; action: string; actor: string | null; created_at: string }[];
     kinds: Record<string, string>;
     kindGroups?: Record<string, 'quality' | 'guard' | 'user' | 'wish'>;
+    outcomeLabels?: Record<string, string>;
     autoReviewMinSignals?: number;
     byDay: { day: string; kind: string; n: number }[];
-    recent: { kind: string; tool: string | null; question: string | null; answer: string | null; detail: string | null; created_at: string }[];
+    recent: { kind: string; tool: string | null; question: string | null; answer: string | null; detail: string | null; created_at: string; outcome?: string; run_id?: string | null }[];
     /** Что просили, а агент не умеет (cant_do) — за полгода */
     wishes?: { kind: string; tool: string | null; question: string | null; answer: string | null; created_at: string }[];
-    lessons: { id: number; rule: string; why: string | null; kinds: string | null; cases: number; status: 'proposed' | 'active' | 'rejected'; created_at: string; decided_at: string | null }[];
+    lessons: { id: number; rule: string; why: string | null; kinds: string | null; cases: number; status: 'proposed' | 'active' | 'rejected'; created_at: string; decided_at: string | null; similarTo?: number | string | null }[];
     autoApply: boolean; lastReviewAt: string | null; pendingReview: number;
 }
 
@@ -412,6 +414,18 @@ export interface AdminWhatsAppReport {
 }
 
 export const api = {
+    // Только онлайн: реестр не попадает в очередь синхронизации и кеш клиентов.
+    watchlistRequest: async <T = any>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; proof?: string; signal?: AbortSignal } = {}): Promise<T> => {
+      if (!/^\/(?:admin\/)?watchlist(?:\/|$)/.test(path)) throw new Error('Некорректный адрес раздела');
+      const res = await fetchWithAuth(`${API_URL}${path}`, {
+        method: options.method || 'GET', cache: 'no-store', signal: options.signal,
+        headers: options.proof ? { 'x-watchlist-admin': options.proof } : undefined,
+        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw Object.assign(new Error(data.msg || 'Не удалось выполнить запрос.'), { status: res.status });
+      return data;
+    },
 
 
       healthCheck: async (): Promise<boolean> => {
@@ -2152,6 +2166,26 @@ export const api = {
 
     /** ИИ-агент (server/ai/assistant.js) */
     aiAssistant: {
+      accountingAudit: {
+        create: async (body: AccountingAuditRequest): Promise<any> => {
+          const owner=sessionOwnerId();
+          const queue=await offlineStorage.getQueue();
+          if(queue.some(item=>!item.ownerId || item.ownerId===owner)) throw new Error('Есть несинхронизированные изменения. Дождитесь синхронизации и повторите проверку.');
+          const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit`,{method:'POST',body:JSON.stringify(body),timeout:60000});
+          const data=await res.json();if(!res.ok)throw new Error(data.msg || 'Проверка не выполнена.');return data;
+        },
+        report: async (id:string, opts:{offset?:number;limit?:number;severity?:string;kind?:string}={}):Promise<AuditReport> => {
+          const query=new URLSearchParams(Object.entries(opts).filter(([,v])=>v!==undefined&&v!=='').map(([k,v])=>[k,String(v)]));
+          const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit/${encodeURIComponent(id)}?${query}`,{timeout:60000});
+          const data=await res.json();if(!res.ok)throw new Error(data.msg || 'Отчёт недоступен.');return data;
+        },
+        source: async (reportId:string, source:{kind:string;id:string;contractId?:string}):Promise<AuditSource> => {
+          const query=new URLSearchParams(Object.entries(source).filter(([k,v])=>['kind','id','contractId'].includes(k)&&v!=null).map(([k,v])=>[k,String(v)]));
+          const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit/${encodeURIComponent(reportId)}/source?${query}`);
+          const data=await res.json();if(!res.ok)throw new Error(data.msg || 'Запись недоступна.');return data;
+        },
+      },
+
       claimClientAction: async (id: string): Promise<{claimed:boolean;result?:any}> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/client-actions/${encodeURIComponent(id)}/claim`,{method:'POST'});
         const body=await res.json(); if (!res.ok) throw new Error(body.msg || 'Действие недоступно'); return body;
@@ -2204,7 +2238,7 @@ export const api = {
        * отвечает потоком строк JSON (NDJSON), итог — в последней строке.
        */
       message: async (
-        body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; images?: string[]; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string; sharedHistory?: boolean },
+        body: { text?: string; history?: { role: string; text: string; image?: string }[]; image?: string; images?: string[]; audio?: { data: string; format: string }; mode?: 'auto' | 'confirm'; requestId?: string; sharedHistory?: boolean; auditReportId?: string },
         signal?: AbortSignal,
         onStep?: (label: string) => void,
         /** Текст ответа по мере появления: кусок; null — начать заново */

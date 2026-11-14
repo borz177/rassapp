@@ -1,4 +1,4 @@
-import React, { useMemo, useRef, useState } from 'react';
+import React, { useId, useMemo, useRef, useState } from 'react';
 import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetDateInput, sheetInputClass } from './GlassSheet';
 import PassportScan, { type PassportFields } from './PassportScan';
 import { Customer, CustomerPhone } from '../types';
@@ -55,6 +55,7 @@ const initials = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?';
 
 const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpdate, canScanPassport = false }) => {
+  const nameInputId = useId();
   const editing = !!customer;
   const initial = useMemo(() => ({
     name: customer?.name || '',
@@ -185,11 +186,16 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
         </div>
 
         <SheetSection>
-          <SheetField label="ФИО">
-            <input className={sheetInputClass} value={form.name} onChange={e => set('name', e.target.value)}
-                   autoComplete="off" autoCorrect="off" spellCheck={false} autoCapitalize="words"
-                   enterKeyHint="next" placeholder="Иванов Иван Иванович" required />
-          </SheetField>
+          <div className="px-4 py-2.5">
+            <label htmlFor={nameInputId} className="block text-[12px] font-medium text-slate-500 dark:text-slate-400">ФИО</label>
+            <div className="relative">
+              <input id={nameInputId} className={`${sheetInputClass} ${canScanPassport ? 'min-h-12 pr-12' : ''}`} value={form.name} onChange={e => set('name', e.target.value)}
+                     autoComplete="off" autoCorrect="off" spellCheck={false} autoCapitalize="words"
+                     enterKeyHint="next" placeholder="Иванов Иван Иванович" required />
+              {canScanPassport && <PassportScan variant="icon" onApply={applyPassport}
+                onUndo={() => { if (beforePassport.current) setForm(beforePassport.current); beforePassport.current = null; }} />}
+            </div>
+          </div>
           <SheetField label="Телефон">
             <input className={sheetInputClass} value={form.phone} onChange={e => set('phone', e.target.value)}
                    type="tel" inputMode="tel" autoComplete="off" enterKeyHint="next"
@@ -227,14 +233,6 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
             </button>
           )}
         </SheetSection>
-
-        {/* Съёмка паспорта — перед полями: вручную набирать нужно, только когда фото нет */}
-        {canScanPassport && (
-          <SheetSection plain hint="Наведите камеру на разворот с фото — поля заполнятся сами.">
-            <PassportScan onApply={applyPassport}
-                          onUndo={() => { if (beforePassport.current) setForm(beforePassport.current); beforePassport.current = null; }} />
-          </SheetSection>
-        )}
 
         <SheetSection title="Адрес и документы" hint="Паспорт необязателен — нужен для печати полного договора.">
           <SheetField label="Адрес">

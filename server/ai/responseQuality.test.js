@@ -61,8 +61,29 @@ test('ответ агента: неподтверждённые суммы не 
       assert(seen.some(body=>body.messages.some(m=>m.role==='tool'&&m.content.includes('ФАКТИЧЕСКИ ПОЛУЧЕННОМ'))));
       assert(!r.reply.includes('Тестовый Клиент'));assert.match(r.reply,/не найдено/);
     });
-    await t.test('исправление ложного обещания также не пропускает новую непроверенную сумму',async()=>{
-      const r=await ask('Что ты сделал?',[{content:'Я записал платёж.'},{content:bad}]);assert.match(r.reply,/Не удалось надёжно проверить суммы/);assert(!r.reply.includes('987654321'));
+    await t.test('ложное сообщение о записи заменяется без дополнительного вызова модели',async()=>{
+      const r=await ask('Что ты сделал?',[{content:'Я записал платёж.'}]);
+      assert.match(r.reply,/Действие не подготовлено и не выполнено/);assert.equal(seen.length,1);assert.deepEqual(r.actions,[]);
+    });
+    await t.test('после одного повтора текст не изображает отсутствующую карточку',async()=>{
+      const events=[];const r=await ask('Добавь задачу проверить кассу',[{content:'Нажмите «Подтвердить».'},{content:'Нажмите «Подтвердить».'}],{silent:false,onStream:e=>events.push(e)});
+      assert.match(r.reply,/не подготовлено и не выполнено/);assert.equal(seen.length,2);assert.equal(r.actions.length,0);assert(events.some(e=>e.reset));
+      await assistant.quality.flush();
+      const row=(await pool.query("SELECT outcome,run_id FROM ai_signals WHERE kind='honesty_fix' ORDER BY id DESC LIMIT 1")).rows[0];assert.equal(row.outcome,'blocked');assert(row.run_id);
+    });
+    await t.test('настоящая карточка подтверждения не выдаётся за сохранённую запись',async()=>{
+      const r=await ask('Добавь задачу проверить кассу',[{tool:'create_task',args:{title:'Проверить кассу'}},{content:'Я добавил задачу.'}]);
+      assert.match(r.reply,/Пока оно не выполнено/);assert.equal(r.actions[0].kind,'confirm');
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM data_items WHERE type='tasks'")).rows[0].n,0);
+    });
+    await t.test('на вопрос о своих вложениях поиск владельца в инвесторах заменяется готовым отчётом',async()=>{
+      const r=await ask('Скажи сколько я вложил чистыми?',[{tool:'investor_profit',args:{investor:'Владелец'}},{content:'По данным учёта ваши личные вложения — 100 000 ₽.'}]);
+      assert.match(r.reply,/100 000/);
+      const tool=seen.at(-1).messages.filter(m=>m.role==='tool').at(-1).content;assert.match(tool,/all_time/);assert.match(tool,/net/);assert(!tool.includes('notFound'));
+    });
+    await t.test('справка о чёрном списке не открывает его данные через модель',async()=>{
+      await ask('Есть чёрный список?',[{tool:'app_help',args:{topic:'watchlist'}},{content:'Да, раздел «Чёрный список» доступен после одобрения.'}]);
+      const tool=seen.at(-1).messages.filter(m=>m.role==='tool').at(-1).content;assert.match(tool,/не могу искать или публиковать/);assert(!tool.includes('passport'));
     });
     await t.test('сомнительный текст не отменяет подготовленную карточку и не повторяет запись',async()=>{
       const r=await ask('Добавь задачу: проверить кассу',[{tool:'create_task',args:{title:'Проверить кассу'}},{content:bad},{content:''}]);

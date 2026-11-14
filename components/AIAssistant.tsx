@@ -1,3 +1,4 @@
+import type { AccountingAuditRequest } from '../src/accountingAudit';
 import AIStatementPreview from './AIStatementPreview';
 import AIAgentJournal from './AIAgentJournal';
 import { toast } from '../src/toast';
@@ -51,6 +52,9 @@ interface Msg {
 }
 
 interface Props {
+  auditRequest?: AccountingAuditRequest | null;
+  onAuditConsumed?: () => void;
+  onShowAuditContract?: (id: string, customerId?: string) => Promise<void>;
   userId: string;
   onBack: () => void;
   /** Черновик договора от агента → форма договора */
@@ -87,6 +91,7 @@ interface Props {
  * показывать можно — человеку она их не называет.
  */
 const actionNote = (a: Action): string => {
+  if (a.kind === 'accounting_audit') return `[Сверка учёта: ${a.report.id}; ${a.report.scope.label}; ${a.report.summary}. Финансовые операции не выполнялись.]`;
   if (a.kind === 'contract_form') {
     const d = a.draft || {}, c = d.newCustomer;
     if (a.state === 'saved' && a.saved) return `[Договор оформлен: ${a.saved.saleId}${a.saved.number ? ` (№${a.saved.number})` : ''}; ${d.productName || 'товар'}; клиент ${a.saved.customerId || d.customerId || c?.name || ''}]`;
@@ -298,7 +303,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
   );
 };
 
-const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, onExportCustomers, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onOpenTemplate, onReschedule }) => {
+const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, onExportCustomers, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onOpenTemplate, onReschedule, auditRequest, onAuditConsumed, onShowAuditContract }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
@@ -694,7 +699,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
 
   const loadStatus = () => api.aiAssistant.status().then(s => {
     setStatus(s);
-    if (!s.consent) setConsentOpen(true);
+    if (!s.consent && !auditRequest && !readStore(userId).some(m=>m.actions?.some(a=>a.kind==='accounting_audit'))) setConsentOpen(true);
     showDigest(s.digest);
     showTips(s.proactive);
   }).catch(() => {});
@@ -923,7 +928,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const patchAction = (msgId: string, actionId: string, patch: Partial<Action>) =>
     setMessages(ms => ms.map(m => m.id !== msgId ? m : { ...m, actions: m.actions?.map(a => a.id === actionId ? { ...a, ...patch } as Action : a) }));
 
-  const send = async (payload: { text?: string; image?: string | null; images?: string[]; audio?: { data: string; format: string }; voice?: number; note?: string; forceConfirm?: boolean }) => {
+  const send = async (payload: { text?: string; image?: string | null; images?: string[]; audio?: { data: string; format: string }; voice?: number; note?: string; forceConfirm?: boolean; auditReportId?: string }) => {
     if (sending) return;
     if (status && !status.consent) { setConsentOpen(true); return; }
     const sentImages = payload.images?.length ? payload.images : payload.image ? [payload.image] : [];
@@ -939,7 +944,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     try {
       const r = await api.aiAssistant.message({
         text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '),
-        history, sharedHistory: !!status?.sharedHistory, image: sentImages[0], images: sentImages.length > 1 ? sentImages : undefined, audio: payload.audio, mode: payload.forceConfirm ? 'confirm' : mode, requestId: req.id,
+        auditReportId: payload.auditReportId, history, sharedHistory: !!status?.sharedHistory, image: sentImages[0], images: sentImages.length > 1 ? sentImages : undefined, audio: payload.audio, mode: payload.forceConfirm ? 'confirm' : mode, requestId: req.id,
       }, req.ctrl.signal,
         label => { if (running.current === req) setStepLabel(label); },
         piece => { if (running.current === req) setLiveText(t => piece === null ? '' : t + piece); });
@@ -977,6 +982,28 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       setStopping(false);
     }
   };
+
+  const [auditError, setAuditError] = useState('');
+  const auditStarted = useRef<string | null>(null);
+  const lastAuditRequest = useRef<AccountingAuditRequest | null>(auditRequest || null);
+  const startAccountingAudit = async (accountIds: string[] | null, requestId: string) => {
+    if (running.current) throw new Error('Дождитесь завершения текущего запроса.');
+    const req = {id:requestId,ctrl:new AbortController(),userMsgId:requestId};
+    lastAuditRequest.current={accountIds,requestId};
+    running.current=req; setSending(true); setAuditError(''); setStepLabel('Проверяю записи без обращения к модели');
+    try {
+      const r=await api.aiAssistant.accountingAudit.create({accountIds,requestId});
+      setMessages(ms=>{const ids=new Set(ms.map(m=>m.id));return [...ms,
+        ...(!ids.has(requestId)?[{id:requestId,role:'user' as const,text:`Проверь учёт: ${r.actions?.[0]?.report?.scope?.label || 'выбранные счета'}`}]:[]),
+        ...(!ids.has(`reply_${requestId}`)?[{id:`reply_${requestId}`,role:'assistant' as const,text:r.reply,actions:r.actions}]:[])];});
+    } catch(e:any) { setAuditError(e.message || 'Не удалось проверить записи. Попробуйте ещё раз.'); throw e; }
+    finally {if(running.current===req)running.current=null;setSending(false);setStepLabel('');}
+  };
+  useEffect(()=>{
+    if(!auditRequest || !status?.allowedRole || running.current || auditStarted.current===auditRequest.requestId)return;
+    auditStarted.current=auditRequest.requestId;
+    void startAccountingAudit(auditRequest.accountIds,auditRequest.requestId).catch(()=>{}).finally(()=>onAuditConsumed?.());
+  },[auditRequest?.requestId,status?.allowedRole,sending]);
 
   const markStopped = (userMsgId: string) =>
     setMessages(ms => ms.map(m => m.id === userMsgId ? { ...m, stopped: true } : m));
@@ -1288,11 +1315,12 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
           </div>
         )}
 
+        {auditError && <div role="alert" className="rounded-2xl p-3 text-sm bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-300">{auditError}<button className="block mt-2 font-semibold" disabled={sending} onClick={()=>{void startAccountingAudit(lastAuditRequest.current?.accountIds || null,lastAuditRequest.current?.requestId || newId()).catch(()=>{});}}>Повторить проверку</button></div>}
         {messages.map(m => (
           <div key={m.id} data-old={shownAtOpen.current.has(m.id) || undefined}
                className={`ai-msg-in flex ${m.role === 'user' ? 'justify-end' : 'justify-start'} gap-2`}>
             {m.role === 'assistant' && <AIOrb size={28} static className="mt-1" />}
-            <div className={`max-w-[85%] space-y-2 ${m.role === 'user' ? 'items-end' : ''}`}>
+            <div className={`${m.actions?.some(a=>a.kind==='accounting_audit') ? 'w-full min-w-0' : 'max-w-[85%]'} space-y-2 ${m.role === 'user' ? 'items-end' : ''}`}>
               {(m.text || m.image || m.voice) && (
                 <div className={`rounded-3xl px-4 py-2.5 text-[15px] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere] ${
                   m.role === 'user'
@@ -1331,6 +1359,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                 <AIActionCard key={a.id} action={a} sending={sending} whatsappEnabled={whatsappEnabled}
                               accountName={a.kind === 'contract_form' ? contractAccountName?.(a.draft) : undefined}
                   choicesActive={m.id === messages[messages.length - 1]?.id}
+                  onAuditExplain={id => send({text:'Объясни эту проверку учёта: что нужно проверить первым и какие записи открыть?',auditReportId:id,forceConfirm:true})}
+                  onAuditRefresh={ids => startAccountingAudit(ids, newId())}
+                  onAuditOpenContract={onShowAuditContract || onShowContract}
                   onChoose={i => { if (a.kind !== 'choices') return; patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: a.options[i].label, note: a.options[i].ref }); }}
                   onConfirm={() => confirm(m.id, a)}
                   onCancel={() => cancel(m.id, a)}

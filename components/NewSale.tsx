@@ -830,7 +830,7 @@ if (mode === 'CASH') {
     guarantorAddress: sale.guarantorAddress,
     companyName: appSettings?.companyName || 'Компания',
     sellerPhone: formatRuPhone(getSellerPhone(user, appSettings)),
-    contractNumber: contractNumberFor(sales, sale),
+    contractNumber: contractNumberFor(sales, sale, customers),
     customerName: selectedCustomer?.name,
     customerPhone: formatRuPhone(selectedCustomer?.phone),
     passportSeries: selectedCustomer?.passportSeries,
@@ -850,7 +850,7 @@ if (mode === 'CASH') {
 
   /** Название документа: «Договор №0042 — Иванов Иван». */
   const contractTitleFor = (sale: any) => contractDocumentTitle({
-    number: contractNumberFor(sales, sale),
+    number: contractNumberFor(sales, sale, customers),
     customerName: selectedCustomer?.name,
   });
 
@@ -882,7 +882,7 @@ if (mode === 'CASH') {
       setSendStage('upload');
       // Имя файла клиент видит в WhatsApp раньше самого документа
       const fileName = contractFileName({
-        number: contractNumberFor(sales, createdSale),
+        number: contractNumberFor(sales, createdSale, customers),
         customerName: selectedCustomer.name,
       });
 
@@ -956,13 +956,13 @@ if (mode === 'CASH') {
     if (!createdSale) return;
     // Разметка обеих форм живёт в src/contractTemplates.ts: договор печатают из
     // нескольких мест, и копии вёрстки разошлись бы на первой же правке.
-    const htmlContent = buildContractHtml(
-      templateForSale(createdSale,appSettings,contractTemplatesAllowed).id as ContractTemplateId,
-      contractDataFor(createdSale)
-    );
+    const template = templateForSale(createdSale,appSettings,contractTemplatesAllowed).id as ContractTemplateId;
+    const data = contractDataFor(createdSale);
+    const title = contractTitleFor(createdSale);
+    const htmlContent = buildContractHtml(template, data);
 
     // Просмотром поверх приложения, а не новым окном — см. printContract в Contracts.tsx.
-    openPrintPreview(htmlContent, { title: contractTitleFor(createdSale) });
+    openPrintPreview(htmlContent, { title, preparePdf: () => contractPdfBlob(template, data, title) });
   };
 
   const selectedPrintTemplate = initialData.contractTemplateSnapshot || appSettings?.customContractTemplates?.find(t=>`CUSTOM:${t.id}` === (formData.contractTemplateId || defaultContractTemplate));

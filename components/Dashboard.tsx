@@ -17,7 +17,6 @@ import SubscriptionExpiryBanner from './SubscriptionExpiryBanner';
 import TabPill from './TabPill';
 import MyBonusCard from './MyBonusCard';
 import { turnoverBreakdown, type TurnoverBreakdown } from '../src/turnoverBreakdown';
-import TurnoverRestSheet from './TurnoverRestSheet';
 import GlassSheet, { SheetSection } from './GlassSheet';
 import Sheet from './Sheet';
 import ZakatSheet from './ZakatSheet';
@@ -92,6 +91,7 @@ const buildPaymentReminder = (opts: {
 
 
 interface DashboardProps {
+  onAccountingAudit?: (accountIds: string[] | null) => void;
   sales: Sale[];
   customers: Customer[];
   stats: {
@@ -875,9 +875,8 @@ const CardChevron: React.FC = () => (
   </svg>
 );
 
-const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onZakat?: () => void; onRest: () => void; onClose: () => void }> = ({ data, showCents, accountName, onZakat, onRest, onClose }) => {
+const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; accountName?: string; onZakat?: () => void; onAudit?: () => void; onClose: () => void }> = ({ data, showCents, accountName, onZakat, onAudit, onClose }) => {
   const m = (n: number) => `${formatCurrency(n, showCents)} ₽`;
-  const pct = (n: number) => (data.total > 0 ? Math.max(0, n / data.total * 100) : 0);
   const Row: React.FC<{ label: string; hint?: string; value: number; tone?: string; strong?: boolean }> = ({ label, hint, value, tone, strong }) => (
     <div className="flex items-center justify-between gap-3 px-4 py-3">
       <div className="min-w-0">
@@ -887,12 +886,6 @@ const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; ac
       <p className={`shrink-0 tabular-nums text-[15px] font-bold ${tone || 'text-slate-900 dark:text-white'}`}>{m(value)}</p>
     </div>
   );
-  const owners = [
-    { key: 'cap', label: 'Вложения инвесторов', value: data.investorCapital, color: 'bg-violet-500' },
-    { key: 'mgr', label: 'Ваша прибыль', value: data.manager.toWithdraw + data.manager.expected, color: 'bg-emerald-500' },
-    { key: 'inv', label: 'Прибыль инвесторов', value: data.investors.toPay + data.investors.expected, color: 'bg-amber-500' },
-    { key: 'rest', label: 'Остаток', value: data.rest, color: 'bg-slate-400' },
-  ];
   return (
     <GlassSheet title="В обороте" subtitle={accountName || 'Все счета'} onClose={onClose} cancelLabel="Закрыть">
       <div className="space-y-6">
@@ -911,13 +904,6 @@ const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; ac
         </SheetSection>
 
         <SheetSection title="Чьи деньги">
-          <div className="px-4 pt-3.5 pb-1">
-            <div className="flex h-2.5 rounded-full overflow-hidden bg-slate-100 dark:bg-slate-700">
-              {owners.filter(o => o.value > 0).map(o => (
-                <div key={o.key} className={o.color} style={{ width: `${pct(o.value)}%` }} />
-              ))}
-            </div>
-          </div>
           {data.investorCapital > 0 && <Row label="Вложения инвесторов" hint="Их деньги, вложенные в договоры" value={data.investorCapital} tone="text-violet-600 dark:text-violet-400" />}
           <Row label="Ваша прибыль" hint={`к выводу ${m(data.manager.toWithdraw)} · ожидается ${m(data.manager.expected)}`}
                value={data.manager.toWithdraw + data.manager.expected} tone="text-emerald-600 dark:text-emerald-400" />
@@ -925,13 +911,11 @@ const TurnoverSheet: React.FC<{ data: TurnoverBreakdown; showCents?: boolean; ac
             <Row label="Прибыль инвесторов" hint={`к выплате ${m(data.investors.toPay)} · ожидается ${m(data.investors.expected)}`}
                  value={data.investors.toPay + data.investors.expected} tone="text-amber-600 dark:text-amber-400" />
           )}
-          <button type="button" onClick={onRest} className="w-full text-left flex items-center pr-4 active:bg-slate-50 dark:active:bg-slate-700/50">
-            <div className="flex-1 min-w-0"><Row label="Остаток" hint="Из чего сложился · посмотреть записи"
-              value={data.rest} tone={data.rest >= 0 ? 'text-slate-700 dark:text-slate-200' : 'text-rose-600 dark:text-rose-400'} /></div>
-            <ChevronRight aria-hidden className="w-4 h-4 shrink-0 text-slate-400" />
-          </button>
         </SheetSection>
 
+        {onAudit && <SheetSection><button type="button" onClick={onAudit} className="w-full flex items-center gap-3 px-4 py-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
+          <span className="min-w-0 flex-1"><span className="block text-[15px] font-semibold text-violet-600 dark:text-violet-400">Спросить ИИ про учёт</span><span className="block text-[12px] text-slate-500 dark:text-slate-400">Проверить расхождения и показать записи</span></span><ChevronRight size={18} className="text-slate-400 shrink-0"/>
+        </button></SheetSection>}
         {onZakat && (
           <SheetSection>
             <button type="button" onClick={onZakat}
@@ -978,6 +962,7 @@ const Dashboard: React.FC<DashboardProps> = ({
     expenses = [],
     onUpdateSettings,
     onRecordZakat,
+    onAccountingAudit,
     parked = false,
 }) => {
   const [activeTab, setActiveTab] = useState<'overview' | 'upcoming'>('overview');
@@ -1247,7 +1232,6 @@ const currentMonthName = useMemo(() => {
 
   // «В обороте» по частям: где деньги и чьи (src/turnoverBreakdown.ts)
   const [showTurnover, setShowTurnover] = useState(false);
-  const [showTurnoverRest, setShowTurnoverRest] = useState(false);
   const [showZakat, setShowZakat] = useState(false);
   // Скрытые счета — как в карточке «В обороте» и в кассе: не участвуют в общем итоге
   const turnoverAccountIds = useMemo(
@@ -1835,19 +1819,13 @@ useEffect(() => {
   </div>
 
   {showTurnover && turnover && (
-    <ModalParkContext.Provider value={parked || showTurnoverRest}>
+    <ModalParkContext.Provider value={parked}>
     <TurnoverSheet data={turnover} showCents={appSettings.showCents}
                    accountName={selectedAccountId ? accounts.find(a => a.id === selectedAccountId)?.name : undefined}
                    onZakat={() => setShowZakat(true)}
-                   onRest={() => { setShowZakat(false); setShowTurnoverRest(true); }}
-                   onClose={() => { setShowTurnover(false); setShowTurnoverRest(false); setShowZakat(false); }} />
+                   onAudit={onAccountingAudit ? () => onAccountingAudit(selectedAccountId ? [selectedAccountId] : null) : undefined}
+                   onClose={() => { setShowTurnover(false); setShowZakat(false); }} />
     </ModalParkContext.Provider>
-  )}
-  {showTurnoverRest && turnover && (
-    <TurnoverRestSheet data={turnover} accounts={accounts} accountIds={turnoverAccountIds} customers={customers} sales={allSales}
-      expenses={expenses} investors={investors} retailSales={retailSales} showCents={appSettings.showCents}
-      accountName={selectedAccountId ? accounts.find(a=>a.id===selectedAccountId)?.name : undefined}
-      onViewSale={onViewSchedule} onClose={()=>setShowTurnoverRest(false)} />
   )}
   {showZakat && turnover && (
     <ZakatSheet breakdown={turnover} showCents={appSettings.showCents}

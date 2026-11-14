@@ -8,7 +8,7 @@ import { api } from '../services/api';
 import { isIOSApp, publicOrigin } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
 import WhatsAppConnectSheet from './WhatsAppConnectSheet';
-import { SheetSection, SheetField, SheetToggle, SheetSegmented, sheetInputClass } from './GlassSheet';
+import { SheetSection, SheetField, SheetToggle, sheetInputClass } from './GlassSheet';
 
 interface IntegrationsProps {
   appSettings: AppSettings;
@@ -26,7 +26,17 @@ interface IntegrationsProps {
   greenAllowed?: boolean;
 }
 
+const TEMPLATE_TABS = [
+  { id: 'THREE_DAYS', key: 'threeDays', label: 'За 3 дня' },
+  { id: 'UPCOMING', key: 'upcoming', label: 'За день' },
+  { id: 'TODAY', key: 'today', label: 'В день' },
+  { id: 'OVERDUE', key: 'overdue', label: 'Просрочка' },
+] as const;
+type TemplateTab = typeof TEMPLATE_TABS[number]['id'];
+
 const DEFAULT_TEMPLATES = {
+  threeDays: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Через *3 дня*, *{дата}* — день оплаты.\n\n{товары_блок}\n\n{итого_блок}`,
+
   upcoming: `🔔 *Напоминание об оплате*
 
 *{имя}!*
@@ -105,7 +115,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const [reminderTime, setReminderTime] = useState('10:00');
   const [reminderDays, setReminderDays] = useState<number[]>([0]);
 
-  const [activeTemplateTab, setActiveTemplateTab] = useState<'UPCOMING' | 'TODAY' | 'OVERDUE'>('TODAY');
+  const [activeTemplateTab, setActiveTemplateTab] = useState<TemplateTab>('TODAY');
   const [templates, setTemplates] = useState(DEFAULT_TEMPLATES);
   const [currentTemplates, setCurrentTemplates] = useState(DEFAULT_TEMPLATES);
 
@@ -270,6 +280,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
       reminderTime,
       reminderDays,
       templates: {
+        threeDays: templates.threeDays,
         upcoming: templates.upcoming,
         today: templates.today,
         overdue: templates.overdue
@@ -310,7 +321,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
 
   const updateTemplate = (text: string) => {
     const newTemplates = { ...templates };
-    if (activeTemplateTab === 'UPCOMING') {
+    if (activeTemplateTab === 'THREE_DAYS') {
+      newTemplates.threeDays = text;
+    } else if (activeTemplateTab === 'UPCOMING') {
       newTemplates.upcoming = text;
     } else if (activeTemplateTab === 'TODAY') {
       newTemplates.today = text;
@@ -324,7 +337,9 @@ const Integrations: React.FC<IntegrationsProps> = ({
   const resetCurrentTemplate = async () => {
     if (!await appConfirm('Вернуть шаблон к значению по умолчанию?')) return;
     const newTemplates = { ...templates };
-    if (activeTemplateTab === 'UPCOMING') {
+    if (activeTemplateTab === 'THREE_DAYS') {
+      newTemplates.threeDays = DEFAULT_TEMPLATES.threeDays;
+    } else if (activeTemplateTab === 'UPCOMING') {
       newTemplates.upcoming = DEFAULT_TEMPLATES.upcoming;
     } else if (activeTemplateTab === 'TODAY') {
       newTemplates.today = DEFAULT_TEMPLATES.today;
@@ -364,6 +379,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
   };
 
   const getCurrentTemplate = () => {
+    if (activeTemplateTab === 'THREE_DAYS') return templates.threeDays;
     if (activeTemplateTab === 'UPCOMING') return templates.upcoming;
     if (activeTemplateTab === 'TODAY') return templates.today;
     return templates.overdue;
@@ -577,6 +593,7 @@ const Integrations: React.FC<IntegrationsProps> = ({
                 {generateTimeOptions().map(time => (<option key={time} value={time}>{time}</option>))}
               </select>
             </label>
+            {reminderRow(-3, 'За 3 дня до оплаты', 'Раннее напоминание о платеже')}
             {reminderRow(-1, 'За день до оплаты', 'Предупреждение накануне')}
             {reminderRow(0, 'В день оплаты', 'Напоминание в сам день платежа')}
             {reminderRow(1, 'При просрочке', 'Пока долг не погашен')}
@@ -597,13 +614,18 @@ const Integrations: React.FC<IntegrationsProps> = ({
           {/* ── Шаблоны ───────────────────────────────────────────────────── */}
           <SheetSection title="Шаблоны сообщений">
             <div className="p-3 space-y-3">
-              <SheetSegmented
-                value={activeTemplateTab}
-                onChange={setActiveTemplateTab}
-                options={[{ id: 'UPCOMING', label: 'Заранее' }, { id: 'TODAY', label: 'В день' }, { id: 'OVERDUE', label: 'Просрочка' }]}
-              />
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-1.5" role="group" aria-label="Шаблон напоминания">
+                {TEMPLATE_TABS.map(tab => <button type="button" key={tab.id} aria-pressed={activeTemplateTab === tab.id}
+                  onClick={() => setActiveTemplateTab(tab.id)}
+                  className={`min-h-11 rounded-xl px-3 py-2 text-[14px] font-semibold transition-colors ${activeTemplateTab === tab.id
+                    ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-500/20 dark:text-indigo-300'
+                    : 'bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300'}`}>
+                  {tab.label}
+                </button>)}
+              </div>
               <textarea
                 className="w-full h-44 resize-none rounded-xl bg-slate-50 dark:bg-slate-900 p-3 text-[15px] leading-relaxed text-slate-800 dark:text-slate-100 outline-none focus:ring-2 focus:ring-indigo-500/30"
+                aria-label={`Текст шаблона: ${TEMPLATE_TABS.find(t => t.id === activeTemplateTab)?.label}`}
                 value={getCurrentTemplate()} onChange={e => updateTemplate(e.target.value)} placeholder="Текст сообщения…"
               />
               <div className="-mx-3 px-3 flex gap-1.5 overflow-x-auto no-scrollbar">

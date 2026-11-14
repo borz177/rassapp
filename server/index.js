@@ -926,7 +926,7 @@ app.use(cors({
   origin: [...(process.env.ALLOWED_ORIGINS?.split(',') || ['https://rassrochka.pro']), IOS_APP_ORIGIN],
   credentials: true,
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'PATCH'],
-  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key', 'x-ai-eval'],
+  allowedHeaders: ['Content-Type', 'Authorization', 'x-auth-token', 'x-api-key', 'x-ai-eval', 'x-watchlist-admin'],
   // Иначе iOS-приложение (другой origin) не увидит продлённый токен
   exposedHeaders: ['x-renewed-token']
 }));
@@ -1608,6 +1608,9 @@ const logAdminAction = async (adminId, action, targetUserId, details) => {
     console.error('❌ Failed to write admin audit log:', e);
   }
 };
+
+// Отдельные таблицы/права/ключи. Не расширяет доступ к data_items других аккаунтов.
+require('./watchlist/routes').registerWatchlistRoutes(app, { pool, auth });
 
 // --- HELPER FUNCTIONS ---
 // Безопасное прибавление месяцев. Обычный setMonth на 29-31 числе «переливается»
@@ -4647,6 +4650,7 @@ app.post('/api/ai/assistant/consent', auth, async (req, res) => {
 
 const aiConversations = require('./ai/conversations').createConversations(pool);
 const aiClientActions = require('./ai/clientActions').createClientActions(pool);
+require('./ai/accountingAuditRoutes').registerAccountingAuditRoutes(app, { pool, auth, allowed: aiAgentAllowed, conversations: aiConversations });
 const runAssistantTurn = require('./ai/runAssistant').createAssistantRunner({
   conversations: aiConversations,
   pool, assistant: aiAssistant, state: aiAssistantState,
@@ -4713,7 +4717,8 @@ app.get('/api/ai/assistant/journal', auth, async (req, res) => {
 });
 
 app.post('/api/ai/assistant/message', auth, async (req, res) => {
-  const { text, history, image, audio, mode, requestId, stream } = req.body || {};
+  const { text, history, image, audio, mode, requestId, stream, auditReportId } = req.body || {};
+  if (auditReportId != null && (typeof auditReportId !== 'string' || auditReportId.length > 120)) return res.status(400).json({ msg: 'Некорректный отчёт.' });
   if (image && !/^data:image\/(jpeg|png|webp);base64,/.test(String(image))) return res.status(400).json({ msg: 'Фото не распознано' });
   // Несколько фото в сообщении (паспорт клиента и поручителя) — до трёх; старые сборки шлют одно image
   const images = Array.isArray(req.body?.images) ? req.body.images.slice(0, 3) : null;
@@ -4735,7 +4740,7 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
       streaming = true;
     }
     const result = await runAssistantTurn({
-      userId: req.user.id, requestId, sharedHistory: req.body?.sharedHistory === true, text, history, image: images?.[0] || image, images, audio, mode, verifiedState: st, signal: stop.signal,
+      userId: req.user.id, requestId, auditReportId, sharedHistory: req.body?.sharedHistory === true, text, history, image: images?.[0] || image, images, audio, mode, verifiedState: st, signal: stop.signal,
       onStep: streaming ? label => send({ step: label }) : null,
       onStream: streaming ? ev => send(ev) : null,
       silent: req.get('x-ai-eval') === '1',

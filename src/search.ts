@@ -12,7 +12,7 @@
  */
 
 import { Customer, Sale, Product, Expense } from '../types';
-import { contractNumberFor } from './utils';
+import { contractNumbers } from './utils';
 
 export type SearchKind = 'customer' | 'contract' | 'product' | 'operation';
 
@@ -139,6 +139,7 @@ export const search = (query: string, data: SearchData, options: SearchOptions =
   }
 
   // ── договоры ─────────────────────────────────────────────────────────────
+  const numbers = contractNumbers(sales, customers);
   for (const sale of sales) {
     // Прочий приход хранится записью того же вида, но договором не является.
     if (String(sale.customerId || '').startsWith('system_')) continue;
@@ -146,7 +147,7 @@ export const search = (query: string, data: SearchData, options: SearchOptions =
     const customer = byId.get(sale.customerId);
     const product = lower(sale.productName);
     const customerName = lower(customer?.name);
-    const number = contractNumberFor(sales, sale) || '';
+    const number = numbers[sale.id] || '';
 
     let rank = textRank(product, text);
     if (rank === null) {

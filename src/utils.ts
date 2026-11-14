@@ -1,5 +1,6 @@
 import { parsePhoneNumberFromString, type CountryCode } from 'libphonenumber-js';
 import * as Profit from '../shared/profit.js';
+import * as Investment from '../shared/accountInvestment.js';
 import { Account, Investor, InvestmentPeriod, CapitalChange, Payment, Sale, SaleStockItem, Expense, DEFAULT_WAREHOUSE_ID, Product, RetailSale, StockLocation, StockMovement} from '../types';
 
 export const escapeHtml = (str: unknown): string =>
@@ -1028,10 +1029,16 @@ export const stockShipmentPlan = (
  * своё место в истории, а не в конец списка.
  */
 export const contractNumbers = (
-  sales: { id: string; startDate: string }[]
+  sales: { id: string; startDate: string; customerId?: string }[],
+  customers?: { id: string }[]
 ): Record<string, string> => {
   const map: Record<string, string> = {};
-  [...sales]
+  const customerIds = customers ? new Set(customers.map(c => c.id)) : null;
+  // В sales также хранятся приходы и вклады инвесторов. Они не являются
+  // договорами клиента и не должны сдвигать номера на экране или в документе.
+  sales
+    .filter(s => !String(s.customerId || '').startsWith('system_')
+      && (!customerIds || (!!s.customerId && customerIds.has(s.customerId))))
     .sort((a, b) => {
       const diff = new Date(a.startDate).getTime() - new Date(b.startDate).getTime();
       // При одинаковой дате порядок задаёт id: он начинается с метки времени
@@ -1051,13 +1058,14 @@ export const contractNumbers = (
  * каким он станет в списке через мгновение.
  */
 export const contractNumberFor = (
-  sales: { id: string; startDate: string }[] | undefined,
-  sale: { id?: string; startDate: string } | null | undefined
+  sales: { id: string; startDate: string; customerId?: string }[] | undefined,
+  sale: { id?: string; startDate: string; customerId?: string } | null | undefined,
+  customers?: { id: string }[]
 ): string | undefined => {
   if (!sale?.id) return undefined;
   const list = sales || [];
-  const withSale = list.some(s => s.id === sale.id) ? list : [...list, sale as { id: string; startDate: string }];
-  return contractNumbers(withSale)[sale.id];
+  const withSale = list.some(s => s.id === sale.id) ? list : [...list, sale as { id: string; startDate: string; customerId?: string }];
+  return contractNumbers(withSale, customers)[sale.id];
 };
 
 /**
@@ -1088,19 +1096,9 @@ export const maxPickableQty = (stock: number, allowNegativeStock: boolean): numb
  * поэтому вид считаем от них, а сохранённый type берём только как запасной.
  * Заодно уже испорченные счета показываются правильно, без правки данных.
  */
-export const realAccountType = (
+export const realAccountType: (
   account: Pick<Account, 'type' | 'ownerId' | 'poolMemberIds' | 'partners'> | undefined
-): Account['type'] => {
-  if (!account) return 'CUSTOM';
-  if ((account.poolMemberIds || []).length > 0) return 'POOL';
-  if (account.ownerId) return 'INVESTOR';
-  if ((account.partners || []).length > 0) return 'SHARED';
-  // Ничего своего у счёта нет — это счёт самого владельца дела. 'MAIN' оставляем
-  // как есть: он ещё встречается в данных и означает «основной».
-  return account.type === 'INVESTOR' || account.type === 'POOL' || account.type === 'SHARED'
-    ? 'CUSTOM'
-    : (account.type || 'CUSTOM');
-};
+) => Account['type'] = Investment.realAccountType;
 
 /**
  * Свои деньги, вложенные в счёт, и сколько из них уже вернули.
@@ -1130,46 +1128,12 @@ export interface AccountInvestment {
 }
 
 /** Приход «Прочее» — техническая запись прихода, а не продажа клиенту. */
-export const SYSTEM_INCOME_CUSTOMER = 'system_income';
+export const SYSTEM_INCOME_CUSTOMER: string = Investment.SYSTEM_INCOME_CUSTOMER;
 
-export const accountInvestment = (
+export const accountInvestment: (
   account: Pick<Account, 'id' | 'initialBalance' | 'type' | 'ownerId' | 'poolMemberIds' | 'partners'> | undefined,
-  sales: Sale[],
-  expenses: Expense[]
-): AccountInvestment => {
-  const empty = { initial: 0, deposits: 0, invested: 0, returned: 0, left: 0 };
-  if (!account) return empty;
-
-  // 🔒 Только счёт, который целиком принадлежит владельцу дела. На счёте
-  // инвестора и в пуле деньги чужие: сколько вложил инвестор, видно в его
-  // карточке, а приход «Прочее» туда — пополнение его счёта, а не вложение
-  // владельца. На общем счёте партнёров непонятно, чьё внесение, и приписывать
-  // его себе — догадка. Считать чужие деньги своими вложениями нельзя ни в
-  // одном из этих случаев.
-  const kind = realAccountType(account);
-  if (kind === 'INVESTOR' || kind === 'POOL' || kind === 'SHARED') return empty;
-
-  const initial = Number(account.initialBalance) || 0;
-
-  const deposits = sales
-    .filter(s => s.accountId === account.id && s.customerId === SYSTEM_INCOME_CUSTOMER)
-    .reduce((sum, s) => sum + (Number(s.downPayment) || 0), 0);
-
-  const returned = expenses
-    .filter(e => e.accountId === account.id
-      && e.category === 'Моя выплата'
-      && e.managerPayoutSource === 'CAPITAL'
-      && e.isRefund !== true)
-    .reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
-
-  const invested = initial + deposits;
-  return {
-    initial, deposits, invested, returned,
-    // В минус не уводим: «вернул больше, чем вложил» — это уже прибыль, и она
-    // считается своим блоком. Здесь такая цифра читалась бы как долг перед делом.
-    left: Math.max(0, invested - returned),
-  };
-};
+  sales: Sale[], expenses: Expense[]
+) => AccountInvestment = Investment.accountInvestment;
 
 /**
  * Русское склонение после числа: 1 платёж, 2 платежа, 5 платежей.

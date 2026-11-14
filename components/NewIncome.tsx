@@ -540,7 +540,7 @@ const commonData = {
         companyName: appSettings?.companyName || 'Компания',
         sellerPhone: formatRuPhone(getSellerPhone(user, appSettings)),
         // Номер тот же, что у договора в списке договоров
-        contractNumber: contractNumberFor(sales, selectedSale),
+        contractNumber: contractNumberFor(sales, selectedSale, customers),
         customerName: selectedCustomer.name,
         customerPhone: formatRuPhone(selectedCustomer.phone),
         passportSeries: selectedCustomer.passportSeries,

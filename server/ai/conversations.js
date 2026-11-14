@@ -36,6 +36,7 @@ const createConversations = pool => {
       if (record?.status === 'done') return `[Выполнено: ${record.result?.text || a.title}${record.result?.saleId ? `; договор ${record.result.saleId}` : ''}]`;
       if (record?.status === 'undone') return `[Отменено: ${record.undo_result?.text || a.title}]`;
       if (record && record.status !== 'pending') return `[Не повторять без проверки: ${a.title}; состояние ${record.status}]`;
+      if (a.kind === 'accounting_audit') return `[Сверка учёта: отчёт ${a.report?.id}; ${a.report?.scope?.label || 'Счета'}; ${a.report?.summary || ''}. Это проверка записей, финансовые операции не выполнялись.]`;
       if (a.kind === 'contract_form') return `[Черновик договора: ${JSON.stringify(a.draft)}]`;
       if (a.kind === 'choices') return `[Варианты: ${JSON.stringify(a.options)}]`;
       if (a.kind === 'confirm') return `[Ждёт подтверждения: ${a.summary}]`;
@@ -58,7 +59,7 @@ const createConversations = pool => {
   const run = async (args, execute) => {
     await ready();
     const id = String(args.requestId || randomUUID()).slice(0, 120);
-    const inputHash = hash({ text: args.text || '', image: args.image || null, images: args.images || null, audio: args.audio || null, mode: args.mode || 'confirm', channel: args.channel || 'app' });
+    const inputHash = hash({ text: args.text || '', image: args.image || null, images: args.images || null, audio: args.audio || null, mode: args.mode || 'confirm', channel: args.channel || 'app', ...(args.channel === 'accounting_audit' ? { auditScope: args.auditScope || null } : {}), ...(args.auditReportId ? { auditReportId: args.auditReportId } : {}) });
     {
       await pool.query("UPDATE ai_turns SET status='failed',step='Нужна проверка результата' WHERE user_id=$1 AND status='running' AND updated_at<NOW()-INTERVAL '10 minutes'",[args.userId]);
       const previous = (await pool.query('SELECT * FROM ai_turns WHERE user_id=$1 AND id=$2', [args.userId,id])).rows[0];

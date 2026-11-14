@@ -20,6 +20,7 @@ const AdminAIQuality: React.FC = () => {
   const [q, setQ] = useState<AdminAiQuality | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [group, setGroup] = useState<SignalGroup>('all');
+  const [outcome, setOutcome] = useState('all');
   const [busy, setBusy] = useState<string | null>(null);
 
   const load = async () => {
@@ -54,7 +55,7 @@ const AdminAIQuality: React.FC = () => {
 
   const proposed = (q?.lessons || []).filter(l => l.status === 'proposed');
   const active = (q?.lessons || []).filter(l => l.status === 'active');
-  const recent = (q?.recent || []).filter(r => group === 'all' || groupOf(r.kind, q) === group);
+  const recent = (q?.recent || []).filter(r => (group === 'all' || groupOf(r.kind, q) === group) && (outcome === 'all' || (r.outcome || 'unknown') === outcome));
 
   return (
     <div className="space-y-4">
@@ -110,6 +111,7 @@ const AdminAIQuality: React.FC = () => {
             <div key={l.id} className="rounded-xl bg-amber-50/60 dark:bg-amber-500/5 p-3">
               <p className="text-sm font-semibold text-slate-800 dark:text-white">{l.rule}</p>
               {l.why && <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">{l.why}{l.cases ? ` · случаев: ${l.cases}` : ''}</p>}
+              {l.similarTo && <p className="mt-1 text-xs text-amber-700 dark:text-amber-300">Похоже на правило №{l.similarTo} — проверьте перед применением.</p>}
               <div className="mt-2 flex gap-2">
                 <button disabled={!!busy} onClick={() => act(`a${l.id}`, () => api.adminAiLesson(l.id, 'apply'), 'Вывод применён — агент учитывает его в ответах')}
                         className="px-3 py-1.5 rounded-lg text-xs font-bold bg-slate-900 text-white dark:bg-white dark:text-slate-900 disabled:opacity-50">Проверить и применить</button>
@@ -163,6 +165,14 @@ const AdminAIQuality: React.FC = () => {
 
       <div className="bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 overflow-x-auto">
         <div className="px-4 pt-4 text-xs font-bold text-slate-400 uppercase tracking-wide">Свежие случаи (данные клиентов скрыты)</div>
+        <div className="px-4 pt-3 flex flex-wrap gap-2 items-center">
+          <label htmlFor="ai-quality-outcome" className="text-xs text-slate-500">Итог</label>
+          <select id="ai-quality-outcome" value={outcome} onChange={e => setOutcome(e.target.value)} className="text-xs rounded-lg border border-slate-200 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-200 px-2 py-1.5">
+            <option value="all">Все</option>
+            {Object.entries(q?.outcomeLabels || {unknown:'Итог не отслеживался'}).map(([key,label]) => <option key={key} value={key}>{label}</option>)}
+          </select>
+          <span className="text-[11px] text-slate-400">Итог проверки ответа, не аудит финансовых операций.</span>
+        </div>
         <table className="w-full text-sm mt-2">
           <tbody className="divide-y divide-slate-100 dark:divide-slate-700">
             {recent.map((r, i) => (
@@ -173,6 +183,9 @@ const AdminAIQuality: React.FC = () => {
                     <span className={`w-2 h-2 rounded-full ${toneOf(r.kind, q)}`} />{q?.kinds[r.kind] || 'Другое событие'}
                   </span>
                   {r.tool && <div className="text-[11px] text-slate-400">{r.tool}</div>}
+                  <div className={`mt-1 text-[11px] ${r.outcome === 'corrected' ? 'text-emerald-600 dark:text-emerald-400' : r.outcome === 'failed' ? 'text-rose-600 dark:text-rose-400' : 'text-slate-500 dark:text-slate-400'}`}>
+                    {q?.outcomeLabels?.[r.outcome || 'unknown'] || 'Итог не отслеживался'}
+                  </div>
                 </td>
                 <td className="px-4 py-2.5 text-xs text-slate-600 dark:text-slate-300">
                   {r.question && <div>«{r.question}»</div>}

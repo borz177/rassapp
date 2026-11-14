@@ -1140,6 +1140,17 @@ input, textarea, [contenteditable] {
 .shell-drag,
 .shell-sidebar-grip { display: none; }
 
+/* Полноэкранные просмотры перекрывают область перетаскивания боковой панели.
+   В Electron такие области забирают нажатия независимо от обработчика React.
+   Отступы от системных кнопок нужны и в узком окне приложения. */
+html.shell-floating .shell-window-head,
+html.shell-floating .shell-window-head button,
+html.shell-floating .shell-window-head a {
+  -webkit-app-region: no-drag;
+}
+html.shell-floating:not(.shell-win) .shell-window-head { padding-left: 96px !important; }
+html.shell-win .shell-window-head { padding-right: 152px !important; }
+
 @media (min-width: 768px) {
   html.shell-floating,
   html.shell-floating body,
@@ -1152,12 +1163,6 @@ input, textarea, [contenteditable] {
   html.shell-floating:not(.dark) body {
     background: rgba(30, 41, 59, 0.45) !important;
   }
-
-  /* Шапка окна во весь экран (печать, просмотр документа): кнопки окна системы
-     рисуются поверх страницы и забирают нажатия — на Mac слева сверху они
-     закрывали «Закрыть», на Windows справа — «Печать». Отодвигаем шапку от них */
-  html.shell-floating:not(.shell-win) .shell-window-head { padding-left: 96px !important; }
-  html.shell-win .shell-window-head { padding-right: 152px !important; }
 
   /* Полоса над панелями — за неё окно перетаскивается */
   .shell-floating .shell-drag {

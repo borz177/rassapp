@@ -2,6 +2,7 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import ModalPortal, { ModalParkContext, parkedSheetStyle } from './ModalPortal';
 import { isPhoneWidth, useSheetDrag } from '../src/sheetDrag';
 import { search, groupHits, KIND_TITLES, SearchData, SearchHit, SearchKind } from '../src/search';
+import WatchlistSearchPanel from './WatchlistSearchPanel';
 
 const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
 
@@ -15,6 +16,8 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
  * Ищем прямо в памяти по тем данным, что приложение уже загрузило: выдача
  * появляется сразу и работает без сети, а сотрудник видит только то, что ему
  * и так открыто — других данных у него на руках нет.
+ * Чёрный список — отдельная проверка онлайн с серверным допуском; его результаты
+ * не добавляются в локальные данные и историю поиска.
  *
  * На телефоне это лист, как в нативных приложениях: выезжает снизу и не доходит
  * до чёлки (под ней видно затемнённый экран — понятно, откуда пришли и куда
@@ -23,6 +26,8 @@ const IS_MAC = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(naviga
  */
 
 interface GlobalSearchProps {
+  /** Только менеджер/администратор; фактический допуск проверяется сервером. */
+  watchlistUserId?: string;
   data: SearchData;
   onOpenCustomer: (customerId: string) => void;
   /** Открыть сам договор в карточке клиента */
@@ -122,13 +127,14 @@ const Highlight: React.FC<{ text: string; query: string }> = ({ text, query }) =
 
 const GlobalSearch: React.FC<GlobalSearchProps> = ({
   data, onOpenCustomer, onOpenContract, onOpenProducts, onOpenOperations,
-  includeOperations = true, variant = 'topbar', onLeave, parked = false, keepAlive = false, onClosed,
+  includeOperations = true, variant = 'topbar', onLeave, parked = false, keepAlive = false, onClosed, watchlistUserId,
 }) => {
   const [open, setOpen] = useState(false);
   // Этот экземпляр отложен (копий поиска две — в шапке и в боковом меню)
   const keptRef = useRef(false);
   const [closing, setClosing] = useState(false);
   const [query, setQuery] = useState('');
+  const [composing, setComposing] = useState(false);
   const [filter, setFilter] = useState<Filter>('all');
   const [active, setActive] = useState(0);
   const [recent, setRecent] = useState<string[]>([]);
@@ -270,6 +276,9 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
   };
 
   const onKeyDown = (e: React.KeyboardEvent) => {
+    // Карточка общего списка открыта своим листом; её клавиши не управляют поиском под ним.
+    if ((e.target as Element).closest('[role="dialog"]') !== e.currentTarget) return;
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Escape') { requestClose(); return; }
     if (!flat.length) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive(i => (i + 1) % flat.length); }
@@ -380,6 +389,8 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
                       ref={inputRef}
                       value={query}
                       onChange={e => setQuery(e.target.value)}
+                      onCompositionStart={() => setComposing(true)}
+                      onCompositionEnd={() => setComposing(false)}
                       type="search"
                       enterKeyHint="search"
                       autoComplete="off" autoCorrect="off" autoCapitalize="off" spellCheck={false}
@@ -486,7 +497,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     <span className="w-14 h-14 rounded-2xl bg-slate-100 dark:bg-slate-800 text-slate-400 flex items-center justify-center mb-4">
                       <Icon d={SEARCH_ICON} size={26} />
                     </span>
-                    <p className="text-[16px] font-semibold text-slate-900 dark:text-white">Ничего не нашлось</p>
+                    <p className="text-[16px] font-semibold text-slate-900 dark:text-white">В ваших данных совпадений нет</p>
                     <p className="mt-1.5 text-[14px] leading-snug text-slate-500 dark:text-slate-400">
                       {filter === 'all'
                         ? 'Проверьте написание или наберите последние цифры телефона.'
@@ -541,6 +552,7 @@ const GlobalSearch: React.FC<GlobalSearchProps> = ({
                     ))}
                   </div>
                 )}
+                {watchlistUserId && typed && (filter === 'all' || filter === 'customer') && <WatchlistSearchPanel compact userId={watchlistUserId} name={query} composing={composing} active={open && !closing && !parked} />}
               </div>
 
               <div className="hidden sm:flex items-center gap-4 px-4 py-2 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-400">

@@ -1,3 +1,4 @@
+import type { AccountingAuditRequest } from './src/accountingAudit';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { friendlyError } from './src/friendlyError';
@@ -11,6 +12,7 @@ import Dashboard from './components/Dashboard';
 import CashRegister from './components/CashRegister';
 import Investors from './components/Investors';
 import Contracts from './components/Contracts';
+import { watchlistUiVisible } from './src/watchlist';
 import NewSale from './components/NewSale';
 import NewIncome from './components/NewIncome';
 import NewExpense from './components/NewExpense';
@@ -89,6 +91,7 @@ import { PUBLIC_LEGAL_ROUTES } from './components/LegalPublic';
 const ApiDocs = lazy(() => import('./components/ApiDocs'));
 const OAuthConsent = lazy(() => import('./components/OAuthConsent'));
 const LegalPublic = lazy(() => import('./components/LegalPublic'));
+const ClientWatchlist = lazy(() => import('./components/ClientWatchlist'));
 import { NotificationModal } from './components/NotificationModal';
 import { withTimeout } from './src/timeout';
 import { isNetworkError } from './src/authRequest';
@@ -119,7 +122,7 @@ async function enablePersistentStorage() {
 // Views pushed on top of the mobile "Еще" menu — kept stacked over MORE (which stays mounted
 // underneath, gated on previousView === 'MORE') so swiping back reveals the real menu, not blank space.
 const MORE_PUSH_VIEWS = new Set<ViewState>([
-  'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL',
+  'PROFILE', 'SETTINGS', 'EMPLOYEES', 'SUPPLIERS', 'TARIFFS', 'ADMIN_PANEL', 'CLIENT_WATCHLIST',
   'REPORTS', 'CONTRACTS', 'INVESTORS', 'TASKS', 'REFERRAL', 'PARTNER', 'WAREHOUSE', 'RETAIL_SALE', 'HELP',
 ]);
 
@@ -146,9 +149,6 @@ const isLanding = path === "/"
 // Документация API — открытая страница рядом с лендингом. Грузится отдельным
 // куском: в приложении она не нужна ни одному экрану.
 const isApiDocs = path === "/api" || path === "/api/"
-// Правовые документы по постоянным адресам (/privacy и другие): на окно внутри
-// приложения ссылку не дашь, а её спрашивают площадки помощников и магазины.
-const legalDoc = PUBLIC_LEGAL_ROUTES[path.replace(/\/+$/, '') || '/']
   const { resolvedTheme } = useTheme();
   // Auth State
   const [user, setUser] = useState<User | null>(null);
@@ -1161,6 +1161,7 @@ useEffect(() => {
 // Каждый такой раздел помнит, откуда его открыли: previousView для этого не
 // годится — после возврата с карточки клиента он сам равен разделу, и «назад»
 // из раздела никуда не вёл.
+const aiBackRef = useRef<ViewState>('DASHBOARD');
 const BACK_TRACKED_VIEWS: ViewState[] = ['CONTRACTS', 'WAREHOUSE', 'JOURNAL', 'OPERATIONS'];
 const backOfView = useRef<Partial<Record<ViewState, ViewState>>>({});
 // Вход в раздел не «снизу» (не возврат с открытой из него страницы) — запоминаем,
@@ -1176,7 +1177,8 @@ const viewChain: ViewState[] = (() => {
   const chain: ViewState[] = [currentView];
   let view = currentView;
   for (let i = 0; i < 5; i++) {
-    const next = view === 'CUSTOMER_DETAILS' ? previousView
+    const next = view === 'AI_ASSISTANT' ? aiBackRef.current
+      : view === 'CUSTOMER_DETAILS' ? previousView
       : view === 'CREATE_INCOME' ? formReturnView
       : BACK_TRACKED_VIEWS.includes(view) ? backOfView.current[view]
       : undefined;
@@ -1311,9 +1313,9 @@ useEffect(() => {
   // должны увидеть и новое, а не считаться уже показанными.
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v44';
+  const STORAGE_KEY = 'template_update_notice_last_shown_v45';
   const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
-  // Изменения кассы и расходов показываем владельцу аккаунта.
+  // Обновления учёта и документов показываем владельцу аккаунта.
   if (user.role !== 'manager' && user.role !== 'admin') return;
 
   let seen = false;
@@ -4311,11 +4313,15 @@ const handleQuickAddCustomer = async (data: {
   const aiAvailable = !!user && (user.role === 'admin' || (user.role === 'manager' && aiOpenForUser));
   // Откуда открыли агента: «назад» возвращает туда, а не в тарифы ИИ,
   // открытые из него же
-  const aiBackRef = useRef<ViewState>('DASHBOARD');
+  const [accountingAuditRequest, setAccountingAuditRequest] = useState<AccountingAuditRequest | null>(null);
   const openAssistant = () => {
     if (currentView !== 'AI_ASSISTANT' && currentView !== 'AI_TARIFFS') aiBackRef.current = currentView;
     setPreviousView(currentView);
     setCurrentView('AI_ASSISTANT');
+  };
+  const openAccountingAudit = (accountIds: string[] | null) => {
+    setAccountingAuditRequest({requestId: crypto.randomUUID(), accountIds});
+    openAssistant();
   };
   // Нажали пуш сводки, а приложение уже открыто: сервис-воркер просит перейти (public/push-sw.js)
   const openAssistantRef = useRef(openAssistant);
@@ -4407,7 +4413,7 @@ const handleQuickAddCustomer = async (data: {
       const all = [...aiDataRef.current.sales.filter(s => s.id !== saved.id), saved];
       return {
         ok: true, text: 'Договор оформлен', saleId: saved.id, customerId, offline: !!saved._isOffline,
-        number: contractNumberFor(all, saved), total: saved.totalAmount,
+        number: contractNumberFor(all, saved, [...aiDataRef.current.customers, {id:customerId}]), total: saved.totalAmount,
         monthly: (saved.paymentPlan || []).find((p: Payment) => p.isRealPayment !== true)?.amount,
       };
     } catch (e: any) {
@@ -4545,6 +4551,19 @@ const handleQuickAddCustomer = async (data: {
     setCurrentView('CUSTOMER_DETAILS');
   };
 
+  // Перед открытием источника сверки проверяем актуальную запись и сохраняем
+  // локальные несинхронизированные изменения обычным механизмом слияния.
+  const openAuditContract = async (saleId: string) => {
+    const fresh = await api.fetchAllData();
+    if (fresh.__fromCache) throw new Error('Нужен интернет, чтобы открыть текущую запись проверки.');
+    const sale = fresh.sales?.find((s: Sale) => s.id === saleId);
+    const customer = sale && fresh.customers?.find((c: Customer) => c.id === sale.customerId);
+    if (!sale || !customer) throw new Error('Договор или клиент больше недоступен. Обновите проверку.');
+    setSales(prev => mergeServerData(prev, fresh.sales, 'sales', false));
+    setCustomers(prev => mergeServerData(prev, fresh.customers, 'customers', false));
+    openContractById(saleId, customer.id);
+  };
+
   // Шаблон договора, собранный агентом по фото: открываем в конструкторе поверх чата
   const [assistantTemplate, setAssistantTemplate] = useState<{ template: any; warnings: string[] } | null>(null);
   const saveAssistantTemplate = async (template: CustomContractTemplate) => {
@@ -4581,6 +4600,7 @@ const handleQuickAddCustomer = async (data: {
   };
 
   const globalSearchProps = {
+    watchlistUserId: watchlistUiVisible(user) ? user.id : undefined,
     data: { customers, sales, products, expenses },
     // Поиск откладывается под найденное: «назад» с клиента, договора, товара или
     // операции возвращает в него (searchOrigin — экран, откуда искали). Если
@@ -5039,10 +5059,6 @@ if (!user && !showSplash) {
     return <Suspense fallback={null}><ApiDocs /></Suspense>;
   }
 
-  if (legalDoc) {
-    return <Suspense fallback={null}><LegalPublic doc={legalDoc} /></Suspense>;
-  }
-
   // На остальных страницах — Auth
   return <Auth onLogin={handleAuthSuccess} />;
 }
@@ -5127,6 +5143,7 @@ if (!user && !showSplash) {
                              accountBalances={accountBalances} onAction={handleAction}
                              onSelectCustomer={handleSelectCustomer}  onViewSchedule={handleViewSaleSchedule} onInitiatePayment={handleInitiateDashboardPayment}
                              accounts={accounts} appSettings={appSettings} investors={investors} user={user} retailSales={scopedRetailSales} products={products} suppliers={suppliers}
+                  onAccountingAudit={aiAvailable ? openAccountingAudit : undefined}
                   showShopTab={shopAvailable && !!appSettings.shopDashboardTab}
                    stockMovements={scopedMovements} expenses={expenses}
                    onUpdateSettings={isManager ? handleUpdateSettings : undefined}
@@ -5532,7 +5549,7 @@ if (!user && !showSplash) {
                   ) : null;
               })()}
               {currentView === 'AI_ASSISTANT' && (
-                <PagePush onClose={() => setCurrentView(aiBackRef.current)} showBackButton>
+                <PagePush onClose={() => setCurrentView(aiBackRef.current)} showBackButton backOnDesktop>
                   {(requestClose: () => void) => (
                     <Suspense fallback={null}>
                       <AIAssistant
@@ -5548,6 +5565,9 @@ if (!user && !showSplash) {
                         onDeleteContract={deleteContractFromAssistant}
                         onReschedule={rescheduleFromAssistant}
                         onShowContract={openContractById}
+                        auditRequest={accountingAuditRequest}
+                        onAuditConsumed={() => setAccountingAuditRequest(null)}
+                        onShowAuditContract={openAuditContract}
                         onExportReport={exportReportFromAssistant}
                         onExportCustomers={exportCustomersFromAssistant}
                         whatsappEnabled={!!assistantWhatsApp?.enabled}
@@ -5807,6 +5827,14 @@ if (!user && !showSplash) {
       </PagePush>
     )}
 
+    {currentView === 'CLIENT_WATCHLIST' && user && watchlistUiVisible(user) && (
+      <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
+        <Suspense fallback={<LazyFallback />}>
+          <ClientWatchlist key={user.id} userId={user.id} customers={customers} />
+        </Suspense>
+      </PagePush>
+    )}
+
     {currentView === 'ADMIN_PANEL' && (
       <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
         <Suspense fallback={<LazyFallback />}>
@@ -6039,6 +6067,12 @@ if (!user && !showSplash) {
             </span>
           </button>
 
+
+          {watchlistUiVisible(user) && <button onClick={() => { setPreviousView('MORE'); setCurrentView('CLIENT_WATCHLIST'); }}
+            className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
+            <div className="flex items-center gap-3"><div className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 p-2 rounded-lg">{ICONS.ShieldAlert}</div><span className="font-semibold text-slate-800 dark:text-white">Чёрный список</span></div>
+            <span className="text-slate-400" aria-hidden>›</span>
+          </button>}
 
           {/* Инвесторы — только менеджер, сотруднику раздел не нужен */}
           {!isEmployee && (
@@ -6510,20 +6544,20 @@ if (!user && !showSplash) {
             {
               tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
               icon: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
-              title: 'Расходы',
-              text: 'Перед списанием видно, сколько останется денег и прибыли.',
+              title: 'Проверка учёта',
+              text: 'Спросите ИИ об учёте — он покажет, что стоит проверить.',
             },
             {
               tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
               icon: <><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 9h18M7 14h2M13 14h4M7 17h2" /></>,
-              title: 'Остаток в обороте',
-              text: 'Нажмите на сумму — покажем, из чего она складывается.',
+              title: 'Напоминания WhatsApp',
+              text: 'Добавили напоминание за 3 дня до оплаты.',
             },
             {
               tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
               icon: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></>,
-              title: 'Копирование номеров',
-              text: 'Нажмите на телефон клиента или поручителя — номер скопируется.',
+              title: 'Печать и отправка',
+              text: 'Улучшили печать договоров и сообщения с условиями рассрочки.',
             },
           ].map(item => (
             <div key={item.title} className="flex gap-3.5">
@@ -6566,8 +6600,15 @@ if (!user && !showSplash) {
 
 // Привязка аккаунта должна работать и при уже выполненном входе. Не запускаем
 // здесь загрузку и синхронизацию приложения: они могут подменить экран согласия.
-const App: React.FC = () => /^\/oauth\/authorize\/?$/.test(window.location.pathname)
-  ? <Suspense fallback={null}><OAuthConsent /></Suspense>
-  : <MainApp />;
+const App: React.FC = () => {
+  const pathname = window.location.pathname;
+  if (/^\/oauth\/authorize\/?$/.test(pathname)) {
+    return <Suspense fallback={null}><OAuthConsent /></Suspense>;
+  }
+  // Документы открываются и для вошедших пользователей, без загрузки их учёта.
+  const publicDoc = PUBLIC_LEGAL_ROUTES[pathname.replace(/\/+$/, '') || '/'];
+  if (publicDoc) return <Suspense fallback={null}><LegalPublic doc={publicDoc} /></Suspense>;
+  return <MainApp />;
+};
 
 export default App;

@@ -22,15 +22,24 @@ const MAX_LESSON_CHARS = 220;
 const UNSAFE_RE = /(не (спрашивай|переспрашивай|уточняй|проси) (подтвержд|сумм|счёт|счет)|без подтвержд|сразу (проводи|принимай|записывай)|весь остаток без|игнорир|не провер|обходи|порог.*(не |игнор)|выполняй (команд|указан).*(заметк|данн))/i;
 
 const { KIND_LABELS, KIND_GROUPS } = require('./qualityKinds');
+const { AsyncLocalStorage } = require('node:async_hooks');
+const { randomUUID } = require('node:crypto');
+const rules = require('./qualityRules');
+const OUTCOMES = { unknown: 'Итог не отслеживался', corrected: 'Исправлено защитой', blocked: 'Ответ ограничен защитой', protected: 'Проверено защитой', cancelled: 'Остановлено пользователем', failed: 'Запрос не завершён' };
 // Не ошибки агента, а просьбы о том, чего он пока не умеет: в разбор ошибок не идут
 // (иначе разбор придумал бы «не отказывай») и хранятся дольше — их считают за месяцы
 const WISH_KINDS = ['cant_do'];
+// У старых сигналов нет идентификатора запроса: одинаковые обезличенные вопросы
+// одного владельца считаем одним случаем, чтобы не выдать два сигнала за повтор.
+const caseKey = c => c.run_id || `legacy:${c.user_id || ''}:${String(c.question || '').trim().toLowerCase()}`;
 
 /**
  * Обезличить пример: ФИО (2–3 слова с заглавной), телефоны, паспорта, суммы и
  * id — чтобы разбор (и модель, которая его делает) не видел данных клиентов
  */
 const mask = (text, max = 500) => String(text || '')
+  .replace(/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/gi, '[email]')
+  .replace(/\b(?:sk[-_][\w-]+|fu_(?:agent|at)_[\w.-]+)\b/g, '[ключ]')
   .replace(/\b(cust|sale|acc|inv|pay|exp|task)_[\w-]+/g, '[id]')
   // Адрес: «г. Грозный, ул. Тестовая, 1», «улица Ленина 5», «кв. 12»
   .replace(/(?:^|[\s,(«])(?:г\.|гор\.|город[а-яё]*|ул\.|улиц[а-яё]*|пр-т|просп\.|проспект[а-яё]*|пер\.|переул[а-яё]*|д\.|дом(?=\s)|кв\.|квартир[а-яё]*)\s*[^,;»)\n]+/gi, ' [адрес]')
@@ -43,6 +52,9 @@ const mask = (text, max = 500) => String(text || '')
   .slice(0, max);
 
 module.exports = ({ pool }) => {
+  const context = new AsyncLocalStorage();
+  const pendingRuns = new Set();
+  const flush = async () => { while(pendingRuns.size) await Promise.allSettled([...pendingRuns]); };
   let validationConfig;
   const ready = pool.query(`
     CREATE TABLE IF NOT EXISTS ai_signals (
@@ -57,6 +69,8 @@ module.exports = ({ pool }) => {
       created_at TIMESTAMP NOT NULL DEFAULT NOW()
     );
     CREATE INDEX IF NOT EXISTS ai_signals_created ON ai_signals (created_at);
+    ALTER TABLE ai_signals ADD COLUMN IF NOT EXISTS run_id TEXT;
+    ALTER TABLE ai_signals ADD COLUMN IF NOT EXISTS outcome TEXT NOT NULL DEFAULT 'unknown';
     CREATE TABLE IF NOT EXISTS ai_lessons (
       id BIGSERIAL PRIMARY KEY,
       rule TEXT NOT NULL,
@@ -78,11 +92,40 @@ module.exports = ({ pool }) => {
   `).catch(e => console.error('❌ AI quality tables:', e.message));
 
   /** Отметить сигнал. Ошибки записи не мешают ответу агента */
-  const signal = (userId, kind, { tool, question, answer, detail } = {}) => {
-    ready.then(() => pool.query(
-      `INSERT INTO ai_signals (user_id, kind, tool, question, answer, detail) VALUES ($1, $2, $3, $4, $5, $6)`,
-      [userId || null, kind, tool ? String(tool).slice(0, 60) : null, question ? mask(question) : null, answer ? mask(answer, 700) : null, detail ? mask(detail, 300) : null],
-    )).catch(e => console.error('ai signal:', e.message));
+  const signal = (userId, kind, { tool, question, answer, detail, outcome } = {}) => {
+    const run = context.getStore();
+    const status = Object.hasOwn(OUTCOMES,outcome) ? outcome : kind.startsWith('guard_') ? 'protected' : kind === 'stop' ? 'cancelled' : 'unknown';
+    const write = ready.then(() => pool.query(
+      `INSERT INTO ai_signals (user_id, kind, tool, question, answer, detail, run_id, outcome) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
+      [userId || null, kind, tool ? String(tool).slice(0, 60) : null, question ? mask(question) : null, answer ? mask(answer, 700) : null, detail ? mask(detail, 300) : null, run?.id || null, status],
+    )).catch(e => { console.error('ai signal:', e.message); return null; });
+    if (run) run.events.push({kind,write,status});
+  };
+  const resolve = (kinds, outcome) => {
+    const run=context.getStore();
+    if(run && Object.hasOwn(OUTCOMES,outcome)) for(const k of kinds) run.resolved[k]=outcome;
+  };
+  const trackReply = fn => async args => {
+    if(args.silent) return fn(args);
+    const run={id:randomUUID(),events:[],resolved:{}};
+    return context.run(run,async()=>{
+      let result, failure;
+      try { result=await fn(args); return result; }
+      catch(e) { failure=e; signal(args.user?.id,'request_error',{detail:e.message,outcome:args.signal?.aborted?'cancelled':'failed'}); throw e; }
+      finally {
+        // Сигнал не доказывает ошибочную операцию. Старые записи не переоцениваем.
+        const finish = Promise.allSettled(run.events.map(async event=>{
+          const row=await event.write;
+          if(!row?.rows?.[0]) return;
+          const outcome=event.status!=='unknown' ? event.status : result?.cancelled || args.signal?.aborted ? 'cancelled' : failure ? 'failed' : run.resolved[event.kind] || 'unknown';
+          if(outcome!==event.status) await pool.query('UPDATE ai_signals SET outcome=$2 WHERE id=$1 AND run_id=$3',[row.rows[0].id,outcome,run.id]);
+        }));
+        // Диагностика не должна задерживать ответ или превращать уже проведённую
+        // операцию в ошибку чата при недоступности таблицы сигналов.
+        pendingRuns.add(finish);
+        void finish.then(() => pendingRuns.delete(finish));
+      }
+    });
   };
 
   // Принятые выводы — в подсказку агента; кэш на 5 минут, чтобы не читать базу на каждый вопрос
@@ -102,20 +145,22 @@ module.exports = ({ pool }) => {
    * Разбор сигналов: модель посильнее ищет повторяющиеся причины и предлагает
    * до трёх коротких правил. callModel — обращение к модели из assistant.js.
    */
-  const review = async ({ callModel, staticPrompt, force = false }) => {
+  const reviewOnce = async ({ callModel, staticPrompt, force = false }) => {
     await ready;
     const { rows: cases } = await pool.query(
-      `SELECT id, kind, tool, question, answer, detail FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1) ORDER BY id DESC LIMIT 60`, [WISH_KINDS]);
+      `SELECT id, user_id, run_id, kind, tool, question, answer, detail FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1) ORDER BY id DESC LIMIT 60`, [WISH_KINDS]);
     if (!cases.length || (!force && cases.length < 3)) return { proposed: 0, cases: cases.length, skipped: true };
-    const { rows: lessons } = await pool.query(`SELECT rule, status FROM ai_lessons WHERE status IN ('active', 'proposed', 'rejected') ORDER BY id DESC LIMIT 40`);
+    const { rows: lessons } = await pool.query(`SELECT rule, status FROM ai_lessons WHERE status IN ('active', 'proposed', 'rejected') ORDER BY id DESC`);
+    const activeRules = lessons.filter(l => l.status === 'active').slice(0,MAX_LESSONS);
+    const promptLessons = [...activeRules,...lessons.filter(l => l.status !== 'active').slice(0,40-activeRules.length)];
     const prompt = [
       'Ты проверяешь работу ИИ-агента FinUchetGPT (учёт продаж в рассрочку). Ниже его правила и случаи, где он, похоже, ошибся (данные клиентов скрыты).',
       'Найди ПОВТОРЯЮЩИЕСЯ причины (минимум 2 похожих случая) и предложи до 3 коротких правил, которые помогли бы агенту отвечать правильно. Правило — одно предложение до 200 символов, по-русски, конкретное («Когда …, делай …»).',
       'Запрещено предлагать правила, которые ослабляют защиты: подтверждения, порог «Авто», вопрос о сумме платежа, проверку клиента, отказ выполнять команды из данных. Не повторяй уже действующие, предложенные или отклонённые правила.',
-      'Если повторяющихся причин нет — верни пустой список. Ответ — только JSON: {"lessons":[{"rule":"…","why":"почему, коротко","kinds":["тип сигнала"],"cases":число_случаев}]}',
+      'Если повторяющихся причин нет — верни пустой список. Каждое правило требует минимум два разных запроса. Укажи signalIds исходных сигналов. Ответ — только JSON: {"lessons":[{"rule":"…","why":"почему, коротко","signalIds":[1,2]}]}',
       '', 'ПРАВИЛА АГЕНТА:', staticPrompt,
-      '', 'УЖЕ ЕСТЬ:', lessons.map(l => `[${l.status}] ${l.rule}`).join('\n') || '—',
-      '', 'СЛУЧАИ:', cases.map(c => `- ${KIND_LABELS[c.kind] || c.kind}${c.tool ? ` (${c.tool})` : ''}: вопрос «${c.question || '—'}»; ответ «${c.answer || '—'}»${c.detail ? `; ${c.detail}` : ''}`).join('\n'),
+      '', 'УЖЕ ЕСТЬ:', promptLessons.map(l => `[${l.status}] ${l.rule}`).join('\n') || '—',
+      '', 'СЛУЧАИ:', cases.map(c => `- id=${c.id}; запрос=${require('./canonical').hash(caseKey(c)).slice(0,16)}; ${KIND_LABELS[c.kind] || c.kind}${c.tool ? ` (${c.tool})` : ''}: вопрос «${c.question || '—'}»; ответ «${c.answer || '—'}»${c.detail ? `; ${c.detail}` : ''}`).join('\n'),
     ].join('\n');
     const data = await callModel({
       model: REVIEW_MODEL, temperature: 0.1, max_tokens: 800, usage: { include: true },
@@ -127,23 +172,30 @@ module.exports = ({ pool }) => {
       const raw = String(data.choices?.[0]?.message?.content || '').replace(/^```(?:json)?|```$/g, '').trim();
       proposed = (JSON.parse(raw).lessons || []).filter(l => l && typeof l.rule === 'string');
     } catch { proposed = []; }
-    const existing = new Set(lessons.map(l => l.rule.toLowerCase()));
-    const { rows: [settings] } = await pool.query('SELECT auto_apply FROM ai_quality_settings WHERE id = 1');
+    const existing = lessons.map(l => l.rule);
     let added = 0;
     for (const l of proposed.slice(0, 3)) {
-      const rule = l.rule.trim().slice(0, MAX_LESSON_CHARS);
-      if (!rule || existing.has(rule.toLowerCase()) || UNSAFE_RE.test(rule)) continue;
-      const active = (await pool.query(`SELECT count(*)::int AS n FROM ai_lessons WHERE status = 'active'`)).rows[0].n;
+      const rule = l.rule.trim();
+      const evidence = cases.filter(c => Array.isArray(l.signalIds) && l.signalIds.some(id => String(id) === String(c.id)));
+      const caseCount = new Set(evidence.map(caseKey)).size;
+      if (!rule || rule.length > MAX_LESSON_CHARS || caseCount < 2 || existing.some(r => rules.similar(rule,r)) || UNSAFE_RE.test(rule)) continue;
       const status = 'proposed'; // Кандидаты проходят проверки и решение администратора.
       await pool.query(
         `INSERT INTO ai_lessons (rule, why, kinds, cases, status, decided_at) VALUES ($1, $2, $3, $4, $5, $6)`,
-        [rule, String(l.why || '').slice(0, 300), (Array.isArray(l.kinds) ? l.kinds : []).join(',').slice(0, 200), Math.max(0, Number(l.cases) || 0), status, status === 'active' ? new Date() : null]);
+        [rule, mask(l.why,300), [...new Set(evidence.map(c=>c.kind))].join(',').slice(0,200), caseCount, status, null]);
+      existing.push(rule);
       added++;
     }
     await pool.query(`UPDATE ai_signals SET reviewed = TRUE WHERE id = ANY($1)`, [cases.map(c => c.id)]);
     await pool.query(`UPDATE ai_quality_settings SET last_review_at = NOW() WHERE id = 1`);
     resetLessons();
     return { proposed: added, cases: cases.length };
+  };
+  let reviewing = null;
+  const review = args => {
+    // Ручной и ночной разбор не оплачивают одну выборку одновременно.
+    if (!reviewing) reviewing = reviewOnce(args).finally(() => { reviewing = null; });
+    return reviewing;
   };
 
   /** Сводка для админки: сигналы по дням и видам, свежие случаи, выводы */
@@ -153,7 +205,7 @@ module.exports = ({ pool }) => {
       `SELECT to_char((created_at AT TIME ZONE 'UTC') AT TIME ZONE 'Europe/Moscow', 'YYYY-MM-DD') AS day, kind, count(*)::int AS n
          FROM ai_signals WHERE created_at >= ((((NOW() AT TIME ZONE 'Europe/Moscow')::date - 13)::timestamp AT TIME ZONE 'Europe/Moscow') AT TIME ZONE 'UTC') GROUP BY 1, 2 ORDER BY 1`)).rows;
     const recent = (await pool.query(
-      `SELECT kind, tool, question, answer, detail, created_at AT TIME ZONE 'UTC' AS created_at FROM ai_signals WHERE kind <> ALL($1) ORDER BY id DESC LIMIT 50`, [WISH_KINDS])).rows;
+      `SELECT kind, tool, question, answer, detail, outcome, run_id, created_at AT TIME ZONE 'UTC' AS created_at FROM ai_signals WHERE kind <> ALL($1) ORDER BY id DESC LIMIT 50`, [WISH_KINDS])).rows;
     // Чего агент не умеет — за полгода: по ним решают, какие умения добавлять
     const wishes = (await pool.query(
       `SELECT kind, tool, question, answer, created_at AT TIME ZONE 'UTC' AS created_at FROM ai_signals WHERE kind = ANY($1) ORDER BY id DESC LIMIT 100`, [WISH_KINDS])).rows;
@@ -162,7 +214,7 @@ module.exports = ({ pool }) => {
     const settings = (await pool.query("SELECT auto_apply, last_review_at AT TIME ZONE 'UTC' AS last_review_at FROM ai_quality_settings WHERE id = 1")).rows[0] || {};
     const pendingReview = (await pool.query('SELECT count(*)::int AS n FROM ai_signals WHERE NOT reviewed AND kind <> ALL($1)', [WISH_KINDS])).rows[0].n;
     const versions = (await pool.query('SELECT id,lesson_id,action,actor,created_at FROM ai_lesson_versions ORDER BY id DESC LIMIT 30')).rows;
-    return { versions, kinds: KIND_LABELS, kindGroups: KIND_GROUPS, autoReviewMinSignals: 3, byDay, recent, wishes, lessons, autoApply: false, lastReviewAt: settings.last_review_at, pendingReview };
+    return { versions, kinds: KIND_LABELS, kindGroups: KIND_GROUPS, outcomeLabels: OUTCOMES, autoReviewMinSignals: 3, byDay, recent, wishes, lessons: rules.markDuplicates(lessons), autoApply: false, lastReviewAt: settings.last_review_at, pendingReview };
   };
 
   const decide = async (id, action, actor = null) => {
@@ -226,5 +278,5 @@ module.exports = ({ pool }) => {
     setInterval(() => tick().catch(e => console.error('AI self-review:', e.message)), 20 * 60 * 1000).unref();
   };
 
-  return { signal, lessonsPrompt, review, report, decide, setAutoApply, start, mask, UNSAFE_RE };
+  return { signal, resolve, trackReply, flush, lessonsPrompt, review, report, decide, setAutoApply, start, mask, UNSAFE_RE };
 };

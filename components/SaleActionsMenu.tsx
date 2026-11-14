@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import Sheet from './Sheet';
 import { createPortal } from 'react-dom';
-import { Printer, Trash2, X, MoreVertical } from 'lucide-react';
+import { Printer, Trash2, X, MoreVertical, UserX } from 'lucide-react';
 import { Sale, Customer, User, AppSettings } from '../types';
 import { printContract } from './contractPrint';
 
@@ -27,10 +27,11 @@ interface SaleActionsMenuProps {
   user?: User | null;
   contractTemplatesAllowed?: boolean;
   onDeleteSale?: (saleId: string) => void | Promise<void>;
+  onAddToWatchlist?: () => void;
 }
 
 const SaleActionsMenu: React.FC<SaleActionsMenuProps> = ({
-  sale, sales, customer, appSettings, user, contractTemplatesAllowed, onDeleteSale,
+  sale, sales, customer, appSettings, user, contractTemplatesAllowed, onDeleteSale, onAddToWatchlist,
 }) => {
   const [open, setOpen] = useState(false);
   const [confirming, setConfirming] = useState(false);
@@ -98,6 +99,11 @@ const SaleActionsMenu: React.FC<SaleActionsMenuProps> = ({
                 <span className="text-slate-500 dark:text-slate-400"><Printer size={18} /></span>
                 <span>Печать договора</span>
               </button>
+              {onAddToWatchlist && customer && !customer.id.startsWith('system_') && <button type="button"
+                onClick={e => { stop(e); setOpen(false); onAddToWatchlist(); }}
+                className="w-full text-left px-4 py-3.5 text-sm text-slate-700 dark:text-slate-300 flex items-center gap-3 hover:bg-slate-50 dark:hover:bg-slate-700 transition-colors">
+                <span className="text-slate-500 dark:text-slate-400"><UserX size={18} /></span><span>В чёрный список</span>
+              </button>}
             </div>
 
             {canDelete && (

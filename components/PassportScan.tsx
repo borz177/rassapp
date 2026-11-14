@@ -1,4 +1,5 @@
 import React, { useRef, useState } from 'react';
+import { Loader2, ScanLine } from 'lucide-react';
 import { api } from '../services/api';
 import PassportCamera from './PassportCamera';
 import { fileToJpeg } from '../src/jpeg';
@@ -22,6 +23,10 @@ interface PassportScanProps {
   /** Вернуть форму как была до подстановки */
   onUndo?: () => void;
   className?: string;
+  /** Общий список: оставить в результате только ФИО/дату, не сохранять превью. */
+  minimalIdentity?: boolean;
+  /** Компактная кнопка справа внутри поля; родитель поля должен быть relative. */
+  variant?: 'default' | 'icon';
 }
 
 const LABELS: { key: Exclude<keyof PassportFields, 'trialLeft'>; label: string }[] = [
@@ -47,7 +52,7 @@ const LABELS: { key: Exclude<keyof PassportFields, 'trialLeft'>; label: string }
  * даём «Отменить». Ошибка в паспортных данных стоит дорого, и человек должен
  * видеть, что этот текст ввёл не он.
  */
-const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className = '' }) => {
+const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className = '', minimalIdentity = false, variant = 'default' }) => {
   // Два отдельных поля вместо одного: `capture` заставляет систему открыть
   // камеру, и снять его на лету нельзя — атрибут читается в момент нажатия.
   // Дёргать DOM ради этого не стоит, а два скрытых поля ничего не стоят.
@@ -70,9 +75,10 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
     else cameraRef.current?.click();
   };
   const applyFields = (fields: PassportFields, dataUrl: string) => {
-    setPreview(dataUrl);
-    setResult(fields);
-    if (LABELS.some(l => (fields[l.key] || '').trim())) onApply(fields);
+    const applied = minimalIdentity ? { name: fields.name, birthDate: fields.birthDate, series: '', number: '', issuedBy: '', address: '', trialLeft: fields.trialLeft } : fields;
+    setPreview(minimalIdentity ? null : dataUrl);
+    setResult(applied);
+    if (LABELS.some(l => (applied[l.key] || '').trim())) onApply(applied);
   };
 
   // Фото из галереи — 3–12 МБ: такой запрос сервер не принимал (413). Уменьшаем
@@ -91,7 +97,7 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
     setBusy(true);
     try {
       const dataUrl = await shrinkImage(file);
-      setPreview(dataUrl);
+      if (!minimalIdentity) setPreview(dataUrl);
       applyFields(await api.recognizePassport(dataUrl), dataUrl);
     } catch (err: any) {
       setError(err?.message || 'Не удалось распознать паспорт');
@@ -113,10 +119,17 @@ const PassportScan: React.FC<PassportScanProps> = ({ onApply, onUndo, className 
       <button
         type="button"
         disabled={busy}
+        aria-label={busy ? 'Распознаём паспорт' : 'Сканировать паспорт'}
+        aria-busy={busy}
+        title="Сканировать паспорт"
         onClick={startScan}
-        className="w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-bold disabled:opacity-60 active:scale-[0.98] transition-transform"
+        className={variant === 'icon'
+          ? 'absolute right-1 top-1 flex h-10 w-10 items-center justify-center rounded-lg text-indigo-600 hover:bg-indigo-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 disabled:opacity-60 active:scale-95 transition'
+          : 'w-full flex items-center justify-center gap-2 py-2.5 rounded-xl bg-indigo-50 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-300 text-sm font-bold disabled:opacity-60 active:scale-[0.98] transition-transform'}
       >
-        {busy ? 'Распознаём…' : '📷 Сканировать паспорт'}
+        {variant === 'icon'
+          ? busy ? <Loader2 size={21} className="animate-spin" aria-hidden="true" /> : <ScanLine size={22} aria-hidden="true" />
+          : busy ? 'Распознаём…' : '📷 Сканировать паспорт'}
       </button>
       {cameraOpen && (
         <PassportCamera

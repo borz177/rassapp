@@ -1,3 +1,4 @@
+const {CUSTOMER_IDENTITY_INPUT,normalizeCustomerInput}=require('./customerInput');
 // MCP-сервер: помощник разговаривает с FinUchet набором инструментов.
 //
 // Зачем он, если есть REST API. Помощнику нужен не список адресов, а перечень
@@ -16,6 +17,31 @@ const SERVER_INFO = { name: 'finuchet', title: 'FinUchet', version: '1.0.0' };
 // Инструмент: как называется, что делает, какие принимает поля и во что
 // превращается. `path` собирает адрес нашего API, `scope` — требуемое право.
 const TOOLS = [
+  {
+    name: 'owner_investment', title: 'Личные вложения владельца', scope: 'read',
+    description: 'Сколько Я вложил своих денег, чистое вложение, сколько вернул из капитала. Готовые итоги за всё время: стартовый баланс и личные пополнения минус возвраты себе из инвестиций. Исключены инвесторы, пулы и партнёры. Это не прибыль и не наличные. Бери totals и обязательно сообщи о uncertainty, если есть. Не ищи владельца в списке инвесторов. Для вложений конкретного инвестора используй его данные, не этот отчёт.',
+    input: { accountId: { type: 'string', description: 'Необязательно: id личного счёта. Без него — все личные счета.' } },
+    request: args => ({ method: 'GET', path: `/reports/owner-investment?${query(args)}` }),
+  },
+  {
+    name: 'app_help', title: 'Справка о приложении', scope: 'read',
+    description: 'Проверенные возможности и действия в приложении. Используй для вопросов о чёрном списке, выдаче доступа инвестору, оплате подписки и возможностях агента. Это справка, не проверка прав пользователя и не доступ к реестру.',
+    input: { topic: { type: 'string', enum: ['watchlist','investor_access','subscription','agent'] } }, required: ['topic'],
+    request: args => ({ method: 'GET', path: `/help/agent?${query(args)}` }),
+  },
+  {
+    name:'accounting_audit',title:'Проверка учёта',scope:'read',
+    description:'Полный анализ записей учёта: договоры, закупы, оплаты, скидки, графики, выплаты и счета. Сервер возвращает итог и карточку отчёта. Подтверждённые несоответствия, вопросы для уточнения и особенности учёта разделены. Проверка ничего не исправляет.',
+    input:{accountIds:{type:'array',items:{type:'string'},maxItems:200,description:'Только указанные доступные счета; не задано — все счета.'}},
+    request:args=>({method:'GET',path:`/reports/accounting-audit?${query(args)}`}),
+  },
+  {
+    name:'accounting_audit_findings',title:'Записи для проверки',scope:'read',
+    description:'Подробности готовой сверки: причины, записанные суммы и ссылки на исходные записи. Для следующих страниц используй offset. Находки могут пересекаться: не складывай их в общую потерю. stale=true — учёт изменился, нужна новая сверка.',
+    input:{reportId:{type:'string'},offset:{type:'integer',minimum:0},limit:{type:'integer',minimum:1,maximum:30},severity:{type:'string',enum:['confirmed','review','information']}},required:['reportId'],
+    request:({reportId,...args})=>({method:'GET',path:`/reports/accounting-audit/${encodeURIComponent(reportId)}?${query({...args,limit:args.limit || 10})}`}),
+  },
+
   {
     name: 'overdue_contracts',
     title: 'Просроченные договоры',
@@ -222,15 +248,16 @@ const TOOLS = [
   {
     name: 'create_customer',
     title: 'Завести клиента',
-    description: 'Создать карточку клиента.',
+    description: 'Создать карточку клиента. Передай все известные паспортные данные, дату рождения и адрес отдельными полями. С фото переписывай точно; отсутствующие и нечитаемые данные не выдумывай.',
     scope: 'write',
     input: {
       name: { type: 'string', description: 'Имя клиента' },
       phone: { type: 'string', description: 'Телефон' },
-      address: { type: 'string' }, notes: { type: 'string' },
+      address: { type: 'string', description: 'Адрес регистрации' }, notes: { type: 'string' },
+      email: { type: 'string' }, ...CUSTOMER_IDENTITY_INPUT,
     },
     required: ['name', 'phone'],
-    request: args => ({ method: 'POST', path: '/customers', body: args }),
+    request: args => ({ method: 'POST', path: '/customers', body: normalizeCustomerInput(args) }),
   },
   {
     name: 'create_expense',

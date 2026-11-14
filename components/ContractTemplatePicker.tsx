@@ -100,6 +100,7 @@ const ContractTemplatePicker: React.FC<ContractTemplatePickerProps> = ({
       setBlankError("PDF собрать не удалось — открыли бланк для печати");
       openPrintPreview(buildContractHtml(value, data), {
         title: "Бланк договора",
+        preparePdf: () => contractPdfBlob(value, data, "Бланк договора"),
       });
     } finally {
       setBlankBusy(false);

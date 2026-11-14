@@ -1,4 +1,6 @@
 import React, { useState } from 'react';
+import AccountingAuditCard from './AccountingAuditCard';
+import type {AuditSummary} from '../src/accountingAudit';
 import { CalendarClock, Check, Download, FileSpreadsheet, FileText, MessageCircle, Receipt, RotateCcw, Send, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
 
 /**
@@ -15,6 +17,7 @@ import { CalendarClock, Check, Download, FileSpreadsheet, FileText, MessageCircl
 export type SendState = 'busy' | 'done' | 'error';
 
 export type AIAction =
+  | { id: string; kind: 'accounting_audit'; title: string; report: AuditSummary }
   | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
   | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number; always?: boolean; checkPhone?: string;
       /** Сумма прочитана с фото чека — сверить */
@@ -57,6 +60,9 @@ const errLine = 'mt-2 text-sm font-semibold text-rose-600 dark:text-rose-400';
 const mutedLine = 'mt-2 text-sm text-slate-500';
 
 interface Props {
+  onAuditExplain?: (id: string) => void;
+  onAuditRefresh?: (ids: string[] | null) => Promise<void>;
+  onAuditOpenContract?: (id: string, customerId?: string) => void | Promise<void>;
   action: AIAction;
   /** Договор: счёт, с которого он оформится (агент не назвал — основной, как в форме) */
   accountName?: string;
@@ -125,6 +131,8 @@ const AIActionCard: React.FC<Props> = (p) => {
   const { action: a } = p;
   // «Отменить» договор — со вторым нажатием: удаляется целый договор
   const [askDelete, setAskDelete] = useState(false);
+
+  if (a.kind === 'accounting_audit') return <AccountingAuditCard report={a.report} disabled={p.sending} onExplain={p.onAuditExplain || (()=>{})} onRefresh={p.onAuditRefresh || (async()=>{})} onOpenContract={p.onAuditOpenContract || (()=>{})}/>;
 
   if (a.kind === 'choices') {
     return (

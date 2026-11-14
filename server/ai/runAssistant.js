@@ -2,7 +2,7 @@
 const createAssistantRunner = ({ pool, assistant, state, subscriptionState, month, conversations = null }) => {
 const execute = async ({
   userId, text = '', history = [], image = null, images = null, audio = null, mode = 'confirm',
-  signal, onStep, onStream, silent = false, channel = 'app', allowWrites = true, verifiedState,
+  signal, onStep, onStream, auditReportId = null, silent = false, channel = 'app', allowWrites = true, verifiedState,
 }) => {
   const st = verifiedState || await state(userId);
   const reject = (status, message, code) => { throw Object.assign(new Error(message), { status, code }); };
@@ -12,12 +12,19 @@ const execute = async ({
   const me = (await pool.query('SELECT id, name, role, blocked FROM users WHERE id = $1', [userId])).rows[0];
   if (!me || me.blocked) reject(403, 'Аккаунт недоступен.');
   const settings = (await pool.query("SELECT data FROM data_items WHERE user_id = $1 AND type = 'settings' LIMIT 1", [userId])).rows[0]?.data;
+  let auditContext = null;
+  if (auditReportId) {
+    const {accounts, ...report} = await require('./accountingAudit').createAccountingAudits(pool).page(userId,auditReportId,{limit:10});
+    auditContext = report;
+    if(auditContext.stale) reject(409,'Учёт изменился. Обновите проверку перед объяснением.','AUDIT_STALE');
+  }
   const alice = channel === 'alice';
   const out = await assistant.reply({
-    user: me, text: String(text).slice(0, 4000), history: Array.isArray(history) ? history : [],
-    image: alice ? null : image, images: alice ? null : images, audio: alice ? null : audio,
+    user: me, text: String(text).slice(0, 4000), history: !auditContext && Array.isArray(history) ? history : [],
+    image: alice || auditContext ? null : image, images: alice || auditContext ? null : images, audio: alice || auditContext ? null : audio,
     mode: alice ? 'confirm' : mode === 'auto' ? 'auto' : 'confirm',
     channel, preferences: st.settings.preferences || '', autoLimit: st.settings.autoLimit, companyName: settings?.companyName || '',
+    analysisOnly: !!auditContext, auditContext,
     readOnly: !allowWrites || (me.role !== 'admin' && !!(await subscriptionState(userId)).expired),
     signal, onStep, onStream, silent,
   });

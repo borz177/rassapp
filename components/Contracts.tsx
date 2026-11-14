@@ -6,7 +6,7 @@ import { useSheetDrag } from '../src/sheetDrag';
 import { friendlyError } from '../src/friendlyError';
 import { Sale, Customer, Account, User, AppSettings, Task, Payment } from '../types';
 import { ICONS } from '../constants';
-import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, User as UserIcon } from 'lucide-react';
+import { Phone, Search, Wallet, MoreVertical, FileText, Calendar, Edit3, Printer, Trash2, X, UserX, User as UserIcon } from 'lucide-react';
 import { contractNumbers, formatCurrency, formatDate, calculateSaleOverdue, normalizePhoneForWhatsApp, pluralRu } from '../src/utils';
 import { allPhones } from '../src/customerPhones';
 import { saleTouchesAccount } from '../src/funding';
@@ -20,6 +20,10 @@ import { api } from '../services/api';
 import GlassSheet, { SheetSection, SheetChoice, sheetInputClass } from './GlassSheet';
 import { FilterChip, ChipGroup } from './FilterChips';
 import ShareDebtorsSheet, { type DebtorRow } from './ShareDebtorsSheet';
+import ShareContractSheet from './ShareContractSheet';
+import WatchlistQuickAddSheet from './WatchlistQuickAddSheet';
+import { useWatchlistSubmitAccess } from '../src/hooks/useWatchlistSubmitAccess';
+import { getSellerPhone } from '../src/utils';
 import { contractMetrics, AGING, daysWord, type AgingBucket, type ContractMetrics } from '../src/contractMetrics';
 import { expectedPaymentsInPeriod } from '../src/utils';
 
@@ -482,6 +486,9 @@ const Contracts: React.FC<ContractsProps> = ({
   user, employees = [], appSettings, contractTemplatesAllowed = true, onCreateTask
 }) => {
   const isEmployee = user?.role === 'employee';
+  const watchlistAllowed = useWatchlistSubmitAccess(user);
+  const [watchlistCustomerId, setWatchlistCustomerId] = useState<string | null>(null);
+  useEffect(() => { if (!watchlistAllowed) setWatchlistCustomerId(null); }, [watchlistAllowed, user?.id]);
   const [searchTerm, setSearchTerm] = useState('');
   const [filters, setFilters] = useState<ContractFilters>(EMPTY_FILTERS);
   const setF = <K extends keyof ContractFilters>(k: K, v: ContractFilters[K]) => setFilters(f => ({ ...f, [k]: v }));
@@ -529,7 +536,7 @@ const [riskAcknowledged, setRiskAcknowledged] = useState(false);
 
   // Номера считаем по всему списку, а не по отфильтрованному: у пятидесятого
   // договора номер 0050 и в архиве, и в поиске по одному клиенту.
-  const contractNo = useMemo(() => contractNumbers(sales), [sales]);
+  const contractNo = useMemo(() => contractNumbers(sales, customers), [sales, customers]);
 
   // Показатели каждого договора — один раз на набор данных (src/contractMetrics.ts)
   const metrics = useMemo(() => {
@@ -886,7 +893,7 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
         color: 'text-slate-500 dark:text-slate-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
         run: () => printContract(sale),
       },
-      // Один договор текстом: ФИО, дата рождения, договор, просрочка — в WhatsApp или куда угодно
+      // Один договор — условия рассрочки с выбором полей и предпросмотром сообщения
       {
         key: 'share', label: 'Поделиться', icon: (
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden><path d="M4 12v7a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-7" /><path d="m16 6-4-4-4 4" /><path d="M12 2v13" /></svg>
@@ -895,6 +902,11 @@ const handleActionClick = (e: React.MouseEvent, sale: Sale) => {
         run: () => setShareSale(sale),
       },
       // Задача по договору: для просроченных подсказываем текст сразу
+      ...(watchlistAllowed && !readOnly && customer && !customer.id.startsWith('system_') ? [{
+        key: 'watchlist', label: 'В чёрный список', icon: <UserX size={18} />,
+        color: 'text-slate-500 dark:text-slate-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
+        run: () => setWatchlistCustomerId(customer.id),
+      }] : []),
       ...(onCreateTask ? [{
         key: 'task', label: 'Создать задачу', icon: ICONS.Tasks,
         color: 'text-emerald-500 dark:text-emerald-400', hover: 'hover:bg-slate-50 dark:hover:bg-slate-700',
@@ -1209,12 +1221,12 @@ useEffect(() => {
             <div className="text-4xl mb-2">📄</div>
             <p className="text-slate-400 dark:text-slate-500 text-sm">Ничего не найдено</p>
           </div>
-        ) : visibleContracts.map((sale, index) => {
+        ) : visibleContracts.map((sale) => {
           const customer = customerById.get(sale.customerId);
           const overdueSum = metrics.get(sale.id)?.overdue ?? calculateSaleOverdue(sale);
           const isOverdue = activeTab === 'OVERDUE' || overdueSum > 0;
           const isCompleted = sale.status === 'COMPLETED' || sale.remainingAmount === 0;
-          const displayNumber = filteredList.length - index;
+          const displayNumber = contractNo[sale.id] || '—';
 
           return (
             <SwipeRow
@@ -1245,7 +1257,7 @@ useEffect(() => {
             >
               <div className="flex items-start justify-between mb-2.5">
                 <div className="flex items-center gap-2">
-                  <span className="w-5.5 h-5.5 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-[10px] shadow-sm shrink-0">
+                  <span className="min-w-[34px] h-5.5 px-1 bg-gradient-to-br from-blue-500 to-indigo-500 rounded-lg flex items-center justify-center text-white font-bold text-[10px] shadow-sm shrink-0">
                     {displayNumber}
                   </span>
                   <span className={`px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide rounded-md ${
@@ -1508,12 +1520,13 @@ useEffect(() => {
       {shareSale && (() => {
         const c = customers.find(x => x.id === shareSale.customerId);
         const mm = metrics.get(shareSale.id) || contractMetrics(shareSale);
-        const row: DebtorRow = {
-          name: c?.name || 'Без имени', birthDate: c?.birthDate, phone: c?.phone, product: shareSale.productName,
-          days: mm.overdueDays, amount: mm.overdue, missed: mm.missed,
-          contractNo: contractNo[shareSale.id] || '', startDate: shareSale.startDate, remaining: mm.remaining,
-        };
-        return <ShareDebtorsSheet rows={[row]} showCents={appSettings?.showCents} onClose={() => setShareSale(null)} />;
+        const creator = employees.find(e => e.id === shareSale.createdByUserId);
+        const managerPhone = normalizePhoneForWhatsApp(creator?.phone)
+          ? creator?.phone
+          : getSellerPhone(user?.role === 'investor' ? null : user, appSettings);
+        return <ShareContractSheet data={{sale:shareSale,contractNo:contractNo[shareSale.id] || '',customer:c,
+          remaining:mm.remaining,overdue:mm.overdue,managerPhone}} userId={user?.id}
+          showCents={appSettings?.showCents} onClose={() => setShareSale(null)} />;
       })()}
 
       {/* Модалка удаления */}
@@ -1646,6 +1659,7 @@ useEffect(() => {
 )}
 
       {/* Модалка информации */}
+      {watchlistCustomerId && user && watchlistAllowed && <WatchlistQuickAddSheet userId={user.id} customerId={watchlistCustomerId} onClose={() => setWatchlistCustomerId(null)} />}
       {selectedSaleForInfo && (
         <ContractInfoModal
           // 🔒 Берём свежую запись из sales по id, а не сохранённый в state снимок —

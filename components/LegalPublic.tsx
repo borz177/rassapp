@@ -1,5 +1,5 @@
 import React from 'react';
-import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } from './LegalDocs';
+import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, ClientWatchlistTerms, PublicOffer } from './LegalDocs';
 
 /**
  * Правовые документы по постоянным адресам: /privacy, /offer и другим.
@@ -10,7 +10,7 @@ import { PrivacyPolicy, DataProcessingAgreement, ClientDataTerms, PublicOffer } 
  * второй текст завести нельзя, разойдутся.
  */
 
-export type PublicLegalDoc = 'PRIVACY' | 'OFFER' | 'AGREEMENT' | 'CLIENT_DATA';
+export type PublicLegalDoc = 'PRIVACY' | 'OFFER' | 'AGREEMENT' | 'CLIENT_DATA' | 'WATCHLIST';
 
 /** Адрес → документ. По этому же списку строится маршрутизация в App.tsx. */
 export const PUBLIC_LEGAL_ROUTES: Record<string, PublicLegalDoc> = {
@@ -18,6 +18,7 @@ export const PUBLIC_LEGAL_ROUTES: Record<string, PublicLegalDoc> = {
   '/offer': 'OFFER',
   '/agreement': 'AGREEMENT',
   '/client-data': 'CLIENT_DATA',
+  '/watchlist-rules': 'WATCHLIST',
 };
 
 const LegalPublic: React.FC<{ doc: PublicLegalDoc }> = ({ doc }) => {
@@ -26,6 +27,7 @@ const LegalPublic: React.FC<{ doc: PublicLegalDoc }> = ({ doc }) => {
     case 'OFFER': return <PublicOffer onBack={onBack} />;
     case 'AGREEMENT': return <DataProcessingAgreement onBack={onBack} />;
     case 'CLIENT_DATA': return <ClientDataTerms onBack={onBack} />;
+    case 'WATCHLIST': return <ClientWatchlistTerms onBack={onBack} />;
     default: return <PrivacyPolicy onBack={onBack} />;
   }
 };

@@ -4,6 +4,7 @@ const KIND_LABELS = {
   stop: 'Пользователь остановил ответ',
   honesty_fix: 'Проверка обещанного действия',
   tool_error: 'Ошибка выполнения',
+  request_error: 'Запрос не завершён',
   model_fallback: 'Переход на запасную модель',
   empty_reply: 'Модель вернула пустой ответ',
   tool_rounds_exhausted: 'Достигнут предел шагов',

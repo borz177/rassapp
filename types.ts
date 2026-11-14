@@ -36,6 +36,7 @@ export interface UserPermissions {
 }
 
 export interface WhatsAppTemplates {
+  threeDays?: string; // За 3 дня; необязательно для старых настроек
   upcoming: string; // За N дней
   today: string;    // В день оплаты
   overdue: string;  // При просрочке
@@ -53,7 +54,7 @@ export interface WhatsAppSettings {
   idInstance: string;
   apiTokenInstance: string;
   reminderTime: string; // "09:00"
-  // Array of offsets: 0 = due date, -1 = 1 day before, 1 = 1 day after
+  // -3 = за 3 дня, -1 = за день, 0 = в день оплаты, 1 = при просрочке
   reminderDays: number[];
   templates?: WhatsAppTemplates; // New field for custom templates
   botEnabled?: boolean;
@@ -1028,6 +1029,7 @@ export type ViewState =
   | 'RETAIL_SALE'
   | 'CASH_REGISTER'
   | 'CUSTOMERS'
+  | 'CLIENT_WATCHLIST'
   | 'CUSTOMER_DETAILS'
   | 'MANAGE_PRODUCTS'
   | 'MORE'

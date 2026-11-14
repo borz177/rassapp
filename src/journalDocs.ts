@@ -90,7 +90,7 @@ export const buildJournalDocs = ({
   // Отгрузка по договору носит номер самого договора, а не свой собственный:
   // это одна и та же бумага, и два разных номера на неё сбивали бы с толку —
   // в списке договоров пятидесятый, а в журнале первый.
-  const contractNo = contracts.length > 0 ? contractNumbers(contracts) : {};
+  const contractNo = contracts.length > 0 ? contractNumbers(contracts, customers) : {};
 
   const list: JournalDoc[] = [];
 

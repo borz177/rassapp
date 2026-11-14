@@ -51,6 +51,16 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
   };
 
   const tenant = req => req.apiAuth.userId;
+  const accountingAudits = require('../ai/accountingAudit').createAccountingAudits(pool);
+  const auditRoute = fn => route(async(req,res) => {try {await fn(req,res);} catch(e) {if(e.status)return fail(res,e.status,e.status===403?CODES.FORBIDDEN:e.status===404?CODES.NOT_FOUND:CODES.VALIDATION,e.message);throw e;}});
+  router.get('/reports/accounting-audit',requireScope('read'),auditRoute(async(req,res)=>{
+    if(req.query.accountIds!==undefined && typeof req.query.accountIds!=='string')return fail(res,400,CODES.VALIDATION,'Выберите счета.');
+    const report=await accountingAudits.create(tenant(req),req.query.accountIds===undefined?null:req.query.accountIds.split(','));
+    ok(res,accountingAudits.compact(report));
+  }));
+  router.get('/reports/accounting-audit/:id',requireScope('read'),auditRoute(async(req,res)=>ok(res,await accountingAudits.page(tenant(req),req.params.id,require('../ai/accountingAuditRoutes').pageOptions(req.query)))));
+  router.get('/reports/accounting-audit/:id/source',requireScope('read'),auditRoute(async(req,res)=>ok(res,await accountingAudits.source(tenant(req),req.params.id,req.query.kind,req.query.id,req.query.contractId))));
+
 
   // ── что отдаём наружу ────────────────────────────────────────────────────
   const num = v => (Number.isFinite(Number(v)) ? Math.round(Number(v) * 100) / 100 : 0);
@@ -887,6 +897,24 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
           .reduce((sum, [, v]) => sum + v, 0)),
       },
     });
+  }));
+
+  router.get('/reports/owner-investment', requireScope('read'), route(async (req, res) => {
+    if (Object.keys(req.query).some(k => k !== 'accountId') || (req.query.accountId != null && (typeof req.query.accountId !== 'string' || !req.query.accountId.trim()))) {
+      return fail(res, 400, CODES.VALIDATION, 'Доступен расчёт за всё время; необязательный параметр — accountId.');
+    }
+    // Один снимок данных владельца: пополнение/возврат не попадут между чтениями.
+    const { rows } = await pool.query("SELECT type,data FROM data_items WHERE user_id=$1 AND type=ANY($2::text[])", [tenant(req), ['accounts','sales','expenses']]);
+    const items = type => rows.filter(r => r.type === type).map(r => r.data);
+    const report = await require('../ai/ownerInvestment').ownerInvestment({ accounts: items('accounts'), sales: items('sales'), expenses: items('expenses'), accountId: req.query.accountId || null });
+    if (report.error) return fail(res, report.status, report.status === 404 ? CODES.NOT_FOUND : CODES.VALIDATION, report.error);
+    ok(res, report);
+  }));
+
+  router.get('/help/agent', requireScope('read'), route(async (req,res) => {
+    const help = require('../ai/appHelp').appHelp(req.query.topic);
+    if (!help) return fail(res,400,CODES.VALIDATION,'topic: watchlist, investor_access, subscription или agent.');
+    ok(res,help);
   }));
 
   // ── прогноз поступлений ──────────────────────────────────────────────────

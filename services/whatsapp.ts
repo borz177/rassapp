@@ -144,6 +144,9 @@ export const sendWhatsAppFile = async (
 // --- TEMPLATE PROCESSING ---
 
 const DEFAULT_TEMPLATES = {
+    threeDays: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Через *3 дня*, *{дата}* — день оплаты.\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}`,
+    upcoming: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 *Завтра*, *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}`,
+
     today: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • К оплате: *{сумма} ₽*\n\n{долг_блок}\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``,
     overdue: `🔔 *Напоминание об оплате*\n\n*{имя}!*\n\n📅 Сегодня *{дата}* — день оплаты!\n\n🔸 *{товар}*\n   • Ежемесячный платёж: *{сумма} ₽*\n   • Задолженность: *{долг} ₽* ({месяцы} мес.)\n\n💰 *ИТОГО К ОПЛАТЕ: {итого} ₽*\n\n\`И будьте верны своим обещаниям, ибо за обещания вас призовут к ответу. Quran(17:34)\``
 };
@@ -212,8 +215,9 @@ export const processDailyReminders = async (
 
             // 🔑 ТОЧНАЯ ЛОГИКА:
             let shouldSend = false;
-            if (diffDays === 0 && settings.reminderDays.includes(0)) shouldSend = true;      // сегодня
-            else if (diffDays === -1 && settings.reminderDays.includes(-1)) shouldSend = true; // за 1 день
+            if (diffDays === 3 && settings.reminderDays.includes(-3)) shouldSend = true;
+            else if (diffDays === 0 && settings.reminderDays.includes(0)) shouldSend = true;      // сегодня
+            else if (diffDays === 1 && settings.reminderDays.includes(-1)) shouldSend = true; // за 1 день
             else if (diffDays < 0 && settings.reminderDays.includes(1)) shouldSend = true;     // просрочка
 
             if (!shouldSend) continue;
@@ -252,9 +256,9 @@ export const processDailyReminders = async (
 
             // Выбор шаблона
             let rawMessage = templates.today;
-            if (isOverdue) {
-                rawMessage = templates.overdue || templates.today;
-            }
+            if (diffDays === 3) rawMessage = templates.threeDays;
+            else if (diffDays === 1) rawMessage = templates.upcoming;
+            else if (isOverdue) rawMessage = templates.overdue || templates.today;
 
             let message = formatTemplate(rawMessage, templateData);
 

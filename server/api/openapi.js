@@ -305,6 +305,31 @@ const Summary = {
   },
 };
 
+// Отчёт проверки содержит снимок результатов, а источник — текущую запись.
+const AuditSourceRef = { type: 'object', properties: {
+  kind: str('Вид записи'), id: str('Идентификатор'), label: str('Подпись кнопки'), contractId: str('Договор платежа'),
+} };
+const AuditSummary = { type: 'object', properties: {
+  id: str('Идентификатор отчёта'), calculatedAt: { type: 'string', format: 'date-time' }, summary: str('Итог'), stale: { type: 'boolean' },
+  scope: { type: 'object', properties: { accountIds: { type: ['array', 'null'], items: { type: 'string' } }, label: str('Область проверки'), includesArchived: { type: 'boolean' } } },
+  counts: { type: 'object', properties: Object.fromEntries(['confirmed', 'review', 'information', 'affectedRecords'].map(k => [k, { type: 'integer' }])) },
+  checked: { type: 'object', properties: Object.fromEntries(['accounts', 'contracts', 'payments', 'expenses', 'stockDocuments'].map(k => [k, { type: 'integer' }])) },
+} };
+const AuditFinding = { type: 'object', properties: {
+  id: str('Стабильный идентификатор находки'), code: str('Код проверки'), title: str('Причина'), explanation: str('Основание'), nextStep: str('Что проверить'),
+  severity: { type: 'string', enum: ['confirmed', 'review', 'information'] }, customer: str('Клиент'), product: str('Товар'), accountName: str('Счёт'),
+  facts: { type: 'array', items: { type: 'object', properties: { label: str('Что сравнивается'), value: { type: ['number', 'string'] }, format: { type: 'string', enum: ['money', 'text'] } } } },
+  sources: { type: 'array', items: AuditSourceRef }, difference: money('Разница только в пределах этого сравнения; находки могут пересекаться'),
+} };
+const AuditReport = { type: 'object', properties: { ...AuditSummary.properties,
+  findings: { type: 'array', items: AuditFinding }, findingsTotal: { type: 'integer' }, offset: { type: 'integer' }, hasMore: { type: 'boolean' },
+  limitations: { type: 'array', items: { type: 'string' } }, financialDataChanged: { type: 'boolean', const: false },
+} };
+const AuditSource = { type: 'object', properties: {
+  kind: str('Вид записи'), id: str('Идентификатор'), contractId: str('Договор'), customerId: str('Клиент'), title: str('Название'), customer: str('Имя клиента'),
+  accountName: str('Счёт'), amount: money('Текущая сумма'), date: str('Дата'), category: str('Категория'), discountAmount: money('Скидка'), remainingAmount: money('Текущий долг'), stale: { type: 'boolean' },
+} };
+
 const listMeta = {
   type: 'object',
   properties: {
@@ -515,6 +540,48 @@ const openApiSpec = {
       parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } }],
       get: { tags: ['Инвесторы'], summary: 'Инвестор по идентификатору', responses: { 200: { description: 'Инвестор', content: { 'application/json': { schema: itemOf('Investor') } } }, ...errorResponses } },
     },
+    '/reports/accounting-audit': {
+      get: { tags: ['Отчёты'], summary: 'Проверка учёта без модели и финансовых изменений',
+        description: 'Сохранённый снимок записей. Повтор при тех же данных использует кеш. Находки могут пересекаться.',
+        parameters: [{ name: 'accountIds', in: 'query', schema: { type: 'string' }, description: 'ID счетов через запятую; без параметра — все, включая архивные.' }],
+        responses: { 200: { description: 'Итог проверки', content: { 'application/json': { schema: itemOf('AuditSummary') } } }, ...errorResponses },
+      },
+    },
+    '/reports/accounting-audit/{id}': {
+      get: { tags: ['Отчёты'], summary: 'Причины и источники сохранённой проверки',
+        description: 'Страница находок. stale=true означает, что данные изменились. Разрешено только чтение.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          ...['offset', 'limit', 'severity', 'kind'].map(name => ({ name, in: 'query', schema: { type: ['offset', 'limit'].includes(name) ? 'integer' : 'string' } }))],
+        responses: { 200: { description: 'Отчёт с находками', content: { 'application/json': { schema: itemOf('AuditReport') } } }, ...errorResponses },
+      },
+    },
+    '/reports/accounting-audit/{id}/source': {
+      get: { tags: ['Отчёты'], summary: 'Текущая исходная запись проверки',
+        description: 'Только запись владельца, указанная в отчёте. Паспорт, телефон и адрес исключены. Для платежа передайте contractId. Удалённая запись — 404.',
+        parameters: [{ name: 'id', in: 'path', required: true, schema: { type: 'string' } },
+          ...['kind', 'id', 'contractId'].map(name => ({ name, in: 'query', required: name !== 'contractId', schema: { type: 'string' } }))],
+        responses: { 200: { description: 'Текущая запись', content: { 'application/json': { schema: itemOf('AuditSource') } } }, ...errorResponses },
+      },
+    },
+    '/reports/owner-investment': {
+      get: {
+        tags: ['Отчёты'], summary: 'Личные вложения владельца за всё время',
+        description: 'Стартовый баланс + личные пополнения − возврат капитала. Исключает чужие и совместные средства. uncertainty — старые выплаты без источника и пополнения без счёта. totals.net — разность; totals.left — сумма неотрицательных остатков по счетам, как в интерфейсе.',
+        parameters: [{ name: 'accountId', in: 'query', schema: { type: 'string' } }],
+        responses: { 200: { description: 'Итоги, счета и ограничения расчёта', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object', properties: {
+          scope: { const: 'owner' }, period: { const: 'all_time' },
+          totals: { type: 'object', properties: Object.fromEntries(['initial','deposits','invested','returned','left','net'].map(k => [k,{type:'number'}])) },
+          accounts: { type: 'array', items: { type: 'object' } }, excludedAccounts: { type: 'integer' }, uncertainty: { type: 'object' }, basis: { type: 'string' },
+        } } } } } } }, ...errorResponses },
+      },
+    },
+    '/help/agent': {
+      get: {
+        tags: ['Отчёты'], summary: 'Справка о возможностях приложения',
+        parameters: [{ name: 'topic', in: 'query', required: true, schema: { type: 'string', enum: ['watchlist','investor_access','subscription','agent'] } }],
+        responses: { 200: { description: 'Проверенные инструкции без данных клиентов', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object', properties: { topic: {type:'string'}, text: {type:'string'}, written: {const:false} } } } } } } }, ...errorResponses },
+      },
+    },
     '/reports/summary': {
       get: {
         tags: ['Отчёты'], summary: 'Сводка: договоры, деньги, долги',
@@ -583,7 +650,7 @@ const openApiSpec = {
     securitySchemes: {
       bearerAuth: { type: 'http', scheme: 'bearer', description: 'API-ключ вида sk_live_…, выдаётся в настройках приложения' },
     },
-    schemas: { Error, Customer, Contract, ScheduleRow, Payment, Expense, Account, Product, Investor, Me, PaymentResult, Income, Warehouse, RetailSale, Summary },
+    schemas: { AuditSummary, AuditReport, AuditSource, Error, Customer, Contract, ScheduleRow, Payment, Expense, Account, Product, Investor, Me, PaymentResult, Income, Warehouse, RetailSale, Summary },
   },
 };
 
@@ -618,6 +685,11 @@ const OPERATION_IDS = {
   'get /retail-sales': 'listRetailSales',
   'get /investors': 'listInvestors',
   'get /investors/{id}': 'getInvestor',
+  'get /reports/accounting-audit': 'accountingAudit',
+  'get /reports/accounting-audit/{id}': 'accountingAuditFindings',
+  'get /reports/accounting-audit/{id}/source': 'accountingAuditSource',
+  'get /reports/owner-investment': 'ownerInvestment',
+  'get /help/agent': 'agentHelp',
   'get /reports/summary': 'getSummary',
   'get /reports/forecast': 'getForecast',
   'get /reports/compare': 'comparePeriods',

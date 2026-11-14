@@ -7,6 +7,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "test:ai:offline": "node -r ./scripts/no-paid-ai.cjs -r ./server/node_modules/dotenv/config --test server/ai/*.test.js server/api/*.test.js server/contractTemplates/*.test.js dotenv_config_path=server/.env",
+    "test:watchlist": "node -r ./scripts/no-paid-ai.cjs -r ./server/node_modules/dotenv/config --test server/watchlist/*.test.js dotenv_config_path=server/.env",
     "preview": "vite preview",
     "build:web": "vite build",
     "start-electron": "electron .",

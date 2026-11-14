@@ -25,6 +25,8 @@ export interface PrintContractContext {
   user?: User | null;
   /** Вторая печатная форма доступна со «Стандарта» */
   contractTemplatesAllowed?: boolean;
+  /** Для повторной печати — текущий выбор. Сохранённый личный снимок всегда сохраняется. */
+  templateSource?: 'saved' | 'settings';
 }
 
 /**
@@ -33,9 +35,9 @@ export interface PrintContractContext {
  * внесённые платежи.
  */
 export const contractDocument = ({
-  sale, sales, customers, appSettings, user, contractTemplatesAllowed,
+  sale, sales, customers, appSettings, user, contractTemplatesAllowed, templateSource = 'saved',
 }: PrintContractContext): { template: ContractTemplateId; data: ContractData; number: string | undefined; customer: Customer | undefined } => {
-  const numbers = contractNumbers(sales || []);
+  const numbers = contractNumbers(sales || [], customers);
   const customer = customers.find(c => c.id === sale.customerId);
   const companyName = appSettings?.companyName || "Компания";
   // То же правило, что при оформлении и приходе: один договор — один телефон продавца
@@ -44,13 +46,19 @@ export const contractDocument = ({
   // График — общий расчёт с чеком оплаты и печатью при оформлении (src/contractSchedule.ts):
   // сначала поступления, потом непокрытые месяцы, без пустых строк между оплатами.
   const scheduleRows = contractScheduleRows(sale);
-  const chosen = templateForSale(sale, appSettings, contractTemplatesAllowed !== false);
+  const allowed = contractTemplatesAllowed !== false;
+  // Встроенный бланк при ручной печати выбирают в настройках. Закреплённый id
+  // остаётся у исходного договора: меняется только печатная копия.
+  // Личный снимок — версия оформленного документа, подменять её нельзя.
+  const printSale = templateSource === 'settings' && appSettings?.contractTemplate && !sale.contractTemplateSnapshot
+    ? { ...sale, contractTemplateId: undefined } : sale;
+  const chosen = templateForSale(printSale, appSettings, allowed);
 
   // Обе печатные формы собираются в src/contractTemplates.ts — там же, откуда
   // печатает экран оформления. Иначе выбранный в настройках бланк применялся бы
   // только к одному из двух путей печати.
   return {
-    template: chosen.snapshot ? chosen.id : resolveContractTemplate(chosen.id, contractTemplatesAllowed),
+    template: chosen.snapshot ? chosen.id : resolveContractTemplate(chosen.id, allowed),
     number: numbers[sale.id],
     customer,
     data: {
@@ -86,15 +94,17 @@ export const contractDocument = ({
 };
 
 export const printContract = async (ctx: PrintContractContext) => {
-  const { template, data, number, customer } = contractDocument(ctx);
+  const { template, data, number, customer } = contractDocument({ ...ctx, templateSource: ctx.templateSource || 'settings' });
   const htmlContent = buildContractHtml(template, data);
+  const title = contractDocumentTitle({ number, customerName: customer?.name || ctx.sale.productName });
 
   // Просмотром поверх приложения, а не новым окном: в приложении с экрана «Домой»
   // и в APK у окна нет кнопки «назад», и выйти можно было только перезапуском.
   // withPrintButton больше не нужен: кнопку «Закрыть» и печать даёт просмотр,
   // а своя автопечать документа открыла бы диалог второй раз.
   openPrintPreview(htmlContent, {
-    title: contractDocumentTitle({ number, customerName: customer?.name || ctx.sale.productName }),
+    title,
+    preparePdf: () => contractPdfBlob(template, data, title),
   });
 };
 

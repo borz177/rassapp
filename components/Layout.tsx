@@ -11,6 +11,7 @@ import { ViewState, Sale, AppSettings, Customer, User, Investor, SubscriptionPla
 import { ICONS, APP_NAME, THEMES } from '../constants';
 import { calculateSaleOverdue, timeAgoRu } from '../src/utils';
 import { scrollFrontToTop } from '../src/scrollToTop';
+import { watchlistUiVisible } from '../src/watchlist';
 
 interface LayoutProps {
   children: React.ReactNode;
@@ -155,7 +156,7 @@ const Layout: React.FC<LayoutProps> = ({
     if (currentView === 'CASH_REGISTER') return 'cash';
     if (currentView === 'CUSTOMERS' || currentView === 'CUSTOMER_DETAILS') return 'customers';
     if (['MORE', 'PROFILE', 'CONTRACTS', 'INVESTORS', 'EMPLOYEES', 'SETTINGS',
-         'SUPPLIERS', 'SUPPLIER_DETAILS', 'TARIFFS', 'ADMIN_PANEL', 'HELP'].includes(currentView)) return 'more';
+         'SUPPLIERS', 'SUPPLIER_DETAILS', 'TARIFFS', 'ADMIN_PANEL', 'CLIENT_WATCHLIST', 'HELP'].includes(currentView)) return 'more';
     return null;
   }, [currentView]);
 
@@ -609,6 +610,7 @@ const counts = useMemo(() => {
     },
     { id: 'REPORTS' as const, label: 'Отчеты', icon: ICONS.Dashboard, visible: !isInvestor && user?.role !== 'employee' },
     { id: 'CUSTOMERS' as const, label: 'Клиенты', icon: ICONS.Customers, visible: !isInvestor },
+    { id: 'CLIENT_WATCHLIST' as const, label: 'Чёрный список', icon: ICONS.ShieldAlert, visible: watchlistUiVisible(user) },
     // Инвесторы — дело менеджера: сотруднику этот раздел не нужен
     { id: 'INVESTORS' as const, label: 'Инвесторы', icon: ICONS.Users, visible: !isInvestor && user?.role !== 'employee' },
     { id: 'EMPLOYEES' as const, label: 'Сотрудники', icon: ICONS.Employees, visible: !isInvestor && (user?.role === 'admin' || (user?.role === 'manager' && showEmployees)) },
