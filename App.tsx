@@ -1314,7 +1314,11 @@ useEffect(() => {
   // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
   // прочитанное окно возвращалось снова и снова.
   const STORAGE_KEY = 'template_update_notice_last_shown_v45';
-  const SHOW_ANNOUNCEMENT = true; // false — перестать показывать, не удаляя анонс
+  const SHOW_ANNOUNCEMENT = false; // Включим после подготовки отдельного анонса ЧС с новым STORAGE_KEY.
+  if (!SHOW_ANNOUNCEMENT) {
+    setShowTemplateUpdateModal(false);
+    return;
+  }
   // Обновления учёта и документов показываем владельцу аккаунта.
   if (user.role !== 'manager' && user.role !== 'admin') return;
 
