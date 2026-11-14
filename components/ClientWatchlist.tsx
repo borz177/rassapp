@@ -73,6 +73,7 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
         {canAdd && <button className={`${wlButton} shrink-0 whitespace-nowrap`} onClick={() => { resetAdd(); setMineOpen(false); setSelected(null); setAdd(true); }}>+ Добавить</button>}
       </div>
     </div>
+    {status?.adminOnly && <p className="text-sm text-slate-500 dark:text-slate-400">Доступ администратора. Общий доступ выключен; новые записи сохраняются на проверку.</p>}
     <WatchlistError message={error} />
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">{notice}</p>}
     {loading ? <p className="py-10 text-center text-slate-500">Загружаем…</p> : !status ? <button className={wlSecondary} disabled={busy} onClick={() => run(read)}>Повторить</button> : <>

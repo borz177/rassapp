@@ -94,6 +94,36 @@ test('общий список: реальная локальная PostgreSQL, �
       const o = await adm('/overview'); assert.equal(o.settings.mode, 'off'); assert.equal(o.protection.encryptionReady, true);
       assert.ok(!JSON.stringify(o).includes(config.searchKey));
     });
+    await t.test('администратор входит без заявки; закрытый режим не открывает доступ участникам и не публикует записи', async () => {
+      const status = await req('admin','watchlist/status');
+      assert.equal(status.adminAccess,true);assert.equal(status.adminOnly,true);assert.equal(status.enabled,true);assert.equal(status.access.status,'granted');assert.equal(status.accepted,false);
+      await req('admin','watchlist/access-request',{});
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM client_watchlist_access WHERE user_id='admin'")).rows[0].n,0);
+      await req('admin','watchlist/search',{name:customer.name},403);
+      await req('admin','watchlist/accept',{accepted:true,version:POLICY_VERSION});
+      const found=await req('admin','watchlist/search',{name:customer.name});assert.deepEqual(found.items,[]);
+      await pool.query("INSERT INTO data_items(id,user_id,type,data) VALUES('admin_client','admin','customers',$1)",[JSON.stringify({id:'admin_client',name:'Административный Тестовый Клиент',birthDate:'1990-01-01'})]);
+      const p=await req('admin','watchlist/preview',{customerId:'admin_client'});
+      // Даже если старый флаг автопубликации включён, режим off/нет основания
+      // не должны превратить административную подготовку в общую публикацию.
+      await pool.query('UPDATE client_watchlist_settings SET auto_publish=true WHERE id=1');
+      const submitted=await req('admin','watchlist/entries',{customerId:p.customerId,fingerprint:p.fingerprint,reason:'overdue',confirmed:true});
+      assert.equal(submitted.status,'pending');assert.equal(submitted.publicationMode,undefined);
+      await adm(`/entries/${submitted.id}/decision`,{action:'publish',version:submitted.version,basisVerified:true,note:'Проверка запрета публикации'},403);
+      const normal=await user('/status');assert.equal(normal.adminAccess,false);assert.equal(normal.enabled,false);
+      await user('/search',{name:customer.name},403);
+      await req('admin','watchlist/preview',{customerId:'client'},404);
+      await pool.query("UPDATE users SET role='manager' WHERE id='admin'");
+      const downgraded=await req('admin','watchlist/status');assert.equal(downgraded.adminAccess,false);assert.equal(downgraded.access,null);
+      await req('admin','watchlist/search',{name:customer.name},403);
+      await pool.query("UPDATE users SET role='admin' WHERE id='admin'");
+      await pool.query("UPDATE users SET blocked=true WHERE id='admin'");await req('admin','watchlist/status',undefined,403);
+      await pool.query("UPDATE users SET blocked=false WHERE id='admin'");
+      await pool.query('DELETE FROM client_watchlist_entries WHERE id=$1',[submitted.id]);
+      await pool.query("DELETE FROM data_items WHERE id='admin_client'");
+      await pool.query('UPDATE client_watchlist_settings SET auto_publish=false WHERE id=1');
+      assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows,snapshot);
+    });
     await t.test('ручной допуск, версия правил, отдельное подтверждение основания', async () => {
       const a = (await adm('/access')).items[0]; assert.equal(a.userId, 'owner');
       await adm('/access/owner', { status: 'granted', canSearch: true, canSubmit: true, pilot: true, version: a.version, reason: 'Проверенный тестовый участник' });

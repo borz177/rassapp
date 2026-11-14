@@ -43,13 +43,19 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   async function access(db, user) {
     return (await db.query('SELECT * FROM client_watchlist_access WHERE user_id=$1 FOR SHARE', [user])).rows[0];
   }
-  async function permitted(db, user, action) {
+  async function permitted(db, req, action) {
     requireVault();
     revocations.read();
+    const user = req.user.id;
+    const admin = req.watchlistActor?.role === 'admin';
     const s = await settings(db), a = await access(db, user);
-    if (!a || a.status !== 'granted' || !a[action === 'search' ? 'can_search' : 'can_submit']) throw P.problem(403, 'Для этого действия нужен доступ администратора.');
-    if (s.mode === 'off' || (s.mode === 'pilot' && !a.pilot)) throw P.problem(403, 'Общий список пока не включён для вашего аккаунта.');
-    if (!s.legal_ready) throw P.problem(403, 'Общий список ожидает подтверждения правил публикации.');
+    // Администратор не подаёт заявку себе. Закрытый режим разрешает ему
+    // подготовку записей; публичный доступ и публикация остаются отдельными.
+    if (!admin) {
+      if (!a || a.status !== 'granted' || !a[action === 'search' ? 'can_search' : 'can_submit']) throw P.problem(403, 'Для этого действия нужен доступ администратора.');
+      if (s.mode === 'off' || (s.mode === 'pilot' && !a.pilot)) throw P.problem(403, 'Общий список пока не включён для вашего аккаунта.');
+      if (!s.legal_ready) throw P.problem(403, 'Общий список ожидает подтверждения правил публикации.');
+    }
     if (s[action === 'search' ? 'search_paused' : 'submissions_paused']) throw P.problem(403, action === 'search' ? 'Общий поиск временно приостановлен.' : 'Приём новых записей временно приостановлен.');
     const accepted = await db.query('SELECT 1 FROM client_watchlist_acceptances WHERE user_id=$1 AND version=$2', [user, P.POLICY_VERSION]);
     if (!accepted.rowCount) throw P.problem(403, 'Сначала ознакомьтесь с правилами раздела.');
@@ -121,7 +127,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       if (Date.now() - maintenanceAt > 60000) { await maintenance().catch(() => {}); maintenanceAt = Date.now(); }
       db = await pool.connect();
       await db.query('BEGIN');
-      await current(db, req, admin);
+      req.watchlistActor = await current(db, req, admin);
       if (admin && !unlocked) await session(db, req);
       const out = await fn(req, db);
       await db.query('COMMIT');
@@ -137,13 +143,16 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
 
   route('get', '/status', async (req, db) => {
     const s = await settings(db), a = await access(db, req.user.id);
+    const admin = req.watchlistActor.role === 'admin';
     const accepted = (await db.query('SELECT 1 FROM client_watchlist_acceptances WHERE user_id=$1 AND version=$2', [req.user.id, P.POLICY_VERSION])).rowCount > 0;
     let ledgerReady = false; try { revocations.read(); ledgerReady = true; } catch {}
-    return { policyVersion: P.POLICY_VERSION, accepted, access: a ? { status: a.status, canSearch: a.can_search, canSubmit: a.can_submit } : null,
-      enabled: !!vault && ledgerReady && s.legal_ready && s.mode !== 'off' && (s.mode !== 'pilot' || !!a?.pilot), autoPublish: s.auto_publish,
+    return { policyVersion: P.POLICY_VERSION, accepted, adminAccess: admin, adminOnly: admin && s.mode === 'off',
+      access: admin ? { status: 'granted', canSearch: true, canSubmit: true } : a ? { status: a.status, canSearch: a.can_search, canSubmit: a.can_submit } : null,
+      enabled: !!vault && ledgerReady && (admin || (s.legal_ready && s.mode !== 'off' && (s.mode !== 'pilot' || !!a?.pilot))), autoPublish: s.auto_publish && s.legal_ready && s.mode !== 'off',
       searchPaused: s.search_paused, submissionsPaused: s.submissions_paused };
   });
   route('post', '/access-request', async (req, db) => {
+    if (req.watchlistActor.role === 'admin') return { ok: true };
     await limit(req.user.id, 'access_request', 3, 86400);
     const r = await db.query(`INSERT INTO client_watchlist_access(user_id,status) VALUES($1,'requested')
       ON CONFLICT(user_id) DO NOTHING RETURNING user_id`, [req.user.id]);
@@ -151,13 +160,13 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   });
   route('post', '/accept', async (req, db) => {
     const a = await access(db, req.user.id);
-    if (a?.status !== 'granted') throw P.problem(403, 'Сначала дождитесь выдачи доступа.');
+    if (a?.status !== 'granted' && req.watchlistActor.role !== 'admin') throw P.problem(403, 'Сначала дождитесь выдачи доступа.');
     if (req.body?.version !== P.POLICY_VERSION || req.body?.accepted !== true) throw P.problem(400, 'Подтвердите действующие правила.');
     await db.query('INSERT INTO client_watchlist_acceptances(user_id,version) VALUES($1,$2) ON CONFLICT DO NOTHING', [req.user.id, P.POLICY_VERSION]);
     await event(db, req.user.id, 'RULES_ACCEPTED', P.POLICY_VERSION);
   });
   route('post', '/search', async (req, db) => {
-    const s = await permitted(db, req.user.id, 'search');
+    const s = await permitted(db, req, 'search');
     await limit(req.user.id, 'search', s.search_limit);
     const name = P.normalizeName(req.body?.name), year = P.birthYear(req.body?.birthYear);
     const match = year === null ? 'name_index=$1' : 'year_index=ANY($1::text[])';
@@ -179,11 +188,11 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     return { items: r.rows.slice(0, take).map(ownEntry), hasMore: r.rows.length > take };
   });
   route('post', '/preview', async (req, db) => {
-    await permitted(db, req.user.id, 'submit');
+    await permitted(db, req, 'submit');
     return source(db, req.user.id, req.body?.customerId);
   });
   route('post', '/entries', async (req, db) => {
-    const s = await permitted(db, req.user.id, 'submit');
+    const s = await permitted(db, req, 'submit');
     await limit(req.user.id, 'submit', 10, 86400);
     const b = req.body || {}, preview = await source(db, req.user.id, b.customerId);
     if (!same(preview.fingerprint, b.fingerprint)) throw P.problem(409, 'Данные клиента изменились. Выберите клиента повторно.');
@@ -194,7 +203,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const duplicate = await db.query('SELECT * FROM client_watchlist_entries WHERE owner_id=$1 AND customer_id=$2 AND status=ANY($3::text[])', [req.user.id, b.customerId, P.ACTIVE]);
     if (duplicate.rowCount) return ownEntry(duplicate.rows[0]);
     const review = (await db.query(`SELECT 1 FROM client_watchlist_entries WHERE owner_id=$1 AND customer_id=$2 AND review_required LIMIT 1`, [req.user.id, b.customerId])).rowCount > 0;
-    const autoPublish = s.auto_publish && !review;
+    const autoPublish = s.auto_publish && s.legal_ready && s.mode !== 'off' && !review;
     const entryId = id(), identity = { name: preview.name, birthYear: preview.birthYear };
     const data = { identity, ...reason, ...legacy, confirmationAt: new Date().toISOString(),
       ...(autoPublish ? { publication: { mode: 'auto', settingsVersion: s.version, at: new Date().toISOString() } } : {}) };
@@ -219,7 +228,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     await event(db, req.user.id, 'ENTRY_WITHDRAWN', r.id);
   });
   route('post', '/entries/:id/resubmit', async (req, db) => {
-    await permitted(db, req.user.id, 'submit');
+    await permitted(db, req, 'submit');
     await limit(req.user.id, 'submit', 10, 86400);
     const r = await entry(db, req.params.id, req.user.id), b = req.body || {};
     revision(r, b.version);

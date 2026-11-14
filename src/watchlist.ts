@@ -13,6 +13,7 @@ export const WATCHLIST_STATUS: Record<string, string> = {
 export const WATCHLIST_REASONS: Record<string, string> = { overdue: 'Длительная просрочка', unfulfilled: 'Неисполнение обязательств', other: 'Другая причина' };
 export const WATCHLIST_BASES: Record<string, string> = { subject_consent: 'Отдельное согласие клиента', other_lawful_basis: 'Иное законное основание' };
 export interface WatchlistStatus {
+  adminAccess?: boolean; adminOnly?: boolean;
   policyVersion: string; accepted: boolean; enabled: boolean; searchPaused: boolean; submissionsPaused: boolean; autoPublish?: boolean;
   access: null | { status: string; canSearch: boolean; canSubmit: boolean };
 }
