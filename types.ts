@@ -711,6 +711,13 @@ export interface CustomContractTemplate {
 }
 
 export interface Sale {
+  /** Режим переноса закупа. Не меняет деньги; помогает сверке отличить
+   * договор без истории расходов от несохранившегося закупа. */
+  importInfo?: {
+    source: 'EXCEL' | 'FINPAY';
+    importedAt: string;
+    purchaseMode: 'WITH_EXPENSE' | 'WITHOUT_EXPENSE' | 'UNKNOWN';
+  };
   /** Печатная форма закрепляется при оформлении; личная версия сохраняется целиком. */
   contractTemplateId?: 'MODERN' | 'CLASSIC' | `CUSTOM:${string}`;
   contractTemplateSnapshot?: CustomContractTemplate;

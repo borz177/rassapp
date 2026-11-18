@@ -177,7 +177,7 @@ export default function AccountingAuditCard({
           role="status"
           className="rounded-xl p-3 text-xs text-amber-800 bg-amber-50 dark:bg-amber-500/10 dark:text-amber-300"
         >
-          Учёт изменился. Это результат прошлой проверки — обновите его перед объяснением ИИ.
+          Проверка устарела. Обновите её перед объяснением ИИ.
         </p>
       )}
       <div className="flex flex-wrap gap-1.5" aria-label="Вид проверки">

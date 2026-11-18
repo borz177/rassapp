@@ -1,7 +1,7 @@
 const { test } = require('node:test'),
   assert = require('node:assert/strict'),
   crypto = require('node:crypto');
-const { buildAccountingAudit, createAccountingAudits } = require('./accountingAudit');
+const { buildAccountingAudit, createAccountingAudits, VERSION } = require('./accountingAudit');
 const domain = require('../api/domain');
 const base = () => ({
   accounts: [
@@ -105,6 +105,93 @@ test('одинаковые оплаты — подозрение, а начал�
   assert.equal(r.counts.confirmed, 0);
   delete d.sales[0].supplierId;
   assert((await run(d)).findings.some((f) => f.code === 'missing_purchase' && f.severity === 'review'));
+});
+test('старый Excel-закуп распознаётся по точной связи, суммы и счета продолжают проверяться', async () => {
+  const d = base(), before = await run(d);
+  d.expenses[0].id = 'exp_s';
+  d.expenses[0].title = 'Название не используется для сопоставления';
+  d.sales[0].notes = 'Импорт из Excel';
+  const matched = await run(d);
+  assert.equal(matched.counts.review, 0);
+  assert(!matched.findings.some(f => f.code === 'missing_purchase'));
+  assert.deepEqual(matched.accounts, before.accounts, 'Распознавание связи не меняет баланс');
+  d.expenses[0].amount = 90000;
+  d.expenses[0].accountId = 'b';
+  const mismatch = await run(d);
+  assert(mismatch.findings.some(f => f.code === 'purchase_amount' && f.difference === -10000));
+  assert(mismatch.findings.some(f => f.code === 'purchase_account' && f.severity === 'confirmed'));
+});
+test('импорт без расходов — особенность, ожидаемый несохранившийся закуп — вопрос для проверки', async () => {
+  const d = base(); d.expenses = [];
+  d.sales[0].importInfo = {source:'FINPAY', importedAt:'2026-11-14T00:00:00Z', purchaseMode:'WITHOUT_EXPENSE'};
+  const r = await run(d);
+  assert.equal(r.counts.review, 0); assert.equal(r.counts.confirmed, 0);
+  const info = r.findings.find(f => f.code === 'import_purchase_history');
+  assert.equal(info.severity, 'information');
+  assert.equal(info.title, 'Импорт без истории закупа');
+  assert.equal(info.sources[0].id, 's'); assert.equal(info.facts[0].value, 100000);
+  d.sales[0].importInfo.purchaseMode = 'WITH_EXPENSE';
+  const expected = await run(d);
+  assert(!expected.findings.some(f => f.code === 'import_purchase_history'));
+  assert(expected.findings.some(f => f.code === 'missing_purchase' && f.severity === 'review'));
+  assert.deepEqual(expected.accounts, r.accounts);
+});
+test('старый FinPay определяется по договору; один импортированный платёж и примечание не скрывают закуп', async () => {
+  const d = base(); d.expenses = [];
+  const native = d.sales[0];
+  native.notes = 'Импорт FinUchet, договор №123';
+  native.paymentPlan.at(-1).importedAt = '2026-11-14T00:00:00Z';
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'));
+  native.id = 'finpay_test';
+  native.paymentPlan = native.paymentPlan.map(p => ({...p,saleId:native.id}));
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'), 'Имя id и заметка без старого графика недостаточны');
+  native.paymentPlan[0].id = 'finpay_plan_test';
+  const legacy = await run(d);
+  const info = legacy.findings.find(f => f.code === 'import_purchase_history');
+  assert.equal(info.severity, 'information');
+  assert.match(info.explanation, /не сохранено/);
+  native.importInfo = {source:'FINPAY',purchaseMode:'WITH_EXPENSE'};
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'), 'Явный режим важнее предположения о старом импорте');
+  native.importInfo.purchaseMode = 'INVALID';
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'));
+  delete native.importInfo; delete native.paymentPlan;
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'), 'Отсутствующий график не подтверждает происхождение договора');
+});
+test('импорт не скрывает расхождения долга, суммы закупа, счёта и частей финансирования', async () => {
+  const d = base();
+  d.sales[0].importInfo = {source:'FINPAY',purchaseMode:'WITHOUT_EXPENSE'};
+  d.sales[0].remainingAmount = 12345;
+  d.sales[0].funding = [{accountId:'a',amount:60000},{accountId:'b',amount:40000}];
+  d.expenses = [{id:'linked',saleId:'s',accountId:'gone',category:'Себестоимость',amount:90000}];
+  const r = await run(d);
+  for (const code of ['debt_mismatch','purchase_account','purchase_amount','funding_purchase'])
+    assert(r.findings.some(f => f.code === code && f.severity === 'confirmed'),code);
+  assert(!r.findings.some(f => f.code === 'import_purchase_history'));
+});
+test('название, сумма и дата не заменяют связь; возврат и чужой явный saleId не становятся закупом', async () => {
+  const d = base();
+  d.expenses[0].id = 'unlinked'; d.expenses[0].title = 'Закуп: Телефон';
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'));
+  d.expenses[0].id = 'exp_s'; d.expenses[0].isRefund = true;
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'));
+  delete d.expenses[0].isRefund; d.expenses[0].saleId = 'another';
+  const explicit = await run(d);
+  assert(explicit.findings.some(f => f.code === 'missing_purchase'));
+  assert(explicit.findings.some(f => f.code === 'expense_contract'));
+  delete d.expenses[0].saleId; d.expenses[0].category = 'Прочее';
+  assert((await run(d)).findings.some(f => f.code === 'missing_purchase'));
+});
+test('неоднозначный старый id не привязывает чужой закуп, включая проверку одного счёта', async () => {
+  const d = base();
+  d.sales.push({...structuredClone(d.sales[0]),id:'sale_s',accountId:'b',paymentPlan:[]});
+  // Для s это новый формат, для sale_s — старый. Без saleId связь неизвестна.
+  const r = await run(d);
+  assert.equal(r.findings.filter(f => f.code === 'missing_purchase').length, 2);
+  const scoped = buildAccountingAudit(d,['a']);
+  assert(scoped.findings.some(f => f.code === 'missing_purchase'));
+  d.expenses[0].saleId = 's';
+  const explicit = await run(d);
+  assert(!explicit.findings.some(f => f.code === 'missing_purchase' && f.sources[0].id === 's'));
 });
 test('старые оплаты без флага сохраняют денежный смысл и не превращаются в ложный план', async () => {
   const d = base();
@@ -221,9 +308,18 @@ test(
         return r.json();
       };
       const prefix = '/api/ai/assistant/accounting-audit';
+      // Данные те же, но алгоритм старый: такой отчёт нельзя вернуть из кеша.
+      const audits = createAccountingAudits(pool); await audits.ready();
+      const oldId = crypto.randomUUID(), oldReport = {...buildAccountingAudit(d,['a']),version:VERSION-1};
+      const rows = (await pool.query('SELECT id,type,data FROM data_items ORDER BY id')).rows;
+      const hash = value => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
+      await pool.query('INSERT INTO ai_accounting_reports(id,user_id,scope_key,fingerprint,report) VALUES($1,$2,$3,$4,$5)',
+        [oldId,'owner',hash(['a']),hash([VERSION-1,rows.map(r=>[r.id,r.type,r.data])]),JSON.stringify(oldReport)]);
+      assert.equal((await call(`${prefix}/${oldId}`)).stale,true);
       const result = await call(prefix, { accountIds: ['a'], requestId: 'free-audit-0001' });
       assert.equal(result.modelUsed, false);
       const id = result.actions[0].report.id;
+      assert.notEqual(id,oldId,'Новая проверка пересчитывает старый результат при обновлении алгоритма');
       const again = await call(prefix, { accountIds: ['a'], requestId: 'free-audit-0001' });
       assert.equal(again.replayed, true);
       assert.equal((await conv.list('owner')).messages.length, 2);

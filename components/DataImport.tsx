@@ -389,6 +389,7 @@ if (!investor) {
 
                         const newSale: Sale = {
                             id: `sale_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`,
+                            importInfo: { source: 'EXCEL', importedAt: new Date().toISOString(), purchaseMode: 'WITH_EXPENSE' },
                             userId: 'import',
                             customerId: customer.id,
                             productId: '',
@@ -416,6 +417,7 @@ if (!investor) {
                         if (buyPrice > 0) {
                             const buyPriceExpense: Expense = {
                                 id: `exp_${newSale.id}`,
+                                saleId: newSale.id,
                                 userId: 'import',
                                 accountId: accountId,
                                 title: `Закуп: ${productName}`,

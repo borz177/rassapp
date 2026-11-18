@@ -167,6 +167,7 @@ test(
         assert.deepEqual(r.actions, []);
         assert(seen.every((b) => b.tools.every((t) => t.function.name === 'accounting_audit_findings')));
         assert(!JSON.stringify(seen[0].messages).includes('Секретная старая история'));
+        assert.match(JSON.stringify(seen[0].messages), /Импорт без истории закупа в information не называй ошибкой/);
         const toolTexts = seen
           .at(-1)
           .messages.filter((m) => m.role === 'tool')

@@ -30,6 +30,25 @@ export const dropExtraSlots = (sorted: Payment[], installments: number, totalDue
     return rows;
 };
 
+/** Старое восстановление могло добавить месяцы по новой средней сумме,
+ * сохранив другую сумму у прежних одинаковых строк. Исправляем только этот
+ * узнаваемый случай. Согласованные и произвольные графики, а также строки,
+ * которые сами несут реальные деньги старого формата, не пересчитываем. */
+const alignRebuiltAmounts = (rows: Payment[], installments: number, totalDue: number, discounts: number): Payment[] => {
+    if (rows.length !== installments || rows.some(p => p.isRealPayment !== false || !Number.isFinite(p.amount) || p.amount < 0)) return rows;
+    const rebuilt = rows.filter(isReconcileSlot);
+    const original = rows.filter(p => !isReconcileSlot(p));
+    if (!rebuilt.length || !original.length) return rows;
+    const sum = rows.reduce((n, p) => n + p.amount, 0);
+    if (Math.abs(sum - totalDue) <= 0.011 || Math.abs(sum - Math.max(0, totalDue - discounts)) <= 0.011) return rows;
+    const monthly = Math.round(totalDue / installments * 100) / 100;
+    if (original.some(p => Math.abs(p.amount - original[0].amount) > 0.011) ||
+        rebuilt.some(p => Math.abs(p.amount - monthly) > 0.011)) return rows;
+    const cents = Math.round(totalDue * 100);
+    const base = Math.floor(cents / installments);
+    return rows.map((p, i) => ({ ...p, amount: (i === rows.length - 1 ? cents - base * (installments - 1) : base) / 100 }));
+};
+
 // 🔒 Единая функция приведения графика платежей (paymentPlan) и remainingAmount к согласованному
 // виду. Раньше "остаток долга" и "график платежей" считались и обновлялись независимо друг от
 // друга в трёх разных местах (handleSaveSale, handleIncomeSubmit, handleUndoPayment) — при
@@ -166,6 +185,8 @@ export const reconcileSalePaymentPlan = (sale: Sale): Sale => {
             }];
         }
     }
+
+    scheduled = alignRebuiltAmounts(scheduled, installments, totalDue, totalDiscounts);
 
     // 🔹 Пересчитываем isPaid плановых слотов от факта реальных платежей (по датам, от раннего
     // к позднему) — не доверяем унаследованным флагам: они могут "зависнуть" в isPaid:true после

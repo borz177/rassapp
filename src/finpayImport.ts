@@ -281,6 +281,7 @@ export const buildFinpayRecords = (data: FinpayExport, opts: FinpayBuildOptions)
     const firstDue = slotRows[0]?.due_date || inst.installment_start_date || inst.signing_date;
     let sale: Sale = {
       id,
+      importInfo: { source: 'FINPAY', importedAt, purchaseMode: opts.withPurchaseExpenses ? 'WITH_EXPENSE' : 'WITHOUT_EXPENSE' },
       userId: opts.userId,
       createdByUserId: opts.userId,
       type: 'INSTALLMENT',
@@ -314,6 +315,7 @@ export const buildFinpayRecords = (data: FinpayExport, opts: FinpayBuildOptions)
       // Тот же id, что у расхода закупа при оформлении (handleSaveSale): удаление договора уберёт и его
       expenses.push({
         id: `exp_sale_${id}`,
+        saleId: id,
         userId: opts.userId,
         createdByUserId: opts.userId,
         accountId,

@@ -1,7 +1,7 @@
 // Детерминированная сверка. Модель и запись финансовых операций здесь не используются.
 const crypto = require('node:crypto');
 const domain = require('../api/domain');
-const VERSION = 1;
+const VERSION = 2;
 const TYPES = [
   'accounts',
   'sales',
@@ -21,6 +21,21 @@ const groupRows = (rows) =>
 const fail = (status, message) => {
   throw Object.assign(new Error(message), { status });
 };
+// Режим импорта относится к договору целиком. Импорт отдельного платежа
+// не доказывает, что закуп не должен был попасть в кассу.
+function importedPurchase(sale) {
+  const info = sale.importInfo;
+  if (info && ['EXCEL', 'FINPAY'].includes(info.source) &&
+    ['WITH_EXPENSE', 'WITHOUT_EXPENSE', 'UNKNOWN'].includes(info.purchaseMode)) return info;
+  if (info != null) return null;
+  // Старый импорт FinPay не сохранял выбранный режим закупа. Его можно
+  // опознать по нескольким признакам, но восстановить выбор пользователя нельзя.
+  if (String(sale.id).startsWith('finpay_') &&
+    String(sale.notes || '').startsWith('Импорт FinUchet, договор №') &&
+    Array.isArray(sale.paymentPlan) && sale.paymentPlan.some(p => String(p?.id || '').startsWith('finpay_plan_')))
+    return { source: 'FINPAY', purchaseMode: 'UNKNOWN' };
+  return null;
+}
 const scopeOf = (accounts, accountIds) => {
   if (
     accountIds != null &&
@@ -58,34 +73,43 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
     salesById = new Map(sales.map((s) => [s.id, s]));
   const all = !scope.accountIds,
     inScope = (s) => all || selected.has(s.accountId) || s.funding?.some((f) => selected.has(f.accountId));
-  const contracts = sales.filter(
+  const allContracts = sales.filter(
     (s) =>
       (s.type || 'INSTALLMENT') === 'INSTALLMENT' &&
       s.customerId &&
       !String(s.customerId).startsWith('system_') &&
-      !invById.has(s.customerId) &&
-      inScope(s)
+      !invById.has(s.customerId)
   );
+  const contracts = allContracts.filter(inScope);
   const contractIds = new Set(contracts.map((s) => s.id));
   const purchaseOwner = new Map(),
-    purchasesBySale = new Map();
-  for (const s of contracts) {
-    purchaseOwner.set(`exp_sale_${s.id}`, s.id);
-    for (const f of s.funding || []) purchaseOwner.set(`exp_sale_${s.id}__${f.accountId}`, s.id);
+    purchasesBySale = new Map(), linkedPurchases = new Set();
+  const purchaseKey = (key, saleId, legacy = false) => {
+    if (!purchaseOwner.has(key)) purchaseOwner.set(key, []);
+    purchaseOwner.get(key).push({ saleId, legacy });
+  };
+  for (const s of allContracts) {
+    purchaseKey(`exp_sale_${s.id}`, s.id);
+    purchaseKey(`exp_${s.id}`, s.id, true); // Excel-импорт до явной связи saleId.
+    for (const f of s.funding || []) purchaseKey(`exp_sale_${s.id}__${f.accountId}`, s.id);
   }
   for (const e of expenses) {
     if (e.isRefund === true) continue;
-    const id =
-      purchaseOwner.get(e.id) ||
-      (contractIds.has(e.saleId) && ['Закуп', 'Себестоимость'].includes(e.category) ? e.saleId : null);
-    if (id) {
+    const purchaseCategory = ['Закуп', 'Себестоимость'].includes(e.category);
+    // Явная ссылка важнее старого id. По одному названию, сумме или дате
+    // закуп не связываем; неоднозначный id тоже не подтверждает связь.
+    const candidates = [...new Set((purchaseOwner.get(e.id) || [])
+      .filter(link => !link.legacy || purchaseCategory).map(link => link.saleId))];
+    const id = e.saleId ? (purchaseCategory ? e.saleId : null) : candidates.length === 1 ? candidates[0] : null;
+    if (contractIds.has(id)) {
+      linkedPurchases.add(e.id);
       if (!purchasesBySale.has(id)) purchasesBySale.set(id, []);
       purchasesBySale.get(id).push(e);
     }
   }
 
   const relevantExpenses = expenses.filter(
-    (e) => all || selected.has(e.accountId) || contractIds.has(e.saleId) || purchaseOwner.has(e.id)
+    (e) => all || selected.has(e.accountId) || contractIds.has(e.saleId) || linkedPurchases.has(e.id)
   );
   const findings = [];
   const ref = (kind, id, label, contractId) => ({ kind, id, label, ...(contractId ? { contractId } : {}) });
@@ -269,14 +293,27 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
     );
     const purchases = purchasesBySale.get(s.id) || [];
     if (!purchases.length && num(s.buyPrice) > 0) {
+      const imported = importedPurchase(s);
+      const withoutHistory = imported && imported.purchaseMode !== 'WITH_EXPENSE';
       add(
-        external ? 'external_purchase' : 'missing_purchase',
-        external ? 'information' : 'review',
-        external ? 'Закуп учитывается через склад или поставщика' : 'Источник закупа требует уточнения',
+        external ? 'external_purchase' : withoutHistory ? 'import_purchase_history' : 'missing_purchase',
+        external || withoutHistory ? 'information' : 'review',
+        external ? 'Закуп учитывается через склад или поставщика' : withoutHistory ? 'Импорт без истории закупа' : 'Расход закупа не найден',
         external
           ? 'Для этого договора прямой расход закупа не обязателен. Проверьте связанные складские документы или расчёты с поставщиком.'
-          : 'Прямой связанный расход не найден. Это допустимо для начального договора или импорта; отсутствие записи не доказывает потерю денег.',
-        { sale: s, sources, facts: [fact('Закуп в договоре', num(s.buyPrice))] }
+          : withoutHistory
+          ? imported.purchaseMode === 'WITHOUT_EXPENSE'
+            ? 'Договор перенесён без расходов закупа. Само по себе это не ошибка.'
+            : 'Отдельного расхода нет. В старом импорте не сохранено, нужно ли было его переносить.'
+          : imported?.purchaseMode === 'WITH_EXPENSE'
+          ? 'Импорт предусматривал расход закупа, но связанная запись не найдена.'
+          : 'Закуп указан в договоре, но связанного расхода нет. Это не доказывает потерю денег.',
+        { sale: s, sources, facts: [fact('Закуп в договоре', num(s.buyPrice))],
+          nextStep: external ? 'Проверьте складские документы или расчёты с поставщиком.'
+            : withoutHistory ? imported.purchaseMode === 'WITHOUT_EXPENSE'
+              ? 'Добавлять расход только ради сверки не нужно.'
+              : 'Сверьте исходный учёт, если закуп должен входить в эту кассу.'
+            : 'Проверьте, как закуп был оплачен и сохранён ли расход.' }
       );
     }
     if (purchases.length && !external) {
@@ -538,7 +575,7 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
     findings,
     limitations: [
       'Проверены записи приложения; наличные и банковские выписки вне приложения не сверялись.',
-      'Похожие платежи, импорт и отсутствие источника закупа требуют уточнения.',
+      'Импорт без истории закупа — особенность учёта. Похожие платежи и неизвестный источник закупа требуют проверки.',
       'Суммы разных находок могут пересекаться и не складываются в общую потерю.',
     ],
     financialDataChanged: false,
