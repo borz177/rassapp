@@ -11,7 +11,7 @@ app.whenReady().then(async () => {
     const js = code => win.webContents.executeJavaScript(code);
     const until = async code => { for (let i = 0; i < 240; i++) { if (await js(code)) return; await wait(60); } throw Error('Timeout: '+code); };
     const click = async label => { await js(`(()=>{const b=[...document.querySelectorAll('button')].find(e=>e.textContent.trim()===${JSON.stringify(label)}||e.getAttribute('aria-label')===${JSON.stringify(label)});if(!b||b.disabled)throw Error('Missing/disabled '+${JSON.stringify(label)});window.insideClick=true;b.click();window.insideClick=false;return true})()`);await wait(100); };
-    await win.loadURL('http://localhost:3000/index.html');await wait(600);
+    await win.loadURL(`http://localhost:${process.env.PRINT_TEST_PORT||'3000'}/index.html`);await wait(600);
     await js(`(async()=>{
       document.getElementById('root').style.display='none';window.mode='pwa';window.shareMode='ok';window.shareCalls=[];window.printCalls=0;window.preparations=0;
       const fetchOriginal=window.fetch.bind(window);window.fetch=(input,opts)=>{const u=new URL(typeof input==='string'?input:input.url,location.href);if(u.pathname.startsWith('/api/')||!['localhost','127.0.0.1'].includes(u.hostname))throw Error('External/API request forbidden');return fetchOriginal(input,opts)};

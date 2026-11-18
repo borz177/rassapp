@@ -9,19 +9,19 @@ app.whenReady().then(async()=>{
   let win;
   try{
     win=new BrowserWindow({show:false,width:1040,height:900,webPreferences:{backgroundThrottling:false}});
-    win.webContents.session.webRequest.onBeforeRequest((d,cb)=>{const u=new URL(d.url);cb({cancel:['http:','https:','ws:','wss:'].includes(u.protocol)&&(!['localhost','127.0.0.1'].includes(u.hostname)||u.port!=='3000'||u.pathname.startsWith('/api/'))});});
+    win.webContents.session.webRequest.onBeforeRequest((d,cb)=>{const u=new URL(d.url);cb({cancel:['http:','https:','ws:','wss:'].includes(u.protocol)&&(!['localhost','127.0.0.1'].includes(u.hostname)||u.port!==(process.env.PRINT_TEST_PORT||'3000')||u.pathname.startsWith('/api/'))});});
     win.webContents.on('console-message',(_e,_level,message)=>{if(/Error|error|Uncaught/.test(message))console.log(message.slice(0,500));});
     const js=s=>win.webContents.executeJavaScript(s);
     const until=async s=>{for(let i=0;i<160;i++){if(await js(s))return;await wait(50);}throw Error('Timeout: '+s);};
     const click=async(label,prefix=false)=>{await js(`(()=>{const b=[...document.querySelectorAll('button')].find(b=>b.getBoundingClientRect().width&&(${prefix?'b.textContent.trim().startsWith':'b.textContent.trim() ==='}(${JSON.stringify(label)})||b.getAttribute('aria-label')===${JSON.stringify(label)}));if(!b)throw Error('Missing '+${JSON.stringify(label)});b.click();return true})()`);await wait(100);};
-    await win.loadURL('http://localhost:3000/');console.log('Loaded local Vite');
+    await win.loadURL(`http://localhost:${process.env.PRINT_TEST_PORT||'3000'}/`);console.log('Loaded local Vite');
     await js(`(async()=>{
       const originalMatchMedia=window.matchMedia.bind(window);window.matchMedia=q=>q==='(pointer: fine)'?{matches:false,media:q,addListener(){},removeListener(){},addEventListener(){},removeEventListener(){},dispatchEvent(){return true}}:originalMatchMedia(q);
       const originalFetch=window.fetch.bind(window);window.writes=0;
       window.fetch=async(input,opts={})=>{const u=new URL(typeof input==='string'?input:input.url,location.href);
         if(u.pathname==='/api/watchlist/status')return new Response(JSON.stringify({enabled:false,accepted:false,access:null}),{headers:{'content-type':'application/json'}});
         if(u.pathname.startsWith('/api/')){if(opts.method&&opts.method!=='GET')writes++;throw Error('API blocked')}
-        if(!['localhost','127.0.0.1'].includes(u.hostname)||u.port!=='3000')throw Error('External calls blocked');return originalFetch(input,opts);
+        if(!['localhost','127.0.0.1'].includes(u.hostname)||u.port!==${JSON.stringify(process.env.PRINT_TEST_PORT||'3000')})throw Error('External calls blocked');return originalFetch(input,opts);
       };
       const R=await import('/node_modules/.vite/deps/react.js'),D=await import('/node_modules/.vite/deps/react-dom_client.js');window.React=R.default||R;window.h=React.createElement;
       document.getElementById('root').style.display='none';const host=document.createElement('div');host.id='print-template-test';document.body.appendChild(host);window.root=(D.createRoot||D.default.createRoot)(host);

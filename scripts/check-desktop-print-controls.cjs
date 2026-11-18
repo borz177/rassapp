@@ -16,7 +16,7 @@ app.whenReady().then(async()=>{
       win.show();win.focus();await wait(80);
       win.webContents.sendInputEvent({type:'mouseMove',...point});win.webContents.sendInputEvent({type:'mouseDown',...point,button:'left',clickCount:1});win.webContents.sendInputEvent({type:'mouseUp',...point,button:'left',clickCount:1});await wait(100);
     };
-    await win.loadURL('http://localhost:3000/index.html');await wait(600);
+    await win.loadURL(`http://localhost:${process.env.PRINT_TEST_PORT||'3000'}/index.html`);await wait(600);
     await js(`(async()=>{
       document.getElementById('root').style.display='none';
       const fetchOriginal=window.fetch.bind(window);window.fetch=(input,opts)=>{const u=new URL(typeof input==='string'?input:input.url,location.href);if(u.pathname.startsWith('/api/')||!['localhost','127.0.0.1'].includes(u.hostname))throw Error('External/API request forbidden');return fetchOriginal(input,opts)};

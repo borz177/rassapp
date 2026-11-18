@@ -3,7 +3,8 @@ import { createRoot } from 'react-dom/client';
 import { Loader2, Printer, X } from 'lucide-react';
 import { registerBackInterceptor } from './transitions/PagePush';
 import { isIOSStandalonePrint } from '../src/printEnvironment';
-import { pdfFileName } from '../src/contractPdf';
+import { pdfFileName, saveContractPdf } from '../src/contractPdf';
+import {isAndroidNativePrint,printAndroidPdf} from '../src/androidPrint';
 
 interface PrintPreviewProps {
   html: string;
@@ -30,7 +31,8 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, pdfUrl, title, autoPr
   const printedRef = useRef(false);
   const [ready, setReady] = useState(false);
   const [printError, setPrintError] = useState('');
-  const systemPdf = isIOSStandalonePrint() && !!preparePdf;
+  const androidPrint=isAndroidNativePrint();
+  const systemPdf = (isIOSStandalonePrint() || androidPrint) && !!preparePdf;
   const [prepared, setPrepared] = useState<{ file: File; url: string } | null>(null);
   const [preparing, setPreparing] = useState(systemPdf), [sharing, setSharing] = useState(false), [retry, setRetry] = useState(0);
   const shareLock = useRef(false), alive = useRef(true);
@@ -100,6 +102,10 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, pdfUrl, title, autoPr
       if (!prepared || shareLock.current) return;
       shareLock.current = true; setSharing(true); setPrintError('');
       try {
+        if(androidPrint){
+          await printAndroidPdf(prepared.file,title);
+          return;
+        }
         if (!navigator.share || !navigator.canShare?.({ files: [prepared.file] })) {
           setPrintError('Сохраните PDF и откройте его для печати.');
           return;
@@ -107,13 +113,16 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, pdfUrl, title, autoPr
         await navigator.share({ files: [prepared.file] });
       } catch (e: any) {
         // Отмена системного меню — не ошибка и не повод автоматически скачивать.
-        if (e?.name !== 'AbortError' && alive.current) setPrintError('Не удалось открыть меню печати. Повторите или сохраните PDF.');
+        if (e?.name !== 'AbortError' && e?.code!=='CANCELLED' && alive.current) setPrintError(e?.code==='PRINT_UPDATE_REQUIRED'
+          ? 'Обновите приложение для системной печати. Сейчас можно сохранить PDF и напечатать его отдельно.'
+          : 'Не удалось открыть меню печати. Повторите или сохраните PDF.');
       } finally {
         shareLock.current = false;
         if (alive.current) setSharing(false);
       }
       return;
     }
+    if(androidPrint){setPrintError('Для этого документа откройте печать на сайте в браузере.');return;}
     const win = frameRef.current?.contentWindow as (Window & { __fitContractForPrint?: () => void }) | null;
     if (!win) return;
     // Договор подгоняет себя под лист перед печатью. На телефоне событие
@@ -143,10 +152,14 @@ const PrintPreview: React.FC<PrintPreviewProps> = ({ html, pdfUrl, title, autoPr
           {preparing || sharing ? <Loader2 size={18} className="animate-spin" aria-hidden="true" /> : <Printer size={18} />} {preparing ? 'Готовим…' : 'Печать'}
         </button>
       </div>
-      {systemPdf && !printError && <p role="status" className="px-4 py-2 text-sm bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300">{preparing ? 'Подготавливаем PDF…' : 'В системном меню выберите «Напечатать».'}</p>}
+      {systemPdf && !printError && <p role="status" className="px-4 py-2 text-sm bg-white text-slate-600 dark:bg-slate-900 dark:text-slate-300">{preparing ? 'Подготавливаем PDF…' : androidPrint ? 'Выберите принтер или «Сохранить как PDF» в системном окне.' : 'В системном меню выберите «Напечатать».'}</p>}
       {printError && <div role="alert" className="flex flex-wrap items-center gap-3 px-4 py-2 text-sm bg-white text-amber-700 dark:bg-slate-900 dark:text-amber-300"><p>{printError}</p>
         {systemPdf && !prepared && !preparing && <button type="button" className="font-semibold underline" onClick={() => setRetry(n => n + 1)}>Повторить</button>}
-        {prepared && <a href={prepared.url} download={prepared.file.name} className="font-semibold underline">Сохранить PDF</a>}
+        {prepared && (androidPrint ? <button type="button" disabled={sharing} className="font-semibold underline" onClick={async()=>{
+          if(shareLock.current)return;shareLock.current=true;setSharing(true);
+          try{await saveContractPdf(prepared.file,prepared.file.name);}catch{if(alive.current)setPrintError('Не удалось сохранить PDF. Попробуйте ещё раз.');}
+          finally{shareLock.current=false;if(alive.current)setSharing(false);}
+        }}>Сохранить PDF</button> : <a href={prepared.url} download={prepared.file.name} className="font-semibold underline">Сохранить PDF</a>)}
       </div>}
       <iframe
         ref={frameRef}
