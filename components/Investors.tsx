@@ -353,7 +353,7 @@ const Investors: React.FC<InvestorsProps> = ({
                             hint={editingId
                               ? 'С этой даты инвестор не получает долю будущей прибыли пула; история до неё сохранится. Пусто — ещё активен.'
                               : 'Пусто — инвестор ещё активен.'}>
-                  <SheetDateInput value={formLeftPoolDate} onChange={setFormLeftPoolDate} />
+                  <SheetDateInput value={formLeftPoolDate} onChange={setFormLeftPoolDate} clearable />
                 </SheetField>
               )}
             </SheetSection>

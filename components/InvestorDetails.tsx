@@ -1283,7 +1283,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               </SheetField>
               {isPoolMember && (
                 <SheetField label="Дата выхода из пула" hint="Пусто — инвестор ещё активен.">
-                  <SheetDateInput value={editLeftDate} onChange={v => { setEditLeftDate(v); setEditError(null); }} />
+                  <SheetDateInput value={editLeftDate} onChange={v => { setEditLeftDate(v); setEditError(null); }} clearable />
                 </SheetField>
               )}
             </SheetSection>

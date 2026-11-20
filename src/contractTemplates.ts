@@ -331,6 +331,8 @@ const classicBody = (d: ContractData): string => {
       ${orBlank(moneyOrNothing(d.totalAmount), '200px')}) руб., с учетом НДС</div>
     <div class="label-line">Предоплата составляет
       ${orBlank(moneyOrNothing(d.downPayment), '200px')}) руб., с учетом НДС</div>
+    <div class="label-line monthly-payment">Ежемесячный платёж:
+      <b>${orBlank(moneyOrNothing(d.monthlyPayment), '160px')}</b></div>
     <div class="clause indent">4.2. Расчеты производятся в кассу Продавца.</div>
 
     <table class="schedule">

@@ -88,12 +88,18 @@ export const sheetInputClass =
  * В фокусе подпись прячется, а разметка браузера «дд.мм.гггг» становится видна: на
  * компьютере выделенное «дд» иначе ложилось поверх «Не указана» кашей с синей плашкой.
  */
-export const SheetDateInput: React.FC<{ value: string; onChange: (value: string) => void; max?: string; min?: string; placeholder?: string }> = ({
-  value, onChange, max, min, placeholder = 'Не указана',
+export const SheetDateInput: React.FC<{ value: string; onChange: (value: string) => void; max?: string; min?: string; placeholder?: string; clearable?: boolean }> = ({
+  value, onChange, max, min, placeholder = 'Не указана', clearable = false,
 }) => (
   <span className="relative block">
-    <input className={`${sheetInputClass} peer h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${value ? '' : 'text-transparent focus:text-slate-900 dark:focus:text-white'}`}
+    <input className={`${sheetInputClass} peer h-7 appearance-none [&::-webkit-date-and-time-value]:text-left ${clearable && value ? 'pr-24' : ''} ${value ? '' : 'text-transparent focus:text-slate-900 dark:focus:text-white'}`}
            type="date" value={value} max={max} min={min} onChange={e => onChange(e.target.value)} />
+    {clearable && value && (
+      <button type="button" aria-label="Сбросить дату" onClick={e => { e.preventDefault(); onChange(''); }}
+              className="absolute -inset-y-1.5 right-0 px-2 text-[13px] font-medium text-indigo-600 dark:text-indigo-400 rounded-lg focus-visible:outline focus-visible:outline-2 focus-visible:outline-indigo-500 active:opacity-60">
+        Сбросить
+      </button>
+    )}
     {!value && (
       <span className="pointer-events-none absolute inset-0 flex items-center text-[16px] text-slate-300 dark:text-slate-600 peer-focus:hidden">{placeholder}</span>
     )}

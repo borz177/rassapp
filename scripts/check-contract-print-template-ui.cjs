@@ -37,6 +37,7 @@ app.whenReady().then(async()=>{
     console.log('Mounted picker');await until(`document.body.textContent.includes('Договор 2')`);await click('Договор 2',true);assert.equal(await js('settings.contractTemplate'),'CLASSIC');
     const print=async()=>{await click('К договорам');console.log('Contracts mounted');await until(`!!document.querySelector('button[aria-label="Меню"]')`);await click('Меню');await until(`document.body.textContent.includes('Печать договора')`);await click('Печать договора');console.log('Print clicked');await until(`!!document.querySelector('iframe[srcdoc]')?.contentDocument?.querySelector('h1')`);};
     console.log('Selected Classic');await print();console.log('Opened Classic print');assert(await js(`!!document.querySelector('iframe[srcdoc]').contentDocument.querySelector('.subtitle')`),'Печатная форма действительно классическая');
+    assert.equal(await js(`document.querySelector('iframe[srcdoc]').contentDocument.querySelector('.monthly-payment b').textContent.replace(/\\s/g,'')`),'6000₽');
     assert.equal(await js('sale.contractTemplateId'),'MODERN');assert.equal(await js('JSON.stringify(sale)===before'),true);
     fs.writeFileSync('/tmp/rassapp-contract-classic-print.png',(await win.webContents.capturePage()).toPNG());await click('Закрыть');await click('К настройкам');
     await click('Договор 1',true);assert.equal(await js('settings.contractTemplate'),'MODERN');await print();
