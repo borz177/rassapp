@@ -63,6 +63,7 @@ interface Props {
   onAuditExplain?: (id: string) => void;
   onAuditRefresh?: (ids: string[] | null) => Promise<void>;
   onAuditOpenContract?: (id: string, customerId?: string) => void | Promise<void>;
+  onAuditChanged?: () => void;
   action: AIAction;
   /** Договор: счёт, с которого он оформится (агент не назвал — основной, как в форме) */
   accountName?: string;
@@ -132,7 +133,7 @@ const AIActionCard: React.FC<Props> = (p) => {
   // «Отменить» договор — со вторым нажатием: удаляется целый договор
   const [askDelete, setAskDelete] = useState(false);
 
-  if (a.kind === 'accounting_audit') return <AccountingAuditCard report={a.report} disabled={p.sending} onExplain={p.onAuditExplain || (()=>{})} onRefresh={p.onAuditRefresh || (async()=>{})} onOpenContract={p.onAuditOpenContract || (()=>{})}/>;
+  if (a.kind === 'accounting_audit') return <AccountingAuditCard report={a.report} disabled={p.sending} onExplain={p.onAuditExplain || (()=>{})} onRefresh={p.onAuditRefresh || (async()=>{})} onOpenContract={p.onAuditOpenContract || (()=>{})} onDataChanged={p.onAuditChanged}/>;
 
   if (a.kind === 'choices') {
     return (

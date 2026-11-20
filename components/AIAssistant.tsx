@@ -1264,7 +1264,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   return (
     <div ref={rootRef} className="ai-chat-root flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
       {statementRows && <AIStatementPreview rows={statementRows} onClose={() => setStatementRows(null)} onPrepare={t => { setStatementRows(null); send({ text: t, forceConfirm: true }); }} />}
-      {journalOpen && <AIAgentJournal onClose={() => setJournalOpen(false)} />}
+      {journalOpen && <AIAgentJournal onClose={() => setJournalOpen(false)} onDataChanged={onDataChanged} />}
       {/* Шапка */}
       {/* В пустом чате шар один — большой посередине; маленький в шапке появляется вместе с перепиской */}
       <div className="flex items-center gap-3 pb-3 md:sticky md:top-0 md:z-20 md:pt-3 md:-mt-3 md:bg-slate-50/90 md:dark:bg-slate-900/90 md:backdrop-blur">
@@ -1362,6 +1362,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                   onAuditExplain={id => send({text:'Объясни эту проверку учёта: что нужно проверить первым и какие записи открыть?',auditReportId:id,forceConfirm:true})}
                   onAuditRefresh={ids => startAccountingAudit(ids, newId())}
                   onAuditOpenContract={onShowAuditContract || onShowContract}
+                  onAuditChanged={onDataChanged}
                   onChoose={i => { if (a.kind !== 'choices') return; patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: a.options[i].label, note: a.options[i].ref }); }}
                   onConfirm={() => confirm(m.id, a)}
                   onCancel={() => cancel(m.id, a)}

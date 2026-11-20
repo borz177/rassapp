@@ -67,3 +67,29 @@ test('печатная форма после исправления: месяц 
   assert.deepEqual(data.rows.filter(p=>p.paid>0).map(p=>p.remaining),[127000,107000,97000,77000,52000]);
   assert.deepEqual(data.rows.filter(p=>p.paid===0).map(p=>p.date),planned(s).filter(p=>!p.isPaid).map(p=>p.date));
 });
+
+const {repairRebuiltSchedule}=await import('../shared/saleSchedule.js');
+test('исправление из сверки меняет только суммы/отметки плана, сохраняет взнос, скидку и все оплаты',()=>{
+  for(const mode of ['normal','downpayment-discount','cents','fully-paid']){
+    const s=fixture();
+    if(mode==='downpayment-discount'){s.downPayment=12000;s.remainingAmount=35000;planned(s).at(-1).amount=22500;s.paymentPlan.at(-1).discountAmount=5000;}
+    if(mode==='cents'){s.totalAmount+=0.01;s.remainingAmount+=0.01;}
+    if(mode==='fully-paid'){s.paymentPlan.push({id:'last',amount:52000,date:'2026-11-18',isPaid:true,isRealPayment:true});s.remainingAmount=0;}
+    const before=structuredClone(s),r=repairRebuiltSchedule(s);assert(r,mode);assert.deepEqual(s,before);
+    assert.deepEqual(receipts(r),receipts(s));
+    const {paymentPlan:a,...old}=s,{paymentPlan:b,...updated}=r;assert.deepEqual(updated,old);
+    for(const p of planned(s)){const {amount,isPaid,...fields}=p;const {amount:next,isPaid:flag,...nextFields}=r.paymentPlan.find(x=>x.id===p.id);assert.deepEqual(nextFields,fields);}
+    assert.equal(Math.round(planned(r).reduce((n,p)=>n+p.amount,0)*100),Math.round((s.totalAmount-s.downPayment)*100));
+    assert.equal(repairRebuiltSchedule(r),null,'Исправление повторно не предлагается');
+    if(mode==='fully-paid')assert(planned(r).every(p=>p.isPaid));
+    if(mode==='downpayment-discount')assert.equal(planned(r).filter(p=>p.isPaid).length,4);
+  }
+});
+test('неоднозначные, повреждённые и ручные графики не получают автоматического исправления',()=>{
+  const cases=[s=>{s.paymentPlan[5].id='manual'},s=>{s.remainingAmount=1},s=>{s.paymentPlan[0].date='invalid'},
+    s=>{s.paymentPlan[0].id=s.paymentPlan[1].id},s=>{s.paymentPlan[0].amount=NaN},s=>{s.paymentPlan[6].discountAmount=-100},
+    s=>{s.paymentPlan[6].amount=-1},s=>{s.downPayment=-100},s=>{s.downPayment=s.totalAmount+1},s=>{s.totalAmount=Infinity},
+    s=>{delete s.paymentPlan[0].isRealPayment},s=>{s.paymentPlan[0]=null},s=>{s.paymentPlan[6].amount=200000;s.remainingAmount=0},
+    s=>{planned(s)[0].amount=25000},s=>{planned(s).forEach(p=>p.amount=24500)},s=>{s.type='RETAIL'}];
+  for(const mutate of cases){const s=fixture();mutate(s);assert.equal(repairRebuiltSchedule(s),null);}
+});

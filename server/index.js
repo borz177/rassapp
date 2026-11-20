@@ -4650,7 +4650,7 @@ app.post('/api/ai/assistant/consent', auth, async (req, res) => {
 
 const aiConversations = require('./ai/conversations').createConversations(pool);
 const aiClientActions = require('./ai/clientActions').createClientActions(pool);
-require('./ai/accountingAuditRoutes').registerAccountingAuditRoutes(app, { pool, auth, allowed: aiAgentAllowed, conversations: aiConversations });
+const accountingAudits=require('./ai/accountingAuditRoutes').registerAccountingAuditRoutes(app, { pool, auth, allowed: aiAgentAllowed, conversations: aiConversations });
 const runAssistantTurn = require('./ai/runAssistant').createAssistantRunner({
   conversations: aiConversations,
   pool, assistant: aiAssistant, state: aiAssistantState,
@@ -4706,8 +4706,8 @@ app.post('/api/ai/assistant/statement/preview', auth, async (req,res) => {
 app.get('/api/ai/assistant/journal', auth, async (req, res) => {
   try {
     res.setHeader('Cache-Control','no-store');
-    const [serverActions, clientActions] = await Promise.all([aiAssistant.actionStore.list(req.user.id), aiClientActions.list(req.user.id)]);
-    const actions = [...serverActions, ...clientActions.map(a => ({
+    const [serverActions, clientActions,auditActions] = await Promise.all([aiAssistant.actionStore.list(req.user.id), aiClientActions.list(req.user.id),accountingAudits.repairs.list(req.user.id)]);
+    const actions = [...serverActions,...auditActions, ...clientActions.map(a => ({
       id: a.id, status: a.status, result: a.result, created_at: a.created_at,
       source: 'application', summary: a.payload?.summary || ({ contract_form: 'Создание договора', send_doc: 'Отправка документа', delete_contract: 'Удаление договора', reschedule: 'Изменение графика' })[a.kind],
     }))].sort((a,b) => new Date(b.created_at) - new Date(a.created_at)).slice(0,100);

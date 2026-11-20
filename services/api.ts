@@ -16,6 +16,12 @@ import { isBundledApp, SERVER_ORIGIN } from '../src/platform';
 // отложенное сохранение этого инвестора — его. При отправке применяется только
 // разница (см. mergeInvestor в src/syncMerge.ts).
 const MERGED_COLLECTIONS = new Set(['investors']);
+const requireSyncedAccountingAudit = async () => {
+  const owner = sessionOwnerId();
+  const queue = await offlineStorage.getQueue();
+  if (queue.some(item => !item.ownerId || item.ownerId === owner))
+    throw new Error('Есть несинхронизированные изменения. Дождитесь синхронизации и повторите проверку.');
+};
 const serverKnown = new Map<string, any>();
 const knownKey = (collection: string, id: string) => `${collection}:${id}`;
 const rememberServer = (collection: string, item: any) => {
@@ -2168,16 +2174,29 @@ export const api = {
     aiAssistant: {
       accountingAudit: {
         create: async (body: AccountingAuditRequest): Promise<any> => {
-          const owner=sessionOwnerId();
-          const queue=await offlineStorage.getQueue();
-          if(queue.some(item=>!item.ownerId || item.ownerId===owner)) throw new Error('Есть несинхронизированные изменения. Дождитесь синхронизации и повторите проверку.');
+          await requireSyncedAccountingAudit();
           const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit`,{method:'POST',body:JSON.stringify(body),timeout:60000});
           const data=await res.json();if(!res.ok)throw new Error(data.msg || 'Проверка не выполнена.');return data;
         },
-        report: async (id:string, opts:{offset?:number;limit?:number;severity?:string;kind?:string}={}):Promise<AuditReport> => {
+        report: async (id:string, opts:{offset?:number;limit?:number;severity?:string;kind?:string;status?:string}={}):Promise<AuditReport> => {
           const query=new URLSearchParams(Object.entries(opts).filter(([,v])=>v!==undefined&&v!=='').map(([k,v])=>[k,String(v)]));
           const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit/${encodeURIComponent(id)}?${query}`,{timeout:60000});
           const data=await res.json();if(!res.ok)throw new Error(data.msg || 'Отчёт недоступен.');return data;
+        },
+        review: async (reportId:string,findingId:string,checked:boolean):Promise<void> => {
+          await requireSyncedAccountingAudit();
+          const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit/${encodeURIComponent(reportId)}/findings/${encodeURIComponent(findingId)}/review`,{method:'POST',body:JSON.stringify({checked})});
+          const data=await res.json();if(!res.ok)throw new Error(data.msg||'Отметка не сохранена.');
+        },
+        prepareRepair:async(reportId:string,findingId:string,requestId:string):Promise<import('../src/accountingAudit').AuditRepairPreview>=>{
+          await requireSyncedAccountingAudit();
+          const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit/${encodeURIComponent(reportId)}/findings/${encodeURIComponent(findingId)}/repair`,{method:'POST',body:JSON.stringify({requestId})});
+          const data=await res.json();if(!res.ok)throw new Error(data.msg||'Не удалось подготовить исправление.');return data;
+        },
+        repairAction:async(id:string,action:'confirm'|'undo'|'cancel'):Promise<{ok:boolean;text?:string;undoUntil?:string|null}>=>{
+          if(action!=='cancel')await requireSyncedAccountingAudit();
+          const res=await fetchWithAuth(`${API_URL}/ai/assistant/accounting-audit/repairs/${encodeURIComponent(id)}/${action}`,{method:'POST',body:JSON.stringify({confirmed:true})});
+          const data=await res.json();if(!res.ok)throw new Error(data.msg||'Действие не выполнено.');return data;
         },
         source: async (reportId:string, source:{kind:string;id:string;contractId?:string}):Promise<AuditSource> => {
           const query=new URLSearchParams(Object.entries(source).filter(([k,v])=>['kind','id','contractId'].includes(k)&&v!=null).map(([k,v])=>[k,String(v)]));

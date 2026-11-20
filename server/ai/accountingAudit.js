@@ -1,6 +1,7 @@
 // Детерминированная сверка. Модель и запись финансовых операций здесь не используются.
 const crypto = require('node:crypto');
 const domain = require('../api/domain');
+const {reviewFingerprint} = require('./auditReviewIdentity');
 const VERSION = 2;
 const TYPES = [
   'accounts',
@@ -589,7 +590,12 @@ function createAccountingAudits(pool) {
       .query(
         `CREATE TABLE IF NOT EXISTS ai_accounting_reports(
     id text PRIMARY KEY,user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,scope_key text NOT NULL,fingerprint text NOT NULL,report jsonb NOT NULL,created_at timestamptz NOT NULL DEFAULT NOW(),
-    UNIQUE(user_id,scope_key,fingerprint))`
+    UNIQUE(user_id,scope_key,fingerprint));
+    CREATE TABLE IF NOT EXISTS ai_accounting_reviews(
+      user_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      finding_id text NOT NULL, source_fingerprint text NOT NULL,
+      report_id text NOT NULL, checked_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY(user_id,finding_id))`
       )
       .catch((e) => {
         initialized = null;
@@ -603,6 +609,22 @@ function createAccountingAudits(pool) {
       )
     ).rows;
   const stamp = (rows) => hash([VERSION, rows.map((r) => [r.id, r.type, r.data])]);
+  const decorate = async (report, userId, rows) => {
+    const data=groupRows(rows),stale=!!report.stale;
+    const marks=(await pool.query('SELECT finding_id,source_fingerprint,checked_at FROM ai_accounting_reviews WHERE user_id=$1',[userId])).rows;
+    const byId=new Map(marks.map(m=>[m.finding_id,m]));
+    const salesById=new Map(data.sales.map(s=>[s.id,s]));
+    const {repairRebuiltSchedule}=await import(require('url').pathToFileURL(require('path').join(__dirname,'../../shared/saleSchedule.js')).href);
+    const findings=report.findings.map(f=>{
+      const mark=byId.get(f.id),sale=salesById.get(f.sources.find(ref=>ref.kind==='contract')?.id);
+      return {...f,reviewedAt:!stale&&f.severity!=='confirmed'&&mark&&mark.source_fingerprint===reviewFingerprint(f,data,VERSION)?mark.checked_at:null,
+        repairable:!stale&&f.code==='schedule_review'&&!!sale&&!!repairRebuiltSchedule(sale)};
+    });
+    const counts={...report.counts,reviewed:findings.filter(f=>f.reviewedAt).length};
+    for(const severity of ['confirmed','review','information'])counts[severity]=findings.filter(f=>f.severity===severity&&!f.reviewedAt).length;
+    const summary=counts.confirmed?`Найдены несоответствия: ${counts.confirmed}.`:counts.review?`Вопросов для уточнения: ${counts.review}.`:counts.reviewed?'Новых вопросов для проверки нет.':report.summary;
+    return {...report,findings,counts,summary};
+  };
   const create = async (userId, accountIds = null) => {
     await domain.ready;
     await ready();
@@ -617,7 +639,7 @@ function createAccountingAudits(pool) {
         [userId, key, fingerprint]
       )
     ).rows[0];
-    if (previous) return { ...previous.report, id: previous.id, stale: false, cached: true };
+    if (previous) return decorate({ ...previous.report, id: previous.id, stale: false, cached: true },userId,rows);
     const report = buildAccountingAudit(data, scope.accountIds),
       id = crypto.randomUUID();
     const saved = (
@@ -627,7 +649,7 @@ function createAccountingAudits(pool) {
         [id, userId, key, fingerprint, JSON.stringify(report)]
       )
     ).rows[0];
-    return { ...saved.report, id: saved.id, stale: false, cached: false };
+    return decorate({ ...saved.report, id: saved.id, stale: false, cached: false },userId,rows);
   };
   const stored = async (userId, id) => {
     await domain.ready;
@@ -643,7 +665,29 @@ function createAccountingAudits(pool) {
   };
   const get = async (userId, id) => {
     const row = await stored(userId, id);
-    return { ...row.report, id: row.id, stale: stamp(await load(userId)) !== row.fingerprint };
+    const rows=await load(userId);
+    return decorate({ ...row.report, id: row.id, stale: stamp(rows) !== row.fingerprint },userId,rows);
+  };
+  const review = async (userId, reportId, findingId, checked) => {
+    if(typeof checked!=='boolean')fail(400,'Проверьте действие.');
+    const storedReport=await stored(userId,reportId),rows=await load(userId);
+    if(stamp(rows)!==storedReport.fingerprint)fail(409,'Проверка устарела. Обновите её.');
+    const finding=storedReport.report.findings.find(f=>f.id===findingId);
+    if(!finding)fail(404,'Запись проверки недоступна.');
+    if(finding.severity==='confirmed')fail(409,'Подтверждённое несоответствие нужно исправить, отметка его не скрывает.');
+    if(checked)await pool.query(`INSERT INTO ai_accounting_reviews(user_id,finding_id,source_fingerprint,report_id) VALUES($1,$2,$3,$4)
+      ON CONFLICT(user_id,finding_id) DO UPDATE SET source_fingerprint=EXCLUDED.source_fingerprint,report_id=EXCLUDED.report_id,
+      checked_at=CASE WHEN ai_accounting_reviews.source_fingerprint=EXCLUDED.source_fingerprint THEN ai_accounting_reviews.checked_at ELSE now() END`,
+      [userId,finding.id,reviewFingerprint(finding,groupRows(rows),VERSION),reportId]);
+    else await pool.query('DELETE FROM ai_accounting_reviews WHERE user_id=$1 AND finding_id=$2',[userId,finding.id]);
+    return {ok:true,checked,financialDataChanged:false};
+  };
+  const findingInput = async (userId, reportId, findingId) => {
+    const row=await stored(userId,reportId),rows=await load(userId);
+    if(stamp(rows)!==row.fingerprint)fail(409,'Проверка устарела. Обновите её.');
+    const finding=row.report.findings.find(f=>f.id===findingId);
+    if(!finding)fail(404,'Запись проверки недоступна.');
+    return {finding,data:groupRows(rows)};
   };
   const source = async (userId, reportId, kind, id, contractId) => {
     const row = await stored(userId, reportId),
@@ -698,16 +742,18 @@ function createAccountingAudits(pool) {
       stale: stamp(rows) !== row.fingerprint,
     };
   };
-  const page = async (userId, id, { offset = 0, limit = 30, severity, kind } = {}) => {
+  const page = async (userId, id, { offset = 0, limit = 30, severity, kind, status = 'open' } = {}) => {
     if (!Number.isInteger(offset) || offset < 0 || !Number.isInteger(limit) || limit < 1 || limit > 100)
       fail(400, 'Некорректная страница отчёта.');
     if (severity && !['confirmed', 'review', 'information'].includes(severity))
       fail(400, 'Неизвестный вид проверки.');
     if (kind && !['contract', 'payment', 'expense', 'account', 'income'].includes(kind))
       fail(400, 'Неизвестный вид записи.');
+    if(!['open','reviewed','all'].includes(status))fail(400,'Неизвестная группа проверки.');
     const report = await get(userId, id),
       list = report.findings.filter(
-        (f) => (!severity || f.severity === severity) && (!kind || f.sources.some((s) => s.kind === kind))
+        (f) => (!severity || f.severity === severity) && (!kind || f.sources.some((s) => s.kind === kind)) &&
+          (status==='all'||(status==='reviewed'?!!f.reviewedAt:!f.reviewedAt))
       );
     return {
       ...report,
@@ -726,6 +772,6 @@ function createAccountingAudits(pool) {
     summary: report.summary,
     stale: report.stale,
   });
-  return { create, get, page, source, compact, ready };
+  return { create, get, page, source, compact, ready, review, findingInput };
 }
 module.exports = { buildAccountingAudit, createAccountingAudits, groupRows, scopeOf, VERSION };

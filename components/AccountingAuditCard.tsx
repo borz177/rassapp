@@ -9,6 +9,7 @@ import type {
   AuditSource,
   AuditSourceRef,
   AuditSummary,
+  AuditRepairPreview,
 } from '../src/accountingAudit';
 const money = (n: number) => `${n.toLocaleString('ru-RU', { maximumFractionDigits: 2 })} ₽`;
 const levels: { key: AuditSeverity; label: string; color: string }[] = [
@@ -23,12 +24,14 @@ export default function AccountingAuditCard({
   onExplain,
   onRefresh,
   onOpenContract,
+  onDataChanged,
   disabled = false,
 }: {
   report: AuditSummary;
   onExplain: (id: string) => void;
   onRefresh: (accountIds: string[] | null) => Promise<void>;
   onOpenContract: (id: string, customerId?: string) => void | Promise<void>;
+  onDataChanged?: () => void;
   disabled?: boolean;
 }) {
   const key = `finuchet_audit_view_${report.id}`;
@@ -49,6 +52,36 @@ export default function AccountingAuditCard({
     [source, setSource] = useState<AuditSource | null>(null),
     [sourceBusy, setSourceBusy] = useState<string | null>(null),
     [refreshing, setRefreshing] = useState(false);
+  const [reviewBusy,setReviewBusy]=useState<string|null>(null),[revision,setRevision]=useState(0);
+  const [repair,setRepair]=useState<AuditRepairPreview|null>(null),[repairBusy,setRepairBusy]=useState(false),[repairResult,setRepairResult]=useState('');
+  const repairLock=useRef(false);
+  const repairClosing=useRef(false);
+  const reviewLock=useRef(false);
+  const [clock,setClock]=useState(Date.now);
+  useEffect(()=>{
+    setClock(Date.now());
+    const deadline=repair?.status==='pending'?repair.expiresAt:repair?.undoUntil;
+    if(!deadline)return;
+    const delay=new Date(deadline).getTime()-Date.now();
+    if(delay<=0)return;
+    const timer=setTimeout(()=>setClock(Date.now()),Math.min(delay+10,2147483647));
+    return ()=>clearTimeout(timer);
+  },[repair]);
+  const closeRepair=()=>{
+    if(repairLock.current)return;
+    const closing=repair;
+    setRepair(null);
+    repairClosing.current=false;
+    if(closing?.status==='pending')void api.aiAssistant.accountingAudit.repairAction(closing.id,'cancel').catch(()=>{});
+  };
+  const repairOperation=async(fn:()=>Promise<void>)=>{
+    if(repairLock.current||repairClosing.current)return;repairLock.current=true;setRepairBusy(true);setError('');
+    try{await fn();}catch(e){if(mounted.current)setError(friendlyError(e));}finally{repairLock.current=false;if(mounted.current)setRepairBusy(false);}
+  };
+  const notifyDataChanged=async()=>{
+    try{await onDataChanged?.();}
+    catch{if(mounted.current)setError('Изменение сохранено. Обновите данные приложения.');}
+  };
   const generation = useRef(0),
     mounted = useRef(true);
   useEffect(() => {
@@ -81,7 +114,7 @@ export default function AccountingAuditCard({
     setError('');
     setData(null);
     api.aiAssistant.accountingAudit
-      .report(report.id, { severity: level, kind, offset: startOffset, limit: 30 })
+      .report(report.id, { severity: level==='reviewed'?'':level, status:level==='reviewed'?'reviewed':'open', kind, offset: startOffset, limit: 30 })
       .then((r) => {
         if (alive && n === generation.current) setData(r);
       })
@@ -94,14 +127,15 @@ export default function AccountingAuditCard({
     return () => {
       alive = false;
     };
-  }, [report.id, level, kind, startOffset]);
+  }, [report.id, level, kind, startOffset,revision]);
   const more = async () => {
     if (!data || loading) return;
     const n = generation.current;
     setLoading(true);
     try {
       const r = await api.aiAssistant.accountingAudit.report(report.id, {
-        severity: level,
+        severity: level==='reviewed'?'':level,
+        status:level==='reviewed'?'reviewed':'open',
         kind,
         offset: data.offset + data.findings.length,
         limit: 30,
@@ -204,6 +238,7 @@ export default function AccountingAuditCard({
             {l.label} · {current.counts[l.key]}
           </button>
         ))}
+        {(!!current.counts.reviewed||level==='reviewed')&&<button className={button} aria-pressed={level==='reviewed'} onClick={()=>{setStartOffset(0);setLevel('reviewed');}}>Проверено · {current.counts.reviewed||0}</button>}
       </div>
       <select
         aria-label="Тип записи"
@@ -287,7 +322,12 @@ export default function AccountingAuditCard({
                     </p>
                   )}
                   <p className="text-xs text-slate-500">{f.nextStep}</p>
+                  {f.reviewedAt&&<p className="text-xs text-emerald-600">Проверено вами. Это отметка, данные учёта не менялись.</p>}
                   <div className="flex gap-1.5 flex-wrap">
+                    {f.repairable&&<button className={button} disabled={stale||disabled||repairBusy} onClick={()=>repairOperation(async()=>{
+                      setRepairResult('');const preview=await api.aiAssistant.accountingAudit.prepareRepair(report.id,f.id,crypto.randomUUID());
+                      if(mounted.current)setRepair(preview);
+                    })}>Подготовить исправление</button>}
                     {f.sources.map((s, i) => (
                       <button
                         key={s.kind + s.id + i}
@@ -298,6 +338,11 @@ export default function AccountingAuditCard({
                         {sourceBusy === s.kind + s.id ? 'Открываю…' : s.label}
                       </button>
                     ))}
+                    {f.severity!=='confirmed'&&<button className={button} disabled={stale||disabled||!!reviewBusy} onClick={async()=>{
+                      if(reviewLock.current)return;reviewLock.current=true;setReviewBusy(f.id);setError('');
+                      try{await api.aiAssistant.accountingAudit.review(report.id,f.id,!f.reviewedAt);if(mounted.current){setOpened(null);setStartOffset(0);setRevision(n=>n+1);}}
+                      catch(e){if(mounted.current)setError(friendlyError(e));}finally{reviewLock.current=false;if(mounted.current)setReviewBusy(null);}
+                    }}>{reviewBusy===f.id?'Сохраняю…':f.reviewedAt?'Вернуть в проверку':'Проверено'}</button>}
                   </div>
                 </div>
               </div>
@@ -314,6 +359,31 @@ export default function AccountingAuditCard({
       {data && !data.findings.length && !loading && (
         <p className="text-xs text-slate-500">В этой группе записей нет.</p>
       )}
+      {repair&&<GlassSheet title="Исправление графика" cancelLabel={repair.status==='pending'?'Отмена':'Закрыть'} onClose={closeRepair} confirmClose={()=>{if(repairLock.current)return false;repairClosing.current=true;return true;}}>
+        <div className="p-4 space-y-4">
+          <p className="font-semibold">{repair.customer} · {repair.product}</p>
+          <p className="text-sm text-slate-500">Изменится только план. Полученные оплаты и остаток долга сохранятся.</p>
+          <div className="rounded-2xl bg-slate-50 dark:bg-slate-800 p-3 text-sm space-y-2">
+            <p>Сумма плана: <b>{money(repair.beforeTotal)} → {money(repair.afterTotal)}</b></p>
+            <p>Получено: {money(repair.received)} · Долг: {money(repair.remaining)}</p>
+          </div>
+          <div className="max-h-52 overflow-auto space-y-2 text-sm">{repair.rows.map((row,i)=><div key={row.id} className="flex justify-between gap-3"><span>{i+1}. {new Date(row.date).toLocaleDateString('ru-RU',{timeZone:'Europe/Moscow'})}</span><span>{money(row.before)} → {money(row.after)}</span></div>)}</div>
+          {repairResult&&<p role="status" className="text-sm text-emerald-600">{repairResult}</p>}
+          {(repair.status==='expired'||repair.status==='pending'&&new Date(repair.expiresAt).getTime()<=clock)&&<p role="status" className="text-sm text-amber-700 dark:text-amber-300">Срок подтверждения истёк. Подготовьте исправление заново.</p>}
+          {error&&<p role="alert" className="text-sm text-rose-600">{error}</p>}
+          {repair.status==='pending'&&<button className={`${button} w-full min-h-11`} disabled={repairBusy||disabled||new Date(repair.expiresAt).getTime()<=clock} onClick={()=>repairOperation(async()=>{
+            const result=await api.aiAssistant.accountingAudit.repairAction(repair.id,'confirm');
+            if(mounted.current){setRepairResult(result.text||'График исправлен.');setRepair({...repair,status:'done',undoUntil:result.undoUntil});setData(old=>old?{...old,stale:true}:old);}
+            await notifyDataChanged();
+          })}>{repairBusy?'Сохраняю…':'Подтвердить исправление'}</button>}
+          {repair.status==='done'&&(!repair.undoUntil||new Date(repair.undoUntil).getTime()>clock)&&<button className={`${button} w-full min-h-11`} disabled={repairBusy||disabled} onClick={()=>repairOperation(async()=>{
+            const result=await api.aiAssistant.accountingAudit.repairAction(repair.id,'undo');
+            if(mounted.current){setRepairResult(result.text||'Исправление отменено.');setRepair({...repair,status:'undone'});setData(old=>old?{...old,stale:true}:old);}
+            await notifyDataChanged();
+          })}>Отменить исправление</button>}
+          {repair.status==='done'&&<p className="text-xs text-slate-500">Отмена доступна 30 минут, пока договор не изменён. Найти действие можно в журнале.</p>}
+        </div>
+      </GlassSheet>}
       {data && data.offset > 0 && (
         <button
           disabled={loading}

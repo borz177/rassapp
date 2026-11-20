@@ -1,4 +1,4 @@
-// Отдельный путь без LLM, квоты ИИ и внешних вызовов. Записывается только отчёт/история чата.
+// Без LLM, квоты ИИ и внешних вызовов. Изменение плана — отдельное подтверждаемое действие.
 const { createAccountingAudits } = require('./accountingAudit');
 const wrap = (fn) => async (req, res) => {
   try {
@@ -20,10 +20,12 @@ const pageOptions = (q) => ({
   limit: q.limit === undefined ? 30 : Number(q.limit),
   severity: q.severity,
   kind: q.kind,
+  status: q.status,
 });
 function registerAccountingAuditRoutes(app, { pool, auth, allowed, conversations }) {
   const service = createAccountingAudits(pool),
     base = '/api/ai/assistant/accounting-audit';
+  const repairs=require('./auditRepairs').createAuditRepairs({pool,audits:service,allowed});
   const access = [
     auth,
     (req, res, next) => {
@@ -32,6 +34,20 @@ function registerAccountingAuditRoutes(app, { pool, auth, allowed, conversations
       next();
     },
   ];
+  const currentOwner = async (req,res,next) => {
+    try{const user=(await pool.query('SELECT role,blocked FROM users WHERE id=$1',[req.user.id])).rows[0];
+      if(!user||user.blocked||!allowed(user.role))return res.status(403).json({msg:'Действие доступно владельцу аккаунта.'});
+      next();
+    }catch{res.status(503).json({msg:'Не удалось проверить доступ.'});}
+  };
+  app.post(`${base}/:id/findings/:findingId/review`,...access,currentOwner,wrap(async(req,res)=>
+    res.json(await service.review(req.user.id,req.params.id,req.params.findingId,req.body?.checked))));
+  app.post(`${base}/:id/findings/:findingId/repair`,...access,currentOwner,wrap(async(req,res)=>
+    res.json(await repairs.prepare(req.user.id,req.params.id,req.params.findingId,req.body?.requestId))));
+  for(const action of ['confirm','undo','cancel'])app.post(`${base}/repairs/:repairId/${action}`,...access,currentOwner,wrap(async(req,res)=>{
+    if(req.body?.confirmed!==true&&action!=='cancel')throw Object.assign(new Error('Подтвердите действие.'),{status:400});
+    res.json(await repairs[action](req.user.id,req.params.repairId));
+  }));
   app.post(
     base,
     ...access,
@@ -79,6 +95,6 @@ function registerAccountingAuditRoutes(app, { pool, auth, allowed, conversations
       )
     )
   );
-  return service;
+  return {...service,repairs};
 }
 module.exports = { registerAccountingAuditRoutes, pageOptions };

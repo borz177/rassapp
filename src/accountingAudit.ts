@@ -18,13 +18,15 @@ export interface AuditFinding {
   sources: AuditSourceRef[];
   difference?: number;
   nextStep: string;
+  reviewedAt?: string | null;
+  repairable?: boolean;
 }
 export interface AuditSummary {
   id: string;
   version?: number;
   calculatedAt: string;
   scope: { accountIds: string[] | null; label: string; includesArchived?: boolean };
-  counts: { confirmed: number; review: number; information: number; affectedRecords: number };
+  counts: { confirmed: number; review: number; information: number; affectedRecords: number; reviewed?: number };
   checked: {
     accounts: number;
     contracts: number;
@@ -61,4 +63,9 @@ export interface AuditSource {
 export interface AccountingAuditRequest {
   requestId: string;
   accountIds: string[] | null;
+}
+export interface AuditRepairPreview {
+  id:string;status:'pending'|'done'|'undone'|'cancelled'|'stale'|'expired';expiresAt:string;undoUntil?:string|null;contractId:string;customer:string;product:string;
+  price:number;received:number;remaining:number;beforeTotal:number;afterTotal:number;
+  rows:{id:string;date:string;before:number;after:number}[];actualPaymentsChanged:false;
 }
