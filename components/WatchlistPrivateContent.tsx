@@ -38,10 +38,11 @@ function accountCode(userId: string) {
   return hash.toString(16).padStart(16, '0').slice(-12).toUpperCase();
 }
 
-export default function WatchlistPrivateContent({ userId, children, className = '' }: {
+export default function WatchlistPrivateContent({ userId, children, className = '', showWatermark = true }: {
   userId: string;
   children: React.ReactNode;
   className?: string;
+  showWatermark?: boolean;
 }) {
   const [view, setView] = useState<{ userId: string; mark: string } | null>(null);
   const [failed, setFailed] = useState(false);
@@ -76,6 +77,6 @@ export default function WatchlistPrivateContent({ userId, children, className = 
   return <div data-watchlist-private className={`select-none print:hidden ${className}`}
     onCopy={event => event.preventDefault()} onDragStart={event => event.preventDefault()}>
     {children}
-    <div aria-hidden="true" className="mt-2 break-words text-[10px] tabular-nums text-slate-500 dark:text-slate-400">{view.mark}</div>
+    {showWatermark && <div aria-hidden="true" className="mt-2 break-words text-[10px] tabular-nums text-slate-500 dark:text-slate-400">{view.mark}</div>}
   </div>;
 }

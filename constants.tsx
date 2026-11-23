@@ -108,7 +108,7 @@ export const ICONS: Record<string, ReactNode> = {
 };
 
 export const APP_NAME = "FinUchet";
-export const APP_VERSION = "1.0.1";
+export const APP_VERSION = "1.0.2";
 
 export const THEMES = {
     PURPLE: {

@@ -3550,8 +3550,8 @@ app.get('/api/health', (req, res) => {
 //
 // Обычные правки веб-кода сами подхватываются WebView с каждым открытием приложения — версию
 // бампать для них не нужно.
-// 18.11.2026: на раздаче 1.1.3 (код 5) — системная печать PDF в Android
-const LATEST_ANDROID_VERSION_CODE = 5;
+// 23.11.2026: 1.1.4 (код 6) — системная защита результатов ЧС в Android.
+const LATEST_ANDROID_VERSION_CODE = 6;
 
 app.get('/api/app-version', (req, res) => {
   res.json({

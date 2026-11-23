@@ -53,7 +53,7 @@ const WatchlistSubmissionForm: React.FC<{
     {loading && <p role="status" className="text-sm text-slate-500">Загружаем…</p>}
     {preview && <>
       <div className={wlCard}><p className="font-bold break-words">{preview.name}</p><p className="text-sm text-slate-500">{preview.birthYear ? `${preview.birthYear} г.` : 'Год рождения не указан'}</p><p className="mt-2 text-xs text-slate-500">ФИО, год и причина будут видны участникам списка.</p></div>
-      {preview.hasPublishedNameMatch && <WatchlistPrivateContent userId={userId}
+      {preview.hasPublishedNameMatch && <WatchlistPrivateContent userId={userId} showWatermark={false}
         className="rounded-xl border border-amber-200 bg-amber-50 p-3 text-sm text-amber-950 dark:border-amber-700/60 dark:bg-amber-950/30 dark:text-amber-100">
         <div role="status" className="flex items-start gap-2">
           <ShieldAlert size={17} className="mt-0.5 shrink-0" aria-hidden="true" />
