@@ -74,8 +74,12 @@ const AdminClientWatchlist: React.FC = () => {
     void run(() => load(proof, nextTab, value, 0, ''));
   };
   const open = (item: any) => {
-    setSelected(item); setNote(''); setVerified(false); setCanSearch(item.canSearch ?? true); setCanSubmit(item.canSubmit ?? true); setPilot(!!item.pilot);
-    setAction(tab === 'access' ? (item.status === 'requested' ? 'granted' : item.status) : tab === 'appeals' ? 'reviewing' : entryActions[item.status]?.[0]?.id || '');
+    const newAccess = tab === 'access' && item.status === 'requested';
+    setSelected(item); setNote(''); setVerified(false);
+    setCanSearch(newAccess || (item.canSearch ?? true));
+    setCanSubmit(newAccess || (item.canSubmit ?? true));
+    setPilot(!!item.pilot);
+    setAction(tab === 'access' ? (newAccess ? 'granted' : item.status) : tab === 'appeals' ? 'reviewing' : entryActions[item.status]?.[0]?.id || '');
   };
   const decide = async () => {
     if (!selected) return;
@@ -137,7 +141,10 @@ const AdminClientWatchlist: React.FC = () => {
         <label className="flex gap-3 text-sm"><input type="checkbox" checked={draft.submissionsPaused} onChange={e => setDraft({ ...draft, submissionsPaused: e.target.checked })} />Приостановить новые заявки</label>
         <p className="text-xs text-slate-500">Отзыв публикаций и рассмотрение обращений остаются доступны.</p>
         <label className="flex gap-3 text-sm"><input type="checkbox" checked={!!draft.autoPublish} onChange={e => setDraft({ ...draft, autoPublish: e.target.checked })} />Публиковать новые записи автоматически</label>
-        <p className="text-xs text-slate-500 dark:text-slate-400">Без отдельного одобрения. Уже поданные заявки и записи с замечаниями проходят ручную проверку.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">Новые записи участников с правом отправки публикуются сразу. Уже поданные заявки и записи с замечаниями проходят ручную проверку.</p>
+        {draft.autoPublish && (draft.mode === 'off' || !draft.legalReady || draft.submissionsPaused) && (
+          <p className="text-xs text-amber-700 dark:text-amber-300">Автопубликация не действует: {draft.mode === 'off' ? 'общий режим выключен.' : !draft.legalReady ? 'проверка оснований не подтверждена.' : 'приём записей приостановлен.'}</p>
+        )}
         <WatchlistField label="Поисков в час на пользователя"><input type="number" min={1} max={100} className={wlInput} value={draft.searchLimit} onChange={e => setDraft({ ...draft, searchLimit: Number(e.target.value) })} required /></WatchlistField>
         <label className="flex gap-3 text-sm"><input type="checkbox" checked={!!draft.publicationUntilRemoved} onChange={e => setDraft({ ...draft, publicationUntilRemoved: e.target.checked })} />Публиковать до удаления</label>
         {draft.publicationUntilRemoved ? <p className="text-xs text-slate-500 dark:text-slate-400">Без автоматического снятия через 90 дней. Действующие публикации тоже продлеваются; отозванные и истёкшие не возвращаются.</p>

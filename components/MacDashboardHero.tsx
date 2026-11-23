@@ -27,6 +27,7 @@ interface Props {
    */
   retailSales?: RetailSale[];
   showCents?: boolean;
+  hideBalance?: boolean;
   collectedWithoutDownPayment?: boolean;
   investors?: Investor[];
 }
@@ -69,7 +70,7 @@ const ThemeSwitch: React.FC = () => {
   );
 };
 
-const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales, showCents, collectedWithoutDownPayment = false, investors }) => {
+const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales, showCents, hideBalance = false, collectedWithoutDownPayment = false, investors }) => {
   const retail = !!retailSales;
   const [range, setRange] = useState<6 | 12>(12);
   const now = new Date();
@@ -134,10 +135,10 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
             <p className="text-[15px] font-semibold text-slate-900 dark:text-white">{retail ? 'Продажи за наличные' : 'Поступления от клиентов'}</p>
             <div className="mt-2 flex items-baseline gap-3">
               <span className="text-[28px] font-semibold tracking-tight text-slate-900 dark:text-white tabular-nums">
-                {formatCurrency(thisMonth, showCents)} <span className="text-[18px] text-slate-400">₽</span>
+                {hideBalance ? '••••' : <>{formatCurrency(thisMonth, showCents)} <span className="text-[18px] text-slate-400">₽</span></>}
               </span>
               <span className="text-[13px] text-slate-500 dark:text-slate-400">в этом месяце</span>
-              {delta !== null && (
+              {!hideBalance && delta !== null && (
                 <span className={`text-[12px] font-semibold px-2 py-0.5 rounded-full ${delta >= 0
                   ? 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400'
                   : 'bg-rose-500/10 text-rose-600 dark:text-rose-400'}`}>
@@ -145,7 +146,7 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
                 </span>
               )}
             </div>
-            <p className="mt-1 text-[13px] text-slate-400">За период: {formatCurrency(total, showCents)} ₽</p>
+            <p className="mt-1 text-[13px] text-slate-400">За период: {hideBalance ? '••••' : `${formatCurrency(total, showCents)} ₽`}</p>
             {!retail && collectedWithoutDownPayment && <p className="mt-1 text-[12px] text-slate-400">без первых взносов</p>}
           </div>
           <div className="flex p-1 rounded-full bg-slate-100 dark:bg-white/5 shrink-0">
@@ -171,11 +172,11 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
               </defs>
               <CartesianGrid vertical={false} stroke="currentColor" className="text-slate-200 dark:text-white/5" />
               <XAxis dataKey="label" tickLine={false} axisLine={false} tick={{ fontSize: 12, fill: '#94a3b8' }} />
-              <YAxis tickLine={false} axisLine={false} width={76} tick={{ fontSize: 12, fill: '#94a3b8' }} tickFormatter={compact} />
+              <YAxis hide={hideBalance} tickLine={false} axisLine={false} width={76} tick={{ fontSize: 12, fill: '#94a3b8' }} tickFormatter={compact} />
               <Tooltip
                 cursor={{ stroke: 'var(--color-primary-400, #818cf8)', strokeDasharray: '4 4' }}
                 content={({ active, payload }) => {
-                  if (!active || !payload?.length) return null;
+                  if (hideBalance || !active || !payload?.length) return null;
                   const p = payload[0].payload as { value: number; full: Date };
                   return (
                     <div className="rounded-xl px-3 py-2 bg-white/95 dark:bg-slate-800/95 shadow-lg border border-slate-200/60 dark:border-white/10">
@@ -189,9 +190,9 @@ const MacDashboardHero: React.FC<Props> = ({ part, userName, sales, retailSales,
                   );
                 }}
               />
-              <Area type="monotone" dataKey="value" stroke="var(--color-primary-500, #6366f1)" strokeWidth={2.5}
+              {!hideBalance && <Area type="monotone" dataKey="value" stroke="var(--color-primary-500, #6366f1)" strokeWidth={2.5}
                     fill="url(#macHeroFill)" dot={false}
-                    activeDot={{ r: 5, strokeWidth: 3, stroke: '#fff', fill: 'var(--color-primary-500, #6366f1)' }} />
+                    activeDot={{ r: 5, strokeWidth: 3, stroke: '#fff', fill: 'var(--color-primary-500, #6366f1)' }} />}
             </AreaChart>
           </ResponsiveContainer>
         </div>

@@ -83,7 +83,7 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
         {!status.access ? <button className={wlButton} disabled={busy} onClick={() => run(async () => { await api.watchlistRequest('/watchlist/access-request', { method: 'POST' }); await read(); })}>Запросить доступ</button>
           : <p className="text-sm font-medium">{status.access.status === 'requested' ? 'Заявка отправлена. Ожидайте решения администратора.' : 'Доступ не предоставлен. Для уточнения обратитесь в поддержку.'}</p>}
       </div>}
-      {granted && !status.accepted && <section className={`${wlCard} space-y-4`}><h2 className="text-lg font-bold">Перед началом</h2><WatchlistRules />
+      {granted && !status.accepted && <section className={`${wlCard} space-y-4`}><h2 className="text-lg font-bold">Перед началом</h2><WatchlistRules compact />
         <p className="text-xs text-slate-400">Версия правил: {status.policyVersion}</p>
         <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 h-4 w-4 shrink-0" checked={accepted} onChange={e => setAccepted(e.target.checked)} /><span>Ознакомился с правилами раздела и политикой обработки персональных данных.</span></label>
         <a className="block text-sm text-indigo-600 underline dark:text-indigo-300" href="/privacy" target="_blank" rel="noopener noreferrer">Политика обработки данных</a>

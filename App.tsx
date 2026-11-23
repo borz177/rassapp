@@ -13,6 +13,7 @@ import CashRegister from './components/CashRegister';
 import Investors from './components/Investors';
 import Contracts from './components/Contracts';
 import { watchlistUiVisible } from './src/watchlist';
+import { useWatchlistStatus } from './src/hooks/useWatchlistSubmitAccess';
 import NewSale from './components/NewSale';
 import NewIncome from './components/NewIncome';
 import NewExpense from './components/NewExpense';
@@ -152,6 +153,8 @@ const isApiDocs = path === "/api" || path === "/api/"
   const { resolvedTheme } = useTheme();
   // Auth State
   const [user, setUser] = useState<User | null>(null);
+  const watchlistStatus = useWatchlistStatus(user);
+  const showWatchlist = watchlistUiVisible(user, watchlistStatus);
   const [isLoading, setIsLoading] = useState(true);
   const [isPublicMode, setIsPublicMode] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -4604,7 +4607,7 @@ const handleQuickAddCustomer = async (data: {
   };
 
   const globalSearchProps = {
-    watchlistUserId: watchlistUiVisible(user) ? user.id : undefined,
+    watchlistUserId: showWatchlist ? user?.id : undefined,
     data: { customers, sales, products, expenses },
     // Поиск откладывается под найденное: «назад» с клиента, договора, товара или
     // операции возвращает в него (searchOrigin — экран, откуда искали). Если
@@ -5070,6 +5073,7 @@ if (!user && !showSplash) {
   return (
 
        <Layout
+    showWatchlist={showWatchlist}
     // Сквозной поиск собираем здесь: только App знает все данные и умеет
     // переходить к найденному. Шапка получает готовый элемент.
     search={<>
@@ -5831,7 +5835,7 @@ if (!user && !showSplash) {
       </PagePush>
     )}
 
-    {currentView === 'CLIENT_WATCHLIST' && user && watchlistUiVisible(user) && (
+    {currentView === 'CLIENT_WATCHLIST' && user && showWatchlist && (
       <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
         <Suspense fallback={<LazyFallback />}>
           <ClientWatchlist key={user.id} userId={user.id} customers={customers} />
@@ -6072,7 +6076,7 @@ if (!user && !showSplash) {
           </button>
 
 
-          {watchlistUiVisible(user) && <button onClick={() => { setPreviousView('MORE'); setCurrentView('CLIENT_WATCHLIST'); }}
+          {showWatchlist && <button onClick={() => { setPreviousView('MORE'); setCurrentView('CLIENT_WATCHLIST'); }}
             className="w-full bg-white dark:bg-slate-800 rounded-xl border border-slate-100 dark:border-slate-700 p-4 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-700">
             <div className="flex items-center gap-3"><div className="bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 p-2 rounded-lg">{ICONS.ShieldAlert}</div><span className="font-semibold text-slate-800 dark:text-white">Чёрный список</span></div>
             <span className="text-slate-400" aria-hidden>›</span>

@@ -143,7 +143,7 @@ const AccountHead: React.FC<AccountHeadProps> = ({
           )}
           <button
             onClick={onToggleHideBalance}
-            aria-label={hideBalance ? 'Показать сумму' : 'Скрыть сумму'}
+            aria-label={hideBalance ? 'Показать цифры на главной' : 'Скрыть цифры на главной'}
             className="text-slate-400 dark:text-slate-500 active:scale-90 transition-transform shrink-0"
           >
             {hideBalance ? EYE_OFF : EYE}

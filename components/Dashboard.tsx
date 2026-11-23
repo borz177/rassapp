@@ -534,6 +534,45 @@ const { installmentTotal, downPaymentTotal } = useMemo(() => {
 
 
 
+type ExpectedProfitEntry = {
+  date: string;
+  paymentAmount: number;
+  profitAmount: number;
+  isDownPayment: boolean;
+  paidAmount: number;
+};
+
+const expectedProfitEntries = (sale: Sale, from: Date, to: Date, paymentsOnly: boolean): ExpectedProfitEntry[] => {
+  if (sale.status === 'COMPLETED') return [];
+  if (!(sale.buyPrice > 0 && sale.totalAmount > 0)) return [];
+  const margin = saleProfitMargin(sale, paymentsOnly);
+  if (margin <= 0) return [];
+
+  const planAmounts = new Map(sale.paymentPlan.map(payment => [payment.id, Number(payment.amount) || 0]));
+  const entries = expectedPaymentsInPeriod(sale, from, to).map(({ id, date, amount }) => ({
+    date,
+    paymentAmount: amount,
+    profitAmount: amount * margin,
+    isDownPayment: false,
+    paidAmount: Math.max(0, (planAmounts.get(id) ?? amount) - amount),
+  }));
+
+  const paid = Math.max(0, sale.totalAmount - sale.remainingAmount);
+  const start = new Date(sale.startDate);
+  start.setHours(0, 0, 0, 0);
+  if (!paymentsOnly && sale.downPayment > paid && start >= from && start <= to) {
+    const amount = sale.downPayment - paid;
+    entries.push({
+      date: sale.startDate,
+      paymentAmount: amount,
+      profitAmount: amount * margin,
+      isDownPayment: true,
+      paidAmount: paid,
+    });
+  }
+  return entries;
+};
+
 const ProfitDetailsModal = ({
   type, sales, customers, investors, selectedAccountId, onClose, onSelectCustomer, appSettings
 }: {
@@ -583,52 +622,15 @@ const ProfitDetailsModal = ({
       const customer = customers.find(c => c.id === sale.customerId);
 
       if (type === 'expected') {
-        // 🔹 Неоплаченные платежи из графика (та же логика, что в карточке)
-        sale.paymentPlan.forEach(payment => {
-          if (payment.isRealPayment !== true && !payment.isPaid) {
-            const paymentDate = new Date(payment.date);
-            paymentDate.setHours(0, 0, 0, 0);
-            if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-              result.push({
-                sale,
-                customerName: customer?.name || 'Неизвестно',
-                customerId: sale.customerId,
-                paymentAmount: payment.amount, // 🔹 Вся сумма, как в карточке
-                profitAmount: payment.amount * profitMargin, // 🔹 Прибыль от всей суммы
-                date: payment.date,
-                isPaid: false,
-                isDownPayment: false,
-                paidAmount: 0,
-                paymentPercent: 0
-              });
-            }
-          }
-        });
-
-        // 🔹 Неоплаченный downPayment (та же логика)
-        if (sale.downPayment > 0) {
-          const totalPaid = sale.totalAmount - sale.remainingAmount;
-          if (totalPaid < sale.downPayment) {
-            const saleStart = new Date(sale.startDate);
-            saleStart.setHours(0, 0, 0, 0);
-            // С настройкой «только с платежей» взнос прибыли не несёт —
-            // строка «+0 ₽» в списке ни о чём не говорит, поэтому её не показываем.
-            if (saleStart >= monthStart && saleStart <= monthEnd && !profitFromPaymentsOnly) {
-              const unpaidDownPayment = sale.downPayment - totalPaid;
-              result.push({
-                sale,
-                customerName: customer?.name || 'Неизвестно',
-                customerId: sale.customerId,
-                paymentAmount: unpaidDownPayment,
-                profitAmount: unpaidDownPayment * profitMargin,
-                date: sale.startDate,
-                isPaid: false,
-                isDownPayment: true,
-                paidAmount: totalPaid,
-                paymentPercent: (totalPaid / sale.downPayment) * 100
-              });
-            }
-          }
+        for (const entry of expectedProfitEntries(sale, monthStart, monthEnd, profitFromPaymentsOnly)) {
+          result.push({
+            ...entry,
+            sale,
+            customerName: customer?.name || 'Неизвестно',
+            customerId: sale.customerId,
+            isPaid: false,
+            paymentPercent: entry.paidAmount / (entry.paymentAmount + entry.paidAmount) * 100,
+          });
         }
       } else {
         // 🔹 Оплаченные платежи из графика (та же логика, что в карточке)
@@ -829,7 +831,7 @@ const ProfitDetailsModal = ({
                   <div className="mb-2">
                     <div className="flex items-center justify-between text-[10px] mb-1">
                       <span className="text-slate-500 dark:text-slate-400">
-                        Оплачено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.paymentAmount + item.paidAmount, appSettings.showCents)} ₽
+                        Погашено {formatCurrency(item.paidAmount, appSettings.showCents)} из {formatCurrency(item.paymentAmount + item.paidAmount, appSettings.showCents)} ₽
                       </span>
                       <span className="font-bold text-amber-600">
                         {Math.round(item.paymentPercent)}%
@@ -1049,6 +1051,8 @@ const Dashboard: React.FC<DashboardProps> = ({
   const [hideBalance, setHideBalance] = useState(() => {
     try { return localStorage.getItem('finuchet_hide_balance') === '1'; } catch { return false; }
   });
+  const cardAmount = (amount: number) => hideBalance ? '••••' : formatCurrency(amount, appSettings.showCents);
+  const cardMoney = (amount: number) => hideBalance ? '••••' : `${formatCurrency(amount, appSettings.showCents)} ₽`;
   const toggleHideBalance = () => {
     setHideBalance(v => {
       try { localStorage.setItem('finuchet_hide_balance', v ? '0' : '1'); } catch { /* приватный режим */ }
@@ -1517,59 +1521,23 @@ const receivedProfitThisMonth = useMemo(() => {
 
 // 📊 Ожидаемая прибыль в этом месяце
 const expectedProfitThisMonth = useMemo(() => {
-    const now = new Date();
-    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
-    monthStart.setHours(0, 0, 0, 0);
-    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0, 23, 59, 59, 999);
+  const filteredSales = selectedAccountId
+    ? moneySales.filter(sale => sale.accountId === selectedAccountId)
+    : sales;
+  const investorIds = new Set(investors.map(investor => investor.id));
 
-    const filteredSales = selectedAccountId
-        ? moneySales.filter(s => s.accountId === selectedAccountId)
-        : moneySales;
-
-    let expectedProfit = 0;
-
-    filteredSales.forEach(sale => {
-        if (sale.customerId.startsWith('system_')) return;
-        if (investors.some(i => i.id === sale.customerId)) return;
-        if (!sale.buyPrice || sale.buyPrice <= 0) return;
-        if (sale.totalAmount <= 0) return;
-
-        const profitMargin = saleProfitMargin(sale, profitFromPaymentsOnly);
-        if (profitMargin <= 0) return;
-
-        // 1. Прибыль от неоплаченных платежей из графика
-        sale.paymentPlan.forEach(payment => {
-            if (payment.isRealPayment !== true && !payment.isPaid) {
-                const paymentDate = new Date(payment.date);
-                paymentDate.setHours(0, 0, 0, 0);
-                if (paymentDate >= monthStart && paymentDate <= monthEnd) {
-                    expectedProfit += payment.amount * profitMargin;
-                }
-            }
-        });
-
-        // 2. Прибыль от неоплаченного первого взноса
-        // 🔧 ДОБАВЛЕНА ПРОВЕРКА ДАТЫ ПРОДАЖИ!
-        if (sale.downPayment > 0) {
-            const totalPaid = sale.totalAmount - sale.remainingAmount;
-            if (totalPaid < sale.downPayment) {
-                const saleStart = new Date(sale.startDate);
-                saleStart.setHours(0, 0, 0, 0);
-                
-                // 🔧 Только если продажа создана в этом месяце
-                if (saleStart >= monthStart && saleStart <= monthEnd && !profitFromPaymentsOnly) {
-                    const unpaidDownPayment = sale.downPayment - totalPaid;
-                    expectedProfit += unpaidDownPayment * profitMargin;
-                }
-            }
-        }
-    });
-
-    return Math.round(expectedProfit * 100) / 100;
-}, [sales, investors, selectedAccountId, profitFromPaymentsOnly]);
-
-
-
+  let total = 0;
+  for (const sale of filteredSales) {
+    if (sale.customerId.startsWith('system_') || investorIds.has(sale.customerId)) continue;
+    for (const entry of expectedProfitEntries(sale, monthStart, monthEnd, profitFromPaymentsOnly)) {
+      total += entry.profitAmount;
+    }
+  }
+  return Math.round(total * 100) / 100;
+}, [sales, moneySales, investors, selectedAccountId, profitFromPaymentsOnly]);
 
 
 // Суммы и число договоров по дням — из того же источника, что и список платежей,
@@ -1626,7 +1594,7 @@ useEffect(() => {
 
         {/* «Моя премия» — только у сотрудника с назначенным процентом.
             Компонент сам запрашивает числа с сервера и прячется, если процента нет. */}
-        {user?.role === 'employee' && <MyBonusCard />}
+        {user?.role === 'employee' && <MyBonusCard hideBalance={hideBalance} />}
 
         {/* Приложение для Mac: приветствие над вкладками, график — под счетами */}
         {macShell && (
@@ -1664,7 +1632,7 @@ useEffect(() => {
             }`}
           >
             Платежи
-            {periodSummary.contracts > 0 && (
+            {!hideBalance && periodSummary.contracts > 0 && (
               <span className="absolute -top-1 -right-1 w-5 h-5 bg-rose-500 text-white text-[10px] rounded-full flex items-center justify-center border-2 border-white dark:border-slate-800 shadow-sm">
                 {periodSummary.contracts}
               </span>
@@ -1752,6 +1720,7 @@ useEffect(() => {
                 {macShell && (
                   <MacDashboardHero
                     part="chart"
+                    hideBalance={hideBalance}
                     sales={selectedAccountId ? moneySales.filter(s => s.accountId === selectedAccountId) : moneySales}
                     showCents={appSettings.showCents}
                     collectedWithoutDownPayment={appSettings.collectedWithoutDownPayment}
@@ -1772,8 +1741,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Долг клиентов</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(calculatedStats.totalOutstanding, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(calculatedStats.totalOutstanding)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
     </div>
   </div>
@@ -1791,8 +1760,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Просрочено</p>
       <p className="text-lg sm:text-2xl font-bold text-red-600 break-words leading-none">
-        {formatCurrency(totalOverdue, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(totalOverdue)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
 
     </div>
@@ -1812,8 +1781,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">В обороте</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(currentWorkingCapital, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(currentWorkingCapital)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
     </div>
   </div>
@@ -1857,8 +1826,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Собрано</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(calculatedStats.totalRevenue, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(calculatedStats.totalRevenue)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
       {appSettings.collectedWithoutDownPayment && (
         <p className="mt-1 text-[10px] sm:text-[11px] text-slate-400 leading-tight">без первых взносов</p>
@@ -1877,8 +1846,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Закуп</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(totalBuyCost, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(totalBuyCost)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
 
     </div>
@@ -1895,8 +1864,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Продажи</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(calculatedStats.installmentSalesTotal, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(calculatedStats.installmentSalesTotal)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
     </div>
   </div>
@@ -1914,8 +1883,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Ожидаемые платежи</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(expectedPaymentsThisMonth, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(expectedPaymentsThisMonth)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
       <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
     </div>
@@ -1934,8 +1903,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
       <p className="text-[10px] sm:text-xs font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">Получено платежей</p>
       <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-        {formatCurrency(receivedPaymentsThisMonth, appSettings.showCents)}
-        <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
+        {cardAmount(receivedPaymentsThisMonth)}
+        {!hideBalance && <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>}
       </p>
       <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
     </div>
@@ -1967,8 +1936,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
         <p className="text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-1 leading-tight">Ожидаемая прибыль</p>
         <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-            {formatCurrency(expectedProfitThisMonth, appSettings.showCents)}
-            <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
+            {cardAmount(expectedProfitThisMonth)}
+            {!hideBalance && <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>}
         </p>
         <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
     </div>
@@ -1988,8 +1957,8 @@ useEffect(() => {
     <div className="z-10 relative mt-auto">
         <p className="text-[10px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1 leading-tight">Получено прибыли</p>
         <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-            {formatCurrency(receivedProfitThisMonth, appSettings.showCents)}
-            <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
+            {cardAmount(receivedProfitThisMonth)}
+            {!hideBalance && <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>}
         </p>
         <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">{currentMonthName}</p>
     </div>
@@ -2007,8 +1976,8 @@ useEffect(() => {
             <div className="z-10 relative mt-auto">
                 <p className="text-[10px] sm:text-xs font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wide mb-1 leading-tight">Всего ожидается</p>
                 <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-                    {formatCurrency(profitStats.expectedProfit, appSettings.showCents)}
-                    <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
+                    {cardAmount(profitStats.expectedProfit)}
+                    {!hideBalance && <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>}
                 </p>
                 <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">По всем договорам</p>
             </div>
@@ -2027,8 +1996,8 @@ useEffect(() => {
             <div className="z-10 relative mt-auto">
                 <p className="text-[10px] sm:text-xs font-bold text-emerald-600 dark:text-emerald-400 uppercase tracking-wide mb-1 leading-tight">Всего получено</p>
                 <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-                    {formatCurrency(profitStats.receivedProfit, appSettings.showCents)}
-                    <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>
+                    {cardAmount(profitStats.receivedProfit)}
+                    {!hideBalance && <span className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 ml-1 font-bold">₽</span>}
                 </p>
                 <p className="text-xs sm:text-sm font-semibold text-slate-600 dark:text-slate-300 mt-1">По всем договорам</p>
             </div>
@@ -2061,10 +2030,10 @@ useEffect(() => {
                     <div className="min-w-0 flex-1">
                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Мы должны</p>
                       <p className="text-xl sm:text-2xl font-bold text-slate-800 dark:text-white leading-tight">
-                        {formatCurrency(overviewSupplierDebt.total, appSettings.showCents)} ₽
+                        {cardMoney(overviewSupplierDebt.total)}
                       </p>
                       <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                        {showShopTab ? 'за товар по договорам' : 'поставщикам'} · {overviewSupplierDebt.rows.length} {overviewSupplierDebt.rows.length === 1 ? 'партнёр' : 'партнёров'}
+                        {showShopTab ? 'за товар по договорам' : 'поставщикам'} · {hideBalance ? '••••' : `${overviewSupplierDebt.rows.length} ${overviewSupplierDebt.rows.length === 1 ? 'партнёр' : 'партнёров'}`}
                       </p>
                     </div>
                     <span className="text-slate-300 dark:text-slate-600 shrink-0">
@@ -2259,7 +2228,7 @@ useEffect(() => {
                     setSelectedCalendarDate(date);
                     setShowCalendarPicker(false);
                   }}
-                  title={hasPayments ? `${contracts} ${contracts === 1 ? 'договор' : contracts < 5 ? 'договора' : 'договоров'} · ${formatCurrency(amount, false)} ₽` : undefined}
+                  title={hasPayments && !hideBalance ? `${contracts} ${contracts === 1 ? 'договор' : contracts < 5 ? 'договора' : 'договоров'} · ${formatCurrency(amount, false)} ₽` : undefined}
                   className={`aspect-square rounded-xl text-xs flex flex-col items-center justify-center relative transition-all font-semibold ${
                     isSelected
                       ? 'bg-gradient-to-br from-indigo-600 to-indigo-500 text-white font-bold shadow-lg scale-105'
@@ -2275,13 +2244,13 @@ useEffect(() => {
                   }`}
                 >
                   <span className="text-sm">{d}</span>
-                  {hasPayments && !isSelected && (
+                  {hasPayments && !hideBalance && !isSelected && (
                     <span className={`text-[9px] font-bold mt-0.5 ${isPast ? 'text-slate-400 dark:text-slate-500' : 'text-emerald-600 dark:text-emerald-400'}`}>
                       {amount >= 1000 ? `${Math.round(amount / 1000)}к` : `${Math.round(amount)}`}
                     </span>
                   )}
                   {/* Точки — сколько договоров в этот день (до трёх, дальше просто «3+») */}
-                  {hasPayments && contracts > 1 && (
+                  {hasPayments && !hideBalance && contracts > 1 && (
                     <span className="absolute bottom-1 flex gap-0.5">
                       {Array.from({ length: Math.min(contracts, 3) }).map((_, i) => (
                         <span key={i} className={`w-1 h-1 rounded-full ${
@@ -2329,12 +2298,10 @@ useEffect(() => {
     {paymentGroups.length > 0 && (
       <div className="flex items-center justify-between px-4 py-3 bg-gradient-to-r from-indigo-50 to-white dark:from-indigo-950/40 dark:to-slate-800/60 rounded-2xl border border-indigo-100 dark:border-indigo-900/40">
         <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">
-          {periodSummary.contracts} {periodSummary.contracts === 1 ? 'платёж' : periodSummary.contracts < 5 ? 'платежа' : 'платежей'}
-          {' · '}
-          {paymentGroups.length} {paymentGroups.length === 1 ? 'день' : paymentGroups.length < 5 ? 'дня' : 'дней'}
+          {hideBalance ? 'Платежи за период' : `${periodSummary.contracts} ${periodSummary.contracts === 1 ? 'платёж' : periodSummary.contracts < 5 ? 'платежа' : 'платежей'} · ${paymentGroups.length} ${paymentGroups.length === 1 ? 'день' : paymentGroups.length < 5 ? 'дня' : 'дней'}`}
         </span>
         <span className="text-lg font-bold text-indigo-700 dark:text-indigo-400">
-          {formatCurrency(periodSummary.amount, appSettings.showCents)} ₽
+          {cardMoney(periodSummary.amount)}
         </span>
       </div>
     )}
@@ -2360,7 +2327,7 @@ useEffect(() => {
             <span className="text-sm font-bold text-indigo-700 dark:text-indigo-400">
               {nextPaymentAfterPeriod.date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long' })}
               {' · '}
-              {formatCurrency(nextPaymentAfterPeriod.amount, appSettings.showCents)} ₽
+              {cardMoney(nextPaymentAfterPeriod.amount)}
             </span>
           </button>
         ) : (
@@ -2387,11 +2354,11 @@ useEffect(() => {
                   {group.date.toLocaleDateString('ru-RU', { weekday: 'short' })}
                 </span>
                 <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-500 dark:text-slate-400">
-                  {group.items.length}
+                  {hideBalance ? '••••' : group.items.length}
                 </span>
               </div>
               <span className="text-sm font-bold text-slate-600 dark:text-slate-300">
-                {formatCurrency(group.total, appSettings.showCents)} ₽
+                {cardMoney(group.total)}
               </span>
             </div>
 
@@ -2425,7 +2392,7 @@ useEffect(() => {
                     </p>
                   </div>
                   <p className="text-lg font-bold text-indigo-600 dark:text-indigo-400 whitespace-nowrap shrink-0">
-                    {formatCurrency(item.amount, appSettings.showCents)} ₽
+                    {cardMoney(item.amount)}
                   </p>
                 </div>
 
@@ -2437,7 +2404,7 @@ useEffect(() => {
                     <div className="mt-3 pt-2.5 border-t border-dashed border-rose-200 dark:border-rose-900/50 flex items-center justify-between text-xs">
                       <span className="text-rose-600 dark:text-rose-400 font-medium">⚠️ Задолженность</span>
                       <span className="font-bold text-rose-700 dark:text-rose-400 whitespace-nowrap">
-                        {formatCurrency(overdueDebt, appSettings.showCents)} ₽
+                        {cardMoney(overdueDebt)}
                       </span>
                     </div>
                   );

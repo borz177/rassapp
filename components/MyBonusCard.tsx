@@ -30,7 +30,7 @@ type Bonus = {
   balance?: number;
 };
 
-const MyBonusCard: React.FC = () => {
+const MyBonusCard: React.FC<{ hideBalance?: boolean }> = ({ hideBalance = false }) => {
   const [bonus, setBonus] = useState<Bonus | null>(null);
 
   useEffect(() => {
@@ -45,30 +45,33 @@ const MyBonusCard: React.FC = () => {
 
   const toPay = Math.max(0, bonus.balance ?? 0);
 
+  const amount = (value: number) => hideBalance ? '••••' : `${formatCurrency(value)} ₽`;
+  const rate = hideBalance ? '••••' : `${bonus.percentage}%`;
+
   return (
     <div className="bg-gradient-to-br from-emerald-500 to-emerald-600 rounded-2xl p-5 shadow-lg text-white">
       <div className="flex items-start justify-between gap-3 mb-4">
         <div className="min-w-0">
           <p className="text-sm font-bold opacity-90">Моя премия</p>
           <p className="text-xs opacity-75 mt-0.5">
-            {bonus.percentage}% {BASE_LABEL[bonus.base || 'CONTRACTS']}
+            {rate} {BASE_LABEL[bonus.base || 'CONTRACTS']}
           </p>
         </div>
-        <span className="text-3xl font-bold shrink-0 leading-none">{bonus.percentage}%</span>
+        <span className="text-3xl font-bold shrink-0 leading-none">{rate}</span>
       </div>
 
       <div className="grid grid-cols-3 gap-3">
         <div>
           <p className="text-[11px] opacity-75">Начислено</p>
-          <p className="text-base font-bold">{formatCurrency(bonus.accrued ?? 0)} ₽</p>
+          <p className="text-base font-bold">{amount(bonus.accrued ?? 0)}</p>
         </div>
         <div>
           <p className="text-[11px] opacity-75">Выплачено</p>
-          <p className="text-base font-bold">{formatCurrency(bonus.paid ?? 0)} ₽</p>
+          <p className="text-base font-bold">{amount(bonus.paid ?? 0)}</p>
         </div>
         <div>
           <p className="text-[11px] opacity-75">К выплате</p>
-          <p className="text-base font-bold">{formatCurrency(toPay)} ₽</p>
+          <p className="text-base font-bold">{amount(toPay)}</p>
         </div>
       </div>
 

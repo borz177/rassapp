@@ -69,6 +69,7 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
   selectedAccountId = null, onSelectAccount, hideBalance = false, onToggleHideBalance,
   canMoveMoney = true, onSelectCustomer, onAction, showCents = false, supplierDebt, accountTrailing,
 }) => {
+  const cardMoney = (amount: number) => hideBalance ? '••••' : `${formatCurrency(amount, showCents)} ₽`;
   const [debtOpen, setDebtOpen] = useState(false);
   const [supplierDebtOpen, setSupplierDebtOpen] = useState(false);
 
@@ -164,7 +165,7 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
       )}
 
       {/* Mac/Windows: продажи по месяцам — как график поступлений на вкладке «Рассрочка» */}
-      {isMacShell() && <MacDashboardHero part="chart" sales={[]} retailSales={live} showCents={showCents} />}
+      {isMacShell() && <MacDashboardHero part="chart" sales={[]} retailSales={live} showCents={showCents} hideBalance={hideBalance} />}
 
       {/* Долг встаёт рядом с выручкой, а не под ней: это две стороны одного
           вопроса «сколько заработали и сколько из этого ещё не получили».
@@ -174,10 +175,10 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
         <div className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl border border-slate-100 dark:border-slate-700 shadow-sm p-6 text-center">
           <p className="text-[11px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider">Выручка сегодня</p>
           <p className="text-4xl font-extrabold text-slate-900 dark:text-white leading-none mt-1">
-            {formatCurrency(today.revenue, showCents)} <span className="text-2xl text-slate-400">₽</span>
+            {hideBalance ? '••••' : <>{formatCurrency(today.revenue, showCents)} <span className="text-2xl text-slate-400">₽</span></>}
           </p>
           <p className="text-sm font-bold text-emerald-600 dark:text-emerald-400 mt-1">
-            прибыль {formatCurrency(today.profit, showCents)} ₽
+            прибыль {cardMoney(today.profit)}
           </p>
         </div>
 
@@ -186,10 +187,10 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
                   className="bg-white/80 dark:bg-slate-800/80 backdrop-blur-sm rounded-3xl border border-amber-200 dark:border-amber-900/50 shadow-sm p-6 text-center active:scale-[0.99] transition-transform">
             <p className="text-[11px] font-bold text-amber-500 dark:text-amber-400/80 uppercase tracking-wider">Нам должны</p>
             <p className="text-3xl font-extrabold text-amber-600 dark:text-amber-400 leading-none mt-1">
-              {formatCurrency(debtors.total, showCents)} <span className="text-xl opacity-60">₽</span>
+              {hideBalance ? '••••' : <>{formatCurrency(debtors.total, showCents)} <span className="text-xl opacity-60">₽</span></>}
             </p>
             <p className="text-xs font-bold text-slate-400 mt-1">
-              {debtors.rows.length} {plural(debtors.rows.length, 'клиент', 'клиента', 'клиентов')} · подробнее
+              {!hideBalance && `${debtors.rows.length} ${plural(debtors.rows.length, 'клиент', 'клиента', 'клиентов')} · `}подробнее
             </p>
           </button>
         )}
@@ -250,10 +251,10 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
           <div className="min-w-0 flex-1">
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide">Мы должны</p>
             <p className="text-xl font-bold text-slate-800 dark:text-white leading-tight">
-              {formatCurrency(supplierDebt.total, showCents)} ₽
+              {cardMoney(supplierDebt.total)}
             </p>
             <p className="text-[11px] text-slate-500 dark:text-slate-400">
-              за товар на складе · {supplierDebt.rows.length} {plural(supplierDebt.rows.length, 'партнёр', 'партнёра', 'партнёров')}
+              за товар на складе{!hideBalance && ` · ${supplierDebt.rows.length} ${plural(supplierDebt.rows.length, 'партнёр', 'партнёра', 'партнёров')}`}
             </p>
           </div>
           <span className="text-slate-300 dark:text-slate-600 shrink-0">
@@ -320,8 +321,8 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
         ].map((s, i) => (
           <div key={s.label} className={`${card} ${i === 2 ? 'col-span-2 sm:col-span-1' : ''}`}>
             <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wide mb-1 leading-tight">{s.label}</p>
-            <p className={`text-lg font-bold truncate ${s.tone || 'text-slate-800 dark:text-white'}`}>{s.value}</p>
-            <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{s.hint}</p>
+            <p className={`text-lg font-bold truncate ${s.tone || 'text-slate-800 dark:text-white'}`}>{hideBalance ? '••••' : s.value}</p>
+            {!hideBalance && <p className="text-[11px] text-slate-400 dark:text-slate-500 truncate mt-0.5">{s.hint}</p>}
           </div>
         ))}
       </div>
@@ -331,14 +332,14 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
         <div className="flex items-end justify-between gap-3">
           <div>
             <p className="text-2xl font-bold text-slate-800 dark:text-white">
-              {formatCurrency(month.revenue, showCents)} ₽
+              {cardMoney(month.revenue)}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400">
-              {month.count} {plural(month.count, 'продажа', 'продажи', 'продаж')}
+              {hideBalance ? '••••' : `${month.count} ${plural(month.count, 'продажа', 'продажи', 'продаж')}`}
             </p>
           </div>
           <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
-            +{formatCurrency(month.profit, showCents)} ₽
+            {!hideBalance && '+'}{cardMoney(month.profit)}
           </p>
         </div>
       </div>
@@ -355,7 +356,7 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
                       className="w-full px-4 py-3 flex items-center justify-between gap-3 text-left active:bg-slate-50 dark:active:bg-slate-700/50">
                 <p className="font-semibold text-slate-800 dark:text-white truncate">{p.name}</p>
                 <p className="text-sm font-bold text-amber-600 dark:text-amber-400 shrink-0">
-                  {p.stock ?? 0} {p.unit || 'шт'}
+                  {hideBalance ? '••••' : `${p.stock ?? 0} ${p.unit || 'шт'}`}
                 </p>
               </button>
             ))}
@@ -389,13 +390,13 @@ const DashboardCash: React.FC<DashboardCashProps> = ({
                   </div>
                   <div className="shrink-0 text-right">
                     <p className={`font-bold ${s.returnOf ? 'text-rose-600 dark:text-rose-400' : 'text-slate-800 dark:text-white'}`}>
-                      {s.returnOf ? '−' : ''}{formatCurrency(Math.abs(s.total), showCents)} ₽
+                      {!hideBalance && s.returnOf && '−'}{cardMoney(Math.abs(s.total))}
                     </p>
                     {/* Долг по продаже виден сразу: иначе «5 000 ₽» в ленте
                         выглядят полученными деньгами, которых в кассе нет. */}
                     {left > 0 && (
                       <p className="text-[11px] font-bold text-amber-600 dark:text-amber-400">
-                        долг {formatCurrency(left, showCents)} ₽
+                        долг {cardMoney(left)}
                       </p>
                     )}
                   </div>

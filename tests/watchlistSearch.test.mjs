@@ -32,3 +32,13 @@ test('до открытия общего доступа входы в ЧС ви�
   for(const role of ['manager','employee','investor',undefined])assert.equal(visible({role}),false);
   assert.equal(visible(null),false);
 });
+
+test('раздел видят допущенные владельцы при действующем режиме', () => {
+  const manager = { role: 'manager' };
+  const status = { enabled: true, accepted: false, access: { status: 'granted', canSearch: false, canSubmit: true } };
+  assert.equal(visible(manager, status), true, 'можно открыть раздел и принять правила');
+  assert.equal(visible(manager, { ...status, enabled: false }), false);
+  assert.equal(visible(manager, { ...status, access: { ...status.access, status: 'requested' } }), false);
+  assert.equal(visible(manager, { ...status, access: { ...status.access, canSubmit: false } }), false);
+  assert.equal(visible({ role: 'employee' }, status), false);
+});

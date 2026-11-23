@@ -1,9 +1,10 @@
 export const WATCHLIST_POLICY_VERSION = '2026-11-14-v4';
-// Временный показ только администратору. Для открытия менеджерам достаточно
-// вернуть флаг; серверные допуски и принятие правил всё равно обязательны.
+// Допущенные владельцы видят раздел по ответу сервера. Общий вход
+// для подачи новых заявок можно включить отдельно.
 export const WATCHLIST_USER_UI_ENABLED = false;
-export const watchlistUiVisible = (user?: { role?: string } | null): boolean =>
-  user?.role === 'admin' || (WATCHLIST_USER_UI_ENABLED && user?.role === 'manager');
+export const watchlistUiVisible = (user?: { role?: string } | null, status?: WatchlistStatus | null): boolean =>
+  user?.role === 'admin' || (user?.role === 'manager' && (WATCHLIST_USER_UI_ENABLED ||
+    !!(status?.enabled && status.access?.status === 'granted' && (status.access.canSearch || status.access.canSubmit))));
 export const WATCHLIST_STATUS: Record<string, string> = {
   pending: 'На проверке', needs_info: 'Нужны сведения', published: 'Опубликовано', hidden: 'Скрыто на проверку',
   rejected: 'Отклонено', withdrawn: 'Отозвано', terminated: 'Публикация прекращена', expired: 'Срок истёк',
