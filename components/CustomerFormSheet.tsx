@@ -1,10 +1,13 @@
 import React, { useId, useMemo, useRef, useState } from 'react';
+import { Loader2, ShieldCheck } from 'lucide-react';
 import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetDateInput, sheetInputClass } from './GlassSheet';
 import PassportScan, { type PassportFields } from './PassportScan';
 import { Customer, CustomerPhone } from '../types';
 import { cleanExtraPhones, MAX_EXTRA_PHONES, PHONE_LABELS } from '../src/customerPhones';
 import { appAlert, appConfirm } from '../src/dialogs';
 import { fileToJpeg } from '../src/jpeg';
+import { useWatchlistSearch } from '../src/hooks/useWatchlistSearch';
+import { CustomerWatchlistResult, watchlistBirthYear, type WatchlistCheckAccess } from './CustomerWatchlistHint';
 
 /**
  * Клиент — добавление и редактирование одной формой, листом (GlassSheet).
@@ -38,6 +41,7 @@ interface Props {
   onUpdate?: (customer: Customer) => void;
   /** Распознавание паспорта — только там, где его разрешает тариф */
   canScanPassport?: boolean;
+  watchlistCheck?: WatchlistCheckAccess;
 }
 
 /** Дата из паспорта (ДД.ММ.ГГГГ) — в вид для поля даты. Не разобралась — пусто */
@@ -54,7 +58,7 @@ const toIsoDate = (value: string | undefined): string => {
 const initials = (name: string) =>
   name.trim().split(/\s+/).slice(0, 2).map(w => w[0]?.toUpperCase() || '').join('') || '?';
 
-const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpdate, canScanPassport = false }) => {
+const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpdate, canScanPassport = false, watchlistCheck }) => {
   const nameInputId = useId();
   const editing = !!customer;
   const initial = useMemo(() => ({
@@ -72,8 +76,17 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
   }), [customer]);
   const [form, setForm] = useState(initial);
   const [saving, setSaving] = useState(false);
-  const set = <K extends keyof typeof initial>(key: K, value: (typeof initial)[K]) =>
+  const showWatchlistCheck = !editing && Boolean(watchlistCheck);
+  const birthYear = watchlistBirthYear(form.birthDate);
+  const watchlist = useWatchlistSearch({
+    userId: watchlistCheck?.userId || '', status: watchlistCheck?.status ?? null,
+    name: form.name, year: birthYear, active: showWatchlistCheck && !saving, manual: true,
+  });
+  const checking = watchlist.phase === 'waiting' || watchlist.phase === 'loading';
+  const set = <K extends keyof typeof initial>(key: K, value: (typeof initial)[K]) => {
+    if (key === 'name' || key === 'birthDate') watchlist.reset();
     setForm(f => ({ ...f, [key]: value }));
+  };
 
   // Дополнительные номера — список: сравниваем по содержимому, а не по ссылке
   const dirty = (Object.keys(initial) as (keyof typeof initial)[]).some(k =>
@@ -97,16 +110,19 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
   // важнее — его вводили осознанно, а распознавание ошибается.
   // Форма до подстановки из паспорта — для «Отменить»
   const beforePassport = useRef<typeof form | null>(null);
-  const applyPassport = (f: PassportFields) => setForm(prev => (beforePassport.current = prev, {
-    ...prev,
-    name: prev.name.trim() ? prev.name : f.name || prev.name,
-    // Адрес прописки — со страницы прописки; нет его — место рождения с главного разворота
-    address: prev.address.trim() ? prev.address : f.address || f.birthPlace || prev.address,
-    passportSeries: prev.passportSeries.trim() ? prev.passportSeries : f.series || prev.passportSeries,
-    passportNumber: prev.passportNumber.trim() ? prev.passportNumber : f.number || prev.passportNumber,
-    passportIssuedBy: prev.passportIssuedBy.trim() ? prev.passportIssuedBy : f.issuedBy || prev.passportIssuedBy,
-    birthDate: prev.birthDate || toIsoDate(f.birthDate),
-  }));
+  const applyPassport = (f: PassportFields) => {
+    watchlist.reset();
+    setForm(prev => (beforePassport.current = prev, {
+      ...prev,
+      name: prev.name.trim() ? prev.name : f.name || prev.name,
+      // Адрес прописки — со страницы прописки; нет его — место рождения с главного разворота
+      address: prev.address.trim() ? prev.address : f.address || f.birthPlace || prev.address,
+      passportSeries: prev.passportSeries.trim() ? prev.passportSeries : f.series || prev.passportSeries,
+      passportNumber: prev.passportNumber.trim() ? prev.passportNumber : f.number || prev.passportNumber,
+      passportIssuedBy: prev.passportIssuedBy.trim() ? prev.passportIssuedBy : f.issuedBy || prev.passportIssuedBy,
+      birthDate: prev.birthDate || toIsoDate(f.birthDate),
+    }));
+  };
 
   const save = async (close: () => void) => {
     if (!canSave) return;
@@ -189,12 +205,23 @@ const CustomerFormSheet: React.FC<Props> = ({ customer, onClose, onCreate, onUpd
           <div className="px-4 py-2.5">
             <label htmlFor={nameInputId} className="block text-[12px] font-medium text-slate-500 dark:text-slate-400">ФИО</label>
             <div className="relative">
-              <input id={nameInputId} className={`${sheetInputClass} ${canScanPassport ? 'min-h-12 pr-12' : ''}`} value={form.name} onChange={e => set('name', e.target.value)}
+              <input id={nameInputId} className={`${sheetInputClass} ${canScanPassport && showWatchlistCheck ? 'min-h-12 pr-24' : canScanPassport || showWatchlistCheck ? 'min-h-12 pr-12' : ''}`}
+                     value={form.name} onChange={e => set('name', e.target.value)}
                      autoComplete="off" autoCorrect="off" spellCheck={false} autoCapitalize="words"
                      enterKeyHint="next" placeholder="Иванов Иван Иванович" required />
+              {showWatchlistCheck && <button
+                type="button" aria-label="Проверить в ЧС"
+                title={!watchlist.online ? 'Проверка в ЧС недоступна без интернета' : 'Проверить в ЧС'}
+                disabled={!watchlist.canCheck}
+                onClick={watchlist.retry}
+                className={`absolute ${canScanPassport ? 'right-12' : 'right-1'} top-0 flex size-11 items-center justify-center rounded-lg text-indigo-600 transition hover:bg-indigo-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-indigo-400 active:scale-95 disabled:opacity-50 dark:text-indigo-300 dark:hover:bg-indigo-900/30`}
+              >
+                {checking ? <Loader2 size={20} className="animate-spin" aria-hidden="true" /> : <ShieldCheck size={22} aria-hidden="true" />}
+              </button>}
               {canScanPassport && <PassportScan variant="icon" onApply={applyPassport}
-                onUndo={() => { if (beforePassport.current) setForm(beforePassport.current); beforePassport.current = null; }} />}
+                onUndo={() => { if (beforePassport.current) setForm(beforePassport.current); beforePassport.current = null; watchlist.reset(); }} />}
             </div>
+            {!editing && watchlistCheck && <CustomerWatchlistResult result={watchlist} year={birthYear} userId={watchlistCheck.userId} manual />}
           </div>
           <SheetField label="Телефон">
             <input className={sheetInputClass} value={form.phone} onChange={e => set('phone', e.target.value)}

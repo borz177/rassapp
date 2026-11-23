@@ -10,6 +10,7 @@ import { Customer, Sale } from '../types';
 import { ICONS } from '../constants';
 import { useScrollRestoration } from '../src/hooks/useScrollRestoration';
 import CustomerFormSheet from './CustomerFormSheet';
+import type { WatchlistCheckAccess } from './CustomerWatchlistHint';
 
 interface CustomersProps {
   customers: Customer[];
@@ -26,6 +27,7 @@ interface CustomersProps {
   onSelectCustomer: (id: string) => void;
   /** Распознавание паспорта — только там, где его разрешает тариф */
   canScanPassport?: boolean;
+  watchlistCheck?: WatchlistCheckAccess;
   /** true, когда эта страница видна поверх остальных — включая случай, когда карточка
       клиента (открытая поверх списка) только что закрылась и список снова на переднем плане. */
   isActive?: boolean;
@@ -54,7 +56,7 @@ const Customers: React.FC<CustomersProps> = ({
   customers,
   onAddCustomer,
   onSelectCustomer,
-  canScanPassport = false,
+  canScanPassport = false, watchlistCheck,
   isActive = true,
   sales = [],
   segmentOf,
@@ -174,6 +176,7 @@ const Customers: React.FC<CustomersProps> = ({
       {isAdding && (
         <CustomerFormSheet
           canScanPassport={canScanPassport}
+          watchlistCheck={watchlistCheck}
           onClose={() => setIsAdding(false)}
           onCreate={async data => {
             const created = await onAddCustomer(data);

@@ -51,6 +51,14 @@ let win = null
 ipcMain.on("shell-theme", (_e, mode) => {
   if (mode === "light" || mode === "dark" || mode === "system") nativeTheme.themeSource = mode
 })
+ipcMain.handle("watchlist-content-protection", (event, enabled) => {
+  if ((!isMac && !isWin) || !win || win.isDestroyed() || typeof enabled !== "boolean" ||
+      event.sender !== win.webContents || event.senderFrame !== win.webContents.mainFrame ||
+      new URL(event.senderFrame.url).origin !== new URL(APP_URL).origin) {
+    throw new Error("Invalid watchlist protection request")
+  }
+  win.setContentProtection(enabled)
+})
 // Кнопки окна на Windows рисует система — их цвет тоже по теме
 nativeTheme.on("updated", () => {
   if (isWin && win && !win.isDestroyed()) {
@@ -105,6 +113,10 @@ function createWindow() {
   // На Windows меню не нужно. На Mac без него не работают Cmd+C / Cmd+V / Cmd+Q —
   // там оно своё, см. ниже.
   if (!isMac) win.setMenu(null)
+
+  win.webContents.on("did-navigate", () => {
+    if (isMac || isWin) win.setContentProtection(false)
+  })
 
   // Ссылки наружу (WhatsApp, оплата, документы) — в обычном браузере, а не новым
   // голым окном программы без адресной строки и кнопок «назад».

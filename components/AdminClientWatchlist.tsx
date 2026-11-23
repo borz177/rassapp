@@ -1,6 +1,8 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { api } from '../services/api';
 import GlassSheet from './GlassSheet';
+import WatchlistBulkImportSheet, { type BulkImportResult } from './WatchlistBulkImportSheet';
+import { ListPlus } from 'lucide-react';
 import { appConfirm } from '../src/dialogs';
 import { WATCHLIST_BASES, WATCHLIST_REASONS, WATCHLIST_STATUS, watchlistDate } from '../src/watchlist';
 import { WatchlistError, WatchlistField, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
@@ -16,10 +18,11 @@ const EVENT_NAMES: Record<string, string> = {
   ADMIN_VERIFIED: 'Подтверждён вход', ADMIN_OVERVIEW_READ: 'Просмотрена сводка', ADMIN_ACCESS_READ: 'Просмотрены права',
   ADMIN_ENTRIES_READ: 'Просмотрены записи', ADMIN_ENTRY_READ: 'Прочитаны материалы записи', ADMIN_APPEALS_READ: 'Просмотрены обращения', SETTINGS_CHANGED: 'Изменены настройки',
   ENTRY_AUTO_PUBLISHED: 'Запись опубликована автоматически', ENTRY_DELETED: 'Запись удалена администратором',
+  ENTRY_ADMIN_IMPORTED: 'Запись добавлена администратором',
   PUBLICATION_TERM_REMOVED: 'Публикация продлена до удаления',
   AUTO_PUBLICATION_ENABLED: 'Автопубликация включена', AUTO_PUBLICATION_DISABLED: 'Автопубликация выключена',
 };
-const AdminClientWatchlist: React.FC = () => {
+const AdminClientWatchlist: React.FC<{ userId: string }> = ({ userId }) => {
   const [lock, setLock] = useState<{ configured: boolean; encryptionReady: boolean } | null>(null);
   const [proof, setProof] = useState(''), [password, setPassword] = useState(''), [code, setCode] = useState('');
   const [error, setError] = useState<string | null>(null), [busy, setBusy] = useState(false), [loading, setLoading] = useState(false);
@@ -29,12 +32,13 @@ const AdminClientWatchlist: React.FC = () => {
   const [canSearch, setCanSearch] = useState(true), [canSubmit, setCanSubmit] = useState(true), [pilot, setPilot] = useState(false);
   const [draft, setDraft] = useState<any>(null), [settingsReason, setSettingsReason] = useState(''), [target, setTarget] = useState('');
   const [external, setExternal] = useState(false), [externalId, setExternalId] = useState(''), [externalMessage, setExternalMessage] = useState(''), [externalReference, setExternalReference] = useState('');
+  const [bulkOpen, setBulkOpen] = useState(false), [bulkResult, setBulkResult] = useState<BulkImportResult | null>(null);
   const alive = useRef(true), sequence = useRef(0), actionLock = useRef(false), expires = useRef<number>(0), proofRef = useRef('');
   const releaseProof = () => {
     const token = proofRef.current; proofRef.current = '';
     if (token) void api.watchlistRequest('/admin/watchlist/lock', { method: 'POST', body: {}, proof: token }).catch(() => {});
   };
-  const clear = () => { releaseProof(); sequence.current++; setProof(''); setPassword(''); setCode(''); setItems([]); setOverview(null); setSelected(null); setDraft(null); setExternal(false); setNote(''); setExternalMessage(''); setExternalReference(''); };
+  const clear = () => { releaseProof(); sequence.current++; setProof(''); setPassword(''); setCode(''); setItems([]); setOverview(null); setSelected(null); setDraft(null); setExternal(false); setNote(''); setExternalMessage(''); setExternalReference(''); setBulkOpen(false); setBulkResult(null); };
   useEffect(() => {
     alive.current = true;
     api.watchlistRequest<typeof lock>('/admin/watchlist/lock').then(r => alive.current && setLock(r)).catch(e => alive.current && setError(e.message));
@@ -99,6 +103,7 @@ const AdminClientWatchlist: React.FC = () => {
     needs_info: [{ id: 'reject', label: 'Отклонить' }], published: [{ id: 'hide', label: 'Скрыть на время проверки' }, { id: 'terminate', label: 'Прекратить публикацию' }],
     hidden: [{ id: 'publish', label: 'Вернуть после проверки' }, { id: 'terminate', label: 'Прекратить публикацию' }], expired: [{ id: 'terminate', label: 'Прекратить публикацию' }],
   };
+  const availableEntryActions = selected ? (entryActions[selected.status] || []).filter(item => !selected.adminImport || item.id !== 'needs_info') : [];
   return <div className="space-y-5 text-slate-900 dark:text-white">
     <div className="flex flex-wrap items-center justify-between gap-3"><div><h2 className="text-xl font-bold">Чёрный список</h2><p className="text-sm text-slate-500 dark:text-slate-400">Заявки, обращения и доступ участников</p></div>{proof && <button className={wlSecondary} onClick={() => run(async () => { await request('/lock', {}); clear(); })}>Закрыть доступ</button>}</div>
     <WatchlistError message={error} />
@@ -124,6 +129,13 @@ const AdminClientWatchlist: React.FC = () => {
         {(tab === 'entries' ? ['pending', 'needs_info', 'published', 'hidden', 'rejected', 'withdrawn', 'terminated', 'expired', 'deleted'] : tab === 'access' ? ['requested', 'granted', 'rejected', 'revoked'] : ['new', 'reviewing', 'resolved']).map(k => <option key={k} value={k}>{WATCHLIST_STATUS[k] || ({ new: 'Новые', reviewing: 'Рассматриваются', resolved: 'Рассмотрены' }[k])}</option>)}
       </select><button className={wlSecondary} disabled={busy} onClick={() => run(() => load())}>Обновить</button>{tab === 'appeals' && <button className={wlSecondary} onClick={() => { setExternal(true); setExternalId(''); setExternalMessage(''); setExternalReference(''); }}>Обращение из почты</button>}</div>}
       {tab === 'entries' && <form className="flex flex-wrap gap-2" onSubmit={e => { e.preventDefault(); setOffset(0); run(() => load(proof, tab, filter, 0, target.trim())); }}><input aria-label="ФИО или идентификатор записи" className={`${wlInput} min-w-0 flex-1`} value={target} maxLength={200} onChange={e => setTarget(e.target.value)} placeholder="Полное ФИО или идентификатор записи" /><button className={wlSecondary} disabled={busy}>Найти</button></form>}
+      {tab === 'entries' && <>
+        <button type="button" className={`${wlSecondary} inline-flex items-center gap-2`} disabled={busy || !overview?.protection.encryptionReady || overview.settings.submissionsPaused}
+          onClick={() => { setBulkResult(null); setBulkOpen(true); }}><ListPlus size={18} aria-hidden="true" />Добавить списком</button>
+        {bulkResult && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">
+          Опубликовано {bulkResult.published} · На проверку {bulkResult.pending} · Пропущено {bulkResult.skipped}
+        </p>}
+      </>}
       {loading && <p role="status" className="py-8 text-center text-slate-500">Загружаем…</p>}
       {!loading && tab !== 'settings' && !items.length && <p className={`${wlCard} text-sm text-slate-500`}>В этом разделе записей пока нет.</p>}
       {!loading && tab !== 'settings' && <div className="space-y-3">{items.map(item => tab === 'events' ? <div key={item.id} className={`${wlCard} text-sm space-y-1`}><p className="font-semibold">{EVENT_NAMES[item.action] || item.action}</p><p className="text-xs text-slate-500">{new Date(item.createdAt).toLocaleString('ru-RU')}</p><p className="text-xs text-slate-400 break-all">Пользователь: {item.actorId || '—'}{item.targetId ? ` · Запись: ${item.targetId}` : ''}</p></div> :
@@ -160,15 +172,17 @@ const AdminClientWatchlist: React.FC = () => {
       <h3 className="text-lg font-bold break-words">{selected.name || selected.entry?.name}</h3>
       <p className="text-sm text-slate-500 break-words">{selected.ownerEmail || selected.email || selected.reporterEmail}</p>
       {tab === 'entries' && <div className="space-y-3 text-sm"><p>{selected.birthYear ? `${selected.birthYear} г.` : 'Год не указан'} · {WATCHLIST_STATUS[selected.status]}</p>
+        {selected.subjectKind === 'guarantor' && <p className="font-medium">Поручитель по договору</p>}
+        {selected.adminImport && <p className="text-slate-500 dark:text-slate-400">Добавлено администратором</p>}
         {selected.status === 'published' && selected.publicationMode === 'auto' && <p className="text-indigo-600 dark:text-indigo-300">Опубликовано автоматически</p>}
         <p>Причина: {WATCHLIST_REASONS[selected.reason] || '—'}</p>{selected.reasonDetails && <p className="whitespace-pre-wrap break-words">{selected.reasonDetails}</p>}{selected.response && <p className="whitespace-pre-wrap break-words">Ответ автора: {selected.response}</p>}{selected.basis && <p>Основание: {WATCHLIST_BASES[selected.basis] || '—'}</p>}{selected.evidence && <p className="whitespace-pre-wrap break-words">{selected.evidence}</p>}{selected.note && <p className="whitespace-pre-wrap break-words">{selected.note}</p>}{selected.decision && <p className="whitespace-pre-wrap break-words">Предыдущее решение: {selected.decision}</p>}<p className="text-xs text-slate-400 break-all">Запись: {selected.id}</p></div>}
       {tab === 'appeals' && <div className="space-y-3 text-sm"><p className="whitespace-pre-wrap break-words">{selected.message}</p>{selected.reference && <p className="whitespace-pre-wrap break-words">Источник: {selected.reference}</p>}{selected.response && <p className="whitespace-pre-wrap break-words">Ответ: {selected.response}</p>}
         {selected.entry?.status === 'published' && <button className={wlSecondary} disabled={busy} onClick={() => run(async () => { await request(`/entries/${selected.entryId}/decision`, { version: selected.entry.version, action: 'hide', note: 'Временное скрытие на период рассмотрения обращения' }); setSelected(null); await load(); })}>Скрыть запись на время проверки</button>}
       </div>}
       {tab === 'access' && <div className="space-y-3 text-sm">{[{ key: 'search', label: 'Разрешить поиск', value: canSearch, setter: setCanSearch }, { key: 'submit', label: 'Разрешить отправку записей', value: canSubmit, setter: setCanSubmit }, { key: 'pilot', label: 'Допустить к пилоту', value: pilot, setter: setPilot }].map(t => <label key={t.key} className="flex gap-3"><input type="checkbox" checked={t.value} onChange={e => t.setter(e.target.checked)} />{t.label}</label>)}</div>}
-      {(tab === 'access' || (tab === 'appeals' && selected.status !== 'resolved') || (tab === 'entries' && entryActions[selected.status]?.length)) && <>
+      {(tab === 'access' || (tab === 'appeals' && selected.status !== 'resolved') || (tab === 'entries' && availableEntryActions.length > 0)) && <>
         <WatchlistField label="Решение"><select className={wlInput} value={action} onChange={e => setAction(e.target.value)}>
-          {(tab === 'access' ? [{ id: 'granted', label: 'Предоставить / сохранить доступ' }, { id: 'rejected', label: 'Отказать' }, { id: 'revoked', label: 'Отозвать доступ' }] : tab === 'appeals' ? [{ id: 'reviewing', label: 'Взять в работу' }, { id: 'publication_stopped', label: 'Завершить и прекратить публикацию' }, { id: 'author_correction', label: 'Завершить: исправлено автором' }, { id: 'not_confirmed', label: 'Завершить: ошибка не подтверждена' }] : entryActions[selected.status]).map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
+          {(tab === 'access' ? [{ id: 'granted', label: 'Предоставить / сохранить доступ' }, { id: 'rejected', label: 'Отказать' }, { id: 'revoked', label: 'Отозвать доступ' }] : tab === 'appeals' ? [{ id: 'reviewing', label: 'Взять в работу' }, { id: 'publication_stopped', label: 'Завершить и прекратить публикацию' }, { id: 'author_correction', label: 'Завершить: исправлено автором' }, { id: 'not_confirmed', label: 'Завершить: ошибка не подтверждена' }] : availableEntryActions).map(a => <option key={a.id} value={a.id}>{a.label}</option>)}
         </select></WatchlistField>
         {((tab === 'entries' && action === 'publish') || tab === 'appeals') && <label className="flex gap-3 text-sm"><input type="checkbox" checked={verified} onChange={e => setVerified(e.target.checked)} /><span>{tab === 'appeals' ? 'Личность заявителя проверена по установленной процедуре' : 'Основание передачи, допустимые данные и круг получателей проверены'}</span></label>}
         <WatchlistField label={tab === 'appeals' ? 'Ответ и результат проверки' : 'Пояснение решения'}><textarea className={wlInput} rows={4} maxLength={1000} value={note} onChange={e => setNote(e.target.value)} /></WatchlistField>
@@ -176,6 +190,9 @@ const AdminClientWatchlist: React.FC = () => {
       </>}
       {tab === 'entries' && selected.status !== 'deleted' && <button className="w-full rounded-xl bg-red-50 px-4 py-2.5 text-sm font-semibold text-red-600 transition active:scale-[.98] disabled:opacity-50 dark:bg-red-950/40 dark:text-red-300" disabled={busy} onClick={() => run(deleteSelected)}>Удалить запись</button>}
     </div></GlassSheet>}
+    {proof && bulkOpen && <WatchlistBulkImportSheet userId={userId} request={request} onClose={() => setBulkOpen(false)} onSaved={result => {
+      setBulkOpen(false); setBulkResult(result); change('entries', result.published ? 'published' : 'pending');
+    }} />}
     {proof && external && <GlassSheet title="Обращение клиента из почты" onClose={() => setExternal(false)} confirmClose={() => !busy}><div className="space-y-4 p-4"><WatchlistError message={error} /><p className="text-sm text-slate-500">Для обращения человека без аккаунта. Паспорт и полный адрес сюда не копируйте.</p>
       <WatchlistField label="Идентификатор публикации"><input className={wlInput} maxLength={36} value={externalId} onChange={e => setExternalId(e.target.value.trim())} /></WatchlistField>
       <WatchlistField label="Номер обращения и дата"><input className={wlInput} maxLength={500} value={externalReference} onChange={e => setExternalReference(e.target.value)} /></WatchlistField>

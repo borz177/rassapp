@@ -2,6 +2,7 @@ import CopyablePhone from './CopyablePhone';
 import React, { useState } from 'react';
 import { ICONS } from '../constants';
 import CustomerFormSheet from './CustomerFormSheet';
+import type { WatchlistCheckAccess } from './CustomerWatchlistHint';
 
 interface SelectionItem {
   id: string;
@@ -28,6 +29,7 @@ interface SelectionListProps {
   }) => unknown;
   /** Распознавание паспорта — только там, где его разрешает тариф */
   canScanPassport?: boolean;
+  watchlistCheck?: WatchlistCheckAccess;
   /**
    * Записи другого раздела (клиенты рассрочки при продаже в кассе и наоборот).
    * В списке их нет, чтобы не мешали искать своих, но поиск их находит —
@@ -39,7 +41,7 @@ interface SelectionListProps {
 }
 
 const SelectionList: React.FC<SelectionListProps> = ({
-  title, items, onSelect, onCancel, onAddNew, canScanPassport = false, secondaryIds, secondaryLabel = 'Остальные',
+  title, items, onSelect, onCancel, onAddNew, canScanPassport = false, watchlistCheck, secondaryIds, secondaryLabel = 'Остальные',
 }) => {
   const [search, setSearch] = useState('');
   const [isCreating, setIsCreating] = useState(false);
@@ -134,6 +136,7 @@ const SelectionList: React.FC<SelectionListProps> = ({
       {isCreating && (
         <CustomerFormSheet
           canScanPassport={canScanPassport}
+          watchlistCheck={watchlistCheck}
           onClose={() => setIsCreating(false)}
           onCreate={data => onAddNew(data)}
         />

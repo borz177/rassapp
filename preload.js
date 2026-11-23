@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld('finuchetShell', {
   floating: process.platform === 'darwin' || process.platform === 'win32',
   // Светлая/тёмная/как в системе — для стекла под окном (см. electron.cjs)
   setTheme: (mode) => ipcRenderer.send('shell-theme', mode),
+  ...(['darwin', 'win32'].includes(process.platform) ? {
+    setWatchlistProtection: (enabled) => ipcRenderer.invoke('watchlist-content-protection', enabled),
+  } : {}),
 })

@@ -4,7 +4,8 @@ import { api } from '../services/api';
 import { WatchlistStatus, WATCHLIST_REASONS } from '../src/watchlist';
 import { useWatchlistSearch } from '../src/hooks/useWatchlistSearch';
 import GlassSheet from './GlassSheet';
-import { WatchlistError, WatchlistField, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
+import WatchlistPrivateContent from './WatchlistPrivateContent';
+import { WatchlistError, WatchlistField, WatchlistGuarantors, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
 
 const WatchlistSearchPanel: React.FC<{
   userId: string; name: string; year?: string; active: boolean; composing?: boolean; status?: WatchlistStatus | null;
@@ -42,20 +43,25 @@ const WatchlistSearchPanel: React.FC<{
     {search.phase === 'success' && <>
       <h2 className="font-bold text-slate-900 dark:text-white">{search.items.length ? 'Возможные совпадения' : 'Совпадений в чёрном списке не найдено'}</h2>
       <p className="text-sm text-slate-500 dark:text-slate-400">{search.items.length ? 'Совпадение ФИО не подтверждает личность клиента.' : 'Это не подтверждает платёжеспособность клиента.'}</p>
-      {search.items.map(item => <div key={item.id} className={`${wlCard} space-y-2`}>
+      {search.items.map(item => <WatchlistPrivateContent userId={props.userId} key={item.id} className={`${wlCard} space-y-2`}>
         <button type="button" className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline dark:text-white break-words" onClick={() => { setSelectedId(item.id); setReporting(false); }} aria-label={`Открыть совпадение: ${item.name}`}>{item.name}</button>
         <p className="text-sm text-slate-500 dark:text-slate-400">{item.birthYear ? `${item.birthYear} г.` : 'Год рождения не указан'}</p>
-        <p className="text-sm text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">Причина со слов автора: {reason(item)}</p>
+        <p className="whitespace-pre-wrap break-words text-sm font-medium text-red-800 dark:text-red-300">Причина со слов автора: {reason(item)}</p>
+        <WatchlistGuarantors guarantors={item.guarantors} />
         <button type="button" className="text-sm text-indigo-600 dark:text-indigo-300" onClick={() => { setSelectedId(item.id); setReporting(true); }}>Сообщить об ошибке</button>
-      </div>)}
+      </WatchlistPrivateContent>)}
       {search.limited && <p className="text-sm text-slate-500 dark:text-slate-400">Совпадений много. Уточните год на странице чёрного списка.</p>}
     </>}
     {selected && <GlassSheet title={reporting ? 'Сообщить об ошибке' : 'Возможное совпадение'} zIndex={240} onClose={() => { setSelectedId(null); setReporting(false); setMessage(''); setError(null); }} confirmClose={() => !busy}>
       <div className="space-y-4 p-4"><WatchlistError message={error} />
-        <p className="font-semibold break-words">{selected.name}</p>
-        <p className="text-sm text-slate-500">{selected.birthYear ? `${selected.birthYear} г.` : 'Год рождения не указан'}</p>
+        <WatchlistPrivateContent userId={props.userId} className="space-y-2">
+          <p className="font-semibold break-words">{selected.name}</p>
+          <p className="text-sm text-slate-500">{selected.birthYear ? `${selected.birthYear} г.` : 'Год рождения не указан'}</p>
+          {!reporting && <p className="whitespace-pre-wrap break-words text-sm font-medium text-red-800 dark:text-red-300">Причина со слов автора: {reason(selected)}</p>}
+          {!reporting && <WatchlistGuarantors guarantors={selected.guarantors} />}
+        </WatchlistPrivateContent>
         {reporting ? <><WatchlistField label="Что нужно проверить"><textarea className={wlInput} rows={5} maxLength={1500} value={message} onChange={e => setMessage(e.target.value)} placeholder="Опишите ошибку. Не указывайте номер паспорта." /></WatchlistField><button type="button" disabled={busy || message.trim().length < 15} className={wlButton} onClick={report}>Отправить обращение</button></>
-          : <><p className="whitespace-pre-wrap break-words text-sm">Причина со слов автора: {reason(selected)}</p><p className="text-sm text-slate-500">Совпадение ФИО не подтверждает личность клиента.</p><button type="button" className={wlSecondary} onClick={() => setReporting(true)}>Сообщить об ошибке</button></>}
+          : <><p className="text-sm text-slate-500">Совпадение ФИО не подтверждает личность клиента.</p><button type="button" className={wlSecondary} onClick={() => setReporting(true)}>Сообщить об ошибке</button></>}
       </div>
     </GlassSheet>}
   </section>;

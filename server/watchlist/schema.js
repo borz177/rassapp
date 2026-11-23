@@ -35,10 +35,13 @@ async function ensureTables(pool) {
     );
     ALTER TABLE client_watchlist_entries ADD COLUMN IF NOT EXISTS deleted_at timestamptz;
     ALTER TABLE client_watchlist_entries ADD COLUMN IF NOT EXISTS review_required boolean NOT NULL DEFAULT false;
+    ALTER TABLE client_watchlist_entries ADD COLUMN IF NOT EXISTS related_client_index text;
     CREATE UNIQUE INDEX IF NOT EXISTS client_watchlist_entry_active ON client_watchlist_entries(owner_id,customer_id)
       WHERE status IN ('pending','needs_info','published','hidden');
     CREATE INDEX IF NOT EXISTS client_watchlist_name ON client_watchlist_entries(name_index) WHERE status='published';
     CREATE INDEX IF NOT EXISTS client_watchlist_year ON client_watchlist_entries(year_index) WHERE status='published';
+    CREATE INDEX IF NOT EXISTS client_watchlist_related_client ON client_watchlist_entries(related_client_index)
+      WHERE status='published' AND related_client_index IS NOT NULL;
     CREATE INDEX IF NOT EXISTS client_watchlist_owner ON client_watchlist_entries(owner_id,created_at DESC);
     CREATE TABLE IF NOT EXISTS client_watchlist_appeals (
       id text PRIMARY KEY, entry_id text NOT NULL REFERENCES client_watchlist_entries(id) ON DELETE CASCADE,

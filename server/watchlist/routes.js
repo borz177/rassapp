@@ -5,22 +5,24 @@ const { loadVault, loadTotpSecret, totpCounter } = require('./crypto');
 const { ensureTables } = require('./schema');
 const { createRevocations } = require('./revocations');
 const P = require('./policy');
+const { parseImport } = require('./bulkImport');
 const digest = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const id = () => crypto.randomUUID();
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
+const publishedSearchFilter = "status='published' AND (expires_at IS NULL OR expires_at>now()) AND NOT(id=ANY($2::text[]))";
 
 function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSecret = loadTotpSecret(),
   revocationFile = process.env.WATCHLIST_REVOCATION_FILE || (process.env.WATCHLIST_KEY_FILE ? process.env.WATCHLIST_KEY_FILE + '.revocations' : null) } = {}) {
   const revocations = createRevocations(revocationFile);
   let ready;
-  const ensure = () => ready || (ready = ensureTables(pool).catch(e => { ready = null; throw e; }));
+  const ensure = () => ready || (ready = prepareTables().catch(e => { ready = null; throw e; }));
   const requireVault = () => { if (!vault) throw P.problem(503, 'Защита общего списка ещё не настроена. Обратитесь к администратору.'); return vault; };
   const event = (db, actor, action, target = null) => db.query(
     'INSERT INTO client_watchlist_events(actor_id,action,target_id) VALUES($1,$2,$3)', [actor, action, target]);
-  async function limit(user, action, max, seconds = 3600) {
+  async function limit(user, action, max, seconds = 3600, amount = 1) {
     const bucket = Math.floor(Date.now() / (seconds * 1000));
-    const r = await pool.query(`INSERT INTO client_watchlist_limits(user_id,action,bucket,count,expires_at) VALUES($1,$2,$3,1,now()+($4::int * interval '1 second'))
-      ON CONFLICT(user_id,action,bucket) DO UPDATE SET count=client_watchlist_limits.count+1 RETURNING count`, [user, action, bucket, seconds * 2]);
+    const r = await pool.query(`INSERT INTO client_watchlist_limits(user_id,action,bucket,count,expires_at) VALUES($1,$2,$3,$5,now()+($4::int * interval '1 second'))
+      ON CONFLICT(user_id,action,bucket) DO UPDATE SET count=client_watchlist_limits.count+EXCLUDED.count RETURNING count`, [user, action, bucket, seconds * 2, amount]);
     if (r.rows[0].count > max) throw P.problem(429, 'Слишком много запросов. Попробуйте позже.');
   }
   async function current(db, req, admin = false) {
@@ -62,6 +64,20 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     return s;
   }
   const payload = r => r.payload ? requireVault().decrypt(r.id, 'entry', r.payload) : null;
+  const relatedClientIndex = (ownerId, customerId) => vault.index('related_client', [ownerId, customerId]);
+  async function prepareTables() {
+    await ensureTables(pool);
+    if (!vault) return;
+    const { rows } = await pool.query(`SELECT id,owner_id,payload FROM client_watchlist_entries
+      WHERE customer_id LIKE 'guarantor:%' AND related_client_index IS NULL AND payload IS NOT NULL`);
+    for (const row of rows) {
+      let customerId;
+      try { customerId = payload(row).guarantor?.customerId; } catch (e) { if (e.status === 503) continue; throw e; }
+      if (typeof customerId !== 'string' || !customerId) continue;
+      await pool.query(`UPDATE client_watchlist_entries SET related_client_index=$2
+        WHERE id=$1 AND related_client_index IS NULL AND payload=$3`, [row.id, relatedClientIndex(row.owner_id, customerId), row.payload]);
+    }
+  }
   function ownEntry(r) {
     try {
       if (!['withdrawn', 'terminated'].includes(r.status) && revocations.read().has(r.id))
@@ -70,6 +86,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const d = payload(r);
     return { id: r.id, customerId: r.customer_id, name: d?.identity.name || 'Публикация удалена', birthYear: d?.identity.birthYear ?? null,
       reason: d?.reason, reasonDetails: d?.reasonDetails, response: d?.response, publicationMode: d?.publication?.mode,
+      ...(d?.guarantor ? { subjectKind: 'guarantor' } : {}),
+      ...(d?.adminImport === true ? { adminImport: true } : {}),
       basis: d?.basis, evidence: d?.evidence, note: d?.note, decision: d?.decision,
       status: r.deleted_at ? 'deleted' : r.status === 'published' && r.expires_at != null && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
       version: r.version, createdAt: r.created_at, expiresAt: r.expires_at };
@@ -90,11 +108,35 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const fingerprint = requireVault().index('source', [user, customerId, identity]);
     return { customerId, ...identity, fingerprint };
   }
+  async function guarantorContracts(db, user, customerId, saleId = null) {
+    const { rows } = await db.query(`SELECT id, data->>'guarantorName' AS name, data->>'startDate' AS "startDate",
+      left(data->>'productName', 120) AS product FROM data_items
+      WHERE user_id=$1 AND type='sales' AND data->>'customerId'=$2 AND data->>'type'='INSTALLMENT'
+        AND data->>'status' IS DISTINCT FROM 'DRAFT' AND NULLIF(btrim(data->>'guarantorName'),'') IS NOT NULL
+        AND ($3::text IS NULL OR id=$3)
+      ORDER BY data->>'startDate' DESC NULLS LAST, id ${saleId === null ? '' : 'FOR SHARE'}`, [user, customerId, saleId]);
+    return rows.flatMap(row => {
+      let name;
+      try { name = P.fullName(row.name); } catch (e) { if (e.status === 400) return []; throw e; }
+      return [{ saleId: row.id, name, startDate: row.startDate, product: row.product,
+        fingerprint: vault.index('guarantor_source', [user, customerId, row.id, name]) }];
+    });
+  }
+  async function guarantorSource(db, user, { customerId, saleId }) {
+    if (typeof saleId !== 'string' || !saleId || saleId.length > 200) throw P.problem(400, 'Выберите договор поручителя.');
+    const [contract] = await guarantorContracts(db, user, customerId, saleId);
+    if (!contract) throw P.problem(409, 'Поручитель в этом договоре изменился или недоступен.');
+    return { name: contract.name, birthYear: null, fingerprint: contract.fingerprint,
+      customerId: 'guarantor:' + vault.index('guarantor', [saleId, P.normalizeName(contract.name)]) };
+  }
+  function entrySource(db, row, data) {
+    return data?.guarantor ? guarantorSource(db, row.owner_id, data.guarantor) : source(db, row.owner_id, row.customer_id);
+  }
   async function maintenance() {
     // Никаких изменений в клиентах/договорах. Ограниченное хранение служебных дел.
     await pool.query(`UPDATE client_watchlist_entries SET status='expired',version=version+1,updated_at=now()
       WHERE status IN ('published','hidden') AND expires_at IS NOT NULL AND expires_at<=now();
-      UPDATE client_watchlist_entries SET payload=NULL,name_index=NULL,year_index=NULL,source_fingerprint=NULL
+      UPDATE client_watchlist_entries SET payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,source_fingerprint=NULL
       WHERE payload IS NOT NULL AND ((status IN ('rejected','expired') AND updated_at<now()-interval '30 days')
         OR (status IN ('pending','needs_info') AND updated_at<now()-interval '90 days'));
       UPDATE client_watchlist_entries SET status='expired',version=version+1,updated_at=now()
@@ -108,7 +150,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     // После SQL-restore применить независимый журнал, прежде чем возвращать реестр в работу.
     if (revocationFile) {
       const ids = [...revocations.read()];
-      if (ids.length) await pool.query(`UPDATE client_watchlist_entries SET status='withdrawn',payload=NULL,name_index=NULL,year_index=NULL,
+      if (ids.length) await pool.query(`UPDATE client_watchlist_entries SET status='withdrawn',payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,
         source_fingerprint=NULL,version=version+1,updated_at=now() WHERE id=ANY($1::text[]) AND status NOT IN ('withdrawn','terminated')`, [ids]);
     }
   }
@@ -171,14 +213,29 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const name = P.normalizeName(req.body?.name), year = P.birthYear(req.body?.birthYear);
     const match = year === null ? 'name_index=$1' : 'year_index=ANY($1::text[])';
     const key = year === null ? vault.index('name', name) : [vault.index('year', [name, year]), vault.index('year', [name, null])];
-    const r = await db.query(`SELECT id,payload FROM client_watchlist_entries WHERE ${match} AND status='published' AND (expires_at IS NULL OR expires_at>now())
-      AND NOT(id=ANY($2::text[])) ORDER BY id LIMIT 21`, [key, [...revocations.read()]]);
+    const r = await db.query(`SELECT id,owner_id,customer_id,payload FROM client_watchlist_entries WHERE ${match} AND ${publishedSearchFilter}
+      ORDER BY id LIMIT 21`, [key, [...revocations.read()]]);
     // Для «Другой причины» выдаём только её отдельное описание, не старое note.
     // Основание, ответы автора, решения и прочие служебные поля закрыты.
-    const items = r.rows.slice(0, 20).map(row => { const d = payload(row); return { id: row.id, name: d.identity.name, birthYear: d.identity.birthYear,
-      reason: P.REASONS.includes(d.reason) ? d.reason : null,
-      ...(d.reason === 'other' && typeof d.reasonDetails === 'string' && d.reasonDetails.trim()
-        ? { reasonDetails: d.reasonDetails.trim().slice(0, 1000) } : {}) }; });
+    const clients = new Map();
+    const items = r.rows.slice(0, 20).map(row => {
+      const d = payload(row);
+      const item = { id: row.id, name: d.identity.name, birthYear: d.identity.birthYear,
+        reason: P.REASONS.includes(d.reason) ? d.reason : null,
+        ...(d.reason === 'other' && typeof d.reasonDetails === 'string' && d.reasonDetails.trim()
+          ? { reasonDetails: d.reasonDetails.trim().slice(0, 1000) } : {}) };
+      if (!d.guarantor) clients.set(relatedClientIndex(row.owner_id, row.customer_id), item);
+      return item;
+    });
+    if (clients.size) {
+      const { rows } = await db.query(`SELECT id,payload,related_client_index FROM client_watchlist_entries
+        WHERE related_client_index=ANY($1::text[]) AND ${publishedSearchFilter} ORDER BY published_at DESC NULLS LAST,id`,
+      [[...clients.keys()], [...revocations.read()]]);
+      for (const row of rows) {
+        const client = clients.get(row.related_client_index);
+        (client.guarantors ??= []).push({ id: row.id, name: payload(row).identity.name });
+      }
+    }
     await event(db, req.user.id, 'SEARCH');
     return { items, limited: r.rows.length > 20 };
   });
@@ -189,32 +246,66 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   });
   route('post', '/preview', async (req, db) => {
     await permitted(db, req, 'submit');
-    return source(db, req.user.id, req.body?.customerId);
+    const preview = await source(db, req.user.id, req.body?.customerId);
+    if (req.body?.includeGuarantors === true) preview.guarantors = await guarantorContracts(db, req.user.id, preview.customerId);
+    if (req.body?.checkPublishedName !== true) return preview;
+    try {
+      const s = await permitted(db, req, 'search');
+      await limit(req.user.id, 'search', s.search_limit);
+    } catch (e) {
+      // Подсказка необязательна для отправки. Без права поиска или квоты выдаём обычный предпросмотр.
+      if (e.status === 403 || e.status === 429) return preview;
+      throw e;
+    }
+    const key = vault.index('name', P.normalizeName(preview.name));
+    const result = await db.query(`SELECT EXISTS (SELECT 1 FROM client_watchlist_entries
+      WHERE name_index=$1 AND ${publishedSearchFilter}) AS matched`, [key, [...revocations.read()]]);
+    await event(db, req.user.id, 'SEARCH');
+    return { ...preview, hasPublishedNameMatch: result.rows[0].matched };
   });
+  async function saveEntry(db, owner, s, preview, fields, guarantor = null) {
+    // Блокировка на автора/клиента делает повторную отправку идемпотентной.
+    await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`watchlist:${owner}:${preview.customerId}`]);
+    const duplicate = await db.query('SELECT * FROM client_watchlist_entries WHERE owner_id=$1 AND customer_id=$2 AND status=ANY($3::text[])', [owner, preview.customerId, P.ACTIVE]);
+    if (duplicate.rowCount) return ownEntry(duplicate.rows[0]);
+    const review = (await db.query(`SELECT 1 FROM client_watchlist_entries WHERE owner_id=$1 AND customer_id=$2 AND review_required LIMIT 1`, [owner, preview.customerId])).rowCount > 0;
+    const publicationMode = s.auto_publish && s.legal_ready && s.mode !== 'off' && !review ? 'auto' : null;
+    return insertEntry(db, owner, s, preview, fields, { publicationMode, review, guarantor });
+  }
+  async function insertEntry(db, owner, s, preview, fields, { publicationMode, review = false, guarantor = null, adminImport = false }) {
+    const entryId = id(), identity = { name: preview.name, birthYear: preview.birthYear };
+    const data = { identity, ...fields, confirmationAt: new Date().toISOString(),
+      ...(guarantor ? { guarantor } : {}),
+      ...(adminImport ? { adminImport: true } : {}),
+      ...(publicationMode ? { publication: { mode: publicationMode, settingsVersion: s.version, at: new Date().toISOString() } } : {}) };
+    const r = await db.query(`INSERT INTO client_watchlist_entries(id,owner_id,customer_id,payload,name_index,year_index,source_fingerprint,status,policy_version,review_required,published_at,expires_at,related_client_index)
+      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $8='published' THEN now() ELSE NULL END,
+        CASE WHEN $8='published' AND NOT $12::boolean THEN now()+($11::int * interval '1 day') ELSE NULL END,$13) RETURNING *`, [entryId, owner, preview.customerId, vault.encrypt(entryId, 'entry', data),
+      vault.index('name', P.normalizeName(preview.name)), vault.index('year', [P.normalizeName(preview.name), preview.birthYear]), preview.fingerprint,
+      publicationMode ? 'published' : 'pending', P.POLICY_VERSION, review, s.publication_days, s.publication_until_removed,
+      guarantor ? relatedClientIndex(owner, guarantor.customerId) : null]);
+    await event(db, owner, adminImport ? 'ENTRY_ADMIN_IMPORTED' : 'ENTRY_SUBMITTED', entryId);
+    if (publicationMode) await event(db, owner, publicationMode === 'auto' ? 'ENTRY_AUTO_PUBLISHED' : 'ENTRY_PUBLISH', entryId);
+    return ownEntry(r.rows[0]);
+  }
   route('post', '/entries', async (req, db) => {
     const s = await permitted(db, req, 'submit');
-    await limit(req.user.id, 'submit', 10, 86400);
-    const b = req.body || {}, preview = await source(db, req.user.id, b.customerId);
+    const b = req.body || {}, owner = req.user.id;
+    const withGuarantor = b.guarantor !== undefined;
+    await limit(owner, 'submit', 10, 86400, withGuarantor ? 2 : 1);
+    const preview = await source(db, owner, b.customerId);
     if (!same(preview.fingerprint, b.fingerprint)) throw P.problem(409, 'Данные клиента изменились. Выберите клиента повторно.');
     if (b.confirmed !== true) throw P.problem(400, 'Подтвердите отправку на проверку.');
-    const reason = P.submissionReason(b), legacy = P.legacySubmissionFields(b);
-    // Блокировка на автора/клиента делает повторную отправку идемпотентной.
-    await db.query('SELECT pg_advisory_xact_lock(hashtextextended($1,0))', [`watchlist:${req.user.id}:${b.customerId}`]);
-    const duplicate = await db.query('SELECT * FROM client_watchlist_entries WHERE owner_id=$1 AND customer_id=$2 AND status=ANY($3::text[])', [req.user.id, b.customerId, P.ACTIVE]);
-    if (duplicate.rowCount) return ownEntry(duplicate.rows[0]);
-    const review = (await db.query(`SELECT 1 FROM client_watchlist_entries WHERE owner_id=$1 AND customer_id=$2 AND review_required LIMIT 1`, [req.user.id, b.customerId])).rowCount > 0;
-    const autoPublish = s.auto_publish && s.legal_ready && s.mode !== 'off' && !review;
-    const entryId = id(), identity = { name: preview.name, birthYear: preview.birthYear };
-    const data = { identity, ...reason, ...legacy, confirmationAt: new Date().toISOString(),
-      ...(autoPublish ? { publication: { mode: 'auto', settingsVersion: s.version, at: new Date().toISOString() } } : {}) };
-    const r = await db.query(`INSERT INTO client_watchlist_entries(id,owner_id,customer_id,payload,name_index,year_index,source_fingerprint,status,policy_version,review_required,published_at,expires_at)
-      VALUES($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,CASE WHEN $8='published' THEN now() ELSE NULL END,
-        CASE WHEN $8='published' AND NOT $12::boolean THEN now()+($11::int * interval '1 day') ELSE NULL END) RETURNING *`, [entryId, req.user.id, b.customerId, vault.encrypt(entryId, 'entry', data),
-      vault.index('name', P.normalizeName(preview.name)), vault.index('year', [P.normalizeName(preview.name), preview.birthYear]), preview.fingerprint,
-      autoPublish ? 'published' : 'pending', P.POLICY_VERSION, review, s.publication_days, s.publication_until_removed]);
-    await event(db, req.user.id, 'ENTRY_SUBMITTED', entryId);
-    if (autoPublish) await event(db, req.user.id, 'ENTRY_AUTO_PUBLISHED', entryId);
-    return ownEntry(r.rows[0]);
+    const fields = { ...P.submissionReason(b), ...P.legacySubmissionFields(b) };
+    if (!withGuarantor) return saveEntry(db, owner, s, preview, fields);
+
+    const link = { customerId: preview.customerId, saleId: b.guarantor?.saleId };
+    const guarantor = await guarantorSource(db, owner, link);
+    if (!same(guarantor.fingerprint, b.guarantor?.fingerprint)) throw P.problem(409, 'Данные поручителя изменились. Откройте форму заново.');
+    const guarantorReason = P.submissionReason({ reason: 'other', reasonDetails: b.guarantor.reasonDetails });
+    const customerEntry = await saveEntry(db, owner, s, preview, fields);
+    const guarantorEntry = await saveEntry(db, owner, s, guarantor, guarantorReason, link);
+    return { ...customerEntry, guarantorEntry };
   });
   route('post', '/entries/:id/withdraw', async (req, db) => {
     const r = await entry(db, req.params.id, req.user.id);
@@ -223,7 +314,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     // может скрыться раньше, но никогда не возвращается после восстановления БД.
     revocations.add(r.id);
     // Отзыв разрешён без нового согласия, права поиска, работающих ключей и включённого раздела.
-    await db.query(`UPDATE client_watchlist_entries SET status='withdrawn',payload=NULL,name_index=NULL,year_index=NULL,
+    await db.query(`UPDATE client_watchlist_entries SET status='withdrawn',payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,
       source_fingerprint=NULL,version=version+1,updated_at=now() WHERE id=$1`, [r.id]);
     await event(db, req.user.id, 'ENTRY_WITHDRAWN', r.id);
   });
@@ -233,10 +324,10 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const r = await entry(db, req.params.id, req.user.id), b = req.body || {};
     revision(r, b.version);
     if (r.status !== 'needs_info') throw P.problem(409, 'Дополнение сейчас недоступно.');
-    const data = payload(r), src = await source(db, req.user.id, r.customer_id);
+    const data = payload(r), src = await entrySource(db, r, data);
     if (!same(src.fingerprint, r.source_fingerprint)) throw P.problem(409, 'Клиент изменился. Отзовите заявку и отправьте новую.');
     if (b.confirmed !== true) throw P.problem(400, 'Подтвердите отправку на проверку.');
-    const updatedReason = P.submissionReason({ reason: b.reason ?? data.reason,
+    const updatedReason = P.submissionReason({ reason: data.guarantor ? 'other' : b.reason ?? data.reason,
       reasonDetails: Object.prototype.hasOwnProperty.call(b, 'reasonDetails') ? b.reasonDetails : (b.reason === undefined ? data.reasonDetails : undefined), note: b.note ?? data.note });
     Object.assign(data, updatedReason, P.legacySubmissionFields(b));
     data.response = P.text(b.response ?? b.note, 3, 1500, 'ответ администратору');
@@ -337,6 +428,61 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     for (const row of r.rows.slice(0, take)) await event(db, req.user.id, 'ADMIN_ENTRY_READ', row.id);
     return { items: r.rows.slice(0, take).map(r => ({ ...ownEntry(r), ownerId: r.owner_id, ownerEmail: r.owner_email })), hasMore: r.rows.length > take };
   });
+  async function inspectImport(db, body, revokedIds) {
+    const rows = parseImport(body);
+    const candidates = rows.filter(row => !row.error).map(row => {
+      const identity = [P.normalizeName(row.name), row.birthYear];
+      return { ...row, customerId: 'import:' + vault.index('admin_import', identity), key: vault.index('year', identity) };
+    });
+    const { rows: known } = await db.query(`SELECT customer_id,year_index,status=ANY($4::text[]) AS active_source,
+      (status=ANY($4::text[]) AND (status NOT IN ('published','hidden') OR expires_at IS NULL OR expires_at>now())
+        AND NOT(id=ANY($3::text[]))) AS active, review_required
+      FROM client_watchlist_entries WHERE year_index=ANY($1::text[]) OR customer_id=ANY($2::text[])`,
+    [candidates.map(row => row.key), candidates.map(row => row.customerId), revokedIds, P.ACTIVE]);
+    const seen = new Set(known.filter(row => row.active).map(row => row.year_index));
+    const activeSources = new Set(known.filter(row => row.active_source).map(row => row.customer_id));
+    const needsReview = new Set(known.filter(row => row.review_required).map(row => row.customer_id));
+    const checked = new Map(candidates.map(row => {
+      const duplicate = seen.has(row.key) || activeSources.has(row.customerId);
+      seen.add(row.key);
+      return [row.number, { ...row, duplicate, review: needsReview.has(row.customerId) }];
+    }));
+    return rows.map(row => checked.get(row.number) || row);
+  }
+  function requireImport() {
+    requireVault();
+    return [...revocations.read()];
+  }
+  const canPublishImport = s => s.mode !== 'off' && s.legal_ready && !s.submissions_paused;
+  adminRoute('post', '/entries/import/preview', async (req, db) => {
+    const revoked = requireImport(), s = await settings(db);
+    if (s.submissions_paused) throw P.problem(403, 'Приём новых записей временно приостановлен.');
+    const rows = await inspectImport(db, req.body, revoked);
+    return { canPublish: canPublishImport(s), rows: rows.map(({ customerId, key, ...row }) => row) };
+  });
+  adminRoute('post', '/entries/import', async (req, db) => {
+    requireVault();
+    const b = req.body || {}, s = await settings(db), owner = req.user.id;
+    if (s.submissions_paused) throw P.problem(403, 'Приём новых записей временно приостановлен.');
+    if (!['pending', 'publish'].includes(b.action)) throw P.problem(400, 'Выберите действие для загрузки.');
+    if (b.action === 'publish' && (!canPublishImport(s) || b.basisVerified !== true))
+      throw P.problem(403, 'Сначала подтвердите основание передачи и проверьте настройки публикации.');
+
+    // Загрузки разных администраторов проверяют повторы последовательно.
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:admin-import',0))");
+    const rows = await inspectImport(db, b, requireImport());
+    if (rows.some(row => row.error)) throw P.problem(400, 'Исправьте строки с ошибками перед загрузкой.');
+    const result = { published: 0, pending: 0, skipped: 0 };
+    for (const row of rows) {
+      if (row.duplicate) { result.skipped++; continue; }
+      const publicationMode = b.action === 'publish' && !row.review ? 'manual' : null;
+      await insertEntry(db, owner, s, row, { reason: row.reason, reasonDetails: row.reasonDetails }, {
+        adminImport: true, publicationMode, review: row.review,
+      });
+      result[publicationMode ? 'published' : 'pending']++;
+    }
+    return result;
+  });
   adminRoute('post', '/entries/:id/decision', async (req, db) => {
     const s = await settings(db), r = await entry(db, req.params.id), b = req.body || {};
     if (r.deleted_at) throw P.problem(409, 'Запись удалена администратором.');
@@ -344,21 +490,25 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const transitions = { publish: ['pending', 'hidden'], needs_info: ['pending'], reject: ['pending', 'needs_info'], hide: ['published'], terminate: ['pending', 'needs_info', 'published', 'hidden', 'expired'] };
     if (!transitions[b.action]?.includes(r.status)) throw P.problem(409, 'Это решение недоступно для текущего статуса.');
     const note = P.text(b.note, 5, 1000, 'пояснение решения');
+    const data = b.action === 'terminate' ? null : payload(r);
+    if (b.action === 'needs_info' && data?.adminImport === true) throw P.problem(409, 'У этой записи нет заявки участника для уточнения.');
     if (b.action === 'publish') {
       requireVault();
       if (revocations.read().has(r.id)) throw P.problem(409, 'Публикация отозвана. Восстановление недоступно.');
       if (!s.legal_ready || s.mode === 'off' || s.submissions_paused || b.basisVerified !== true || r.policy_version !== P.POLICY_VERSION)
         throw P.problem(403, 'Сначала проверьте основание и настройки публикации.');
-      const a = await access(db, r.owner_id);
-      if (a?.status !== 'granted' || !a.can_submit || (s.mode === 'pilot' && !a.pilot)) throw P.problem(403, 'У автора нет действующего доступа.');
-      const src = await source(db, r.owner_id, r.customer_id);
-      if (!same(src.fingerprint, r.source_fingerprint)) throw P.problem(409, 'Данные клиента изменились после подачи заявки. Запросите новую заявку.');
+      if (data?.adminImport !== true) {
+        const a = await access(db, r.owner_id);
+        if (a?.status !== 'granted' || !a.can_submit || (s.mode === 'pilot' && !a.pilot)) throw P.problem(403, 'У автора нет действующего доступа.');
+        const src = await entrySource(db, r, data);
+        if (!same(src.fingerprint, r.source_fingerprint)) throw P.problem(409, 'Данные клиента изменились после подачи заявки. Запросите новую заявку.');
+      }
     }
     const status = { publish: 'published', needs_info: 'needs_info', reject: 'rejected', hide: 'hidden', terminate: 'terminated' }[b.action];
     if (status === 'terminated') revocations.add(r.id);
     let encrypted = null;
     if (status !== 'terminated') {
-      const data = payload(r); data.decision = note;
+      data.decision = note;
       if (status === 'published') data.publication = { mode: 'manual', settingsVersion: s.version, at: new Date().toISOString() };
       encrypted = requireVault().encrypt(r.id, 'entry', data);
     }
@@ -366,6 +516,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       review_required=review_required OR $2 IN ('hidden','needs_info','rejected','terminated'),
       name_index=CASE WHEN $2='terminated' THEN NULL ELSE name_index END,
       year_index=CASE WHEN $2='terminated' THEN NULL ELSE year_index END,
+      related_client_index=CASE WHEN $2='terminated' THEN NULL ELSE related_client_index END,
       source_fingerprint=CASE WHEN $2='terminated' THEN NULL ELSE source_fingerprint END,
       published_at=CASE WHEN $2='published' THEN now() ELSE published_at END,
       expires_at=CASE WHEN $2='published' THEN CASE WHEN $5::boolean THEN NULL ELSE now()+($4::int * interval '1 day') END ELSE expires_at END WHERE id=$1`, [r.id, status, encrypted, s.publication_days, s.publication_until_removed]);
@@ -377,7 +528,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     revision(r, b.version);
     if (b.confirmed !== true) throw P.problem(400, 'Подтвердите удаление записи.');
     revocations.add(r.id);
-    await db.query(`UPDATE client_watchlist_entries SET status='terminated',deleted_at=now(),payload=NULL,name_index=NULL,year_index=NULL,
+    await db.query(`UPDATE client_watchlist_entries SET status='terminated',deleted_at=now(),payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,
       source_fingerprint=NULL,review_required=true,version=version+1,updated_at=now() WHERE id=$1`, [r.id]);
     await event(db, req.user.id, 'ENTRY_DELETED', r.id);
   });
@@ -420,7 +571,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       const e = await entry(db, r.entry_id);
       if (!['withdrawn', 'terminated'].includes(e.status)) {
         revocations.add(e.id);
-        await db.query(`UPDATE client_watchlist_entries SET status='terminated',payload=NULL,name_index=NULL,year_index=NULL,source_fingerprint=NULL,
+        await db.query(`UPDATE client_watchlist_entries SET status='terminated',payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,source_fingerprint=NULL,
           version=version+1,updated_at=now() WHERE id=$1`, [e.id]);
         await event(db, req.user.id, 'ENTRY_TERMINATE', e.id);
       }

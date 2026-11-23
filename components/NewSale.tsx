@@ -25,8 +25,11 @@ import { isIOSApp } from '../src/platform';
 import { appConfirm } from '../src/dialogs';
 import { useKeyboardAvoidance } from '../src/keyboard';
 
+import CustomerWatchlistHint, { type WatchlistCheckAccess } from './CustomerWatchlistHint';
+
 interface NewSaleProps {
   initialData: any;
+  watchlistCheck?: WatchlistCheckAccess;
   customers: Customer[];
   products: Product[];
   accounts: Account[];
@@ -84,7 +87,7 @@ const formatPhone = (raw: string | undefined): string => {
 
 
 const NewSale: React.FC<NewSaleProps> = ({
-  initialData, customers, products, accounts, sales, suppliers, showSupplierField,
+  initialData, customers, products, accounts, sales, suppliers, showSupplierField, watchlistCheck,
   onClose, onSelectCustomer, onSubmit, onUpdateSale, onShowNotification, user, appSettings: propAppSettings,
   onOpenRetail, contractTemplatesAllowed = true, showShop = false, warehouseId = DEFAULT_WAREHOUSE_ID,
   warehouses = [], accountBalances = {}, coFundingAllowed = false, coFundingPlanAllowed = false,
@@ -1074,6 +1077,9 @@ if (mode === 'CASH') {
                                                   strokeLinejoin="round"><polyline
                 points="9 18 15 12 9 6"/></svg></span>
           </div>
+          {!formData.id && selectedCustomer && watchlistCheck && (
+            <CustomerWatchlistHint key={selectedCustomer.id} access={watchlistCheck} name={selectedCustomer.name} birthDate={selectedCustomer.birthDate} />
+          )}
         </div>
 
         <div className="bg-white dark:bg-slate-800 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative">

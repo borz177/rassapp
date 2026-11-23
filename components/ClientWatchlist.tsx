@@ -6,9 +6,11 @@ import GlassSheet from './GlassSheet';
 import { ModalParkContext } from './ModalPortal';
 import PassportScan from './PassportScan';
 import WatchlistSearchPanel from './WatchlistSearchPanel';
+import WatchlistPrivateContent from './WatchlistPrivateContent';
 import WatchlistSubmissionForm from './WatchlistSubmissionForm';
 import { appConfirm } from '../src/dialogs';
 import { WATCHLIST_REASONS, WATCHLIST_STATUS, WatchlistEntry, WatchlistPage, WatchlistStatus, watchlistDate, watchlistSearchText } from '../src/watchlist';
+import { WATCHLIST_ACCESS_CHANGED } from '../src/hooks/useWatchlistSubmitAccess';
 import { WatchlistError, WatchlistField, WatchlistRules, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
 
 const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ customers, userId }) => {
@@ -88,7 +90,7 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
         <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 h-4 w-4 shrink-0" checked={accepted} onChange={e => setAccepted(e.target.checked)} /><span>Ознакомился с правилами раздела и политикой обработки персональных данных.</span></label>
         <a className="block text-sm text-indigo-600 underline dark:text-indigo-300" href="/privacy" target="_blank" rel="noopener noreferrer">Политика обработки данных</a>
         <a className="block text-sm text-indigo-600 underline dark:text-indigo-300" href="/watchlist-rules" target="_blank" rel="noopener noreferrer">Полные правила раздела</a>
-        <button className={wlButton} disabled={!accepted || busy} onClick={() => run(async () => { await api.watchlistRequest('/watchlist/accept', { method: 'POST', body: { accepted: true, version: status.policyVersion } }); await read(); })}>Принять и продолжить</button>
+        <button className={wlButton} disabled={!accepted || busy} onClick={() => run(async () => { await api.watchlistRequest('/watchlist/accept', { method: 'POST', body: { accepted: true, version: status.policyVersion } }); await read(); window.dispatchEvent(new Event(WATCHLIST_ACCESS_CHANGED)); })}>Принять и продолжить</button>
       </section>}
       {granted && status.accepted && !status.enabled && <p className={wlCard}>Раздел готовится к запуску. Администратор сообщит, когда проверка станет доступна.</p>}
       {canSearch && <div className={`${wlCard} space-y-4`}>
@@ -111,7 +113,12 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
         {notice && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{notice}</p>}
         <p className="text-sm text-slate-500">Ваши публикации можно отозвать, даже если общий доступ приостановлен.</p>
         {!mine.length && <p className={wlCard}>Вы ещё не отправляли клиентов на проверку.</p>}
-        {mine.map(item => <button key={item.id} className={`${wlCard} w-full text-left space-y-2`} onClick={() => selectEntry(item)}><span className="block font-semibold break-words">{item.name}</span><span className="block text-sm text-slate-500">{item.birthYear ? `${item.birthYear} г. · ` : ''}{WATCHLIST_STATUS[item.status]} · {watchlistDate(item.createdAt)}</span></button>)}
+        {mine.map(item => <WatchlistPrivateContent userId={userId} key={item.id} className={wlCard}>
+          <button className="block w-full space-y-2 text-left" onClick={() => selectEntry(item)}>
+            <span className="block font-semibold break-words">{item.name}</span>
+            <span className="block text-sm text-slate-500">{item.subjectKind === 'guarantor' ? 'Поручитель · ' : ''}{item.birthYear ? `${item.birthYear} г. · ` : ''}{WATCHLIST_STATUS[item.status]} · {watchlistDate(item.createdAt)}</span>
+          </button>
+        </WatchlistPrivateContent>)}
         {hasMore && <button className={wlSecondary} disabled={busy} onClick={() => run(async () => { const next = page + 1, m = await api.watchlistRequest<WatchlistPage<WatchlistEntry>>(`/watchlist/mine?offset=${next * 20}`); setMine(x => [...x, ...m.items]); setPage(next); setHasMore(m.hasMore); })}>Показать ещё</button>}
         {!!reports.length && <div className="space-y-2 pt-3"><h2 className="font-bold">Мои обращения</h2>{reports.map(r => <div key={r.id} className={`${wlCard} text-sm space-y-2`}><p>{r.status === 'resolved' ? 'Рассмотрено' : 'На рассмотрении'} · {watchlistDate(r.createdAt)}</p><p className="whitespace-pre-wrap break-words">{r.message}</p>{r.response && <p className="whitespace-pre-wrap break-words">Ответ: {r.response}</p>}</div>)}</div>}
       </section></GlassSheet>}
@@ -119,7 +126,9 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
 
     {add && <GlassSheet title={draftCustomerId ? 'В чёрный список' : 'Выберите своего клиента'} onClose={resetAdd} confirmClose={() => !busy}>
       {draftCustomerId ? <WatchlistSubmissionForm userId={userId} customerId={draftCustomerId} onBusyChange={setBusy} onChooseAnother={() => setDraftCustomerId(null)} onSaved={async result => {
-        resetAdd(); await read(); setMineOpen(true); setNotice(result.status === 'published' ? 'Клиент в общем списке.' : result.status === 'needs_info' ? 'Заявка уже существует. Откройте её в «Моих записях».' : 'Заявка отправлена на проверку. В общем поиске её пока нет.');
+        resetAdd(); await read(); setMineOpen(true);
+        const clientNotice = result.status === 'published' ? 'Клиент в общем списке.' : result.status === 'needs_info' ? 'Заявка уже существует. Откройте её в «Моих записях».' : 'Заявка отправлена на проверку. В общем поиске её пока нет.';
+        setNotice(result.guarantorEntry ? `${clientNotice} Поручитель · ${WATCHLIST_STATUS[result.guarantorEntry.status].toLocaleLowerCase('ru')}.` : clientNotice);
       }} /> : <div className="space-y-4 p-4"><WatchlistError message={error} />
         <input aria-label="Поиск своих клиентов" className={wlInput} placeholder="ФИО или телефон" value={clientQuery} onChange={e => setClientQuery(e.target.value)} />
         <p className="text-xs text-slate-500">Показано до 30 клиентов. Для остальных уточните поиск.</p>
@@ -127,13 +136,16 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
       </div>}
     </GlassSheet>}
     {selected && <GlassSheet title="Моя запись" subtitle={WATCHLIST_STATUS[selected.status]} zIndex={220} onClose={() => setSelected(null)} confirmClose={() => !busy}><div className="p-4 space-y-4"><WatchlistError message={error} />
-      <h2 className="text-lg font-bold break-words">{selected.name}</h2><p className="text-sm text-slate-500">{selected.birthYear ? `${selected.birthYear} г. · ` : ''}Отправлено {watchlistDate(selected.createdAt)}</p>
-      {selected.reason && <p className="text-sm">Причина: {WATCHLIST_REASONS[selected.reason]}</p>}
-      {selected.reasonDetails && <p className="whitespace-pre-wrap break-words text-sm">{selected.reasonDetails}</p>}
+      <WatchlistPrivateContent userId={userId} className="space-y-2">
+        {selected.subjectKind === 'guarantor' && <p className="text-sm text-slate-500">Поручитель</p>}
+        <h2 className="text-lg font-bold break-words">{selected.name}</h2><p className="text-sm text-slate-500">{selected.birthYear ? `${selected.birthYear} г. · ` : ''}Отправлено {watchlistDate(selected.createdAt)}</p>
+        {selected.reason && <p className="text-sm">Причина: {WATCHLIST_REASONS[selected.reason]}</p>}
+        {selected.reasonDetails && <p className="whitespace-pre-wrap break-words text-sm">{selected.reasonDetails}</p>}
+      </WatchlistPrivateContent>
       {selected.status === 'published' && selected.publicationMode === 'auto' && <p className="text-sm text-indigo-600 dark:text-indigo-300">Опубликовано автоматически</p>}
       {selected.decision && <p className={`${wlCard} whitespace-pre-wrap break-words text-sm`}>Решение администратора: {selected.decision}</p>}
       {selected.status === 'published' && <p className="text-sm text-slate-500">{selected.expiresAt ? `Публикация до ${watchlistDate(selected.expiresAt)}` : 'Публикация до удаления'}</p>}
-      {selected.status === 'needs_info' && canAdd && <><WatchlistField label="Причина"><select className={wlInput} value={reason} onChange={e => changeReason(e.target.value)}>{Object.entries(WATCHLIST_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></WatchlistField>{reason === 'other' && <WatchlistField label="Описание причины"><textarea className={wlInput} rows={3} minLength={3} maxLength={1000} value={reasonDetails} onChange={e => setReasonDetails(e.target.value)} /></WatchlistField>}<WatchlistField label="Ответ администратору"><textarea className={wlInput} rows={3} minLength={3} maxLength={1500} value={response} onChange={e => setResponse(e.target.value)} /></WatchlistField><label className="flex gap-3 text-sm"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Подтверждаю</label><button className={wlButton} disabled={busy || !confirmed || !reasonValid || response.trim().length < 3} onClick={() => run(async () => { await api.watchlistRequest(`/watchlist/entries/${selected.id}/resubmit`, { method: 'POST', body: { version: selected.version, reason, ...(reason === 'other' ? { reasonDetails: reasonDetails.trim() } : {}), response: response.trim(), confirmed } }); setSelected(null); await read(); })}>Отправить дополнение</button></>}
+      {selected.status === 'needs_info' && canAdd && <>{selected.subjectKind !== 'guarantor' && <WatchlistField label="Причина"><select className={wlInput} value={reason} onChange={e => changeReason(e.target.value)}>{Object.entries(WATCHLIST_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></WatchlistField>}{reason === 'other' && <WatchlistField label="Описание причины"><textarea className={wlInput} rows={3} minLength={3} maxLength={1000} value={reasonDetails} onChange={e => setReasonDetails(e.target.value)} /></WatchlistField>}<WatchlistField label="Ответ администратору"><textarea className={wlInput} rows={3} minLength={3} maxLength={1500} value={response} onChange={e => setResponse(e.target.value)} /></WatchlistField><label className="flex gap-3 text-sm"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Подтверждаю</label><button className={wlButton} disabled={busy || !confirmed || !reasonValid || response.trim().length < 3} onClick={() => run(async () => { await api.watchlistRequest(`/watchlist/entries/${selected.id}/resubmit`, { method: 'POST', body: { version: selected.version, reason, ...(reason === 'other' ? { reasonDetails: reasonDetails.trim() } : {}), response: response.trim(), confirmed } }); setSelected(null); await read(); })}>Отправить дополнение</button></>}
       {!['withdrawn', 'terminated', 'deleted'].includes(selected.status) && <button className={`${wlSecondary} text-red-600 dark:text-red-300`} disabled={busy} onClick={() => withdraw(selected)}>Убрать из общего списка</button>}
       <p className="text-xs text-slate-400 break-all">Запись: {selected.id}</p>
     </div></GlassSheet>}

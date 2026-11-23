@@ -214,6 +214,40 @@ test('общий список: реальная локальная PostgreSQL, �
       assert.equal(m.length, 1); assert.equal(m[0].birthYear, null);
       await user('/search', { name: '%' }, 400);
     });
+    await t.test('предпросмотр предупреждает о совпадении ФИО из другого аккаунта только при доступном поиске', async () => {
+      const customerId = 'other_client';
+      const original = (await pool.query('SELECT data FROM data_items WHERE id=$1', [customerId])).rows[0].data;
+      const check = () => req('other', 'watchlist/preview', { customerId, checkPublishedName: true });
+      const settings = (await pool.query('SELECT search_limit,search_paused FROM client_watchlist_settings WHERE id=1')).rows[0];
+      try {
+        await pool.query("INSERT INTO client_watchlist_access(user_id,status,can_search,pilot) VALUES('other','granted',false,true)");
+        await req('other', 'watchlist/accept', { accepted: true, version: POLICY_VERSION });
+        await pool.query('UPDATE data_items SET data=$1 WHERE id=$2',
+          [{ ...original, name: 'СЕМЕНОВ  ТЕСТ ТЕСТОВИЧ', birthDate: '1995-03-02' }, customerId]);
+        assert.equal((await check()).hasPublishedNameMatch, undefined);
+        await pool.query("UPDATE client_watchlist_access SET can_search=true WHERE user_id='other'");
+        const matched = await check();
+        assert.equal(matched.hasPublishedNameMatch, true);
+        assert.deepEqual(Object.keys(matched).sort(), ['birthYear', 'customerId', 'fingerprint', 'hasPublishedNameMatch', 'name']);
+        assert.equal(matched.birthYear, 1995);
+        assert.equal((await req('other', 'watchlist/preview', { customerId })).hasPublishedNameMatch, undefined);
+        await req('other', 'watchlist/preview', { customerId: 'client', checkPublishedName: true }, 404);
+        await pool.query('UPDATE client_watchlist_settings SET search_paused=true WHERE id=1');
+        assert.equal((await check()).hasPublishedNameMatch, undefined);
+        await pool.query('UPDATE client_watchlist_settings SET search_paused=false,search_limit=1 WHERE id=1');
+        assert.equal((await check()).hasPublishedNameMatch, undefined);
+        await req('other', 'watchlist/search', { name: original.name }, 429);
+        await pool.query("DELETE FROM client_watchlist_limits WHERE user_id='other' AND action='search'");
+        await pool.query('UPDATE data_items SET data=$1 WHERE id=$2', [original, customerId]);
+        assert.equal((await check()).hasPublishedNameMatch, false);
+      } finally {
+        await pool.query('UPDATE data_items SET data=$1 WHERE id=$2', [original, customerId]);
+        await pool.query('UPDATE client_watchlist_settings SET search_limit=$1,search_paused=$2 WHERE id=1', [settings.search_limit, settings.search_paused]);
+        await pool.query("DELETE FROM client_watchlist_limits WHERE user_id='other' AND action='search'");
+        await pool.query("DELETE FROM client_watchlist_acceptances WHERE user_id='other'");
+        await pool.query("DELETE FROM client_watchlist_access WHERE user_id='other'");
+      }
+    });
     await t.test('описание выдаётся только для other; служебные поля и старое note не раскрываются', async () => {
       const original = (await pool.query('SELECT payload FROM client_watchlist_entries WHERE id=$1', [first.id])).rows[0].payload;
       const data = vault.decrypt(first.id, 'entry', original);
@@ -421,6 +455,121 @@ test('общий список: реальная локальная PostgreSQL, �
         const o=await adm('/overview');await adm('/settings',{...o.settings,publicationUntilRemoved:originalSettings.publicationUntilRemoved,autoPublish:originalSettings.autoPublish,reason:'Завершение проверки срока публикации'});
       }
       assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows,snapshot);
+    });
+    await t.test('общие правила публикации и показ опубликованного поручителя рядом с клиентом', async () => {
+      const customerId = 'guarantor_test_client', saleId = 'guarantor_test_sale', foreignSale = 'guarantor_test_foreign';
+      const buyer = { id: customerId, name: 'Покупатель Тест Новый' };
+      const sale = { type: 'INSTALLMENT', customerId, status: 'ACTIVE', startDate: '2026-01-02', productName: 'Тестовый товар',
+        guarantorName: 'Поручитель Тест Новый', guarantorPhone: '79990000000', guarantorPassportNumber: '001234' };
+      const original = (await adm('/overview')).settings;
+      const ids = [];
+      const clearQuota = () => pool.query("DELETE FROM client_watchlist_limits WHERE user_id='owner' AND action='submit'");
+      try {
+        await clearQuota();
+        await pool.query("INSERT INTO data_items(id,user_id,type,data) VALUES($1,'owner','customers',$2),($3,'owner','sales',$4),($5,'other','sales',$4)",
+          [customerId, buyer, saleId, sale, foreignSale]);
+        await adm('/settings', { ...original, autoPublish: false, reason: 'Проверка ручного режима для обеих записей' });
+        const p = await user('/preview', { customerId, includeGuarantors: true });
+        assert.equal(p.guarantors.length, 1);
+        const g = p.guarantors[0];
+        assert.equal(g.saleId, saleId);
+        assert.deepEqual(Object.keys(g).sort(), ['fingerprint', 'name', 'product', 'saleId', 'startDate']);
+        const body = { customerId, fingerprint: p.fingerprint, confirmed: true, reason: 'overdue',
+          guarantor: { saleId, fingerprint: g.fingerprint, reasonDetails: 'Описание нарушения поручителя' } };
+        await user('/entries', { ...body, guarantor: { ...body.guarantor, saleId: foreignSale } }, 409);
+        await user('/entries', { ...body, guarantor: { ...body.guarantor, reasonDetails: '' } }, 400);
+        assert.equal((await pool.query('SELECT id FROM client_watchlist_entries WHERE customer_id=$1', [customerId])).rowCount, 0);
+        const pending = await user('/entries', body);
+        ids.push(pending.id, pending.guarantorEntry.id);
+        assert.equal(pending.status, 'pending');
+        assert.equal(pending.guarantorEntry.status, 'pending');
+        await user(`/entries/${pending.id}/withdraw`, {});
+        await user(`/entries/${pending.guarantorEntry.id}/withdraw`, {});
+        await adm('/settings', { ...(await adm('/overview')).settings, autoPublish: true, reason: 'Проверка автоматического режима для обеих записей' });
+        await clearQuota();
+        const result = await user('/entries', body), guarantor = result.guarantorEntry;
+        ids.push(result.id, guarantor.id);
+        assert.equal(result.status, 'published');
+        assert.equal(guarantor.status, 'published');
+        assert.equal(guarantor.publicationMode, 'auto');
+        assert.equal(guarantor.subjectKind, 'guarantor');
+        assert.equal(guarantor.birthYear, null);
+        assert.equal(guarantor.reasonDetails, body.guarantor.reasonDetails);
+        const repeated = await user('/entries', body);
+        assert.equal(repeated.id, result.id);
+        assert.equal(repeated.guarantorEntry.id, guarantor.id);
+        assert.equal((await pool.query("SELECT count FROM client_watchlist_limits WHERE user_id='owner' AND action='submit'")).rows[0].count, 4);
+        const listed = (await adm(`/entries?id=${guarantor.id}`)).items[0];
+        assert.equal(listed.subjectKind, 'guarantor');
+        const searchBuyer = async () => (await user('/search', { name: buyer.name })).items.find(item => item.id === result.id);
+        assert.deepEqual((await searchBuyer()).guarantors, [{ id: guarantor.id, name: sale.guarantorName }]);
+        await adm(`/entries/${guarantor.id}/decision`, { version: guarantor.version, action: 'hide', note: 'Скрытие поручителя в тесте' });
+        assert.equal((await searchBuyer()).guarantors, undefined);
+        const decision = { version: guarantor.version + 1, action: 'publish', basisVerified: true, note: 'Проверено модератором в тесте' };
+        await pool.query('UPDATE data_items SET data=$1 WHERE id=$2', [{ ...sale, guarantorName: 'Заменённый Тестовый Поручитель' }, saleId]);
+        await adm(`/entries/${guarantor.id}/decision`, decision, 409);
+        await pool.query('UPDATE data_items SET data=$1 WHERE id=$2', [sale, saleId]);
+        await adm(`/entries/${guarantor.id}/decision`, decision);
+        const { items } = await user('/search', { name: sale.guarantorName });
+        assert.deepEqual(items, [{ id: guarantor.id, name: sale.guarantorName, birthYear: null, reason: 'other', reasonDetails: body.guarantor.reasonDetails }]);
+        await user(`/entries/${guarantor.id}/withdraw`, {});
+        assert.equal((await searchBuyer()).guarantors, undefined);
+        assert.equal((await pool.query('SELECT related_client_index FROM client_watchlist_entries WHERE id=$1', [guarantor.id])).rows[0].related_client_index, null);
+      } finally {
+        await pool.query('DELETE FROM client_watchlist_entries WHERE id=ANY($1::text[])', [ids]);
+        await pool.query('DELETE FROM data_items WHERE id=ANY($1::text[])', [[customerId, saleId, foreignSale]]);
+        await adm('/settings', { ...(await adm('/overview')).settings, autoPublish: original.autoPublish, reason: 'Завершение проверки поручителя' });
+        await clearQuota();
+      }
+    });
+    await t.test('массовое добавление администратором: предпросмотр, защита, публикация и повторы без карточек клиентов', async () => {
+      const path = '/entries/import';
+      const importBody = {
+        text: 'ФИО\tГод\tПричина\r\nСписков Тест Импортович\t1991\tДлительная просрочка\r\nсписков  тест импортович\t1991\tДлительная просрочка\r\nПримеров Тест Импортович\t\tСинтетическое описание',
+        defaultReason: 'overdue',
+      };
+      const old = (await adm('/overview')).settings;
+      const created = [];
+      try {
+        await req('owner', 'admin/watchlist' + path + '/preview', importBody, 403, true);
+        await req('admin', 'admin/watchlist' + path + '/preview', importBody, 403);
+        const preview = await adm(path + '/preview', importBody);
+        assert.equal(preview.canPublish, true);
+        assert.equal(preview.rows.length, 3);
+        assert.deepEqual(preview.rows.map(row => row.duplicate), [false, true, false]);
+        assert.equal(preview.rows[2].birthYear, null);
+        assert.equal(preview.rows[2].reason, 'other');
+        assert.ok(!('key' in preview.rows[0]) && !('customerId' in preview.rows[0]));
+        await adm(path, { ...importBody, action: 'publish', basisVerified: false }, 403);
+        const bad = { ...importBody, text: importBody.text + '\nОшибка Строки\t18' };
+        assert.match((await adm(path + '/preview', bad)).rows.at(-1).error, /год рождения/);
+        await adm(path, { ...bad, action: 'pending' }, 400);
+        await adm(path + '/preview', { text: ('Группа Тест Импортович\n').repeat(101), defaultReason: 'overdue' }, 400);
+        assert.equal((await adm('/entries?name=' + encodeURIComponent('Списков Тест Импортович'))).items.length, 0);
+        const saved = await Promise.all([adm(path, { ...importBody, action: 'pending' }), adm(path, { ...importBody, action: 'pending' })]);
+        assert.deepEqual(saved.map(row => row.pending).sort(), [0, 2]);
+        assert.deepEqual(saved.map(row => row.skipped).sort(), [1, 3]);
+        const found = (await adm('/entries?name=' + encodeURIComponent('Списков Тест Импортович'))).items[0];
+        const other = (await adm('/entries?name=' + encodeURIComponent('Примеров Тест Импортович'))).items[0];
+        created.push(found.id, other.id);
+        assert.equal(found.adminImport, true);
+        assert.equal(found.status, 'pending');
+        assert.equal((await user('/search', { name: found.name })).items.length, 0);
+        await adm(`/entries/${found.id}/decision`, { version: found.version, action: 'publish', basisVerified: true, note: 'Проверено основание синтетической записи' });
+        const match = (await user('/search', { name: found.name })).items[0];
+        assert.deepEqual(match, { id: found.id, name: found.name, birthYear: found.birthYear, reason: 'overdue' });
+        const publishBody = { text: 'Новый Тест Импортович\t1990', defaultReason: 'unfulfilled', action: 'publish', basisVerified: true };
+        assert.deepEqual(await adm(path, publishBody), { published: 1, pending: 0, skipped: 0 });
+        const published = (await adm('/entries?name=' + encodeURIComponent('Новый Тест Импортович'))).items[0];
+        created.push(published.id);
+        assert.equal(published.publicationMode, 'manual');
+        const stored = (await pool.query('SELECT payload FROM client_watchlist_entries WHERE id=$1', [published.id])).rows[0];
+        assert.ok(!JSON.stringify(stored).includes(published.name));
+        assert.equal(vault.decrypt(published.id, 'entry', stored.payload).adminImport, true);
+        assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows, snapshot);
+      } finally {
+        await pool.query('DELETE FROM client_watchlist_entries WHERE id=ANY($1::text[])', [created]);
+      }
     });
     await t.test('ограничения не обходятся API; отзыв доступен при паузе/без новых правил; финансы неизменны', async () => {
       let o = await adm('/overview');

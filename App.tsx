@@ -12,7 +12,7 @@ import Dashboard from './components/Dashboard';
 import CashRegister from './components/CashRegister';
 import Investors from './components/Investors';
 import Contracts from './components/Contracts';
-import { watchlistUiVisible } from './src/watchlist';
+import { watchlistCanRequestAccess, watchlistCanSearch, watchlistUiVisible } from './src/watchlist';
 import { useWatchlistStatus } from './src/hooks/useWatchlistSubmitAccess';
 import NewSale from './components/NewSale';
 import NewIncome from './components/NewIncome';
@@ -154,7 +154,9 @@ const isApiDocs = path === "/api" || path === "/api/"
   // Auth State
   const [user, setUser] = useState<User | null>(null);
   const watchlistStatus = useWatchlistStatus(user);
-  const showWatchlist = watchlistUiVisible(user, watchlistStatus);
+  const showWatchlist = watchlistUiVisible(user);
+  const watchlistCheck = user && watchlistStatus && watchlistCanSearch(watchlistStatus)
+    ? { userId: user.id, status: watchlistStatus } : undefined;
   const [isLoading, setIsLoading] = useState(true);
   const [isPublicMode, setIsPublicMode] = useState(false);
   const [isOnline, setIsOnline] = useState(navigator.onLine);
@@ -1308,30 +1310,17 @@ useEffect(() => {
 
 
 
-//для модалки сообщения
 useEffect(() => {
-  if (!user || isPublicMode) return;
+  if (!showWatchlist || isPublicMode) return;
 
-  // Ключ меняется вместе с содержимым окна: те, кто видел прошлое обновление,
-  // должны увидеть и новое, а не считаться уже показанными.
-  // Показываем один раз: раньше анонс повторялся каждые 10 часов, и
-  // прочитанное окно возвращалось снова и снова.
-  const STORAGE_KEY = 'template_update_notice_last_shown_v45';
-  const SHOW_ANNOUNCEMENT = false; // Включим после подготовки отдельного анонса ЧС с новым STORAGE_KEY.
-  if (!SHOW_ANNOUNCEMENT) {
-    setShowTemplateUpdateModal(false);
-    return;
-  }
-  // Обновления учёта и документов показываем владельцу аккаунта.
-  if (user.role !== 'manager' && user.role !== 'admin') return;
-
+  const STORAGE_KEY = 'watchlist_update_notice_v1';
   let seen = false;
   try { seen = !!localStorage.getItem(STORAGE_KEY); } catch { /* без хранилища — покажем */ }
-  if (SHOW_ANNOUNCEMENT && !seen) {
+  if (!seen) {
     setShowTemplateUpdateModal(true);
     try { localStorage.setItem(STORAGE_KEY, String(Date.now())); } catch { /* переживём */ }
   }
-}, [user, isPublicMode]);
+}, [showWatchlist, isPublicMode]);
 
 
 
@@ -4607,7 +4596,7 @@ const handleQuickAddCustomer = async (data: {
   };
 
   const globalSearchProps = {
-    watchlistUserId: showWatchlist ? user?.id : undefined,
+    watchlistUserId: watchlistCheck?.userId,
     data: { customers, sales, products, expenses },
     // Поиск откладывается под найденное: «назад» с клиента, договора, товара или
     // операции возвращает в него (searchOrigin — экран, откуда искали). Если
@@ -5394,6 +5383,7 @@ if (!user && !showSplash) {
               )}
               {(currentView === 'CUSTOMERS' || (currentView === 'CUSTOMER_DETAILS' && previousView === 'CUSTOMERS')) && (
                   <Customers
+                      watchlistCheck={watchlistCheck}
                       customers={customers}
                       sales={sales}
                       segmentOf={shopAvailable ? customerSegments.of : undefined}
@@ -5514,7 +5504,7 @@ if (!user && !showSplash) {
               {currentView === 'CREATE_SALE' && (
                   <PagePush onClose={() => { setCurrentView(formReturnView); setEditingSale(null); }}>
                     {(requestClose: () => void) => (
-                      <NewSale initialData={editingSale || draftSaleData} customers={customers} products={products}
+                      <NewSale watchlistCheck={watchlistCheck} initialData={editingSale || draftSaleData} customers={customers} products={products}
                            accounts={accounts} suppliers={suppliers} showSupplierField={supplierFieldAllowed || !!(editingSale || draftSaleData)?.supplierId} onClose={requestClose}
                            onSelectCustomer={(data: any) => openSelection('SELECT_CUSTOMER', data)} onSubmit={handleSaveSale} onShowNotification={showNotificationModal}
                            onOpenRetail={shopAvailable ? () => { setPreviousView('DASHBOARD'); setCurrentView('RETAIL_SALE'); } : undefined}
@@ -5527,7 +5517,7 @@ if (!user && !showSplash) {
                     )}
                   </PagePush>
               )}
-              {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" items={customers.map(c => ({
+              {currentView === 'SELECT_CUSTOMER' && <SelectionList title="Выберите клиента" watchlistCheck={watchlistCheck} items={customers.map(c => ({
                   id: c.id,
                   title: c.name,
                   subtitle: c.phone,
@@ -5838,15 +5828,19 @@ if (!user && !showSplash) {
     {currentView === 'CLIENT_WATCHLIST' && user && showWatchlist && (
       <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
         <Suspense fallback={<LazyFallback />}>
-          <ClientWatchlist key={user.id} userId={user.id} customers={customers} />
+          {watchlistCanRequestAccess(user) ? <ClientWatchlist key={user.id} userId={user.id} customers={customers} />
+            : <section className="mx-auto max-w-3xl space-y-2 p-4 text-slate-900 dark:text-white">
+              <h1 className="text-xl font-bold sm:text-2xl">Чёрный список</h1>
+              <p className="text-sm text-slate-500 dark:text-slate-400">Доступ к проверкам запрашивает владелец аккаунта.</p>
+            </section>}
         </Suspense>
       </PagePush>
     )}
 
-    {currentView === 'ADMIN_PANEL' && (
+    {currentView === 'ADMIN_PANEL' && user && (
       <PagePush onClose={() => setCurrentView(previousView)} showBackButton>
         <Suspense fallback={<LazyFallback />}>
-          <AdminPanel/>
+          <AdminPanel userId={user.id} />
         </Suspense>
       </PagePush>
     )}
@@ -6540,47 +6534,13 @@ if (!user && !showSplash) {
       onClick={e => e.stopPropagation()}
     >
       <div className="px-6 pt-7 pb-6">
-        <p className="text-[12px] font-semibold uppercase tracking-[0.18em] text-violet-600 dark:text-violet-400">Новое</p>
-        <h3 className="mt-2 text-[24px] leading-tight font-bold tracking-tight text-slate-900 dark:text-white">
-          Обновление
+        <h3 className="text-[24px] font-bold leading-tight tracking-tight text-slate-900 dark:text-white">
+          Чёрный список
         </h3>
-
-        {/* Список обновлений. Говорим о том, что человек заметит сам, и его
-            словами: результат, а не устройство. */}
-        <div className="mt-6 space-y-5">
-          {[
-            {
-              tone: 'bg-indigo-50 text-indigo-600 dark:bg-indigo-500/15 dark:text-indigo-300',
-              icon: <><path d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z" /><path d="M14 3v5h5M9 13h6M9 17h6" /></>,
-              title: 'Проверка учёта',
-              text: 'Спросите ИИ об учёте — он покажет, что стоит проверить.',
-            },
-            {
-              tone: 'bg-violet-50 text-violet-600 dark:bg-violet-500/15 dark:text-violet-300',
-              icon: <><rect x="3" y="5" width="18" height="15" rx="2" /><path d="M3 9h18M7 14h2M13 14h4M7 17h2" /></>,
-              title: 'Напоминания WhatsApp',
-              text: 'Добавили напоминание за 3 дня до оплаты.',
-            },
-            {
-              tone: 'bg-emerald-50 text-emerald-600 dark:bg-emerald-500/15 dark:text-emerald-300',
-              icon: <><rect x="8" y="8" width="12" height="12" rx="2" /><path d="M16 8V4a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h4" /></>,
-              title: 'Печать и отправка',
-              text: 'Улучшили печать договоров и сообщения с условиями рассрочки.',
-            },
-          ].map(item => (
-            <div key={item.title} className="flex gap-3.5">
-              <span className={`w-10 h-10 shrink-0 rounded-xl flex items-center justify-center ${item.tone}`}>
-                <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true">
-                  {item.icon}
-                </svg>
-              </span>
-              <div className="min-w-0">
-                <p className="text-[15px] font-semibold text-slate-900 dark:text-white">{item.title}</p>
-                <p className="mt-0.5 text-[13px] leading-snug text-slate-500 dark:text-slate-400">{item.text}</p>
-              </div>
-            </div>
-          ))}
-        </div>
+        <p className="mt-3 text-sm leading-relaxed text-slate-600 dark:text-slate-300">
+          В меню появился раздел «Чёрный список». Если у вас есть доступ, вы можете проверить клиента по ФИО и году рождения.
+          При оформлении договора приложение подскажет, если найдёт возможное совпадение.
+        </p>
 
         <button onClick={() => setShowTemplateUpdateModal(false)}
                 className="mt-7 w-full h-12 bg-violet-600 text-white text-[15px] font-semibold rounded-2xl active:scale-[0.98] transition-transform">

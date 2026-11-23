@@ -70,7 +70,7 @@ interface AuditLogEntry {
     targetEmail?: string;
 }
 
-const AdminPanel: React.FC = () => {
+const AdminPanel: React.FC<{ userId: string }> = ({ userId }) => {
     const [users, setUsers] = useState<User[]>([]);
     const [loading, setLoading] = useState(true);
     const [searchTerm, setSearchTerm] = useState('');
@@ -685,7 +685,7 @@ const getContractUsage = (user: User): {
 
             {activeTab === 'whatsapp' && <AdminWhatsApp />}
             {activeTab === 'ai' && <AdminAI />}
-            {activeTab === 'watchlist' && <AdminClientWatchlist />}
+            {activeTab === 'watchlist' && <AdminClientWatchlist userId={userId} />}
 
             {activeTab === 'stats' && (
                 <div className="space-y-4">

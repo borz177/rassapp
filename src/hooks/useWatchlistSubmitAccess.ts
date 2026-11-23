@@ -2,12 +2,14 @@ import { useContext, useEffect, useState } from 'react';
 import { User } from '../../types';
 import { api } from '../../services/api';
 import { ModalParkContext } from '../../components/transitions/park';
-import { WatchlistStatus, watchlistCanSubmit } from '../watchlist';
+import { WatchlistStatus, watchlistCanRequestAccess, watchlistCanSubmit } from '../watchlist';
 
 /** Один запрос на экран, без запросов из каждой строки договора. */
+export const WATCHLIST_ACCESS_CHANGED = 'finuchet:watchlist-access-changed';
+
 export function useWatchlistStatus(user?: User | null, parked = false): WatchlistStatus | null {
   const userId = user?.id;
-  const eligible = !!userId && (user?.role === 'admin' || user?.role === 'manager');
+  const eligible = !!userId && watchlistCanRequestAccess(user);
   const [access, setAccess] = useState<{ userId: string; status: WatchlistStatus } | null>(null);
   useEffect(() => {
     setAccess(null);
@@ -25,7 +27,8 @@ export function useWatchlistStatus(user?: User | null, parked = false): Watchlis
     refresh();
     document.addEventListener('visibilitychange', refresh);
     window.addEventListener('online', refresh); window.addEventListener('offline', refresh);
-    return () => { disposed = true; controller?.abort(); document.removeEventListener('visibilitychange', refresh); window.removeEventListener('online', refresh); window.removeEventListener('offline', refresh); };
+    window.addEventListener(WATCHLIST_ACCESS_CHANGED, refresh);
+    return () => { disposed = true; controller?.abort(); document.removeEventListener('visibilitychange', refresh); window.removeEventListener('online', refresh); window.removeEventListener('offline', refresh); window.removeEventListener(WATCHLIST_ACCESS_CHANGED, refresh); };
   }, [userId, user?.role, eligible, parked]);
   return eligible && !parked && access?.userId === userId ? access.status : null;
 }

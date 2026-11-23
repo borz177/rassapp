@@ -2,7 +2,8 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { build } from 'esbuild';
 const compiled = await build({ entryPoints: ['src/watchlist.ts'], bundle: true, platform: 'node', format: 'esm', write: false, logLevel: 'silent' });
-const { watchlistSearchQuery: query, watchlistCanSearch: allowed, watchlistCanSubmit: canSubmit, watchlistUiVisible: visible } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
+const { watchlistSearchQuery: query, watchlistCanSearch: allowed, watchlistCanSubmit: canSubmit, watchlistUiVisible: visible,
+  watchlistCanRequestAccess: canRequest } = await import(`data:text/javascript;base64,${Buffer.from(compiled.outputFiles[0].contents).toString('base64')}`);
 
 test('автопроверка: полное имя, одинаковые регистр/Ё/пробелы; цифры и незаконченный ввод не отправляются', () => {
   const expected = { name: 'семенов тест тестович', birthYear: null };
@@ -27,18 +28,14 @@ test('локальное включение проверки требует вс
 });
 
 
-test('до открытия общего доступа входы в ЧС видны только администратору',()=>{
-  assert.equal(visible({role:'admin'}),true);
-  for(const role of ['manager','employee','investor',undefined])assert.equal(visible({role}),false);
-  assert.equal(visible(null),false);
+test('раздел видят все вошедшие пользователи', () => {
+  for (const role of ['admin', 'manager', 'employee', 'investor']) assert.equal(visible({ role }), true);
+  assert.equal(visible({}), false);
+  assert.equal(visible(null), false);
 });
 
-test('раздел видят допущенные владельцы при действующем режиме', () => {
-  const manager = { role: 'manager' };
-  const status = { enabled: true, accepted: false, access: { status: 'granted', canSearch: false, canSubmit: true } };
-  assert.equal(visible(manager, status), true, 'можно открыть раздел и принять правила');
-  assert.equal(visible(manager, { ...status, enabled: false }), false);
-  assert.equal(visible(manager, { ...status, access: { ...status.access, status: 'requested' } }), false);
-  assert.equal(visible(manager, { ...status, access: { ...status.access, canSubmit: false } }), false);
-  assert.equal(visible({ role: 'employee' }, status), false);
+test('открытие меню сохраняет серверные ограничения для сотрудников и инвесторов', () => {
+  for (const role of ['admin', 'manager']) assert.equal(canRequest({ role }), true);
+  for (const role of ['employee', 'investor']) assert.equal(canRequest({ role }), false);
+  assert.equal(canRequest(null), false);
 });

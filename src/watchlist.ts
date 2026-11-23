@@ -1,10 +1,8 @@
 export const WATCHLIST_POLICY_VERSION = '2026-11-14-v4';
-// Допущенные владельцы видят раздел по ответу сервера. Общий вход
-// для подачи новых заявок можно включить отдельно.
-export const WATCHLIST_USER_UI_ENABLED = false;
-export const watchlistUiVisible = (user?: { role?: string } | null, status?: WatchlistStatus | null): boolean =>
-  user?.role === 'admin' || (user?.role === 'manager' && (WATCHLIST_USER_UI_ENABLED ||
-    !!(status?.enabled && status.access?.status === 'granted' && (status.access.canSearch || status.access.canSubmit))));
+export const watchlistCanRequestAccess = (user?: { role?: string } | null): boolean =>
+  user?.role === 'admin' || user?.role === 'manager';
+export const watchlistUiVisible = (user?: { role?: string } | null): boolean =>
+  watchlistCanRequestAccess(user) || user?.role === 'employee' || user?.role === 'investor';
 export const WATCHLIST_STATUS: Record<string, string> = {
   pending: 'На проверке', needs_info: 'Нужны сведения', published: 'Опубликовано', hidden: 'Скрыто на проверку',
   rejected: 'Отклонено', withdrawn: 'Отозвано', terminated: 'Публикация прекращена', expired: 'Срок истёк',
@@ -21,8 +19,13 @@ export interface WatchlistStatus {
 export interface WatchlistEntry {
   id: string; customerId: string; name: string; birthYear: number | null; reason?: string; reasonDetails?: string; response?: string; basis?: string;
   evidence?: string; note?: string; decision?: string; publicationMode?: 'auto' | 'manual'; status: string; version: number; createdAt: string; expiresAt?: string | null;
+  subjectKind?: 'guarantor';
 }
-export interface WatchlistMatch { id: string; name: string; birthYear: number | null; reason?: string | null; reasonDetails?: string }
+export type WatchlistSubmissionResult = WatchlistEntry & { guarantorEntry?: WatchlistEntry };
+export interface WatchlistMatch {
+  id: string; name: string; birthYear: number | null; reason?: string | null; reasonDetails?: string;
+  guarantors?: { id: string; name: string }[];
+}
 export interface WatchlistPage<T> { items: T[]; hasMore: boolean }
 export const watchlistDate = (v?: string) => v ? new Date(v).toLocaleDateString('ru-RU') : '—';
 
@@ -46,4 +49,8 @@ export const watchlistCanSearch = (status?: WatchlistStatus | null): boolean => 
 export const watchlistCanSubmit = (status?: WatchlistStatus | null): boolean => !!(status?.enabled && status.accepted &&
   status.access?.status === 'granted' && status.access.canSubmit && !status.submissionsPaused);
 
-export interface WatchlistPreview { customerId: string; name: string; birthYear: number | null; fingerprint: string }
+export interface WatchlistPreview {
+  customerId: string; name: string; birthYear: number | null; fingerprint: string;
+  hasPublishedNameMatch?: boolean;
+  guarantors?: { saleId: string; name: string; fingerprint: string; startDate: string | null; product: string | null }[];
+}
