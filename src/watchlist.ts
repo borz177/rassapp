@@ -1,4 +1,4 @@
-export const WATCHLIST_POLICY_VERSION = '2026-11-14-v4';
+export const WATCHLIST_POLICY_VERSION = '2026-11-23-v5';
 export const watchlistCanRequestAccess = (user?: { role?: string } | null): boolean =>
   user?.role === 'admin' || user?.role === 'manager';
 export const watchlistUiVisible = (user?: { role?: string } | null): boolean =>
@@ -23,11 +23,13 @@ export interface WatchlistEntry {
 }
 export type WatchlistSubmissionResult = WatchlistEntry & { guarantorEntry?: WatchlistEntry };
 export interface WatchlistMatch {
-  id: string; name: string; birthYear: number | null; reason?: string | null; reasonDetails?: string;
+  id: string; name: string; birthYear: number | null; birthDate?: string; reason?: string | null; reasonDetails?: string;
   guarantors?: { id: string; name: string }[];
 }
 export interface WatchlistPage<T> { items: T[]; hasMore: boolean }
 export const watchlistDate = (v?: string) => v ? new Date(v).toLocaleDateString('ru-RU') : '—';
+export const watchlistBirthDateLabel = ({ birthDate, birthYear }: { birthDate?: string; birthYear?: number | null }): string =>
+  birthDate ? birthDate.split('-').reverse().join('.') : birthYear ? `${birthYear} г.` : 'Дата рождения не указана';
 
 /** Поиск по своим клиентам: те же правила регистра/пробелов/ё, что у общего поиска. */
 export const watchlistSearchText = (value: string): string =>

@@ -9,7 +9,7 @@ import WatchlistSearchPanel from './WatchlistSearchPanel';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
 import WatchlistSubmissionForm from './WatchlistSubmissionForm';
 import { appConfirm } from '../src/dialogs';
-import { WATCHLIST_REASONS, WATCHLIST_STATUS, WatchlistEntry, WatchlistPage, WatchlistStatus, watchlistDate, watchlistSearchText } from '../src/watchlist';
+import { WATCHLIST_POLICY_VERSION, WATCHLIST_REASONS, WATCHLIST_STATUS, WatchlistEntry, WatchlistPage, WatchlistStatus, watchlistDate, watchlistSearchText } from '../src/watchlist';
 import { WATCHLIST_ACCESS_CHANGED } from '../src/hooks/useWatchlistSubmitAccess';
 import { WatchlistError, WatchlistField, WatchlistRules, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
 
@@ -90,7 +90,7 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
         <label className="flex items-start gap-3 text-sm"><input type="checkbox" className="mt-1 h-4 w-4 shrink-0" checked={accepted} onChange={e => setAccepted(e.target.checked)} /><span>Ознакомился с правилами раздела и политикой обработки персональных данных.</span></label>
         <a className="block text-sm text-indigo-600 underline dark:text-indigo-300" href="/privacy" target="_blank" rel="noopener noreferrer">Политика обработки данных</a>
         <a className="block text-sm text-indigo-600 underline dark:text-indigo-300" href="/watchlist-rules" target="_blank" rel="noopener noreferrer">Полные правила раздела</a>
-        <button className={wlButton} disabled={!accepted || busy} onClick={() => run(async () => { await api.watchlistRequest('/watchlist/accept', { method: 'POST', body: { accepted: true, version: status.policyVersion } }); await read(); window.dispatchEvent(new Event(WATCHLIST_ACCESS_CHANGED)); })}>Принять и продолжить</button>
+        <button className={wlButton} disabled={!accepted || busy} onClick={() => run(async () => { await api.watchlistRequest('/watchlist/accept', { method: 'POST', body: { accepted: true, version: status.policyVersion, shownVersion: WATCHLIST_POLICY_VERSION } }); await read(); window.dispatchEvent(new Event(WATCHLIST_ACCESS_CHANGED)); })}>Принять и продолжить</button>
       </section>}
       {granted && status.accepted && !status.enabled && <p className={wlCard}>Раздел готовится к запуску. Администратор сообщит, когда проверка станет доступна.</p>}
       {canSearch && <div className={`${wlCard} space-y-4`}>

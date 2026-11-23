@@ -2,10 +2,10 @@ import React, { useEffect, useRef, useState } from 'react';
 import GlassSheet from './GlassSheet';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
 import { WatchlistError, WatchlistField, wlButton, wlInput, wlSecondary } from './WatchlistUI';
-import { WATCHLIST_REASONS } from '../src/watchlist';
+import { WATCHLIST_POLICY_VERSION, WATCHLIST_REASONS, watchlistBirthDateLabel } from '../src/watchlist';
 
 type ImportRow = { number: number; error: string } | {
-  number: number; name: string; birthYear: number | null; reason: string; reasonDetails?: string;
+  number: number; name: string; birthDate?: string; birthYear: number | null; reason: string; reasonDetails?: string;
   duplicate: boolean; review: boolean;
 };
 type Preview = { canPublish: boolean; rows: ImportRow[] };
@@ -36,7 +36,7 @@ export default function WatchlistBulkImportSheet({ userId, request, onClose, onS
     working.current = true; setBusy(true); setError(null);
     try {
       if (save) {
-        const result = await request('/entries/import', { ...payload, action, basisVerified }) as BulkImportResult;
+        const result = await request('/entries/import', { ...payload, action, basisVerified, shownVersion: WATCHLIST_POLICY_VERSION }) as BulkImportResult;
         if (alive.current) onSaved(result);
       } else {
         const result = await request('/entries/import/preview', payload) as Preview;
@@ -53,6 +53,7 @@ export default function WatchlistBulkImportSheet({ userId, request, onClose, onS
   const errors = rows.filter(row => 'error' in row).length;
   const duplicates = rows.filter(row => 'duplicate' in row && row.duplicate).length;
   const ready = rows.length - errors - duplicates;
+  const publishesBirthDates = rows.some(row => 'birthDate' in row && row.birthDate && !row.duplicate && !row.review);
 
   return <GlassSheet title="Массовое добавление в ЧС" onClose={onClose} confirmClose={() => !working.current}>
     <div className="space-y-4 p-4 print:hidden">
@@ -60,10 +61,10 @@ export default function WatchlistBulkImportSheet({ userId, request, onClose, onS
       {!preview ? <>
         <WatchlistField label="Вставьте список">
           <textarea className={wlInput} value={text} rows={7} maxLength={120000} disabled={busy} spellCheck={false} autoComplete="off"
-            placeholder={'Иванов Иван Иванович\t1988\tДлительная просрочка'}
+            placeholder="Иванов Иван Иванович 17.04.1988 Длительная просрочка"
             onChange={e => { setText(e.target.value); resetPreview(); }} />
         </WatchlistField>
-        <p className="text-xs text-slate-500 dark:text-slate-400">До 100 строк из Excel. Столбцы по порядку — ФИО, год рождения, причина. Год можно оставить пустым.</p>
+        <p className="text-xs text-slate-500 dark:text-slate-400">До 100 строк. Вставьте из Excel или напишите через пробелы. Порядок полей — ФИО, дата рождения, причина.</p>
         <WatchlistField label="Причина для строк без причины">
           <select className={wlInput} value={defaultReason} disabled={busy} onChange={e => { setDefaultReason(e.target.value); resetPreview(); }}>
             <option value="">Не задана</option>
@@ -84,9 +85,9 @@ export default function WatchlistBulkImportSheet({ userId, request, onClose, onS
           <ul className="max-h-64 divide-y divide-slate-200 overflow-auto rounded-xl border border-slate-200 text-sm dark:divide-slate-700 dark:border-slate-700">
             {rows.map(row => <li key={row.number} className="space-y-1 break-words px-3 py-2">
               {'error' in row ? <p className="text-red-700 dark:text-red-300">Строка {row.number} · {row.error}</p> : <>
-                <p className="font-medium">{row.name}{row.birthYear && ` · ${row.birthYear}`}</p>
+                <p className="font-medium">{row.name}{row.birthYear && ` · ${watchlistBirthDateLabel(row)}`}</p>
                 <p className="text-xs text-slate-500 dark:text-slate-400">{row.reason === 'other' ? row.reasonDetails : WATCHLIST_REASONS[row.reason]}</p>
-                {row.duplicate && <p className="text-xs text-amber-700 dark:text-amber-300">Совпадение ФИО и года. Строка будет пропущена.</p>}
+                {row.duplicate && <p className="text-xs text-amber-700 dark:text-amber-300">Совпали ФИО и дата или год рождения. Строка будет пропущена.</p>}
                 {!row.duplicate && row.review && <p className="text-xs text-amber-700 dark:text-amber-300">Запись требует проверки из-за предыдущего решения.</p>}
               </>}
             </li>)}
@@ -100,7 +101,7 @@ export default function WatchlistBulkImportSheet({ userId, request, onClose, onS
         </WatchlistField>
         {action === 'publish' && <label className="flex gap-3 text-sm">
           <input type="checkbox" checked={basisVerified} disabled={busy} onChange={e => setBasisVerified(e.target.checked)} />
-          Основание передачи проверено для всех записей
+          {publishesBirthDates ? 'Основание публикации проверено, включая полные даты рождения' : 'Основание передачи проверено для всех записей'}
         </label>}
         <button type="button" className={`${wlButton} w-full`} disabled={busy || errors > 0 || !ready || (action === 'publish' && !basisVerified)}
           onClick={() => void check(true)}>{busy ? 'Добавляем…' : action === 'publish' ? 'Опубликовать записи' : 'Добавить записи'}</button>

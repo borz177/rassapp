@@ -4,7 +4,7 @@ import GlassSheet from './GlassSheet';
 import WatchlistBulkImportSheet, { type BulkImportResult } from './WatchlistBulkImportSheet';
 import { ListPlus } from 'lucide-react';
 import { appConfirm } from '../src/dialogs';
-import { WATCHLIST_BASES, WATCHLIST_REASONS, WATCHLIST_STATUS, watchlistDate } from '../src/watchlist';
+import { WATCHLIST_BASES, WATCHLIST_POLICY_VERSION, WATCHLIST_REASONS, WATCHLIST_STATUS, watchlistBirthDateLabel, watchlistDate } from '../src/watchlist';
 import { WatchlistError, WatchlistField, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
 
 type Tab = 'entries' | 'appeals' | 'access' | 'settings' | 'events';
@@ -87,10 +87,10 @@ const AdminClientWatchlist: React.FC<{ userId: string }> = ({ userId }) => {
   };
   const decide = async () => {
     if (!selected) return;
-    if (action === 'publish' && !await appConfirm('Опубликовать ФИО, год и причину для допущенных участников? Для «Другой причины» будет показано её описание. Подтверждение основания проверено отдельно.')) return;
+    if (action === 'publish' && !await appConfirm(`Опубликовать ФИО, ${selected.birthDate ? 'полную дату рождения' : 'год рождения'} и причину для допущенных участников? Для «Другой причины» будет показано её описание. Подтверждение основания проверено отдельно.`)) return;
     if (tab === 'access') await request(`/access/${encodeURIComponent(selected.userId)}`, { version: selected.version, status: action, canSearch, canSubmit, pilot, reason: note });
     else if (tab === 'appeals') await request(`/appeals/${selected.id}/decision`, { version: selected.version, status: action === 'reviewing' ? 'reviewing' : 'resolved', outcome: action === 'reviewing' ? null : action, response: note, identityVerified: verified });
-    else await request(`/entries/${selected.id}/decision`, { version: selected.version, action, note, basisVerified: verified });
+    else await request(`/entries/${selected.id}/decision`, { version: selected.version, action, note, basisVerified: verified, shownVersion: WATCHLIST_POLICY_VERSION });
     setSelected(null); await load();
   };
   const deleteSelected = async () => {
@@ -140,7 +140,7 @@ const AdminClientWatchlist: React.FC<{ userId: string }> = ({ userId }) => {
       {!loading && tab !== 'settings' && !items.length && <p className={`${wlCard} text-sm text-slate-500`}>В этом разделе записей пока нет.</p>}
       {!loading && tab !== 'settings' && <div className="space-y-3">{items.map(item => tab === 'events' ? <div key={item.id} className={`${wlCard} text-sm space-y-1`}><p className="font-semibold">{EVENT_NAMES[item.action] || item.action}</p><p className="text-xs text-slate-500">{new Date(item.createdAt).toLocaleString('ru-RU')}</p><p className="text-xs text-slate-400 break-all">Пользователь: {item.actorId || '—'}{item.targetId ? ` · Запись: ${item.targetId}` : ''}</p></div> :
         <button key={item.id || item.userId} className={`${wlCard} w-full text-left space-y-2`} onClick={() => open(item)}><p className="font-semibold break-words">{tab === 'access' ? item.name : tab === 'appeals' ? (item.entry?.name || 'Публикация') : item.name}</p>
-          <p className="text-sm text-slate-500 break-words">{tab === 'access' ? item.email : tab === 'appeals' ? (item.channel === 'external' ? 'Обращение клиента из почты' : item.reporterEmail) : `${item.birthYear || 'Год не указан'} · ${item.ownerEmail}`}</p>
+          <p className="text-sm text-slate-500 break-words">{tab === 'access' ? item.email : tab === 'appeals' ? (item.channel === 'external' ? 'Обращение клиента из почты' : item.reporterEmail) : `${watchlistBirthDateLabel(item)} · ${item.ownerEmail}`}</p>
           <p className="text-xs text-slate-400">{WATCHLIST_STATUS[item.status] || ({ new: 'Новое обращение', reviewing: 'Рассматривается', resolved: 'Рассмотрено' }[item.status])} · {watchlistDate(item.createdAt || item.requestedAt)}</p>
         </button>)}</div>}
       {tab !== 'settings' && (offset > 0 || hasMore) && <div className="flex gap-2"><button disabled={busy || offset === 0} className={wlSecondary} onClick={() => { const n = Math.max(0, offset - 20); setOffset(n); run(() => load(proof, tab, filter, n)); }}>Назад</button><button disabled={busy || !hasMore} className={wlSecondary} onClick={() => { const n = offset + 20; setOffset(n); run(() => load(proof, tab, filter, n)); }}>Далее</button></div>}
@@ -171,7 +171,7 @@ const AdminClientWatchlist: React.FC<{ userId: string }> = ({ userId }) => {
     {proof && selected && <GlassSheet title={tab === 'access' ? 'Доступ участника' : tab === 'appeals' ? 'Обращение' : 'Проверка записи'} onClose={() => setSelected(null)} confirmClose={() => !busy}><div className="space-y-4 p-4"><WatchlistError message={error} />
       <h3 className="text-lg font-bold break-words">{selected.name || selected.entry?.name}</h3>
       <p className="text-sm text-slate-500 break-words">{selected.ownerEmail || selected.email || selected.reporterEmail}</p>
-      {tab === 'entries' && <div className="space-y-3 text-sm"><p>{selected.birthYear ? `${selected.birthYear} г.` : 'Год не указан'} · {WATCHLIST_STATUS[selected.status]}</p>
+      {tab === 'entries' && <div className="space-y-3 text-sm"><p>{watchlistBirthDateLabel(selected)} · {WATCHLIST_STATUS[selected.status]}</p>
         {selected.subjectKind === 'guarantor' && <p className="font-medium">Поручитель по договору</p>}
         {selected.adminImport && <p className="text-slate-500 dark:text-slate-400">Добавлено администратором</p>}
         {selected.status === 'published' && selected.publicationMode === 'auto' && <p className="text-indigo-600 dark:text-indigo-300">Опубликовано автоматически</p>}

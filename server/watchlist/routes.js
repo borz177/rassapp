@@ -78,7 +78,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         WHERE id=$1 AND related_client_index IS NULL AND payload=$3`, [row.id, relatedClientIndex(row.owner_id, customerId), row.payload]);
     }
   }
-  function ownEntry(r) {
+  function ownEntry(r, includeBirthDate = false) {
     try {
       if (!['withdrawn', 'terminated'].includes(r.status) && revocations.read().has(r.id))
         return { id: r.id, customerId: r.customer_id, name: 'Публикация удалена', birthYear: null, status: 'withdrawn', version: r.version, createdAt: r.created_at };
@@ -87,7 +87,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     return { id: r.id, customerId: r.customer_id, name: d?.identity.name || 'Публикация удалена', birthYear: d?.identity.birthYear ?? null,
       reason: d?.reason, reasonDetails: d?.reasonDetails, response: d?.response, publicationMode: d?.publication?.mode,
       ...(d?.guarantor ? { subjectKind: 'guarantor' } : {}),
-      ...(d?.adminImport === true ? { adminImport: true } : {}),
+      ...(d?.adminImport === true ? { adminImport: true,
+        ...(includeBirthDate === true && d.identity.birthDate ? { birthDate: d.identity.birthDate } : {}) } : {}),
       basis: d?.basis, evidence: d?.evidence, note: d?.note, decision: d?.decision,
       status: r.deleted_at ? 'deleted' : r.status === 'published' && r.expires_at != null && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
       version: r.version, createdAt: r.created_at, expiresAt: r.expires_at };
@@ -204,6 +205,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const a = await access(db, req.user.id);
     if (a?.status !== 'granted' && req.watchlistActor.role !== 'admin') throw P.problem(403, 'Сначала дождитесь выдачи доступа.');
     if (req.body?.version !== P.POLICY_VERSION || req.body?.accepted !== true) throw P.problem(400, 'Подтвердите действующие правила.');
+    if (req.body?.shownVersion !== P.POLICY_VERSION) throw P.problem(400, 'Обновите приложение, чтобы открыть актуальные правила раздела.');
     await db.query('INSERT INTO client_watchlist_acceptances(user_id,version) VALUES($1,$2) ON CONFLICT DO NOTHING', [req.user.id, P.POLICY_VERSION]);
     await event(db, req.user.id, 'RULES_ACCEPTED', P.POLICY_VERSION);
   });
@@ -213,7 +215,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const name = P.normalizeName(req.body?.name), year = P.birthYear(req.body?.birthYear);
     const match = year === null ? 'name_index=$1' : 'year_index=ANY($1::text[])';
     const key = year === null ? vault.index('name', name) : [vault.index('year', [name, year]), vault.index('year', [name, null])];
-    const r = await db.query(`SELECT id,owner_id,customer_id,payload FROM client_watchlist_entries WHERE ${match} AND ${publishedSearchFilter}
+    const r = await db.query(`SELECT id,owner_id,customer_id,policy_version,payload FROM client_watchlist_entries WHERE ${match} AND ${publishedSearchFilter}
       ORDER BY id LIMIT 21`, [key, [...revocations.read()]]);
     // Для «Другой причины» выдаём только её отдельное описание, не старое note.
     // Основание, ответы автора, решения и прочие служебные поля закрыты.
@@ -221,6 +223,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const items = r.rows.slice(0, 20).map(row => {
       const d = payload(row);
       const item = { id: row.id, name: d.identity.name, birthYear: d.identity.birthYear,
+        ...(row.policy_version === P.POLICY_VERSION && d.adminImport === true && d.identity.birthDate
+          ? { birthDate: d.identity.birthDate } : {}),
         reason: P.REASONS.includes(d.reason) ? d.reason : null,
         ...(d.reason === 'other' && typeof d.reasonDetails === 'string' && d.reasonDetails.trim()
           ? { reasonDetails: d.reasonDetails.trim().slice(0, 1000) } : {}) };
@@ -273,7 +277,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     return insertEntry(db, owner, s, preview, fields, { publicationMode, review, guarantor });
   }
   async function insertEntry(db, owner, s, preview, fields, { publicationMode, review = false, guarantor = null, adminImport = false }) {
-    const entryId = id(), identity = { name: preview.name, birthYear: preview.birthYear };
+    const entryId = id(), identity = { name: preview.name, birthYear: preview.birthYear,
+      ...(adminImport && preview.birthDate ? { birthDate: preview.birthDate } : {}) };
     const data = { identity, ...fields, confirmationAt: new Date().toISOString(),
       ...(guarantor ? { guarantor } : {}),
       ...(adminImport ? { adminImport: true } : {}),
@@ -426,26 +431,39 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         OR ($5::text IS NOT NULL AND e.name_index=$5)) ORDER BY e.created_at,e.id LIMIT $2 OFFSET $3`, [status, take + 1, offset, target, nameKey]);
     await event(db, req.user.id, 'ADMIN_ENTRIES_READ');
     for (const row of r.rows.slice(0, take)) await event(db, req.user.id, 'ADMIN_ENTRY_READ', row.id);
-    return { items: r.rows.slice(0, take).map(r => ({ ...ownEntry(r), ownerId: r.owner_id, ownerEmail: r.owner_email })), hasMore: r.rows.length > take };
+    return { items: r.rows.slice(0, take).map(r => ({ ...ownEntry(r, true), ownerId: r.owner_id, ownerEmail: r.owner_email })), hasMore: r.rows.length > take };
   });
   async function inspectImport(db, body, revokedIds) {
     const rows = parseImport(body);
     const candidates = rows.filter(row => !row.error).map(row => {
       const identity = [P.normalizeName(row.name), row.birthYear];
-      return { ...row, customerId: 'import:' + vault.index('admin_import', identity), key: vault.index('year', identity) };
+      const legacyId = 'import:' + vault.index('admin_import', identity);
+      const customerId = row.birthDate ? 'import:' + vault.index('admin_import_date', [identity[0], row.birthDate]) : legacyId;
+      return { ...row, customerId, legacyId, key: vault.index('year', identity) };
     });
-    const { rows: known } = await db.query(`SELECT customer_id,year_index,status=ANY($4::text[]) AS active_source,
+    const { rows: known } = await db.query(`SELECT id,payload,customer_id,year_index,status=ANY($4::text[]) AS active_source,
       (status=ANY($4::text[]) AND (status NOT IN ('published','hidden') OR expires_at IS NULL OR expires_at>now())
         AND NOT(id=ANY($3::text[]))) AS active, review_required
       FROM client_watchlist_entries WHERE year_index=ANY($1::text[]) OR customer_id=ANY($2::text[])`,
-    [candidates.map(row => row.key), candidates.map(row => row.customerId), revokedIds, P.ACTIVE]);
-    const seen = new Set(known.filter(row => row.active).map(row => row.year_index));
+    [candidates.map(row => row.key), candidates.flatMap(row => [row.customerId, row.legacyId]), revokedIds, P.ACTIVE]);
+    const datesByYear = new Map();
+    const trackDate = (key, date) => {
+      if (!datesByYear.has(key)) datesByYear.set(key, new Set());
+      datesByYear.get(key).add(date);
+    };
+    for (const row of known) {
+      if (row.active) trackDate(row.year_index, payload(row)?.identity.birthDate ?? null);
+    }
     const activeSources = new Set(known.filter(row => row.active_source).map(row => row.customer_id));
     const needsReview = new Set(known.filter(row => row.review_required).map(row => row.customer_id));
-    const checked = new Map(candidates.map(row => {
-      const duplicate = seen.has(row.key) || activeSources.has(row.customerId);
-      seen.add(row.key);
-      return [row.number, { ...row, duplicate, review: needsReview.has(row.customerId) }];
+    // При повторе в одном списке сначала рассматриваем строки с полной датой.
+    const bySpecificity = [...candidates].sort((a, b) => Number(Boolean(b.birthDate)) - Number(Boolean(a.birthDate)));
+    const checked = new Map(bySpecificity.map(row => {
+      const dates = datesByYear.get(row.key);
+      const duplicate = activeSources.has(row.customerId) ||
+        (dates?.size > 0 && (!row.birthDate || dates.has(null) || dates.has(row.birthDate)));
+      if (!duplicate) trackDate(row.key, row.birthDate ?? null);
+      return [row.number, { ...row, duplicate: Boolean(duplicate), review: needsReview.has(row.customerId) || needsReview.has(row.legacyId) }];
     }));
     return rows.map(row => checked.get(row.number) || row);
   }
@@ -458,7 +476,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const revoked = requireImport(), s = await settings(db);
     if (s.submissions_paused) throw P.problem(403, 'Приём новых записей временно приостановлен.');
     const rows = await inspectImport(db, req.body, revoked);
-    return { canPublish: canPublishImport(s), rows: rows.map(({ customerId, key, ...row }) => row) };
+    return { canPublish: canPublishImport(s), rows: rows.map(({ customerId, legacyId, key, ...row }) => row) };
   });
   adminRoute('post', '/entries/import', async (req, db) => {
     requireVault();
@@ -472,6 +490,10 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:admin-import',0))");
     const rows = await inspectImport(db, b, requireImport());
     if (rows.some(row => row.error)) throw P.problem(400, 'Исправьте строки с ошибками перед загрузкой.');
+    if (b.action === 'publish' && b.shownVersion !== P.POLICY_VERSION &&
+        rows.some(row => !row.duplicate && !row.review && row.birthDate)) {
+      throw P.problem(400, 'Обновите приложение, чтобы подтвердить публикацию полной даты рождения.');
+    }
     const result = { published: 0, pending: 0, skipped: 0 };
     for (const row of rows) {
       if (row.duplicate) { result.skipped++; continue; }
@@ -495,8 +517,11 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     if (b.action === 'publish') {
       requireVault();
       if (revocations.read().has(r.id)) throw P.problem(409, 'Публикация отозвана. Восстановление недоступно.');
-      if (!s.legal_ready || s.mode === 'off' || s.submissions_paused || b.basisVerified !== true || r.policy_version !== P.POLICY_VERSION)
+      const supportedRules = r.policy_version === P.POLICY_VERSION || r.policy_version === P.PREVIOUS_POLICY_VERSION;
+      if (!s.legal_ready || s.mode === 'off' || s.submissions_paused || b.basisVerified !== true || !supportedRules)
         throw P.problem(403, 'Сначала проверьте основание и настройки публикации.');
+      if (data?.adminImport === true && data.identity.birthDate && b.shownVersion !== P.POLICY_VERSION)
+        throw P.problem(400, 'Обновите приложение, чтобы подтвердить публикацию полной даты рождения.');
       if (data?.adminImport !== true) {
         const a = await access(db, r.owner_id);
         if (a?.status !== 'granted' || !a.can_submit || (s.mode === 'pilot' && !a.pilot)) throw P.problem(403, 'У автора нет действующего доступа.');
@@ -519,7 +544,9 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       related_client_index=CASE WHEN $2='terminated' THEN NULL ELSE related_client_index END,
       source_fingerprint=CASE WHEN $2='terminated' THEN NULL ELSE source_fingerprint END,
       published_at=CASE WHEN $2='published' THEN now() ELSE published_at END,
-      expires_at=CASE WHEN $2='published' THEN CASE WHEN $5::boolean THEN NULL ELSE now()+($4::int * interval '1 day') END ELSE expires_at END WHERE id=$1`, [r.id, status, encrypted, s.publication_days, s.publication_until_removed]);
+      policy_version=CASE WHEN $2='published' AND $6::boolean THEN $7 ELSE policy_version END,
+      expires_at=CASE WHEN $2='published' THEN CASE WHEN $5::boolean THEN NULL ELSE now()+($4::int * interval '1 day') END ELSE expires_at END WHERE id=$1`,
+    [r.id, status, encrypted, s.publication_days, s.publication_until_removed, data?.adminImport === true, P.POLICY_VERSION]);
     await event(db, req.user.id, 'ENTRY_' + b.action.toUpperCase(), r.id);
   });
   adminRoute('post', '/entries/:id/delete', async (req, db) => {

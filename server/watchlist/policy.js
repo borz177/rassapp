@@ -1,4 +1,5 @@
-const POLICY_VERSION = '2026-11-14-v4';
+const PREVIOUS_POLICY_VERSION = '2026-11-14-v4';
+const POLICY_VERSION = '2026-11-23-v5';
 const ACTIVE = ['pending', 'needs_info', 'published', 'hidden'];
 const STATUS = ['pending', 'needs_info', 'published', 'hidden', 'rejected', 'withdrawn', 'terminated', 'expired', 'deleted'];
 const REASONS = ['overdue', 'unfulfilled', 'other'];
@@ -54,4 +55,4 @@ function legacySubmissionFields(input) {
   if (input.note) fields.note = text(input.note, 1, 1500, 'комментарий');
   return fields;
 }
-module.exports = { POLICY_VERSION, ACTIVE, STATUS, REASONS, BASES, problem, text, fullName, normalizeName, birthYear, identity, page, submissionReason, legacySubmissionFields };
+module.exports = { POLICY_VERSION, PREVIOUS_POLICY_VERSION, ACTIVE, STATUS, REASONS, BASES, problem, text, fullName, normalizeName, birthYear, identity, page, submissionReason, legacySubmissionFields };

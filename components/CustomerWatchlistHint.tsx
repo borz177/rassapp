@@ -1,7 +1,7 @@
 import React from 'react';
 import { ShieldAlert } from 'lucide-react';
 import { useWatchlistSearch } from '../src/hooks/useWatchlistSearch';
-import { WATCHLIST_REASONS, type WatchlistStatus } from '../src/watchlist';
+import { WATCHLIST_REASONS, watchlistBirthDateLabel, type WatchlistStatus } from '../src/watchlist';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
 import { WatchlistGuarantors } from './WatchlistUI';
 
@@ -48,7 +48,7 @@ export function CustomerWatchlistResult({ result, year, userId, manual = false }
       </summary>
       <div className="mt-2 space-y-2 border-t border-amber-200 pt-2 dark:border-amber-700/60">
         {result.items.map(item => <div key={item.id} className="break-words">
-          <p className="font-medium">{item.name} · {item.birthYear ? `${item.birthYear} г.` : 'Год не указан'}</p>
+          <p className="font-medium">{item.name} · {watchlistBirthDateLabel(item)}</p>
           <p className="whitespace-pre-wrap text-xs font-medium text-red-800 dark:text-red-300">Причина со слов автора: {item.reason === 'other'
             ? item.reasonDetails || 'Описание не указано'
             : WATCHLIST_REASONS[item.reason || ''] || 'Не указана'}</p>

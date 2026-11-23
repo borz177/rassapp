@@ -9,7 +9,8 @@ const bcrypt = require('bcryptjs');
 const { Pool } = require('pg');
 const { createVault } = require('./crypto');
 const { registerWatchlistRoutes } = require('./routes');
-const { POLICY_VERSION } = require('./policy');
+const { POLICY_VERSION, PREVIOUS_POLICY_VERSION } = require('./policy');
+const acceptRules = { accepted: true, version: POLICY_VERSION, shownVersion: POLICY_VERSION };
 const url = process.env.DATABASE_URL;
 const local = url && ['localhost', '127.0.0.1', '[::1]'].includes(new URL(url).hostname);
 const secret = 'GEZDGNBVGY3TQOJQGEZDGNBVGY3TQOJQ';
@@ -83,7 +84,7 @@ test('общий список: реальная локальная PostgreSQL, �
       await user('/search', { name: customer.name }, 403);
       await user('/access-request', {}); await user('/access-request', {});
       assert.equal((await user('/status')).access.status, 'requested');
-      await req('other', 'watchlist/accept', { accepted: true, version: POLICY_VERSION }, 403);
+      await req('other', 'watchlist/accept', acceptRules, 403);
       await adm('/entries', undefined, 403);
     });
     await t.test('админ: пароль + TOTP, защита повтора и привязка сессии', async () => {
@@ -100,7 +101,7 @@ test('общий список: реальная локальная PostgreSQL, �
       await req('admin','watchlist/access-request',{});
       assert.equal((await pool.query("SELECT count(*)::int AS n FROM client_watchlist_access WHERE user_id='admin'")).rows[0].n,0);
       await req('admin','watchlist/search',{name:customer.name},403);
-      await req('admin','watchlist/accept',{accepted:true,version:POLICY_VERSION});
+      await req('admin','watchlist/accept',acceptRules);
       const found=await req('admin','watchlist/search',{name:customer.name});assert.deepEqual(found.items,[]);
       await pool.query("INSERT INTO data_items(id,user_id,type,data) VALUES('admin_client','admin','customers',$1)",[JSON.stringify({id:'admin_client',name:'Административный Тестовый Клиент',birthDate:'1990-01-01'})]);
       const p=await req('admin','watchlist/preview',{customerId:'admin_client'});
@@ -128,10 +129,11 @@ test('общий список: реальная локальная PostgreSQL, �
       const a = (await adm('/access')).items[0]; assert.equal(a.userId, 'owner');
       await adm('/access/owner', { status: 'granted', canSearch: true, canSubmit: true, pilot: true, version: a.version, reason: 'Проверенный тестовый участник' });
       await user('/accept', { accepted: true, version: 'old' }, 400);
-      await pool.query('INSERT INTO client_watchlist_acceptances(user_id,version) VALUES($1,$2)', ['owner', '2026-11-10-v1']);
+      await user('/accept', { accepted: true, version: POLICY_VERSION }, 400);
+      await pool.query('INSERT INTO client_watchlist_acceptances(user_id,version) VALUES($1,$2)', ['owner', PREVIOUS_POLICY_VERSION]);
       assert.equal((await user('/status')).accepted, false, 'Новый состав выдачи требует принятия обновлённых правил');
       await user('/search', { name: customer.name }, 403);
-      await user('/accept', { accepted: true, version: POLICY_VERSION });
+      await user('/accept', acceptRules);
       await user('/preview', { customerId: 'client' }, 403);
       let o = await adm('/overview');
       await adm('/settings', { ...o.settings, mode: 'pilot', legalReady: false, reason: 'Проверка включения' }, 400);
@@ -221,7 +223,7 @@ test('общий список: реальная локальная PostgreSQL, �
       const settings = (await pool.query('SELECT search_limit,search_paused FROM client_watchlist_settings WHERE id=1')).rows[0];
       try {
         await pool.query("INSERT INTO client_watchlist_access(user_id,status,can_search,pilot) VALUES('other','granted',false,true)");
-        await req('other', 'watchlist/accept', { accepted: true, version: POLICY_VERSION });
+        await req('other', 'watchlist/accept', acceptRules);
         await pool.query('UPDATE data_items SET data=$1 WHERE id=$2',
           [{ ...original, name: 'СЕМЕНОВ  ТЕСТ ТЕСТОВИЧ', birthDate: '1995-03-02' }, customerId]);
         assert.equal((await check()).hasPublishedNameMatch, undefined);
@@ -285,7 +287,7 @@ test('общий список: реальная локальная PostgreSQL, �
       await req('other', 'watchlist/access-request', {});
       const a = (await adm('/access')).items.find(x => x.userId === 'other');
       await adm('/access/other', { status: 'granted', canSearch: true, canSubmit: true, pilot: false, version: a.version, reason: 'Допущен только после пилота' });
-      await req('other', 'watchlist/accept', { accepted: true, version: POLICY_VERSION });
+      await req('other', 'watchlist/accept', acceptRules);
       assert.equal((await req('other', 'watchlist/status')).enabled, false);
       await req('other', 'watchlist/search', { name: customer.name }, 403);
       await pool.query("UPDATE client_watchlist_admin_sessions SET expires_at=now()-interval '1 second'");
@@ -525,7 +527,7 @@ test('общий список: реальная локальная PostgreSQL, �
     await t.test('массовое добавление администратором: предпросмотр, защита, публикация и повторы без карточек клиентов', async () => {
       const path = '/entries/import';
       const importBody = {
-        text: 'ФИО\tГод\tПричина\r\nСписков Тест Импортович\t1991\tДлительная просрочка\r\nсписков  тест импортович\t1991\tДлительная просрочка\r\nПримеров Тест Импортович\t\tСинтетическое описание',
+        text: 'ФИО\tДата рождения\tПричина\r\nСписков Тест Импортович 17.04.1991 Длительная просрочка\r\nсписков  тест импортович\t1991-04-17\tДлительная просрочка\r\nПримеров Тест Импортович\t\tСинтетическое описание',
         defaultReason: 'overdue',
       };
       const old = (await adm('/overview')).settings;
@@ -537,12 +539,14 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.equal(preview.canPublish, true);
         assert.equal(preview.rows.length, 3);
         assert.deepEqual(preview.rows.map(row => row.duplicate), [false, true, false]);
+        assert.equal(preview.rows[0].birthDate, '1991-04-17');
+        assert.equal(preview.rows[0].birthYear, 1991);
         assert.equal(preview.rows[2].birthYear, null);
         assert.equal(preview.rows[2].reason, 'other');
         assert.ok(!('key' in preview.rows[0]) && !('customerId' in preview.rows[0]));
         await adm(path, { ...importBody, action: 'publish', basisVerified: false }, 403);
-        const bad = { ...importBody, text: importBody.text + '\nОшибка Строки\t18' };
-        assert.match((await adm(path + '/preview', bad)).rows.at(-1).error, /год рождения/);
+        const bad = { ...importBody, text: importBody.text + '\nОшибка Строки 31.02.1991' };
+        assert.match((await adm(path + '/preview', bad)).rows.at(-1).error, /дату рождения/);
         await adm(path, { ...bad, action: 'pending' }, 400);
         await adm(path + '/preview', { text: ('Группа Тест Импортович\n').repeat(101), defaultReason: 'overdue' }, 400);
         assert.equal((await adm('/entries?name=' + encodeURIComponent('Списков Тест Импортович'))).items.length, 0);
@@ -554,10 +558,19 @@ test('общий список: реальная локальная PostgreSQL, �
         created.push(found.id, other.id);
         assert.equal(found.adminImport, true);
         assert.equal(found.status, 'pending');
+        assert.equal(found.birthDate, '1991-04-17');
+        assert.equal((await req('admin', 'watchlist/mine')).items.find(row => row.id === found.id).birthDate, undefined);
         assert.equal((await user('/search', { name: found.name })).items.length, 0);
-        await adm(`/entries/${found.id}/decision`, { version: found.version, action: 'publish', basisVerified: true, note: 'Проверено основание синтетической записи' });
+        const decision = { version: found.version, action: 'publish', basisVerified: true, note: 'Проверено основание синтетической записи' };
+        await adm(`/entries/${found.id}/decision`, decision, 400);
+        await pool.query('UPDATE client_watchlist_entries SET policy_version=$2 WHERE id=$1', [found.id, PREVIOUS_POLICY_VERSION]);
+        await adm(`/entries/${found.id}/decision`, { ...decision, shownVersion: POLICY_VERSION });
         const match = (await user('/search', { name: found.name })).items[0];
-        assert.deepEqual(match, { id: found.id, name: found.name, birthYear: found.birthYear, reason: 'overdue' });
+        assert.deepEqual(match, { id: found.id, name: found.name, birthYear: found.birthYear, birthDate: '1991-04-17', reason: 'overdue' });
+        await req('employee', 'watchlist/search', { name: found.name }, 403);
+        await pool.query('UPDATE client_watchlist_entries SET policy_version=$2 WHERE id=$1', [found.id, PREVIOUS_POLICY_VERSION]);
+        assert.equal((await user('/search', { name: found.name })).items[0].birthDate, undefined);
+        await pool.query('UPDATE client_watchlist_entries SET policy_version=$2 WHERE id=$1', [found.id, POLICY_VERSION]);
         const publishBody = { text: 'Новый Тест Импортович\t1990', defaultReason: 'unfulfilled', action: 'publish', basisVerified: true };
         assert.deepEqual(await adm(path, publishBody), { published: 1, pending: 0, skipped: 0 });
         const published = (await adm('/entries?name=' + encodeURIComponent('Новый Тест Импортович'))).items[0];
@@ -566,6 +579,18 @@ test('общий список: реальная локальная PostgreSQL, �
         const stored = (await pool.query('SELECT payload FROM client_watchlist_entries WHERE id=$1', [published.id])).rows[0];
         assert.ok(!JSON.stringify(stored).includes(published.name));
         assert.equal(vault.decrypt(published.id, 'entry', stored.payload).adminImport, true);
+        const namesakeBody = { ...publishBody, text: 'Списков Тест Импортович 18.04.1991 Неисполнение обязательств' };
+        await adm(path, namesakeBody, 400);
+        const namesake = await adm(path, { ...namesakeBody, shownVersion: POLICY_VERSION });
+        assert.deepEqual(namesake, { published: 1, pending: 0, skipped: 0 });
+        const namesakes = (await adm('/entries?name=' + encodeURIComponent(found.name))).items;
+        created.push(...namesakes.filter(item => item.id !== found.id).map(item => item.id));
+        assert.deepEqual(namesakes.map(item => item.birthDate).sort(), ['1991-04-17', '1991-04-18']);
+        const publicMatches = (await user('/search', { name: found.name, birthYear: 1991 })).items;
+        assert.equal(publicMatches.length, 2);
+        assert.deepEqual(publicMatches.map(item => item.birthDate).sort(), ['1991-04-17', '1991-04-18']);
+        const yearOnly = await adm(path + '/preview', { text: 'Списков Тест Импортович 1991', defaultReason: 'overdue' });
+        assert.equal(yearOnly.rows[0].duplicate, true);
         assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows, snapshot);
       } finally {
         await pool.query('DELETE FROM client_watchlist_entries WHERE id=ANY($1::text[])', [created]);

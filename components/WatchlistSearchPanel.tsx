@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { api } from '../services/api';
-import { WatchlistStatus, WATCHLIST_REASONS } from '../src/watchlist';
+import { WatchlistStatus, WATCHLIST_REASONS, watchlistBirthDateLabel } from '../src/watchlist';
 import { useWatchlistSearch } from '../src/hooks/useWatchlistSearch';
 import GlassSheet from './GlassSheet';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
@@ -45,7 +45,7 @@ const WatchlistSearchPanel: React.FC<{
       <p className="text-sm text-slate-500 dark:text-slate-400">{search.items.length ? 'Совпадение ФИО не подтверждает личность клиента.' : 'Это не подтверждает платёжеспособность клиента.'}</p>
       {search.items.map(item => <WatchlistPrivateContent userId={props.userId} key={item.id} className={`${wlCard} space-y-2`}>
         <button type="button" className="text-left font-semibold text-slate-900 underline-offset-4 hover:underline dark:text-white break-words" onClick={() => { setSelectedId(item.id); setReporting(false); }} aria-label={`Открыть совпадение: ${item.name}`}>{item.name}</button>
-        <p className="text-sm text-slate-500 dark:text-slate-400">{item.birthYear ? `${item.birthYear} г.` : 'Год рождения не указан'}</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">{watchlistBirthDateLabel(item)}</p>
         <p className="whitespace-pre-wrap break-words text-sm font-medium text-red-800 dark:text-red-300">Причина со слов автора: {reason(item)}</p>
         <WatchlistGuarantors guarantors={item.guarantors} />
         <button type="button" className="text-sm text-indigo-600 dark:text-indigo-300" onClick={() => { setSelectedId(item.id); setReporting(true); }}>Сообщить об ошибке</button>
@@ -56,7 +56,7 @@ const WatchlistSearchPanel: React.FC<{
       <div className="space-y-4 p-4"><WatchlistError message={error} />
         <WatchlistPrivateContent userId={props.userId} className="space-y-2">
           <p className="font-semibold break-words">{selected.name}</p>
-          <p className="text-sm text-slate-500">{selected.birthYear ? `${selected.birthYear} г.` : 'Год рождения не указан'}</p>
+          <p className="text-sm text-slate-500">{watchlistBirthDateLabel(selected)}</p>
           {!reporting && <p className="whitespace-pre-wrap break-words text-sm font-medium text-red-800 dark:text-red-300">Причина со слов автора: {reason(selected)}</p>}
           {!reporting && <WatchlistGuarantors guarantors={selected.guarantors} />}
         </WatchlistPrivateContent>
