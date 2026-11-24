@@ -75,14 +75,15 @@ const withSnapshot = (fn: () => Promise<void>): Promise<void> => {
   return run.catch(() => {});
 };
 /** Последние дошедшие записи: накладываются на снимок, собранный сервером раньше них */
-const deliveredWrites: { collection: string; id: string; item: any | null; at: number }[] = [];
-const noteDelivered = (collection: string, id: string, item: any | null) => {
+const deliveredWrites: { collection: string; id: string; item: any | null; at: number; poolAccountId?: string; poolRevision?: number }[] = [];
+const noteDelivered = (collection: string, id: string, item: any | null, poolMeta?: {poolAccountId:string;poolRevision:number}) => {
   const now = Date.now();
-  deliveredWrites.push({ collection, id, item, at: now });
+  deliveredWrites.push({ collection, id, item, at: now, ...poolMeta });
   while (deliveredWrites.length && now - deliveredWrites[0].at > 120000) deliveredWrites.shift();
   void withSnapshot(async () => {
     const data = await offlineStorage.getCache('all_data').catch(() => null);
     if (!data || !Array.isArray(data[collection])) return;
+    if(poolMeta&&(data.accounts||[]).some((a:any)=>a.id===poolMeta.poolAccountId&&(a.poolAccounting?.revision||0)>poolMeta.poolRevision))return;
     const list = (data[collection] as any[]).filter(i => i?.id !== id);
     data[collection] = item ? [item, ...list] : list;
     await offlineStorage.setCache('all_data', data);
@@ -91,6 +92,9 @@ const noteDelivered = (collection: string, id: string, item: any | null) => {
 const applyDelivered = (data: any, since: number) => {
   for (const w of deliveredWrites) {
     if (w.at < since || !Array.isArray(data?.[w.collection])) continue;
+    if(w.poolAccountId&&(data.accounts||[]).some((a:any)=>a.id===w.poolAccountId&&(a.poolAccounting?.revision||0)>(w.poolRevision||0)))continue;
+    const existing=data[w.collection].find((i:any)=>i.id===w.id);
+    if(w.item?.poolRevision&&existing?.poolRevision>w.item.poolRevision)continue;
     const list = (data[w.collection] as any[]).filter(i => i?.id !== w.id);
     data[w.collection] = w.item ? [w.item, ...list] : list;
   }
@@ -419,7 +423,38 @@ export interface AdminWhatsAppReport {
     rows: AdminWhatsAppRow[];
 }
 
+const pendingPoolRequests = new Map<string,string>();
+const latestPoolRevisions = new Map<string,number>();
 export const api = {
+    poolRequest: async (accountId: string, action?: string, body: Record<string,unknown> = {}): Promise<any> => {
+      await requireSyncedAccountingAudit();
+      const owner=sessionOwnerId();
+      let requestId: string | undefined, key = '';
+      if(action){
+        const content=JSON.stringify([sessionOwnerId(),accountId,action,body]);
+        const digest=globalThis.crypto?.subtle ? Array.from(new Uint8Array(await crypto.subtle.digest('SHA-256',new TextEncoder().encode(content)))).map(n=>n.toString(16).padStart(2,'0')).join('') : '';
+        key=digest ? `pool_request_${digest}` : content;
+        requestId=pendingPoolRequests.get(key);
+        if(!requestId&&digest){try{requestId=sessionStorage.getItem(key)||undefined;}catch{}}
+        if(!requestId)requestId=crypto.randomUUID();
+        pendingPoolRequests.set(key,requestId);
+        if(digest){try{sessionStorage.setItem(key,requestId);}catch{}}
+      }
+      const res=await fetchWithAuth(`${API_URL}/pools/${encodeURIComponent(accountId)}${action?`/${encodeURIComponent(action)}`:''}`,{
+        method:action?'POST':'GET',cache:'no-store',timeout:45000,body:action?JSON.stringify({...body,requestId}):undefined,
+      });
+      const data=await res.json().catch(()=>({}));
+      if(!res.ok)throw Object.assign(new Error(data.msg||'Не удалось выполнить операцию пула.'),{status:res.status});
+      if(sessionOwnerId()!==owner)throw new Error('Аккаунт изменился. Обновите данные.');
+      if(!data.account?.id||!Array.isArray(data.investors)||!Array.isArray(data.reports)||action&&action!=='preview'&&!data.changed)throw new Error('Ответ не подтверждён. Повторите операцию: повторного списания не будет.');
+      const revision=Number(data.account.poolAccounting?.revision||0),revisionKey=`${owner}:${data.account.id}`;
+      if(revision<(latestPoolRevisions.get(revisionKey)||0))data.changed={};
+      else latestPoolRevisions.set(revisionKey,revision);
+      if(action){pendingPoolRequests.delete(key);if(key.startsWith('pool_request_')){try{sessionStorage.removeItem(key);}catch{}}
+        for(const collection of ['accounts','investors','sales','expenses'])for(const item of data.changed?.[collection]||[]){noteDelivered(collection,item.id,item,revision?{poolAccountId:data.account.id,poolRevision:revision}:undefined);rememberServer(collection,item);}
+      }
+      return data;
+    },
     // Только онлайн: реестр не попадает в очередь синхронизации и кеш клиентов.
     watchlistRequest: async <T = any>(path: string, options: { method?: 'GET' | 'POST'; body?: unknown; proof?: string; signal?: AbortSignal } = {}): Promise<T> => {
       if (!/^\/(?:admin\/)?watchlist(?:\/|$)/.test(path)) throw new Error('Некорректный адрес раздела');
@@ -844,6 +879,7 @@ export const api = {
       }
 
       // Сервер собирал ответ до записей, дошедших за время запроса, — накладываем их
+      for(const a of data.accounts||[])if(a.poolAccounting?.revision)latestPoolRevisions.set(`${sessionOwnerId()}:${a.id}`,Math.max(latestPoolRevisions.get(`${sessionOwnerId()}:${a.id}`)||0,a.poolAccounting.revision));
       applyDelivered(data, requestedAt);
       const snapshot = JSON.parse(JSON.stringify(data));
       await withSnapshot(() => offlineStorage.setCache('all_data', snapshot));

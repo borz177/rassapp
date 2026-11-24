@@ -207,6 +207,34 @@ export interface LossEvent {
   expenseId?: string;
 }
 
+export type PoolProfitBasis = 'MONTH' | 'SCHEDULE_PERIOD';
+export interface PoolTerms {
+  date: string;
+  members: Record<string, { rate: number; disposition: 'PAYABLE' | 'REINVEST' }>;
+  managerShareSplit: { investorId: string; percent: number }[];
+  profitBasis?: PoolProfitBasis;
+}
+type PoolProfitPart = { id: string; amount: number };
+type PoolProfitSourceParts = { parts?: PoolProfitPart[]; managerOrigins?: PoolProfitPart[] };
+export interface PoolMonthReport {
+  issues?: string[]; month: string; status: 'PRELIMINARY' | 'CLOSED'; date: string; asOf: string;
+  gross: number; costs: number; net: number; distributable: number;
+  carryIn: number; carryOut: number; unallocated: number;
+  shares: { investorId: string; name: string; capitalDays: number; capitalPercentage: number; basePercentage?: number; percentage: number }[];
+  allocations: PoolProfitPart[];
+  carryParts?: PoolProfitPart[];
+  managerAllocations?: PoolProfitPart[];
+  managerCarryParts?: PoolProfitPart[];
+  sources: (PoolProfitSourceParts & { saleId: string; paymentId: string; date: string; amount: number; customerId?: string; productName?: string; earningMonths?: string[] })[];
+  costRows: (PoolProfitSourceParts & { id: string; date: string; amount: number; title: string })[];
+}
+export interface PoolAccounting {
+  revision?: number; version: 1; startMonth: string; profitFromPaymentsOnly?: boolean; openingTerms: PoolTerms; terms: (Partial<PoolTerms> & {date:string})[];
+  adjustments?: { id: string; date: string; amount: number; reason: string; saleId?: string }[];
+  excludedSaleIds: string[]; closed: PoolMonthReport[];
+  reinvestments: { id: string; investorId: string; date: string; amount: number; month?: string }[];
+  requests?: { id: string; hash: string; action: string; refs?: { investors:string[]; sales:string[]; expenses:string[] } }[];
+}
 export interface Account {
   id: string;
   userId: string; // Owner (Manager)
@@ -228,6 +256,7 @@ export interface Account {
    * См. getAccountShares в shared/profit.js.
    */
   managerShareSplit?: { investorId: string; percent: number }[];
+  poolAccounting?: PoolAccounting;
   /**
    * Счёт был обычным, и инвестора привязали к нему при создании (а не завели
    * новый счёт): здесь его прежний тип. При удалении инвестора счёт с его

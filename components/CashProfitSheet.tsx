@@ -2,7 +2,7 @@ import React, { useMemo, useState } from 'react';
 import GlassSheet, { SheetSection } from './GlassSheet';
 import { useBackInterceptor } from './transitions/PagePush';
 import { formatCurrency, formatDate } from '../src/utils';
-import type { CashProfitLedger, CashProfitRow } from '../src/cashProfitLedger';
+import type { CashProfitDetail, CashProfitLedger, CashProfitRow } from '../src/cashProfitLedger';
 
 export type CashProfitView = 'received' | 'paid' | 'available';
 type Filter = 'all' | 'payout' | 'discount' | 'other';
@@ -22,6 +22,40 @@ const CashProfitSheet: React.FC<Props> = (props) => {
 };
 export default CashProfitSheet;
 
+function MonthDetails({row,showCents,onOpenContract}:{row:CashProfitRow;showCents?:boolean;onOpenContract?:Props['onOpenContract']}) {
+  const [limit,setLimit]=useState(35);
+  const money=(n:number)=>`${n>0?'+':n<0?'−':''}${formatCurrency(Math.abs(n),showCents)} ₽`;
+  const income=(row.details||[]).filter(r=>r.kind==='income').sort((a,b)=>Date.parse(b.date)-Date.parse(a.date)||a.id.localeCompare(b.id));
+  const deductions=(row.details||[]).filter(r=>r.kind!=='income');
+  const render=(r:CashProfitDetail)=>{
+    const content=<>
+      <span className="min-w-0 flex-1">
+        <span className="block text-sm font-semibold text-slate-900 dark:text-white break-words">{r.title}</span>
+        {r.productName&&r.productName!==r.title&&<span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 break-words">{r.productName}</span>}
+        {r.kind==='income'&&<span className="mt-1 block text-[11px] text-slate-400">
+          {formatDate(r.date)}
+          {!!r.earningMonths?.length && ` · По графику: ${r.earningMonths.map(month =>
+            new Date(`${month}-15T12:00:00Z`).toLocaleDateString('ru-RU', { month: 'long', year: 'numeric' })
+          ).join(', ')}`}
+        </span>}
+      </span>
+      <span className={`shrink-0 text-sm font-bold tabular-nums ${r.amount<0?'text-rose-600 dark:text-rose-400':'text-emerald-600 dark:text-emerald-400'}`}>{money(r.amount)}</span>
+      {r.saleId&&onOpenContract&&<span aria-hidden className="text-slate-400">›</span>}
+    </>;
+    const classes='flex w-full items-start gap-3 px-4 py-3 text-left';
+    return r.saleId&&onOpenContract
+      ? <button key={r.id} type="button" data-profit-contract={r.saleId} aria-label={`Открыть договор: ${r.customerName||r.title}, ${r.productName||''}`} onClick={()=>onOpenContract(r.saleId!)} className={`${classes} active:bg-slate-50 dark:active:bg-slate-700/50`}>{content}</button>
+      : <div key={r.id} className={classes}>{content}</div>;
+  };
+  return <div data-profit-month={row.month}>
+    <div className="flex justify-between gap-3 px-4 py-2 text-xs text-slate-500 dark:text-slate-400"><span>{income.length?'От платежей клиентов':'Начисления'}</span><span>{row.preliminary?'По данным на сегодня':'Рассчитано'}</span></div>
+    <div className="divide-y divide-slate-100 dark:divide-slate-700/70">{income.slice(0,limit).map(render)}</div>
+    {income.length>limit&&<button type="button" onClick={()=>setLimit(n=>n+35)} className="w-full px-4 py-3 text-sm font-semibold text-indigo-600 dark:text-indigo-300">Показать ещё · {income.length-limit}</button>}
+    {!!deductions.length&&<div className="border-t border-slate-200 dark:border-slate-700 divide-y divide-slate-100 dark:divide-slate-700/70">{deductions.map(render)}</div>}
+    <div className="border-t border-slate-200 dark:border-slate-700 flex justify-between gap-3 px-4 py-3 text-sm font-bold text-slate-900 dark:text-white"><span>Итого за месяц</span><span className="tabular-nums">{formatCurrency(row.amount,showCents)} ₽</span></div>
+  </div>;
+}
+
 function ProfitContent({view,ledger,periodLabel,showCents,onOpenContract,close}:Props & {close:()=>void}) {
   useBackInterceptor(true,close);
   const [tab,setTab]=useState<'accruals'|'expenses'>('accruals');
@@ -36,8 +70,8 @@ function ProfitContent({view,ledger,periodLabel,showCents,onOpenContract,close}:
   const source=expenses?ledger.expenses:ledger.accruals;
   const filtered=useMemo(()=>source.filter(r=>
     (view!=='paid'||r.kind==='payout')&&
-    (view!=='available'||!expenses||filter==='all'||r.kind===filter)&&
-    (!query.trim()||[r.title,r.customerName,r.productName,r.investorName,r.note].some(v=>v?.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))
+    (view!=='available'||!expenses||filter==='all'||r.kind===filter||filter==='other'&&r.kind==='reinvestment')&&
+    (!query.trim()||[r.title,r.customerName,r.productName,r.investorName,r.note,...(r.details||[]).flatMap(d=>[d.title,d.customerName,d.productName])].some(v=>v?.toLocaleLowerCase().includes(query.trim().toLocaleLowerCase())))
   ),[source,view,expenses,filter,query]);
   const hero=view==='received'?ledger.received:view==='paid'?ledger.paid:ledger.available;
   const row=(label:string,amount:number,onClick:()=>void)=>
@@ -52,7 +86,7 @@ function ProfitContent({view,ledger,periodLabel,showCents,onOpenContract,close}:
     return <div key={r.id} className="rounded-2xl bg-white dark:bg-slate-800 ring-1 ring-slate-200/70 dark:ring-slate-700/70 overflow-hidden">
       <button type="button" aria-expanded={opened} onClick={()=>setExpanded(opened?null:r.id)} className="w-full text-left px-4 py-3.5 flex items-start gap-3 active:bg-slate-50 dark:active:bg-slate-700/50">
         <span className="min-w-0 flex-1">
-          <span className="block text-sm font-semibold text-slate-900 dark:text-white break-words">{r.kind==='discount'?'Скидка клиенту':r.title}</span>
+          <span className="block text-sm font-semibold text-slate-900 dark:text-white break-words">{r.month?`Прибыль за ${new Intl.DateTimeFormat('ru-RU',{month:'long',year:'numeric',timeZone:'UTC'}).format(new Date(`${r.month}-01T12:00:00Z`))}`:r.kind==='discount'?'Скидка клиенту':r.title}</span>
           {(r.productName||r.customerName&&expenses) && <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 break-words">{[expenses?r.customerName:undefined,r.productName].filter(Boolean).join(' · ')}</span>}
           {r.kind==='discount'&&r.fullAmount!=null&&<span className="mt-0.5 block text-[11px] text-slate-500 dark:text-slate-400">Общая скидка: {money(r.fullAmount)}</span>}
           <span className="mt-1 block text-[11px] text-slate-400">{formatDate(r.date)}{r.investorName?` · ${r.investorName}`:''}{r.isDownPayment&&!expenses?' · Первый взнос':''}</span>
@@ -62,7 +96,7 @@ function ProfitContent({view,ledger,periodLabel,showCents,onOpenContract,close}:
         <span aria-hidden className={`text-slate-400 transition-transform motion-reduce:transition-none ${opened?'rotate-90':''}`}>›</span>
       </button>
       <div aria-hidden={!opened} inert={!opened} className={`grid transition-[grid-template-rows,opacity] duration-200 motion-reduce:transition-none ${opened?'grid-rows-[1fr] opacity-100':'grid-rows-[0fr] opacity-0'}`}>
-        <div className="min-h-0 overflow-hidden"><div className="px-4 pb-4 pt-1 space-y-2.5 border-t border-slate-100 dark:border-slate-700">
+        <div className="min-h-0 overflow-hidden">{r.details&&!expenses?<div className="border-t border-slate-100 dark:border-slate-700"><MonthDetails row={r} showCents={showCents} onOpenContract={onOpenContract}/></div>:<div className="px-4 pb-4 pt-1 space-y-2.5 border-t border-slate-100 dark:border-slate-700">
           {detail('Счёт',r.accountName)}
           {expenses&&detail('Клиент',r.customerName)}
           {detail('Договор',r.productName)}
@@ -76,7 +110,7 @@ function ProfitContent({view,ledger,periodLabel,showCents,onOpenContract,close}:
           {(r.includedInAccruals||r.discountAmount!=null)&&<p className="text-xs leading-relaxed text-slate-500 dark:text-slate-400">Скидка уже уменьшила «Получено». Повторного списания нет.</p>}
           {r.note&&<p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300 whitespace-pre-wrap break-words">{r.note}</p>}
           {r.saleId&&onOpenContract&&<button type="button" onClick={()=>onOpenContract(r.saleId!)} className="rounded-xl bg-indigo-50 dark:bg-indigo-500/10 px-3 py-2 text-xs font-semibold text-indigo-600 dark:text-indigo-300">Открыть договор</button>}
-        </div></div>
+        </div>}</div>
       </div>
     </div>;
   };
@@ -86,6 +120,7 @@ function ProfitContent({view,ledger,periodLabel,showCents,onOpenContract,close}:
     </div>
     {view==='available'&&<SheetSection title="Как получилась сумма">
       {row('Получено прибыли',ledger.received,()=>choose('accruals'))}
+      {!!ledger.reinvested&&row('Реинвестировано',-ledger.reinvested,()=>choose('expenses','other'))}
       {row('Выплачено',-ledger.paid,()=>choose('expenses','payout'))}
       {row('Прочие расходы',-ledger.other,()=>choose('expenses','other'))}
       {ledger.discountsDeducted>0&&row('Скидки из прибыли',-ledger.discountsDeducted,()=>choose('expenses','discount'))}

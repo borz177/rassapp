@@ -1,10 +1,15 @@
 import React, { useMemo, useState } from 'react';
 import Sheet from './Sheet';
+import GlassSheet from './GlassSheet';
 import { useModeOrder } from '../src/modeOrder';
 import SwapModesButton from './SwapModesButton';
 import TabPill from './TabPill';
 import ShopReportBody from './ShopReportBody';
 import { collectionPayments, isCustomerSale } from '../shared/collections.js';
+import {isMonthlyPool} from '../shared/profit.js';
+import {cashProfitLedgers} from '../src/cashProfitLedger';
+import { investorPalette, MANAGER_PALETTE, INVESTOR_GROUP_PALETTE, FINANCE_ACCENTS, POOL_PANEL_CLASS, POOL_PROGRESS_CLASS } from '../src/investorPalette';
+import { ICONS } from '../constants';
 import { Investor, AppSettings, Sale, Expense, Account, Customer, RetailSale as RetailSaleType, Product, StockMovement} from '../types';
 import { moneyInProfit, saleProfitMargin, formatCurrency, getAccountShares, getManagerSharePercent, escapeHtml, isAccountForInvestor, calculateSaleOverdue, addMonthsClamped, paymentProfitShares, paymentManagerPercent, expectedProfitShares, expectedManagerPercent, saleMoneyIn } from '../src/utils';
 import { openPrintPreview } from './PrintPreview';
@@ -70,7 +75,6 @@ function getPeriodDates(preset: PeriodPreset): { start: string; end: string } {
     }
 }
 
-const INVESTOR_PALETTE = ['#6366F1', '#8B5CF6', '#EC4899', '#F59E0B', '#06B6D4', '#84CC16', '#EF4444'];
 const MONTH_NAMES = ['Янв', 'Фев', 'Мар', 'Апр', 'Май', 'Июн', 'Июл', 'Авг', 'Сен', 'Окт', 'Ноя', 'Дек'];
 
 type KpiColor = 'emerald' | 'teal' | 'sky' | 'indigo' | 'purple' | 'amber' | 'red';
@@ -87,14 +91,17 @@ const COLOR_MAP: Record<KpiColor, { bg: string; shadow: string; text: string; li
 
 interface KpiCardProps {
     icon: string; label: string; value: string; badge: string;
-    color: KpiColor; subtext?: string;
+    color: KpiColor; subtext?: string; onClick?: () => void;
 }
-const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, subtext }) => {
+const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, subtext, onClick }) => {
     const c = COLOR_MAP[color];
+    const Tag = onClick ? 'button' : 'div';
     // «12 049 971 ₽» — знак рубля отдельно, мелким серым, как на плитках Главной
     const cur = /^(.*\S)\s*₽$/.exec(value);
     return (
-        <div className={`rep-kpi rep-kpi-${color} group bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1`}>
+        <Tag type={onClick ? 'button' : undefined} onClick={onClick} aria-label={onClick ? `${label}: как считается` : undefined}
+            style={{ '--dot': FINANCE_ACCENTS[color] } as React.CSSProperties}
+            className={`rep-kpi rep-kpi-${color} group w-full text-left bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm p-5 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-300 border border-slate-100 dark:border-slate-700 ${c.border} hover:-translate-y-1 ${onClick ? 'cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500' : ''}`}>
             <div className="flex items-center justify-between mb-3">
                 <div className={`rep-kpi-icon p-2.5 bg-gradient-to-br ${c.bg} text-white rounded-xl shadow-lg ${c.shadow} group-hover:scale-110 transition-transform text-base leading-none`}>{icon}</div>
                 <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${c.light}`}>{badge}</span>
@@ -102,7 +109,7 @@ const KpiCard: React.FC<KpiCardProps> = ({ icon, label, value, badge, color, sub
             <p className="text-xs font-medium text-slate-500 dark:text-slate-400 mb-1 leading-tight">{label}</p>
             <p className={`rep-kpi-value text-xl font-bold ${c.text} leading-tight`}>{cur ? <>{cur[1]}<span className="rep-kpi-cur text-sm text-slate-400 ml-1 font-bold">₽</span></> : value}</p>
             {subtext && <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">{subtext}</p>}
-        </div>
+        </Tag>
     );
 };
 
@@ -112,8 +119,9 @@ interface ProgressRowProps {
 }
 const ProgressRow: React.FC<ProgressRowProps> = ({ label, realized, expected, color, showCents }) => {
     const pct = expected > 0 ? Math.min(Math.round((realized / expected) * 100), 100) : 0;
-    const barColor = color === 'emerald' ? 'bg-emerald-500' : 'bg-indigo-500';
-    const textColor = color === 'emerald' ? 'text-emerald-600 dark:text-emerald-400' : 'text-indigo-600 dark:text-indigo-400';
+    const palette = color === 'emerald' ? MANAGER_PALETTE : INVESTOR_GROUP_PALETTE;
+    const barColor = POOL_PROGRESS_CLASS;
+    const textColor = palette.text;
     return (
         <div>
             <div className="flex justify-between items-center mb-1.5">
@@ -238,6 +246,12 @@ const Reports: React.FC<ReportsProps> = ({
 
     // Accurate per-investor breakdown from real sales
     const totalInvestment = useMemo(() => investors.reduce((s, inv) => s + inv.initialAmount, 0), [investors]);
+    const monthlyIncome=useMemo(()=>{
+        const ids=new Set(accounts.filter(isMonthlyPool).map(a=>a.id));
+        if(!ids.size)return null;
+        return cashProfitLedgers({accounts,investors,customers,sales:sales.filter(s=>ids.has(s.accountId)),
+            expenses:expenses.filter(e=>ids.has(e.accountId)),period:filters.period,accountId:filters.accountId,profitFromPaymentsOnly});
+    },[accounts,investors,customers,sales,expenses,filters,profitFromPaymentsOnly]);
 
     const accurateInvestorBreakdown = useMemo(() => {
         if (!investors.length) return [];
@@ -245,7 +259,7 @@ const Reports: React.FC<ReportsProps> = ({
         const endDate = new Date(filters.period.end);
         endDate.setHours(23, 59, 59, 999);
 
-        return investors.map((inv, idx) => {
+        return investors.map(inv => {
             const investorSales = sales.filter(s => {
                 const acc = accounts.find(a => a.id === s.accountId);
                 return !!acc && (isAccountForInvestor(acc, inv.id) || (acc.partners || []).includes(inv.id));
@@ -282,17 +296,20 @@ const Reports: React.FC<ReportsProps> = ({
                 });
             });
 
+            if(accounts.some(a=>isMonthlyPool(a)&&(filters.accountId==='ALL'||a.id===filters.accountId)&&isAccountForInvestor(a,inv.id)))
+                realizedProfit=monthlyIncome?.investors.get(inv.id)?.received||0;
             const share = totalInvestment > 0 ? Math.round((inv.initialAmount / totalInvestment) * 100) : 0;
             return {
                 inv, share, expectedProfit, realizedProfit,
                 salesCount: investorSales.length,
-                color: INVESTOR_PALETTE[idx % INVESTOR_PALETTE.length],
+                color: investorPalette(inv.id).color,
             };
         });
-    }, [investors, accounts, sales, filters, totalInvestment, profitFromPaymentsOnly]);
+    }, [investors, accounts, sales, filters, totalInvestment, profitFromPaymentsOnly,monthlyIncome]);
 
     // Modal state
     const [activeModal, setActiveModal] = useState<'payments' | 'investor_payouts' | 'other_expenses' | null>(null);
+    const [showEfficiencyInfo, setShowEfficiencyInfo] = useState(false);
 
     // Уход доигрывает сам лист (Sheet), стоит только снять окно
     const closeActiveModal = () => setActiveModal(null);
@@ -433,8 +450,8 @@ const Reports: React.FC<ReportsProps> = ({
 
     // Chart data
     const pieData = [
-        { name: 'Моя прибыль', value: data.realizedManagerProfit, color: '#10B981' },
-        { name: 'Прибыль инвесторов', value: data.realizedInvestorProfit, color: '#6366F1' },
+        { name: 'Моя прибыль', value: data.realizedManagerProfit, color: MANAGER_PALETTE.color },
+        { name: 'Прибыль инвесторов', value: data.realizedInvestorProfit, color: INVESTOR_GROUP_PALETTE.color },
     ].filter(d => d.value > 0);
 
     const barData = [
@@ -517,6 +534,12 @@ const Reports: React.FC<ReportsProps> = ({
             }
         });
 
+        if(isMonthlyPool(account)&&monthlyIncome){
+            ensure(MGR,()=>({label:'Менеджер',isManager:true,sharePercent:getManagerSharePercent(account,investors),received:0,expected:0}));
+            for(const id of account.poolMemberIds||[]){const investor=investors.find(i=>i.id===id);if(investor)
+                ensure(id,()=>({label:investor.name,isManager:false,sharePercent:0,received:0,expected:0}));}
+            for(const [id,row]of rows)row.received=id===MGR?monthlyIncome.manager.received:monthlyIncome.investors.get(id)?.received||0;
+        }
         if (rows.size === 0) return null;
 
         // Обновляем sharePercent до актуальных (текущих) долей — ensure() мог записать
@@ -528,11 +551,11 @@ const Reports: React.FC<ReportsProps> = ({
             if (row) row.sharePercent = percentage;
         });
 
-        const list = Array.from(rows.values()).sort((a, b) => Number(b.isManager) - Number(a.isManager));
+        const list = Array.from(rows, ([id, row]) => ({ ...row, id })).sort((a, b) => Number(b.isManager) - Number(a.isManager));
         const totalReceived = list.reduce((s, r) => s + r.received, 0);
         const totalExpected = list.reduce((s, r) => s + r.expected, 0);
         return { account, rows: list, totalReceived, totalExpected };
-    }, [filters.accountId, filters.period, accounts, sales, investors, profitFromPaymentsOnly]);
+    }, [filters.accountId, filters.period, accounts, sales, investors, profitFromPaymentsOnly,monthlyIncome]);
 
     // CSV Export
     const exportCSV = (opts: typeof exportOptions) => {
@@ -767,9 +790,10 @@ const Reports: React.FC<ReportsProps> = ({
                     </div>
                     <div className={`items-center gap-2 ${isShopTab ? 'hidden' : 'flex'}`}>
                         {hasData && (
-                            <div className={`hidden sm:block px-4 py-2 rounded-xl text-sm font-semibold ${efficiencyColor === 'emerald' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : efficiencyColor === 'amber' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
+                            <button type="button" onClick={()=>setShowEfficiencyInfo(true)} aria-label="Как считается эффективность"
+                                className={`hidden sm:block px-4 py-2 rounded-xl text-sm font-semibold cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-500 ${efficiencyColor === 'emerald' ? 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400' : efficiencyColor === 'amber' ? 'bg-amber-100 dark:bg-amber-900/30 text-amber-700 dark:text-amber-400' : 'bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-400'}`}>
                                 Эффективность {efficiency}%
-                            </div>
+                            </button>
                         )}
                         <button
                             onClick={() => setExportModal('csv')}
@@ -890,49 +914,47 @@ const Reports: React.FC<ReportsProps> = ({
                             <KpiCard
                                 icon={efficiency >= 80 ? '🎯' : efficiency >= 50 ? '📊' : '⚠️'}
                                 label="Эффективность" value={`${efficiency}%`}
-                                badge={efficiencyLabel} color={efficiencyColor} subtext="план / факт"
+                                badge={efficiencyLabel} color={efficiencyColor} subtext="Как считается ›" onClick={()=>setShowEfficiencyInfo(true)}
                             />
                         </div>
 
                         {/* Pool profit distribution card */}
                         {poolDistribution && (
-                            <div className="bg-white/90 dark:bg-slate-800/90 backdrop-blur-sm rounded-2xl shadow-lg border border-fuchsia-100 dark:border-fuchsia-900/40 overflow-hidden">
+                            <div className={`${POOL_PANEL_CLASS} overflow-hidden`}>
                                 {/* Header */}
-                                <div className="bg-gradient-to-r from-fuchsia-600 to-purple-600 px-5 py-4 flex items-center gap-3">
-                                    <div className="w-9 h-9 rounded-xl bg-white/20 flex items-center justify-center text-white text-lg">🏦</div>
-                                    <div>
-                                        <p className="text-white font-bold text-base leading-tight">{poolDistribution.account.name}</p>
-                                        <p className="text-fuchsia-200 text-xs mt-0.5">Распределение прибыли по участникам</p>
+                                <div className="border-b border-slate-100 px-5 py-4 flex items-center gap-3 dark:border-slate-700">
+                                    <div className="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 dark:bg-slate-700 dark:text-slate-200 flex items-center justify-center shrink-0">{ICONS.Users}</div>
+                                    <div className="min-w-0">
+                                        <p className="text-slate-900 dark:text-white font-bold text-base leading-tight break-words">{poolDistribution.account.name}</p>
+                                        <p className="text-slate-500 dark:text-slate-400 text-xs mt-0.5">Распределение прибыли по участникам</p>
                                     </div>
                                 </div>
 
                                 <div className="p-5 space-y-3">
-                                    {poolDistribution.rows.map((row, idx) => {
-                                        const rowColors = row.isManager
-                                            ? { dot: 'bg-emerald-500', bar: 'bg-emerald-500', badge: 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-400', label: 'text-emerald-700 dark:text-emerald-400' }
-                                            : { dot: ['bg-indigo-500','bg-purple-500','bg-pink-500','bg-amber-500','bg-cyan-500'][idx % 5], bar: ['bg-indigo-500','bg-purple-500','bg-pink-500','bg-amber-500','bg-cyan-500'][idx % 5], badge: 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-700 dark:text-indigo-400', label: 'text-indigo-700 dark:text-indigo-400' };
+                                    {poolDistribution.rows.map(row => {
+                                        const palette = investorPalette(row.id);
                                         const total = row.received + row.expected;
                                         const pct = total > 0 ? Math.round((row.received / total) * 100) : 0;
                                         return (
-                                            <div key={row.isManager ? '__mgr__' : String(idx)} className="bg-slate-50 dark:bg-slate-900/50 rounded-xl p-4">
+                                            <div key={row.id} className="bg-slate-50 dark:bg-slate-900/40 rounded-xl p-4">
                                                 <div className="flex items-center justify-between mb-2">
                                                     <div className="flex items-center gap-2.5 min-w-0">
-                                                        <div className={`w-8 h-8 rounded-full ${rowColors.dot} flex items-center justify-center text-white text-xs font-bold shrink-0`}>
+                                                        <div className={`w-8 h-8 rounded-full ${palette.bg} ${palette.text} flex items-center justify-center text-xs font-bold shrink-0`}>
                                                             {row.label.charAt(0).toUpperCase()}
                                                         </div>
                                                         <span className="font-semibold text-sm text-slate-800 dark:text-white truncate">{row.label}</span>
                                                     </div>
-                                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ml-2 ${rowColors.badge}`}>
+                                                    <span className={`text-xs font-bold px-2.5 py-1 rounded-full shrink-0 ml-2 ${palette.bg} ${palette.text}`}>
                                                         {Math.round(row.sharePercent)}%
                                                     </span>
                                                 </div>
                                                 {/* Progress bar: received vs total */}
                                                 <div className="h-1.5 bg-slate-200 dark:bg-slate-700 rounded-full overflow-hidden mb-2">
-                                                    <div className={`h-full ${rowColors.bar} rounded-full transition-all duration-700`} style={{ width: `${pct}%` }} />
+                                                    <div className={`h-full ${POOL_PROGRESS_CLASS} rounded-full transition-all duration-700 motion-reduce:transition-none`} style={{ width: `${pct}%` }} />
                                                 </div>
-                                                <div className="flex justify-between text-xs">
+                                                <div className="flex flex-wrap justify-between gap-x-3 gap-y-1 text-xs">
                                                     <span className="text-slate-500 dark:text-slate-400">
-                                                        Получено: <span className={`font-bold ${rowColors.label}`}>{formatCurrency(row.received, appSettings.showCents)} ₽</span>
+                                                        Получено: <span className={`font-bold ${palette.text}`}>{formatCurrency(row.received, appSettings.showCents)} ₽</span>
                                                     </span>
                                                     <span className="text-slate-400 dark:text-slate-500">
                                                         Ожидается: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(row.expected, appSettings.showCents)} ₽</span>
@@ -947,7 +969,7 @@ const Reports: React.FC<ReportsProps> = ({
                                         <span className="font-semibold text-slate-600 dark:text-slate-300">Итого по пулу</span>
                                         <div className="flex gap-4 text-xs">
                                             <span className="text-slate-500 dark:text-slate-400">
-                                                Получено: <span className="font-bold text-emerald-600 dark:text-emerald-400">{formatCurrency(poolDistribution.totalReceived, appSettings.showCents)} ₽</span>
+                                                Получено: <span className={`font-bold ${INVESTOR_GROUP_PALETTE.text}`}>{formatCurrency(poolDistribution.totalReceived, appSettings.showCents)} ₽</span>
                                             </span>
                                             <span className="text-slate-400 dark:text-slate-500">
                                                 Ожидается: <span className="font-semibold text-slate-600 dark:text-slate-300">{formatCurrency(poolDistribution.totalExpected, appSettings.showCents)} ₽</span>
@@ -1047,7 +1069,9 @@ const Reports: React.FC<ReportsProps> = ({
                                             />
                                             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
                                             <Bar dataKey="Ожидается" fill="#CBD5E1" radius={[6, 6, 0, 0]} />
-                                            <Bar dataKey="Получено" fill="#10B981" radius={[6, 6, 0, 0]} />
+                                            <Bar dataKey="Получено" fill={MANAGER_PALETTE.color} radius={[6, 6, 0, 0]}>
+                                                {barData.map(row=><Cell key={row.name} fill={row.name==='Менеджер'?MANAGER_PALETTE.color:INVESTOR_GROUP_PALETTE.color}/>)}
+                                            </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
@@ -1200,14 +1224,15 @@ const Reports: React.FC<ReportsProps> = ({
                                             </tr>
                                         </thead>
                                         <tbody className="divide-y divide-slate-50 dark:divide-slate-700">
-                                            {accurateInvestorBreakdown.map(({ inv, share, expectedProfit, realizedProfit, salesCount, color }) => {
+                                            {accurateInvestorBreakdown.map(({ inv, share, expectedProfit, realizedProfit, salesCount }) => {
+                                                const palette=investorPalette(inv.id);
                                                 const pct = expectedProfit > 0 ? Math.round((realizedProfit / expectedProfit) * 100) : 0;
                                                 const rowPctColor = pct >= 80 ? 'text-emerald-600 dark:text-emerald-400' : pct >= 50 ? 'text-amber-600 dark:text-amber-400' : 'text-red-500 dark:text-red-400';
                                                 return (
                                                     <tr key={inv.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-700/50 transition-colors">
                                                         <td className="py-3 pl-1">
                                                             <div className="flex items-center gap-2.5">
-                                                                <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold flex-shrink-0" style={{ backgroundColor: color }}>
+                                                                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${palette.bg} ${palette.text}`}>
                                                                     {inv.name.charAt(0).toUpperCase()}
                                                                 </div>
                                                                 <div>
@@ -1218,17 +1243,17 @@ const Reports: React.FC<ReportsProps> = ({
                                                         </td>
                                                         <td className="py-3 text-right font-medium text-slate-600 dark:text-slate-300">{formatCurrency(inv.initialAmount, appSettings.showCents)} ₽</td>
                                                         <td className="py-3 text-right">
-                                                            <span className="px-2 py-0.5 rounded-full text-xs font-semibold" style={{ backgroundColor: color + '18', color }}>
+                                                            <span className={`px-2 py-0.5 rounded-full text-xs font-semibold ${palette.bg} ${palette.text}`}>
                                                                 {share}%
                                                             </span>
                                                         </td>
                                                         <td className="py-3 text-right text-slate-500 dark:text-slate-400">{formatCurrency(expectedProfit, appSettings.showCents)} ₽</td>
-                                                        <td className="py-3 text-right font-semibold text-emerald-600 dark:text-emerald-400">{formatCurrency(realizedProfit, appSettings.showCents)} ₽</td>
+                                                        <td className={`py-3 text-right font-semibold ${palette.text}`}>{formatCurrency(realizedProfit, appSettings.showCents)} ₽</td>
                                                         <td className="py-3 pr-1">
                                                             <div className="flex flex-col items-end gap-1">
                                                                 <span className={`text-xs font-bold ${rowPctColor}`}>{pct}%</span>
                                                                 <div className="w-14 h-1.5 bg-slate-100 dark:bg-slate-700 rounded-full overflow-hidden">
-                                                                    <div className="h-full bg-emerald-500 rounded-full" style={{ width: `${Math.min(pct, 100)}%` }}></div>
+                                                                    <div className={`h-full ${POOL_PROGRESS_CLASS} rounded-full`} style={{ width: `${Math.min(pct, 100)}%` }}></div>
                                                                 </div>
                                                             </div>
                                                         </td>
@@ -1259,7 +1284,7 @@ const Reports: React.FC<ReportsProps> = ({
                                 <span className="w-1 h-4 bg-white/50 rounded-full"></span>
                                 <h4 className="text-sm font-bold text-indigo-100 uppercase tracking-wider">Итог периода</h4>
                             </div>
-                            <div className={`grid gap-6 ${hasInvestors ? 'grid-cols-2 sm:grid-cols-5' : 'grid-cols-2 sm:grid-cols-4'}`}>
+                            <div className={`grid gap-6 ${hasInvestors ? 'grid-cols-2 sm:grid-cols-4' : 'grid-cols-2 sm:grid-cols-3'}`}>
                                 <div>
                                     <p className="text-indigo-200 text-xs mb-1">Поступления</p>
                                     <p className="text-2xl font-bold">{formatCurrency(data.customerPaymentsInPeriod, appSettings.showCents)} ₽</p>
@@ -1278,13 +1303,6 @@ const Reports: React.FC<ReportsProps> = ({
                                         <p className="text-2xl font-bold">{formatCurrency(data.realizedInvestorProfit, appSettings.showCents)} ₽</p>
                                     </div>
                                 )}
-                                <div>
-                                    <p className="text-indigo-200 text-xs mb-1">Эффективность</p>
-                                    <p className="text-2xl font-bold">{efficiency}%</p>
-                                    <div className="mt-2 h-1.5 bg-white/20 rounded-full overflow-hidden">
-                                        <div className="h-full bg-white rounded-full transition-all duration-700" style={{ width: `${Math.min(efficiency, 100)}%` }}></div>
-                                    </div>
-                                </div>
                             </div>
                         </div>
 
@@ -1294,6 +1312,19 @@ const Reports: React.FC<ReportsProps> = ({
                 </>)}
             </div>
 
+            {showEfficiencyInfo&&<GlassSheet title="Эффективность" fit="content" onClose={()=>setShowEfficiencyInfo(false)} zIndex={240}>
+                <div className="space-y-4 pb-6">
+                    <p className="px-4 text-sm leading-relaxed text-slate-600 dark:text-slate-300">Показывает, какая часть расчётной прибыли получена за выбранный период. Учитывается выбранный счёт.</p>
+                    <div className="rounded-2xl bg-white p-4 dark:bg-slate-800">
+                        <p className="text-3xl font-bold text-slate-900 dark:text-white">{efficiency}%</p>
+                        <dl className="mt-4 space-y-3 text-sm">
+                            <div className="flex flex-wrap justify-between gap-2"><dt className="text-slate-500 dark:text-slate-400">Прибыль за период</dt><dd className="font-semibold text-slate-900 dark:text-white">{formatCurrency(totalRealized,appSettings.showCents)} ₽</dd></div>
+                            <div className="flex flex-wrap justify-between gap-2"><dt className="text-slate-500 dark:text-slate-400">Расчётная прибыль договоров</dt><dd className="font-semibold text-slate-900 dark:text-white">{formatCurrency(totalExpected,appSettings.showCents)} ₽</dd></div>
+                        </dl>
+                    </div>
+                    <p className="px-4 text-xs leading-relaxed text-slate-500 dark:text-slate-400">{totalExpected>0?'Прибыль за период ÷ расчётная прибыль × 100%. Расходы из прибыли уже учтены.':'Пока нет расчётной прибыли для сравнения.'}</p>
+                </div>
+            </GlassSheet>}
             {/* Export Options Modal */}
             {exportModal && (
                 <Sheet onClose={() => setExportModal(null)} zIndex={200} className="sm:max-w-sm overflow-hidden">

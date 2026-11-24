@@ -1,3 +1,5 @@
+import { isMonthlyPool } from '../shared/profit.js';
+import { investorProfitAccruals } from '../src/utils';
 import React, { useMemo, useState } from 'react';
 import Sheet from './Sheet';
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -125,14 +127,20 @@ const InvestorDashboard: React.FC<InvestorDashboardProps> = ({
   );
 
   // 🔹 ПРИБЫЛЬ: Как в InvestorDetails
-const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
-    if (investorAccountIds.length === 0) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
+const { totalProfitEarned, totalProfitWithdrawn, totalProfitPending, profitAccruals } = useMemo(() => {
+    if (investorAccountIds.length === 0) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, totalProfitPending:0, profitAccruals: [] };
 
     const investorSalesFiltered = investorSales.filter(sale => sale.buyPrice > 0);
     let profitSum = 0;
-    const accruals: {id: string, date: string, amount: number, source: string, discount?: number, discountShare?: number}[] = [];
+    const accruals: {id: string, date: string, amount: number, source: string, preliminary?: boolean, discount?: number, discountShare?: number}[] = [];
 
+    for(const account of accounts.filter(a=>investorAccountIds.includes(a.id)&&isMonthlyPool(a))){
+      for(const row of investorProfitAccruals(account,investors,investorSales,investor.id,profitFromPaymentsOnly,investorExpenses)){
+        profitSum+=row.amount;accruals.push({id:row.id,date:row.date,amount:row.amount,source:row.sale.productName,preliminary:row.preliminary});
+      }
+    }
     investorSalesFiltered.forEach(sale => {
+      if(isMonthlyPool(accounts.find(a=>a.id===sale.accountId)))return;
       const totalSaleProfit = sale.totalAmount - sale.buyPrice;
       if (sale.totalAmount <= 0 || totalSaleProfit <= 0) return;
 
@@ -169,12 +177,13 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
 
     return {
       totalProfitEarned: profitSum,
+      totalProfitPending:accruals.filter(a=>a.preliminary).reduce((n,a)=>n+a.amount,0),
       // Выплаты плюс доля в общих расходах «из прибыли». Раньше здесь были только
       // выплаты, и «доступно к выводу» у инвестора выходило больше, чем у менеджера.
       totalProfitWithdrawn: profitOutflows.total,
       profitAccruals: accruals.sort((a,b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
-  }, [investorSales, profitOutflows, investorAccountIds, accounts, investors, investor.id, profitFromPaymentsOnly]);
+  }, [investorSales, investorExpenses, profitOutflows, investorAccountIds, accounts, investors, investor.id, profitFromPaymentsOnly]);
 
   // 🔹 История выплат этому инвестору — тот же фильтр, что и для withdrawnSum выше,
   // но со списком отдельных операций (для модалки "Мои выплаты"), а не только суммой.
@@ -229,7 +238,7 @@ const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() =
   // 🔹 Ожидаемая прибыль: Как в InvestorDetails
   // 🔹 Ожидаемая прибыль: от остатка долга по АКТИВНЫМ сделкам
 const expectedTotalProfit = useMemo(() => {
-  if (investorAccountIds.length === 0 || !investor.profitPercentage) return 0;
+  if (investorAccountIds.length === 0) return 0;
 
   // 🔧 Фильтруем только активные и черновые сделки (не завершённые!)
   const activeSales = investorSales.filter(s =>
@@ -251,7 +260,7 @@ const expectedTotalProfit = useMemo(() => {
 
   const availableToWithdraw = useMemo(() => {
     return Math.max(0, totalProfitEarned - totalProfitWithdrawn);
-  }, [totalProfitEarned, totalProfitWithdrawn]);
+  }, [totalProfitEarned, totalProfitPending, totalProfitWithdrawn]);
 
   // 🔹 Последние 5 договоров
   const lastFiveSales = useMemo(() => {

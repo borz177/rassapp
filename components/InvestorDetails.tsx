@@ -1,3 +1,5 @@
+import {inPoolProfitPeriod,monthlyPoolApplies} from '../shared/profit.js';
+import { investorPalette, POOL_PARTICIPANT_PALETTE, POOL_PANEL_CLASS, POOL_COUNT_CLASS, POOL_PROGRESS_CLASS } from '../src/investorPalette';
 import React, { useState, useMemo, useEffect, useRef } from 'react';
 import Sheet from './Sheet';
 import { percentError } from '../src/investorPercent';
@@ -83,13 +85,6 @@ interface InvestorDetailsProps {
   onDeletePoolLoss?: (account: Account, lossId: string) => void;
 }
 
-const POOL_MEMBER_PALETTE = [
-  { bar: 'bg-sky-500', text: 'text-sky-600 dark:text-sky-400', bg: 'bg-sky-50 dark:bg-sky-900/30' },
-  { bar: 'bg-amber-500', text: 'text-amber-600 dark:text-amber-400', bg: 'bg-amber-50 dark:bg-amber-900/30' },
-  { bar: 'bg-rose-500', text: 'text-rose-600 dark:text-rose-400', bg: 'bg-rose-50 dark:bg-rose-900/30' },
-  { bar: 'bg-teal-500', text: 'text-teal-600 dark:text-teal-400', bg: 'bg-teal-50 dark:bg-teal-900/30' },
-  { bar: 'bg-violet-500', text: 'text-violet-600 dark:text-violet-400', bg: 'bg-violet-50 dark:bg-violet-900/30' },
-];
 
 // Категории выплат инвестору. Форма расхода сохраняет «Выплата инвестора» (NewExpense.tsx),
 // в старых записях встречается «Investment Return», а здесь раньше искали только
@@ -120,7 +115,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
   investor, investors, account, accountBalance, sales, expenses, customers, appSettings, onBack, onUpdateInvestor, onDeleteInvestor, onUpdateAccount, onInvestorReentry, onPoolLoss, onDeletePoolLoss
 }) => {
   // Прибыль только с платежей графика: первый взнос её не несёт (см. saleProfitMargin)
-  const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
+  const profitFromPaymentsOnly = account?.poolAccounting?.profitFromPaymentsOnly ?? !!appSettings?.profitFromPaymentsOnly;
   const currentSharePercent = useMemo(() => {
     const share = getAccountShares(account, investors).find(m => m.investor.id === investor.id);
     return share ? share.percentage : 0;
@@ -357,13 +352,13 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       }, 0);
   }, [sales, account, investors, investor.id, profitFromPaymentsOnly]);
 
-  const { totalProfitEarned, totalProfitWithdrawn, profitAccruals } = useMemo(() => {
-    if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, profitAccruals: [] };
+  const { totalProfitEarned, totalProfitWithdrawn, totalProfitPending, profitAccruals } = useMemo(() => {
+    if (!account) return { totalProfitEarned: 0, totalProfitWithdrawn: 0, totalProfitPending:0, profitAccruals: [] };
 
     // Тот же расчёт, что у FinUchetGPT (shared/profit.js)
-    const accruals = investorProfitAccruals(account, investors, sales, investor.id, profitFromPaymentsOnly).map(a => ({
-      id: a.id, date: a.date, amount: a.amount,
-      source: `Платеж по '${a.sale.productName}'`,
+    const accruals = investorProfitAccruals(account, investors, sales, investor.id, profitFromPaymentsOnly, expenses).map(a => ({
+      id: a.id, date: a.date, amount: a.amount, preliminary:a.preliminary,
+      source: a.poolMonth ? `${a.sale.productName}${a.preliminary?' · По данным на сегодня':''}` : `Платеж по '${a.sale.productName}'`,
       productName: a.sale.productName,
       customerId: a.sale.customerId,
       paymentAmount: a.paymentAmount,
@@ -382,6 +377,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
     return {
       totalProfitEarned: profitSum,
+      totalProfitPending:accruals.filter(a=>a.preliminary).reduce((n,a)=>n+a.amount,0),
       totalProfitWithdrawn: withdrawnSum,
       profitAccruals: accruals.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
     };
@@ -393,10 +389,10 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
     endDate.setHours(23, 59, 59, 999);
 
     const profit = profitAccruals
-      .filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; })
+      .filter(p => { if(monthlyPoolApplies(account,p.date))return inPoolProfitPeriod(p.date,period);const d = new Date(p.date); return d >= startDate && d <= endDate; })
       .reduce((sum, p) => sum + p.amount, 0);
 
-    const inPeriod = (e: Expense) => { const d = new Date(e.date); return d >= startDate && d <= endDate; };
+    const inPeriod = (e: Expense) => { if(monthlyPoolApplies(account,e.date))return inPoolProfitPeriod(e.date,period);const d = new Date(e.date); return d >= startDate && d <= endDate; };
 
     const paidOut = expenses
       .filter(e => e.accountId === account?.id && (!e.investorId || e.investorId === investor.id) &&
@@ -455,7 +451,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       total,
       shortfall: Math.max(0, total - balance),
     };
-  }, [investor, latestPeriod, totalProfitEarned, totalProfitWithdrawn, expectedTotalProfit,
+  }, [investor, latestPeriod, totalProfitEarned, totalProfitPending, totalProfitWithdrawn, expectedTotalProfit,
       includePendingProfit, lossData.totalMyLoss, balance]);
 
   // «Это я — владелец» у одного из участников: строка «Менеджер» сливается с его строкой
@@ -476,13 +472,13 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
       return sum + (p ? p.initialAmount : 0);
     }, 0);
     const mgrPercent = getManagerSharePercent(account, investors);
-    const rows = allMembers.map((m, idx) => {
+    const rows = allMembers.map(m => {
       const activePeriod = getActivePeriodAt(m, nowMs);
       const isActive = activePeriod !== null;
       const amount = activePeriod ? activePeriod.initialAmount : 0;
       const capitalShare = (isActive && totalCapital > 0) ? amount / totalCapital * 100 : 0;
       const profitShare = getAccountShares(account, investors).find(s => s.investor.id === m.id)?.percentage ?? 0;
-      return { investor: m, capitalShare, profitShare, isActive, palette: POOL_MEMBER_PALETTE[idx % POOL_MEMBER_PALETTE.length] };
+      return { investor: m, capitalShare, profitShare, isActive, palette: investorPalette(m.id) };
     });
     const myActivePeriod = getActivePeriodAt(investor, nowMs);
     const myAmount = myActivePeriod ? myActivePeriod.initialAmount : 0;
@@ -570,7 +566,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
           {/* Basic info */}
           <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-4" onClick={() => showActionMenu && setShowActionMenu(false)}>
             <div className="flex items-center gap-4 border-b border-slate-50 dark:border-slate-700 pb-4">
-              <div className="w-16 h-16 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center text-2xl font-bold shrink-0">{investor.name.charAt(0)}</div>
+              <div className={`w-16 h-16 rounded-full flex items-center justify-center text-2xl font-bold shrink-0 ${investorPalette(investor.id).bg} ${investorPalette(investor.id).text}`}>{investor.name.charAt(0)}</div>
               <div className="min-w-0 flex-1">
                 <h3 className="font-bold text-lg text-slate-800 dark:text-white truncate">{investor.name}</h3>
                 <p className="text-slate-500 dark:text-slate-400 text-sm truncate">{investor.email}</p>
@@ -622,25 +618,25 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
 
           {/* Pool composition */}
           {isPoolMember && poolComposition && (
-            <div className="bg-white dark:bg-slate-800 rounded-xl p-5 shadow-sm border border-slate-100 dark:border-slate-700 space-y-3">
+            <div className={`${POOL_PANEL_CLASS} p-5 space-y-3`}>
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-3">
                 <div>
                   <h3 className="font-bold text-slate-800 dark:text-white">Состав пула</h3>
                   <p className="text-xs text-slate-400 mt-0.5">Общий капитал: {formatCurrency(poolComposition.totalCapital, appSettings.showCents)} ₽</p>
                 </div>
-                <span className="text-xs font-semibold bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-400 px-2 py-1 rounded-full">{poolComposition.rows.length} участн.</span>
+                <span className={POOL_COUNT_CLASS}>{poolComposition.rows.length} участн.</span>
               </div>
               {/* Владелец с отметкой «Это я»: доля менеджера — его же, показываем в его строке */}
               {!poolOwnerId && (
               <div className="flex items-center gap-3 py-1">
-                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/30 flex items-center justify-center text-xs font-bold text-emerald-600 dark:text-emerald-400 shrink-0">М</div>
+                <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${POOL_PARTICIPANT_PALETTE.bg} ${POOL_PARTICIPANT_PALETTE.text}`}>М</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
                     <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Менеджер</span>
-                    <span className="text-sm font-bold text-emerald-600 dark:text-emerald-400">{Math.round(poolComposition.mgrPercent * 10) / 10}% приб.</span>
+                    <span className={`text-sm font-bold ${POOL_PARTICIPANT_PALETTE.text}`}>{Math.round(poolComposition.mgrPercent * 10) / 10}% приб.</span>
                   </div>
                   <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
-                    <div className="bg-emerald-500 h-1.5 rounded-full" style={{ width: `${Math.min(poolComposition.mgrPercent, 100)}%` }} />
+                    <div className={`${POOL_PROGRESS_CLASS} h-1.5 rounded-full`} style={{ width: `${Math.min(poolComposition.mgrPercent, 100)}%` }} />
                   </div>
                 </div>
               </div>
@@ -654,7 +650,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                     <div className="flex flex-wrap items-center justify-between gap-x-2 gap-y-0.5 mb-1">
                       <div className="flex items-center gap-1.5 min-w-0">
                         <span className={`text-sm truncate ${m.id === investor.id ? 'font-bold text-slate-900 dark:text-white' : 'font-medium text-slate-700 dark:text-slate-300'}`}>{m.name}</span>
-                        {m.id === poolOwnerId && <span className="text-xs bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400 px-1.5 py-0.5 rounded-full shrink-0">владелец</span>}
+                        {m.id === poolOwnerId && <span className={`text-xs px-1.5 py-0.5 rounded-full shrink-0 ${POOL_PARTICIPANT_PALETTE.bg} ${POOL_PARTICIPANT_PALETTE.text}`}>владелец</span>}
                         {m.id === investor.id && m.id !== poolOwnerId && <span className="text-xs bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400 px-1.5 py-0.5 rounded-full shrink-0">вы</span>}
                         {!isActive && <span className="text-xs bg-slate-100 dark:bg-slate-700 text-slate-500 px-1.5 py-0.5 rounded-full shrink-0">вышел</span>}
                       </div>
@@ -667,7 +663,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                     </div>
                     <div className="flex items-center gap-2">
                       <div className="flex-1 bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">
-                        <div className={`${palette.bar} h-1.5 rounded-full`} style={{ width: `${Math.min(capitalShare, 100)}%` }} />
+                        <div className={`${POOL_PROGRESS_CLASS} h-1.5 rounded-full`} style={{ width: `${Math.min(capitalShare, 100)}%` }} />
                       </div>
                       <span className="text-xs text-slate-400 shrink-0">{formatCurrency(m.initialAmount, false)} ₽</span>
                     </div>
@@ -686,7 +682,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
             </div>
             <div onClick={() => setShowProfitDetails(true)} className="bg-white dark:bg-slate-800 rounded-xl p-4 shadow-sm border border-slate-100 dark:border-slate-700 cursor-pointer hover:bg-slate-50 dark:hover:bg-slate-700">
               <h3 className="font-bold text-sm text-slate-800 dark:text-white mb-1">К выплате</h3>
-              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">Начислено − выплачено</p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">{account?.poolAccounting?'Начислено − выплаты − реинвестировано':'Начислено − выплачено'}</p>
               <p className="text-xl font-bold text-emerald-700 dark:text-emerald-400">{formatCurrency(totalProfitEarned - totalProfitWithdrawn, appSettings.showCents)} ₽</p>
             </div>
           </div>
@@ -1266,7 +1262,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
               <SheetToggle label="Это я — владелец" checked={editOwner} onChange={setEditOwner} tone="indigo" />
             </SheetSection>
 
-            <SheetSection title="Условия" hint={editError
+            {account?.poolAccounting?<SheetSection title="Условия"><p className="p-4 text-sm text-slate-500">Ставки, капитал и даты участия изменяются в кассе, в окне учёта общего пула.</p></SheetSection>:<SheetSection title="Условия" hint={editError
               ? <span className="text-rose-600 dark:text-rose-400">{editError}</span>
               : isPoolMember ? 'Инвестор получает долю прибыли, заработанной после его входа, — и по новым договорам, и по старым. После сохранения прибыль пересчитается.' : undefined}>
               <SheetField label="Процент прибыли" hint={percentError(editProfit)}>
@@ -1286,7 +1282,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                   <SheetDateInput value={editLeftDate} onChange={v => { setEditLeftDate(v); setEditError(null); }} clearable />
                 </SheetField>
               )}
-            </SheetSection>
+            </SheetSection>}
 
             <SheetSection title="Вход в приложение" hint="Новый пароль — только если хотите сменить. Пусто — останется прежний.">
               <SheetField label="Email — это логин">

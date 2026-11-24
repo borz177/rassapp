@@ -1,4 +1,5 @@
 import type { AccountingAuditRequest } from './src/accountingAudit';
+import {isMonthlyPoolReportIncome,monthlyPoolReportIncome} from './src/monthlyPoolReport';
 
 import React, { useState, useEffect, useMemo, useRef, Suspense, lazy } from 'react';
 import { friendlyError } from './src/friendlyError';
@@ -1755,12 +1756,17 @@ const dashboardStats = useMemo(() => {
             .filter(p => { const d = new Date(p.date); return d >= startDate && d <= endDate; });
 
         paymentsInPeriod.forEach(p => {
+            if(isMonthlyPoolReportIncome(account,sale,p.date))return;
             const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
             const managerPct = paymentManagerPercent(account, investors, sale, p) / 100;
             realizedManagerProfit += profitFromPayment * managerPct;
             realizedInvestorProfit += profitFromPayment * (1 - managerPct);
         });
     });
+
+    const monthlyIncome=monthlyPoolReportIncome({accounts,investors,sales:filteredSales,expenses,period,accountId,profitFromPaymentsOnly});
+    realizedManagerProfit+=monthlyIncome.manager;
+    realizedInvestorProfit+=monthlyIncome.investor;
 
     // 🔻 Расходы, списанные из прибыли, уменьшают её у обеих сторон.
     // Общий расход с флагом fromProfit делится по долям счёта, а «Моя выплата»
@@ -2770,6 +2776,12 @@ const handleIncomeSubmit = async (data: any) => {
 };
   const handleUpdateEmployee = async (updatedData: User) => { if (isManager) { await api.updateUser(updatedData); updateList(setEmployees, updatedData); } };
   const handleDeleteEmployee = async (id: string) => { if (isManager) { await api.deleteUser(id); removeFromList(setEmployees, id); } };
+const handlePoolChanged = (changed: any) => {
+  for(const item of changed.accounts || []) updateList(setAccounts,item,undefined,'accounts');
+  for(const item of changed.investors || []) updateList(setInvestors,item,undefined,'investors');
+  for(const item of changed.sales || []) updateList(setSales,item,undefined,'sales');
+  for(const item of changed.expenses || []) updateList(setExpenses,item,undefined,'expenses');
+};
 const handleAddInvestor = async (
   name: string,
   phone: string,
@@ -2778,7 +2790,7 @@ const handleAddInvestor = async (
   amount: number,
   profitPercentage: number,
   permissions: InvestorPermissions,
-  poolChoice?: { mode: 'EXISTING'; accountId: string } | { mode: 'NEW'; name: string } | { mode: 'ACCOUNT'; accountId: string },
+  poolChoice?: ({ mode: 'EXISTING'; accountId: string } | { mode: 'NEW'; name: string } | { mode: 'ACCOUNT'; accountId: string }) & { disposition?: 'PAYABLE' | 'REINVEST' },
   joinedDate?: string,
   leftPoolDate?: string
 ) => {
@@ -2795,6 +2807,15 @@ const handleAddInvestor = async (
   }
 
   try {
+    if(poolChoice && poolChoice.mode !== 'ACCOUNT') {
+      if(leftPoolDate)throw new Error('Выход из общего пула оформляется после возврата вложений.');
+      const accountId=poolChoice.mode==='EXISTING'?poolChoice.accountId:'new';
+      const result=await api.poolRequest(accountId,'addInvestor',{name,phone,email,password:pass,amount,rate:profitPercentage,permissions,
+        disposition:poolChoice.disposition||'PAYABLE',date:joinedDate,
+        ...(poolChoice.mode==='NEW'?{newPoolName:poolChoice.name}:{})});
+      handlePoolChanged(result.changed||{accounts:[result.account],investors:result.investors});
+      return result.investors.find((i:Investor)=>i.name===name&&i.joinedDate===joinedDate)||result.investors.at(-1);
+    }
     const hasLogin = !!(email && email.trim() && pass && pass.trim());
 
     // 1. Создаём пользователя ТОЛЬКО если заданы email и пароль — иначе это "пассивный"
@@ -2897,6 +2918,7 @@ const handleAddInvestor = async (
     return savedInv;
 
   } catch(e: any) {
+    if(poolChoice && poolChoice.mode !== 'ACCOUNT')throw e;
     if (e.message?.includes('Email уже занят') || e.message?.includes('already exists')) {
       alert('⚠️ Email уже занят');
       return;
@@ -2962,6 +2984,7 @@ const applyLossToCapital = (event: LossEvent, poolAccount: Account, sign: 1 | -1
 };
 
 const handlePoolLoss = async (poolAccount: Account, event: LossEvent) => {
+  if(poolAccount.poolAccounting){alert('В месячном пуле используйте корректировку в окне учёта общего пула.');return;}
   if (!user) return;
 
   let expenseId: string | undefined;
@@ -3010,6 +3033,7 @@ const handlePoolLoss = async (poolAccount: Account, event: LossEvent) => {
 
 // Удаление убытка обязано вернуть всё назад, иначе доли навсегда останутся заниженными
 const handleDeletePoolLoss = async (poolAccount: Account, lossId: string) => {
+  if(poolAccount.poolAccounting){alert('История месячного пула сохраняется. Исправление оформляется отдельной корректировкой.');return;}
   if (!user) return;
   const event = (poolAccount.lossEvents || []).find(e => e.id === lossId);
   if (!event) return;
@@ -3079,6 +3103,14 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
   if (!isManager) return;
 
   try {
+    const monthlyAccount=accounts.find(a=>a.poolAccounting&&a.poolMemberIds?.includes(updated.id));
+    if(monthlyAccount){
+      const original=investors.find(i=>i.id===updated.id);
+      if(original&&['initialAmount','profitPercentage','joinedDate','leftPoolDate','investmentPeriods'].some(key=>JSON.stringify((original as any)[key]??null)!==JSON.stringify((updated as any)[key]??null)))throw new Error('Условия и капитал изменяются в кассе: общий пул → Учёт общего пула.');
+      const result=await api.poolRequest(monthlyAccount.id,'profile',{investorId:updated.id,name:updated.name,phone:updated.phone,email:updated.email,password,permissions:updated.permissions,isOwner:updated.isOwner});
+      handlePoolChanged(result.changed);return;
+    }
+
     const hasEmail = updated.email && updated.email.trim().length > 0;
     const hasPassword = password && password.trim().length > 0;
     const isImportedWithoutUser = updated.id.startsWith('inv_') && !updated.id.startsWith('u_inv_');
@@ -5235,6 +5267,7 @@ if (!user && !showSplash) {
     onSelectAccount={handleSelectAccountForOperations}
     onSetMainAccount={handleSetMainAccount}
     onUpdateAccount={handleUpdateAccount}
+    onPoolChanged={handlePoolChanged}
     lockedAccountIds={lockedAccountIds}
     isManager={isManager}
 

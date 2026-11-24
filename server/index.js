@@ -1029,9 +1029,11 @@ const transporter = nodemailer.createTransport({
   },
 });
 
-const pool = new Pool({
+const poolTransactions = require('./pools/transactions').createPoolTransactions(new Pool({
   connectionString: process.env.DATABASE_URL || undefined,
-});
+}));
+const pool = poolTransactions.db;
+const poolAccountingService = require('./pools/service').createPoolService({ pool, checkFeatureAccess, getSubscriptionState, getInvestorLimitState });
 
 // Force Postgres Session Timezone
 pool.on('connect', (client) => {
@@ -3350,6 +3352,8 @@ app.get('/api/data', auth, async (req, res) => {
       return res.status(403).json({ error: 'Доступ запрещён' });
     }
 
+    await poolAccountingService.settleOwner(req.user.role === 'investor' ? req.user.managerId : targetUserId);
+
     let query;
     let params;
 
@@ -3467,6 +3471,8 @@ app.get('/api/data', auth, async (req, res) => {
       }));
     }
 
+    if(req.user.role==='investor') result.accounts=result.accounts.map(a=>require('./pools/view').poolAccountForViewer(a,req.user));
+
     // Fetch Employees
     let employees = [];
     if (req.user.role === 'manager' || req.user.role === 'admin') {
@@ -3507,6 +3513,8 @@ app.get('/api/data', auth, async (req, res) => {
       const empPerms = (typeof rawPerms === 'string' ? JSON.parse(rawPerms) : rawPerms) || {};
       finalResult = filterDataForEmployee(finalResult, allowedIds, fullAccessIds, req.user.id, empPerms);
     }
+
+    if(req.user.role==='employee') finalResult.accounts=finalResult.accounts.map(a=>require('./pools/view').poolAccountForViewer(a,req.user));
 
     // 🔒 Кто из инвесторов сверх лимита тарифа. Считаем на сервере и отдаём готовым списком,
     // чтобы интерфейс и проверки при записи опирались на одно и то же правило и не разошлись.
@@ -3566,7 +3574,7 @@ app.head('/api/health', (req, res) => {
 });
 
 
-app.post('/api/data/:type', auth, async (req, res) => {
+app.post('/api/data/:type', auth, poolTransactions.middleware, async (req, res) => {
   try {
     const { type } = req.params;
     if (!VALID_DATA_TYPES.includes(type)) {
@@ -3587,6 +3595,8 @@ app.post('/api/data/:type', auth, async (req, res) => {
     }
 
     let targetUserId = getTargetUserId(req.user);
+    const poolPrevious = (await pool.query('SELECT data FROM data_items WHERE user_id=$1 AND type=$2 AND id=$3', [targetUserId,type,itemData.id])).rows[0]?.data;
+    await poolAccountingService.guardWrite(targetUserId,type,itemData,poolPrevious);
 
     if (!canAccessUserData(req.user, targetUserId)) {
       return res.status(403).json({ error: 'Доступ запрещён' });
@@ -4027,14 +4037,14 @@ app.post('/api/data/:type', auth, async (req, res) => {
     res.json(savedResult.rows[0]?.data || itemData);
   } catch (err) {
     console.error('❌ POST /api/data/:type error:', err);
-    res.status(500).send('Server Error');
+    res.status(err.status || 500).json({msg:err.status ? err.message : 'Не удалось сохранить данные.'});
   }
 });
 
 
 
 // ✅ ИСПРАВЛЕННЫЙ DELETE /api/data/:type/:id
-app.delete('/api/data/:type/:id', auth, async (req, res) => {
+app.delete('/api/data/:type/:id', auth, poolTransactions.middleware, async (req, res) => {
   try {
     const { id, type } = req.params;
 
@@ -4061,6 +4071,7 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
       'SELECT data FROM data_items WHERE id = ANY($1) AND user_id = $2',
       [[storageId, id], targetUserId]
     );
+    await poolAccountingService.guardWrite(targetUserId,type,null,existingRow.rows[0]?.data,true);
     const delCheck = await checkEmployeeWriteAccess({
       user: req.user, type, itemId: id,
       accountId: existingRow.rows[0]?.data?.accountId, isDelete: true, item: existingRow.rows[0]?.data
@@ -4092,7 +4103,7 @@ app.delete('/api/data/:type/:id', auth, async (req, res) => {
     res.json({ success: true, id });
   } catch (err) {
     console.error(err);
-    res.status(500).send('Server Error');
+    res.status(err.status || 500).json({msg:err.status ? err.message : 'Не удалось сохранить данные.'});
   }
 });
 
@@ -4360,6 +4371,7 @@ app.use('/uploads/products', express.static(productImageDir, {
 
 // Личные образцы договоров обрабатываются отдельно от паспорта и чата агента.
 require('./contractTemplates/routes').registerContractTemplateRoutes(app, { pool, auth, checkFeatureAccess });
+require('./pools/routes').registerPoolRoutes(app, { pool, auth, service: poolAccountingService });
 
 /**
  * Поля паспорта из фотографии.
@@ -4517,7 +4529,7 @@ const saveAgentDocument = async (dataUrl, label) => {
   await fs.promises.writeFile(path.join(uploadDir, filename), c.buffer);
   return { fileUrl: `/uploads/documents/${filename}`, fileSize: c.buffer.length, mimeType: c.mimetype || 'image/jpeg' };
 };
-const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument, checkFeatureAccess });
+const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument, checkFeatureAccess, poolAccountingService });
 // Идущие запросы к агенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
 const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
@@ -8090,8 +8102,9 @@ app.use(
   makeApiKeyAuth({ pool, getEffectivePlan, planLimits: PLAN_LIMITS, verifyAgentToken: (raw) => aiAssistant.verifyAgentToken(raw) }),
   perMinuteLimiter,
   perDayLimiter,
+  poolTransactions.middleware,
   atomicApiWrites.middleware,
-  createApiV1Router({ pool: atomicApiWrites.db, checkContractLimit, planLimits: PLAN_LIMITS, checkFeatureAccess })
+  createApiV1Router({ pool: atomicApiWrites.db, checkContractLimit, planLimits: PLAN_LIMITS, checkFeatureAccess, poolAccountingService })
 );
 
 // Вход «Через FinUchet» для помощников: страница согласия и обмен токенов.
@@ -8415,6 +8428,7 @@ backupModule.startScheduler();
 
 // 📧 Письма о конце подписки со ссылкой на оплату (см. subscription-reminders.js)
 require('./subscription-reminders')({ pool, sendEmail }).start();
+require('./pools/scheduler').createPoolScheduler({pool,service:poolAccountingService,onError:(id,message)=>console.error('Pool accounting:',id,message)}).start();
 // Утренняя сводка FinUchetGPT (настройки агента → «Утренняя сводка»)
 require('./ai/monitor').createMonitor({ pool, createNotification, allowed: aiAgentAllowed }).start();
 require('./ai/digest')({ pool, createNotification, aiTrialRequests: AI_TRIAL_REQUESTS, aiPlans: AI_PLANS }).start();

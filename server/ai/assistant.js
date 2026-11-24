@@ -782,7 +782,7 @@ const compact = (v) => {
   return v;
 };
 
-function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null, checkFeatureAccess = null }) {
+function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null, checkFeatureAccess = null, poolAccountingService = null }) {
   const basePool = pool;
   const localTransaction = new (require('node:async_hooks').AsyncLocalStorage)();
   pool = new Proxy(basePool, { get(target, prop) {
@@ -1494,9 +1494,11 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   };
 
   const investorProfit = async (userId, args) => {
-    const [P, F, investors, accounts, salesRaw, settings] = await Promise.all([
+    if(poolAccountingService)await poolAccountingService.settleOwner(userId);
+    const [P, F, investors, accounts, salesRaw, settings, expenses] = await Promise.all([
       sharedModule('profit'), sharedModule('funding'), loadItems(userId, 'investors'), loadItems(userId, 'accounts'), loadItems(userId, 'sales'),
       pool.query(`SELECT data FROM data_items WHERE user_id = $1 AND type = 'settings' LIMIT 1`, [userId]).then(r => r.rows[0]?.data || {}),
+      loadItems(userId, 'expenses'),
     ]);
     const q = String(args.investor || '').toLowerCase().replace(/ё/g, 'е').trim();
     const stems = q.split(/\s+/).filter(Boolean).map(w => { const st = nameStem(w); return st.length >= 3 ? st : w; });
@@ -1513,12 +1515,13 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
     const sales = F.expandFundedSales(salesRaw);
     const inRange = (d) => { const day = mskDate(d); return (!args.from || day >= args.from) && (!args.to || day <= args.to); };
     const perAccount = own.map(account => {
-      const accruals = P.investorProfitAccruals(account, investors, sales, inv.id, !!settings.profitFromPaymentsOnly);
+      const accruals = P.investorProfitAccruals(account, investors, sales, inv.id, !!settings.profitFromPaymentsOnly, expenses);
       const period = accruals.filter(a => inRange(a.date));
       const byContract = {};
       for (const a of period) byContract[a.sale.productName || a.sale.id] = (byContract[a.sale.productName || a.sale.id] || 0) + a.amount;
       return {
         account: account.name,
+        ...(P.isMonthlyPool(account)?{accountingMode:'MONTHLY',preliminaryInPeriod:Math.round(period.filter(a=>a.preliminary).reduce((n,a)=>n+a.amount,0)),confirmedAccruedAllTime:Math.round(accruals.filter(a=>!a.preliminary).reduce((n,a)=>n+a.amount,0)),reinvested:P.poolReinvested(account,inv.id),calculationNote:'Месячная прибыль после общих расходов. Текущий месяц входит в доступную прибыль и уточняется по данным на сегодня; начисление не означает фактическую выплату.'}:{}),
         earnedInPeriod: Math.round(period.reduce((n, a) => n + a.amount, 0)),
         earnedAllTime: Math.round(accruals.reduce((n, a) => n + a.amount, 0)),
         byContract: Object.entries(byContract).map(([product, amount]) => ({ product, amount: Math.round(amount) })).sort((a, b) => b.amount - a.amount).slice(0, 10),

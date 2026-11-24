@@ -1,3 +1,6 @@
+import {poolInvestorRate,expectedManagerOriginShares} from '../shared/profit.js';
+import { investorPalette, POOL_PARTICIPANT_PALETTE, POOL_PANEL_CLASS, POOL_COUNT_CLASS } from '../src/investorPalette';
+import PoolAccountingSheet from './PoolAccountingSheet';
 import React, { useMemo, useState } from 'react';
 import Sheet from './Sheet';
 import CashProfitSheet, { type CashProfitView } from './CashProfitSheet';
@@ -17,7 +20,6 @@ import { appConfirm } from '../src/dialogs';
 
 // Цвета участников пула — те же роли, что у палитры инвесторов в отчётах:
 // человека узнают по кружку, а не вычитывают имя в таблице.
-const POOL_PALETTE = ['#6366f1', '#a855f7', '#ec4899', '#f59e0b', '#10b981', '#06b6d4'];
 
 // Пресеты периода — те же, что в карточке инвестора.
 // 'ALL' сохранён отдельно: до этого касса по умолчанию показывала данные за всё время,
@@ -57,6 +59,7 @@ interface CashRegisterProps {
   onSelectAccount: (accountId: string) => void;
   onSetMainAccount: (accountId: string) => void;
   onUpdateAccount?: (account: Account) => void;
+  onPoolChanged?: (data: any) => void;
   onSelectCustomer?: (customerId: string) => void;
   onOpenContract?: (saleId: string) => void;
   /** Счета инвесторов сверх лимита тарифа — операции по ним закрыты до его повышения */
@@ -329,6 +332,7 @@ const AccountActionModal = ({
     onUpdateAccount,
     onToggleHidden,
     onManagementShare,
+    onPoolAccounting,
     onDelete,
     usage,
     appSettings,
@@ -345,6 +349,7 @@ const AccountActionModal = ({
     onToggleHidden: (acc: Account) => void;
     /** Доля за управление — только у общего пула */
     onManagementShare?: (acc: Account) => void;
+    onPoolAccounting?: (acc: Account) => void;
     onDelete?: (id: string) => void;
     /** Сколько операций привязано к счёту — от этого зависит, можно ли удалять */
     usage: number;
@@ -428,7 +433,8 @@ const AccountActionModal = ({
                             </button>
                         )}
 
-                        {isManager && onManagementShare && account.type === 'POOL' && (
+                        {isManager && onPoolAccounting && account.type === 'POOL' && <button onClick={()=>{onPoolAccounting(account);onClose();}} className="w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700">Учёт общего пула</button>}
+                        {isManager && onManagementShare && account.type === 'POOL' && !account.poolAccounting && (
                             <button
                                 onClick={() => { onManagementShare(account); onClose(); }}
                                 className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-fuchsia-50 dark:hover:bg-fuchsia-950/40 rounded-xl flex items-center gap-3 transition-all group"
@@ -518,7 +524,7 @@ const AccountActionModal = ({
 };
 
 const CashRegister: React.FC<CashRegisterProps> = ({
-    accounts, sales, expenses, investors, customers, retailSales = [], onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount,
+    accounts, sales, expenses, investors, customers, retailSales = [], onAddAccount, onAction, onSelectAccount, onSetMainAccount, onUpdateAccount, onPoolChanged,
     onSelectCustomer, onOpenContract, isManager, myProfitPeriod, setMyProfitPeriod, appSettings,
     lockedAccountIds = [], accountUsage = {}, onDeleteAccount,
     isInvestor: viewerIsInvestor = false,
@@ -528,6 +534,7 @@ const CashRegister: React.FC<CashRegisterProps> = ({
   const profitFromPaymentsOnly = !!appSettings?.profitFromPaymentsOnly;
   const [isAdding, setIsAdding] = useState(false);
   const [editingAccount, setEditingAccount] = useState<Account | null>(null);
+  const [poolAccount, setPoolAccount] = useState<Account | null>(null);
   const [managementAccount, setManagementAccount] = useState<Account | null>(null);
   const [selectedSharedAccount, setSelectedSharedAccount] = useState<Account | null>(null);
   const [activeMenuAccount, setActiveMenuAccount] = useState<Account | null>(null);
@@ -716,6 +723,22 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     accountId:profitFilterAccountId,period:profitPeriod,profitFromPaymentsOnly}),
     [sales,expenses,accounts,investors,customers,profitFilterAccountId,profitPeriod.start,profitPeriod.end,profitFromPaymentsOnly]);
   const managerLedger=profitLedgers.manager;
+  const selectedManagerInvestor=detailsAccount?.type==='POOL'&&detailsAccount.poolMemberIds?.includes(profitFilterInvestorId)
+    ? investors.find(i=>i.id===profitFilterInvestorId) : undefined;
+  const hideManagerProfit=!!selectedManagerInvestor&&Number(poolInvestorRate(detailsAccount,selectedManagerInvestor))===100;
+  const managerAccrualLedger=selectedManagerInvestor
+    ? profitLedgers.managerAccrualsByInvestor.get(selectedManagerInvestor.id)||combineCashProfitLedgers([]) : managerLedger;
+  const managerExpectedInFilter=useMemo(()=>{
+    if(!selectedManagerInvestor)return calculatedExpectedProfit;
+    let total=0;
+    for(const sale of sales){
+      if(sale.accountId!==detailsAccount?.id||sale.buyPrice<=0||!['ACTIVE','DRAFT'].includes(sale.status))continue;
+      const account=accounts.find(a=>a.id===sale.accountId);
+      const percentage=expectedManagerOriginShares(account,investors,sale).find(s=>s.investor.id===selectedManagerInvestor.id)?.percentage||0;
+      total+=sale.remainingAmount*saleProfitMargin(sale,profitFromPaymentsOnly)*percentage/100;
+    }
+    return total;
+  },[sales,accounts,investors,detailsAccount?.id,selectedManagerInvestor?.id,calculatedExpectedProfit,profitFromPaymentsOnly]);
   const investorLedger=useMemo(()=>combineCashProfitLedgers(
     profitFilterInvestorId === 'ALL' ? [...profitLedgers.investors.values()]
       : [profitLedgers.investors.get(profitFilterInvestorId)].filter((l):l is NonNullable<typeof l>=>!!l)
@@ -767,7 +790,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
     }, 0);
     const profitShares = getAccountShares(acc, investors);
 
-    const rows = members.map((m, idx) => {
+    const rows = members.map(m => {
       const period = getActivePeriodAt(m, nowMs);
       const amount = period ? period.initialAmount : 0;
       const stats = investorProfitBreakdown.find(b => b.investor.id === m.id);
@@ -779,7 +802,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
         profitShare: profitShares.find(sh => sh.investor.id === m.id)?.percentage ?? 0,
         expectedProfit: stats?.expectedProfit ?? 0,
         receivedProfit: stats?.receivedProfit ?? 0,
-        color: POOL_PALETTE[idx % POOL_PALETTE.length],
+        palette: investorPalette(m.id),
       };
     });
 
@@ -957,6 +980,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
       </div>
 
       {/* Modals */}
+      {poolAccount && <PoolAccountingSheet account={poolAccount} onClose={()=>setPoolAccount(null)} onChanged={onPoolChanged || (()=>{})} />}
       {isAdding && <CreateAccountModal onClose={() => setIsAdding(false)} onSubmit={handleCreateAccount} />}
       {editingAccount && onUpdateAccount && (
         <EditAccountModal account={editingAccount} onClose={() => setEditingAccount(null)} onUpdate={onUpdateAccount} />
@@ -1203,7 +1227,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
       )}
 
       {activeMenuAccount && (
-        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} onManagementShare={setManagementAccount}
+        <AccountActionModal account={activeMenuAccount} balance={accountBalances[activeMenuAccount.id] || 0} onClose={() => setActiveMenuAccount(null)} onSelectAccount={onSelectAccount} onEdit={setEditingAccount} onSetMain={onSetMainAccount} isManager={isManager} onUpdateAccount={onUpdateAccount} onToggleHidden={handleToggleHidden} onManagementShare={setManagementAccount} onPoolAccounting={setPoolAccount}
           onDelete={onDeleteAccount} usage={accountUsage[activeMenuAccount.id] || 0}
           appSettings={appSettings} isBalanceMasked={isMasked(activeMenuAccount.id)} />
       )}
@@ -1313,10 +1337,10 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
           {/* Состав пула. Показываем сразу под балансом: в общей кассе лежат чужие
               деньги, и первый вопрос к такому счёту — чьи именно и сколько. */}
           {isManager && poolComposition && (
-            <div className="bg-white dark:bg-slate-800 rounded-2xl p-4 sm:p-5 shadow-sm border border-slate-100 dark:border-slate-700">
+            <div className={`${POOL_PANEL_CLASS} p-4 sm:p-5`}>
               <div className="flex items-start justify-between gap-3 mb-4">
                 <div className="flex items-center gap-2 min-w-0">
-                  <span className="w-1 h-5 bg-fuchsia-500 rounded-full shrink-0"></span>
+                  <span className="w-9 h-9 rounded-xl bg-primary-50 text-primary-600 dark:bg-slate-700 dark:text-slate-200 flex items-center justify-center shrink-0">{ICONS.Users}</span>
                   <div className="min-w-0">
                     <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">Состав пула</h4>
                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-0.5">
@@ -1324,7 +1348,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                     </p>
                   </div>
                 </div>
-                <span className="shrink-0 text-xs font-semibold bg-fuchsia-100 dark:bg-fuchsia-900/30 text-fuchsia-700 dark:text-fuchsia-400 px-2 py-1 rounded-full">
+                <span className={POOL_COUNT_CLASS}>
                   {poolComposition.rows.length} участн.
                 </span>
               </div>
@@ -1347,8 +1371,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                       <tr key={row.investor.id} className="hover:bg-slate-50/70 dark:hover:bg-slate-700/50 transition-colors">
                         <td className="py-3 pl-1">
                           <div className="flex items-center gap-2.5">
-                            <div className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-bold shrink-0"
-                                 style={{ backgroundColor: row.isActive ? row.color : '#94a3b8' }}>
+                            <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${row.isActive ? `${row.palette.bg} ${row.palette.text}` : 'bg-slate-100 text-slate-500 dark:bg-slate-700 dark:text-slate-400'}`}>
                               {row.investor.name.charAt(0).toUpperCase()}
                             </div>
                             <div className="min-w-0">
@@ -1361,7 +1384,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                               <p className="text-[11px] text-slate-400 dark:text-slate-500">
                                 {row.investor.id === poolComposition.ownerId
                                   ? `вложения ${formatCurrency(row.receivedProfit, false)} ₽ · управление ${formatCurrency(poolComposition.managerReceived, false)} ₽`
-                                  : row.isActive ? `${row.investor.profitPercentage}% ставка · ${Math.round(row.profitShare * 10) / 10}% приб.` : 'вышел из пула'}
+                                  : row.isActive ? `${poolInvestorRate(detailsAccount,row.investor)}% ставка · ${Math.round(row.profitShare * 10) / 10}% приб.` : 'вышел из пула'}
                               </p>
                             </div>
                           </div>
@@ -1370,15 +1393,14 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                           {formatCurrency(row.amount, appSettings.showCents)} ₽
                         </td>
                         <td className="py-3 text-right">
-                          <span className="px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap"
-                                style={{ backgroundColor: row.color + '18', color: row.color }}>
+                          <span className={`px-2 py-0.5 rounded-full text-xs font-semibold whitespace-nowrap ${row.palette.bg} ${row.palette.text}`}>
                             {Math.round(row.capitalShare * 10) / 10}%
                           </span>
                         </td>
                         <td className="hidden sm:table-cell py-3 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
                           {formatCurrency(row.expectedProfit + (row.investor.id === poolComposition.ownerId ? poolComposition.managerExpected : 0), appSettings.showCents)} ₽
                         </td>
-                        <td className="py-3 pr-1 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                        <td className={`py-3 pr-1 text-right font-semibold whitespace-nowrap ${row.palette.text}`}>
                           {formatCurrency(row.receivedProfit + (row.investor.id === poolComposition.ownerId ? poolComposition.managerReceived : 0), appSettings.showCents)} ₽
                         </td>
                       </tr>
@@ -1390,7 +1412,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                     <tr>
                       <td className="py-3 pl-1">
                         <div className="flex items-center gap-2.5">
-                          <div className="w-8 h-8 rounded-full bg-slate-200 dark:bg-slate-600 flex items-center justify-center text-slate-600 dark:text-slate-200 text-xs font-bold shrink-0">М</div>
+                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${POOL_PARTICIPANT_PALETTE.bg} ${POOL_PARTICIPANT_PALETTE.text}`}>М</div>
                           <div className="min-w-0">
                             <p className="font-medium text-slate-700 dark:text-slate-200">Менеджер</p>
                             <p className="text-[11px] text-slate-400 dark:text-slate-500">{Math.round(poolComposition.managerShare * 10) / 10}% приб. · без вложений</p>
@@ -1404,7 +1426,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                       <td className="hidden sm:table-cell py-3 text-right text-slate-500 dark:text-slate-400 whitespace-nowrap">
                         {formatCurrency(poolComposition.managerExpected, appSettings.showCents)} ₽
                       </td>
-                      <td className="py-3 pr-1 text-right font-semibold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      <td className={`py-3 pr-1 text-right font-semibold whitespace-nowrap ${POOL_PARTICIPANT_PALETTE.text}`}>
                         {formatCurrency(poolComposition.managerReceived, appSettings.showCents)} ₽
                       </td>
                     </tr>
@@ -1420,7 +1442,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                       <td className="hidden sm:table-cell pt-3 text-right font-semibold text-slate-600 dark:text-slate-300 whitespace-nowrap">
                         {formatCurrency(poolComposition.expectedTotal, appSettings.showCents)} ₽
                       </td>
-                      <td className="pt-3 pr-1 text-right font-bold text-emerald-600 dark:text-emerald-400 whitespace-nowrap">
+                      <td className={`pt-3 pr-1 text-right font-bold whitespace-nowrap ${POOL_PARTICIPANT_PALETTE.text}`}>
                         {formatCurrency(poolComposition.receivedTotal, appSettings.showCents)} ₽
                       </td>
                     </tr>
@@ -1534,15 +1556,19 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
             </p>
         </div>
 
+        {!hideManagerProfit && <>
         {/* Заголовок */}
         <div className="flex items-center gap-3">
             <div className="w-8 h-8 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
                 {ICONS.TrendingUp}
             </div>
-            <h3 className="text-xl font-bold text-slate-800 dark:text-white">Моя прибыль</h3>
+            <div><h3 className="text-xl font-bold text-slate-800 dark:text-white">Моя прибыль</h3>
+              {selectedManagerInvestor&&<p className="text-xs text-slate-500 dark:text-slate-400">От вложений: {selectedManagerInvestor.name}</p>}
+            </div>
         </div>
 
-        {/* Карточки в стиле дашборда: 4 карточки, 2 в ряд */}
+        {/* В срезе участника — только его источники начислений. Общие выплаты
+            не показываем под его именем: они не привязаны к инвестору. */}
         <div className="grid grid-cols-2 gap-3 sm:gap-4">
 
             {/* 1. Ожидаемая прибыль */}
@@ -1557,7 +1583,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                 <div className="z-10 relative mt-auto">
                     <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Ожидается</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-                        {formatCurrency(calculatedExpectedProfit, appSettings.showCents)}
+                        {formatCurrency(managerExpectedInFilter, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
                 </div>
@@ -1574,13 +1600,14 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                 <div className="z-10 relative mt-auto">
                     <p className="text-[10px] sm:text-xs font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wide mb-1 leading-tight">Получено</p>
                     <p className="text-lg sm:text-2xl font-bold text-slate-800 dark:text-white break-words leading-none">
-                        {formatCurrency(totalManagerProfitEarned, appSettings.showCents)}
+                        {formatCurrency(managerAccrualLedger.received, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 dark:text-slate-500 ml-1 font-bold">₽</span>
                     </p>
 
                 </div>
             </button>
 
+            {!selectedManagerInvestor && <>
             {/* 3. Выплачено */}
             <button type="button" aria-label="Выплачено менеджеру: открыть операции" onClick={() => setProfitDialog({who:'manager',view:'paid'})} className="group text-left bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl shadow-[0_2px_10px_-3px_rgba(6,81,237,0.1)] transition-all duration-300 border border-slate-100 dark:border-slate-700 flex flex-col relative overflow-hidden cursor-pointer">
 
@@ -1611,8 +1638,7 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                     </svg>
                 </div>
                 <div className="z-10 relative mt-auto">
-                    <p className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 leading-tight">К
-                        выводу</p>
+                    <p className="text-[10px] sm:text-xs font-bold text-slate-300 uppercase tracking-wide mb-1 leading-tight">К выводу</p>
                     <p className="text-lg sm:text-2xl font-bold text-white break-words leading-none">
                         {formatCurrency(managerProfitBalance, appSettings.showCents)}
                         <span className="text-xs sm:text-sm text-slate-400 ml-1 font-bold">₽</span>
@@ -1620,8 +1646,14 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
                     <p className="text-[10px] sm:text-xs text-slate-400 mt-1">Нажмите для деталей</p>
                 </div>
             </button>
+            </>}
 
         </div>
+        </>}
+        {selectedManagerInvestor&&<button type="button" onClick={()=>setProfitFilterInvestorId('ALL')}
+          className="flex w-full items-center justify-between gap-3 rounded-xl bg-slate-50 px-4 py-3 text-left text-sm font-medium text-primary-600 dark:bg-slate-800 dark:text-primary-300">
+          <span>Выплаты и остаток по пулу</span><span aria-hidden>›</span>
+        </button>}
     </div>
      )}
 
@@ -1734,8 +1766,8 @@ const [profitFilterInvestorId, setProfitFilterInvestorId] = useState<string>('AL
 
 {profitDialog && (
   <CashProfitSheet key={`${profitDialog.who}:${profitDialog.view}:${profitFilterAccountId}:${profitFilterInvestorId}`}
-    view={profitDialog.view} ledger={profitDialog.who==='manager'?managerLedger:investorLedger}
-    subtitle={[detailsAccount?.name || 'Все счета',profitDialog.who==='investors'?(profitFilterInvestorId==='ALL'?'Все инвесторы':investors.find(i=>i.id===profitFilterInvestorId)?.name):'Моя прибыль'].filter(Boolean).join(' · ')}
+    view={profitDialog.view} ledger={profitDialog.who==='manager'?(profitDialog.view==='received'?managerAccrualLedger:managerLedger):investorLedger}
+    subtitle={[detailsAccount?.name || 'Все счета',profitDialog.who==='investors'?(profitFilterInvestorId==='ALL'?'Все инвесторы':investors.find(i=>i.id===profitFilterInvestorId)?.name):selectedManagerInvestor?(profitDialog.view==='received'?`От вложений: ${selectedManagerInvestor.name}`:'Моя прибыль · весь пул'):'Моя прибыль'].filter(Boolean).join(' · ')}
     periodLabel={periodMode==='ALL'?'За всё время':`${formatDate(profitPeriod.start)} — ${formatDate(profitPeriod.end)}`}
     showCents={appSettings.showCents} onClose={()=>setProfitDialog(null)} onOpenContract={onOpenContract} />
 )}

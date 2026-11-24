@@ -1,3 +1,5 @@
+import {poolInvestorRate,poolDay} from '../shared/profit.js';
+import { investorPalette } from '../src/investorPalette';
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import ViewModeToggle, { useViewMode } from './ViewModeToggle';
 import { isMacShell } from '../src/platform';
@@ -10,15 +12,15 @@ import GlassSheet, { SheetSection, SheetField, SheetToggle, SheetSegmented, Shee
 import { appConfirm } from '../src/dialogs';
 
 export type InvestorPoolChoice =
-  | { mode: 'EXISTING'; accountId: string }
-  | { mode: 'NEW'; name: string }
+  | { mode: 'EXISTING'; accountId: string; disposition?: 'PAYABLE' | 'REINVEST' }
+  | { mode: 'NEW'; name: string; disposition?: 'PAYABLE' | 'REINVEST' }
   | { mode: 'ACCOUNT'; accountId: string };
 
 interface InvestorsProps {
   investors: Investor[];
   accounts?: Account[];
   showPools?: boolean;
-  onAddInvestor: (name: string, phone: string, email: string, password: string, amount: number, profitPercentage: number, permissions: InvestorPermissions, poolChoice?: InvestorPoolChoice, joinedDate?: string, leftPoolDate?: string) => void;
+  onAddInvestor: (name: string, phone: string, email: string, password: string, amount: number, profitPercentage: number, permissions: InvestorPermissions, poolChoice?: InvestorPoolChoice, joinedDate?: string, leftPoolDate?: string) => any;
   onUpdateInvestor?: (investor: Investor, password?: string) => void;
   onDeleteInvestor?: (id: string) => void;
   onViewDetails?: (investor: Investor) => void;
@@ -60,12 +62,16 @@ const Investors: React.FC<InvestorsProps> = ({
   });
 
   // 🔹 Общий пул (BUSINESS_PRO) — только при создании нового инвестора
+  const [formDisposition,setFormDisposition]=useState<'PAYABLE'|'REINVEST'>('PAYABLE');
+  const [poolSaving,setPoolSaving]=useState(false);
+  const [poolError,setPoolError]=useState('');
   const [poolMode, setPoolMode] = useState<'OWN' | 'EXISTING' | 'NEW'>('OWN');
   // Свой счёт: пусто — завести новый, иначе привязать к существующему обычному (на любом тарифе)
   const [selectedAccountId, setSelectedAccountId] = useState('');
   const isPoolMode = poolMode === 'EXISTING' || poolMode === 'NEW';
   const [selectedPoolAccountId, setSelectedPoolAccountId] = useState('');
   const [newPoolName, setNewPoolName] = useState('');
+  const joinedDateTouched=useRef(false);
   const [formJoinedDate, setFormJoinedDate] = useState(() => new Date().toISOString().split('T')[0]);
   const [formLeftPoolDate, setFormLeftPoolDate] = useState('');
 
@@ -91,6 +97,7 @@ const Investors: React.FC<InvestorsProps> = ({
   }, [poolMode, selectedPoolAccountId, accounts, investors]);
 
   const resetForm = () => {
+      setFormDisposition('PAYABLE');setPoolError('');joinedDateTouched.current=false;
       setFormName('');
       setFormPhone('');
       setFormEmail('');
@@ -109,6 +116,7 @@ const Investors: React.FC<InvestorsProps> = ({
   };
 
   const handleStartEdit = (inv: Investor) => {
+      if(getInvestorAccount(inv.id,accounts)?.poolAccounting){alert('Условия и операции доступны в кассе: общий пул → Учёт общего пула. Контакты можно изменить в карточке инвестора.');return;}
       setFormName(inv.name);
       setFormPhone(inv.phone);
       setFormEmail(inv.email);
@@ -136,7 +144,9 @@ const Investors: React.FC<InvestorsProps> = ({
 
   // Сохранение из листа: закрывает его сам лист (close), а форму сбрасывает
   // resetForm на его уходе — иначе лист пропадал бы мгновенно, без анимации.
-  const handleSubmit = (close: () => void) => {
+  const handleSubmit = async (close: () => void) => {
+    if(poolSaving)return;
+    setPoolError('');
 
     if(formName.trim()) {
         if (editingId && onUpdateInvestor) {
@@ -211,11 +221,15 @@ const Investors: React.FC<InvestorsProps> = ({
         poolChoice = { mode: 'NEW', name: newPoolName.trim() };
     }
 
-    const joinedDateIso = toJoinedDateIso(formJoinedDate);
+    const joinedDateIso = isPoolMode ? (formJoinedDate || undefined) : toJoinedDateIso(formJoinedDate);
 
     // 🔹 Сумма теперь необязательна, по умолчанию 0
     const leftPoolDateIso = formLeftPoolDate ? new Date(formLeftPoolDate).toISOString() : undefined;
-    onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions, poolChoice, joinedDateIso, leftPoolDateIso);
+    if(poolChoice&&poolChoice.mode!=='ACCOUNT')poolChoice.disposition=formDisposition;
+    setPoolSaving(true);
+    try { await onAddInvestor(formName, formPhone, formEmail, formPassword, Number(formAmount) || 0, Number(formProfitPercentage), formPermissions, poolChoice, joinedDateIso, leftPoolDateIso); }
+    catch(e:any){setPoolError(e.message||'Не удалось сохранить инвестора.');return;}
+    finally{setPoolSaving(false);}
 
     setCreatedInvestor({
         name: formName,
@@ -294,16 +308,16 @@ const Investors: React.FC<InvestorsProps> = ({
           action={{
             label: editingId ? 'Готово' : 'Добавить',
             submit: true,
-            disabled: !formName.trim() || formProfitPercentage === '' || !!percentError(formProfitPercentage) || (!!editingId && !formDirty),
+            disabled: poolSaving || !formName.trim() || formProfitPercentage === '' || !!percentError(formProfitPercentage) || (!!editingId && !formDirty),
           }}
           onSubmit={handleSubmit}
-          confirmClose={() => !formDirty || appConfirm({
+          confirmClose={() => !poolSaving && (!formDirty || appConfirm({
             title: editingId ? 'Закрыть без сохранения?' : 'Не добавлять инвестора?',
             message: 'Введённые данные пропадут.',
             confirmLabel: 'Закрыть',
             cancelLabel: 'Остаться',
             destructive: true,
-          })}
+          }))}
         >
           <div className="space-y-6">
             <SheetSection>
@@ -345,10 +359,10 @@ const Investors: React.FC<InvestorsProps> = ({
                               ? 'Дата в прошлом: вложение запишется в кассу этой датой, и с неё инвестор участвует в прибыли.'
                               : undefined}>
                 <input className={`${sheetInputClass} h-7 appearance-none [&::-webkit-date-and-time-value]:text-left`}
-                       type="date" value={formJoinedDate} onChange={e => setFormJoinedDate(e.target.value)}
-                       max={new Date().toISOString().split('T')[0]} required />
+                       type="date" value={formJoinedDate} onChange={e => {joinedDateTouched.current=true;setFormJoinedDate(e.target.value);}}
+                       max={!editingId && isPoolMode ? poolDay() : new Date().toISOString().split('T')[0]} required />
               </SheetField>
-              {((!editingId && isPoolMode) || (editingId && isEditingPoolMember)) && (
+              {editingId && isEditingPoolMember && (
                 <SheetField label="Дата выхода из пула"
                             hint={editingId
                               ? 'С этой даты инвестор не получает долю будущей прибыли пула; история до неё сохранится. Пусто — ещё активен.'
@@ -358,6 +372,8 @@ const Investors: React.FC<InvestorsProps> = ({
               )}
             </SheetSection>
 
+            {poolError&&<p role="alert" className="px-4 text-sm text-rose-600">{poolError}</p>}
+            {!editingId&&isPoolMode&&<SheetSection title="Прибыль"><SheetField label="После начисления"><select value={formDisposition} onChange={e=>setFormDisposition(e.target.value as any)} className={sheetInputClass}><option value="PAYABLE">К получению</option><option value="REINVEST">Реинвестировать</option></select></SheetField></SheetSection>}
             {/* Счёт инвестора — только при создании. Пулы — только на BUSINESS_PRO */}
             {!editingId && (
               <SheetSection title="Счёт инвестора"
@@ -366,7 +382,7 @@ const Investors: React.FC<InvestorsProps> = ({
                               : 'У инвестора будет свой отдельный счёт.'}>
                 {showPools && (
                   <div className="px-4 py-3">
-                    <SheetSegmented value={poolMode} onChange={setPoolMode}
+                    <SheetSegmented value={poolMode} onChange={mode=>{if(!joinedDateTouched.current)setFormJoinedDate(mode==='OWN'?new Date().toISOString().slice(0,10):poolDay());setPoolMode(mode);}}
                                     options={[{ id: 'OWN', label: 'Счёт' }, { id: 'EXISTING', label: 'В пул' }, { id: 'NEW', label: 'Новый пул' }]} />
                   </div>
                 )}
@@ -462,6 +478,7 @@ const Investors: React.FC<InvestorsProps> = ({
             const q = search.toLowerCase();
             return inv.name.toLowerCase().includes(q) || (inv.email || '').toLowerCase().includes(q) || (inv.phone || '').toLowerCase().includes(q);
         }).map(inv => {
+            const palette = investorPalette(inv.id);
             const acc = getInvestorAccount(inv.id, accounts);
             const isPoolMember = acc?.type === 'POOL';
             // Сверх лимита тарифа: данные сохранены, но работать с инвестором нельзя
@@ -470,19 +487,19 @@ const Investors: React.FC<InvestorsProps> = ({
             <button key={inv.id} type="button"
                 onClick={() => { if (!isLocked) onViewDetails?.(inv); }}
                 className={`mac-tile bg-white dark:bg-slate-800 rounded-2xl border border-slate-100 dark:border-slate-700 p-5 flex flex-col items-center text-center ${isLocked ? 'opacity-60 cursor-not-allowed' : ''} ${savedId === inv.id ? 'animate-row-saved' : ''}`}>
-                <div className="w-16 h-16 rounded-full bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 flex items-center justify-center font-bold text-xl ring-4 ring-white/70 dark:ring-white/5 shadow-sm">
+                <div className={`w-16 h-16 rounded-full flex items-center justify-center font-bold text-xl ring-4 ring-white/70 dark:ring-white/5 shadow-sm ${palette.bg} ${palette.text}`}>
                     {inv.name.charAt(0)}
                 </div>
                 <h3 className="mt-3 font-semibold text-[15px] text-slate-800 dark:text-white leading-tight truncate max-w-full">{inv.name}</h3>
                 <p className="mt-0.5 text-[12px] text-slate-500 dark:text-slate-400 truncate max-w-full">
                     {isPoolMember ? `Пул: ${acc!.name}` : inv.email || inv.phone || 'Личный счёт'}
                 </p>
-                <span className="mt-3 block h-[3px] w-7 rounded-full opacity-85" style={{ background: isLocked ? '#f59e0b' : '#8b5cf6' }} />
+                <span className="mt-3 block h-[3px] w-7 rounded-full opacity-85" style={{ background: isLocked ? '#f59e0b' : palette.color }} />
                 <p className="mt-2.5 text-[19px] font-semibold tabular-nums text-slate-900 dark:text-white">
                     {formatCurrency(inv.initialAmount || 0, false)} ₽
                 </p>
                 <p className="text-[12px] text-slate-500 dark:text-slate-400">
-                    вложено · <span className="font-semibold text-indigo-600 dark:text-indigo-300">{inv.profitPercentage}% прибыли</span>
+                    вложено · <span className="font-semibold text-indigo-600 dark:text-indigo-300">{poolInvestorRate(getInvestorAccount(inv.id,accounts),inv)}% прибыли</span>
                 </p>
                 {(isLocked || (isPoolMember && inv.leftPoolDate)) && (
                     <span className="mt-2 text-[10px] font-bold text-amber-800 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 px-2 py-0.5 rounded-full">
@@ -501,7 +518,7 @@ const Investors: React.FC<InvestorsProps> = ({
                 } ${savedId === inv.id ? 'animate-row-saved' : ''}`}>
                 <div className="flex items-center justify-between">
                     <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-12 h-12 bg-purple-100 dark:bg-purple-900/30 text-purple-600 dark:text-purple-400 rounded-full flex items-center justify-center font-bold text-lg shrink-0">
+                        <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${palette.bg} ${palette.text}`}>
                             {inv.name.charAt(0)}
                         </div>
                         <div className="min-w-0">
@@ -527,7 +544,7 @@ const Investors: React.FC<InvestorsProps> = ({
                     <div className="flex items-center gap-2 shrink-0 ml-2">
                         <div className="text-right">
                             <p className="text-xs text-slate-400">Процент</p>
-                            <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{inv.profitPercentage}%</p>
+                            <p className="text-sm font-bold text-indigo-600 dark:text-indigo-400">{poolInvestorRate(getInvestorAccount(inv.id,accounts),inv)}%</p>
                         </div>
                         <svg className="text-slate-300 dark:text-slate-600 shrink-0" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="9 18 15 12 9 6" /></svg>
                     </div>

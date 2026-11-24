@@ -46,8 +46,8 @@ export const saleProfitMargin: (sale: Pick<Sale, 'totalAmount' | 'buyPrice' | 'd
 export const isDownPaymentOf: (sale: Pick<Sale, 'id'>, moneyId?: string) => boolean = Profit.isDownPaymentOf;
 export const moneyInProfit: (sale: Pick<Sale, 'id' | 'totalAmount' | 'buyPrice' | 'downPayment'> & { paymentPlan?: Payment[] }, money: { id?: string; amount: number; discountAmount?: number; discountFromProfit?: boolean }, paymentsOnly?: boolean) => number = Profit.moneyInProfit;
 /** Начисления прибыли инвестору по поступлениям на его счёт (экран инвестора, FinUchetGPT) */
-export const investorProfitAccruals: (account: Account | undefined, investors: Investor[], sales: Sale[], investorId: string, paymentsOnly?: boolean) =>
-  { id: string; date: string; amount: number; sale: Sale; paymentAmount: number; isDownPayment: boolean }[] = Profit.investorProfitAccruals;
+export const investorProfitAccruals: (account: Account | undefined, investors: Investor[], sales: Sale[], investorId: string, paymentsOnly?: boolean, expenses?: Expense[]) =>
+  { id: string; date: string; amount: number; sale: Sale; paymentAmount: number; isDownPayment: boolean; poolMonth?: string; preliminary?: boolean }[] = Profit.investorProfitAccruals;
 /**
  * Начисленная сотруднику премия: от доли менеджера (или всей прибыли — SHARED) в
  * каждом фактическом платеже, по базе CONTRACTS / PAYMENTS / ALL, с даты profitSince.
@@ -364,6 +364,7 @@ export const getManagerProfitDeduction = (
   if (expense.category === 'Моя выплата' && expense.managerPayoutSource === 'PROFIT') {
     return expense.amount;
   }
+  if (Profit.monthlyPoolApplies(account, expense.date) && expense.fromProfit && expense.profitSource !== 'MANAGER') return 0;
   if (expense.fromProfit) {
     // Расход менеджера (зарплата сотрудника и т.п.) целиком ложится на его долю:
     // сотрудник нанят менеджером, и доли инвесторов от найма меняться не должны.
@@ -406,6 +407,7 @@ export const getInvestorProfitDeduction = (
   investorId: string
 ): number => {
   if (!expense.fromProfit) return 0;
+  if (Profit.monthlyPoolApplies(account, expense.date) && expense.profitSource !== 'MANAGER') return 0;
   // Расход менеджера инвесторов не касается вовсе.
   if (expense.profitSource === 'MANAGER') return 0;
   const share = getAccountShares(account, investors, expense.date)
@@ -453,6 +455,7 @@ export const investorProfitOutflows = (
   investors: Investor[],
   investorId: string
 ) => {
+  expenses=expenses.filter(e=>!Profit.isMonthlyPool(accounts.find(a=>a.id===e.accountId))||Profit.poolTime(e.date)<=Date.now());
   const payouts = expenses
     .filter(e => e.payoutType === 'PROFIT' && (!e.investorId || e.investorId === investorId))
     .sort(byDateDesc);
@@ -468,7 +471,8 @@ export const investorProfitOutflows = (
 
   const payoutsSum = payouts.reduce((sum, e) => sum + (Number(e.amount) || 0), 0);
   const deductionsSum = deductions.reduce((sum, d) => sum + d.amount, 0);
-  return { payouts, payoutsSum, deductions, deductionsSum, total: payoutsSum + deductionsSum };
+  const reinvested = accounts.reduce((n,a)=>n+Profit.poolReinvested(a,investorId,-Infinity,Profit.isMonthlyPool(a)?Date.now():Infinity),0);
+  return { payouts, payoutsSum, deductions, deductionsSum, reinvested, total: payoutsSum + deductionsSum + reinvested };
 };
 
 // ───────────────────────── Склады сотрудника ─────────────────────────

@@ -1,3 +1,4 @@
+import {isMonthlyPool,monthlyPoolApplies,poolMonthlyReports,poolReinvested} from '../shared/profit.js';
 import type { Account, Expense, Investor, RetailSale, Sale } from '../types';
 import { turnoverRestDetails, type TurnoverRestDetails } from './turnoverRest';
 import {
@@ -112,6 +113,7 @@ export const turnoverBreakdown = (args: {
     // Полученная прибыль — по каждому поступлению, доли на его дату
     const money = saleMoneyIn(sale);
     for (const m of money) {
+      if(monthlyPoolApplies(account,m.date)&&!account.poolAccounting.excludedSaleIds.includes(sale.id))continue;
       if (m.amount <= 0) continue;
       const profit = moneyInProfit(sale, m, profitFromPaymentsOnly);
       profitBySale.set(sale, (profitBySale.get(sale) || 0) + profit);
@@ -121,6 +123,12 @@ export const turnoverBreakdown = (args: {
       shares.forEach(x => { if (!ownerIds.has(x.investor.id)) perOf(x.investor.id).earned += profit * x.percentage / 100; });
       mgrEarned += profit * (100 - invPct) / 100;
     }
+  }
+
+  for(const account of accounts.filter(a=>ids.has(a.id)&&isMonthlyPool(a)))for(const report of poolMonthlyReports(account,investors,sales,expenses,now,profitFromPaymentsOnly)){
+    if(report.status!=='CLOSED')continue;
+    for(const row of report.allocations){if(row.id==='__manager__'||ownerIds.has(row.id))mgrEarned+=row.amount;
+      else{invEarned+=row.amount;perOf(row.id).earned+=row.amount;}}
   }
 
   // Выплаты и расходы «из прибыли» — как в кассе
@@ -147,6 +155,10 @@ export const turnoverBreakdown = (args: {
       }
     }
     expenseDeductions.set(e, mgrOut + invOut - beforeDeductions);
+  }
+
+  for(const account of accounts.filter(a=>ids.has(a.id)&&isMonthlyPool(a)))for(const id of account.poolMemberIds||[]){
+    const amount=poolReinvested(account,id);if(ownerIds.has(id))mgrOut+=amount;else{invOut+=amount;perOf(id).out+=amount;}
   }
 
   // Вложения инвесторов в эти счета — текущие суммы (после довложений и возвратов)

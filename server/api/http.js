@@ -58,6 +58,7 @@ const route = handler => async (req, res, next) => {
   try {
     await handler(req, res, next);
   } catch (err) {
+    if(err.poolAccounting&&err.status>=400&&err.status<500)return fail(res,err.status,err.status===409?CODES.CONFLICT:CODES.VALIDATION,err.message);
     console.error(`[api] ${req.method} ${req.originalUrl} ${req.apiRequestId}:`, err);
     if (res.headersSent) return;
     fail(res, 500, CODES.INTERNAL, 'Внутренняя ошибка сервера. Повторите запрос позже.');

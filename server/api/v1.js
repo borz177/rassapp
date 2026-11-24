@@ -19,8 +19,12 @@ const { collectionPayments, isCustomerSale } = require('../../shared/collections
 
 const newId = prefix => `${prefix}_${Date.now()}_${crypto.randomBytes(3).toString('hex')}`;
 
-const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureAccess }) => {
+const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureAccess, poolAccountingService }) => {
   const router = express.Router();
+  router.use(route(async(req,res,next)=>{
+    if(req.apiAuth?.userId&&poolAccountingService)await poolAccountingService.settleOwner(req.apiAuth.userId);
+    next();
+  }));
 
   // ── доступ к данным ──────────────────────────────────────────────────────
   const loadAll = async (userId, type) => {
@@ -33,6 +37,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     return rows[0]?.data || null;
   };
   const save = async (userId, type, item) => {
+    if(poolAccountingService) await poolAccountingService.guardWrite(userId,type,item,await loadOne(userId,type,item.id));
     if (type === 'sales' && item.type === 'INSTALLMENT') {
       const allowed=checkFeatureAccess ? (await checkFeatureAccess(userId,'contractTemplates')).allowed : false;
       await require('../contractTemplates/settings').stampSaleTemplate(pool,userId,item,allowed);
@@ -45,6 +50,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     return item;
   };
   const remove = async (userId, type, id) => {
+    if(poolAccountingService) await poolAccountingService.guardWrite(userId,type,null,await loadOne(userId,type,id),true);
     const { rowCount } = await pool.query(
       `DELETE FROM data_items WHERE user_id = $1 AND type = $2 AND id = $3`, [userId, type, id]);
     return rowCount > 0;
@@ -604,6 +610,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
         return fail(res, 404, CODES.NOT_FOUND, 'Договор не найден.');
       }
       const sale = rows[0].data;
+      const poolOriginal = structuredClone(sale);
       if (!Array.isArray(sale.paymentPlan)) sale.paymentPlan = [];
 
       const overpay = Math.round((value.amount - num(sale.remainingAmount)) * 100) / 100;
@@ -635,6 +642,7 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
       };
       sale.paymentPlan.push(payment);
       const updated = reconcile(sale);
+      if(poolAccountingService)await poolAccountingService.guardWrite(userId,'sales',updated,poolOriginal);
 
       await client.query(
         `UPDATE data_items SET data = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3`,
@@ -666,8 +674,10 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
         `SELECT data FROM data_items WHERE id = $1 AND user_id = $2 AND type = 'sales' FOR UPDATE`, [sale.id, userId]);
       const fresh = rows[0]?.data;
       if (!fresh) { await client.query('ROLLBACK'); return fail(res, 404, CODES.NOT_FOUND, 'Договор не найден.'); }
+      const poolOriginal=structuredClone(fresh);
       fresh.paymentPlan = (fresh.paymentPlan || []).filter(p => p.id !== req.params.id);
       const updated = reconcile({ ...fresh, status: fresh.status === 'COMPLETED' ? 'ACTIVE' : fresh.status });
+      if(poolAccountingService)await poolAccountingService.guardWrite(userId,'sales',updated,poolOriginal);
       await client.query(`UPDATE data_items SET data = $1, updated_at = NOW() WHERE id = $2 AND user_id = $3`,
         [JSON.stringify(updated), sale.id, userId]);
       await client.query('COMMIT');

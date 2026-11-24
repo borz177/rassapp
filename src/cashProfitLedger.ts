@@ -1,3 +1,4 @@
+import { isMonthlyPool, monthlyPoolApplies, poolMonthlyReports, inPoolProfitPeriod, paymentManagerOriginShares, monthlyManagerOriginShares, allocatePoolMoney, roundPoolProfitRows, poolAllocationDetails, poolTime } from '../shared/profit.js';
 import type { Account, Customer, Expense, Investor, Sale } from '../types';
 import { dateFromInput } from './saleMath';
 import {
@@ -5,19 +6,25 @@ import {
   isDownPaymentOf, moneyInProfit, paymentManagerPercent, paymentProfitShares, saleMoneyIn, saleProfitMargin,
 } from './utils';
 
-export type CashProfitKind = 'payout' | 'discount' | 'other';
+export type CashProfitKind = 'payout' | 'discount' | 'other' | 'reinvestment';
+export interface CashProfitDetail {
+  id: string; date: string; amount: number; title: string;
+  kind: 'income' | 'cost' | 'carry' | 'rounding';
+  saleId?: string; customerName?: string; productName?: string; earningMonths?: string[];
+}
 export interface CashProfitRow {
   id: string; date: string; amount: number; title: string; accountName: string;
   accountId: string; saleId?: string; customerId?: string; customerName?: string; productName?: string;
   investorId?: string; investorName?: string; note?: string; fullAmount?: number;
   paymentAmount?: number; sharePercent?: number; beforeDiscount?: number;
   discountAmount?: number; discountImpact?: number;
-  isDownPayment?: boolean; kind?: CashProfitKind; includedInAccruals?: boolean;
+  preliminary?: boolean; isDownPayment?: boolean; kind?: CashProfitKind; includedInAccruals?: boolean;
+  month?: string; details?: CashProfitDetail[];
 }
 export interface CashProfitLedger {
   accruals: CashProfitRow[]; expenses: CashProfitRow[];
   received: number; paid: number; other: number; discountsDeducted: number;
-  embeddedDiscounts: number; deducted: number; available: number;
+  pending?: number; reinvested?: number; embeddedDiscounts: number; deducted: number; available: number;
 }
 const round = (n: number) => Math.round(n * 100) / 100;
 const sum = (rows: CashProfitRow[]) => round(rows.reduce((n,r)=>n+r.amount,0));
@@ -40,16 +47,21 @@ export function combineCashProfitLedgers(ledgers: CashProfitLedger[]): CashProfi
   const other=sum(expenses.filter(e=>e.kind==='other'));
   const discountsDeducted=sum(expenses.filter(e=>e.kind==='discount'&&!e.includedInAccruals));
   const embeddedDiscounts=sum(expenses.filter(e=>e.includedInAccruals));
-  const deducted=round(paid+other+discountsDeducted);
-  return {accruals,expenses,received,paid,other,discountsDeducted,embeddedDiscounts,deducted,available:round(received-deducted)};
+  const pending=sum(accruals.filter(a=>a.preliminary));
+  const reinvested=sum(expenses.filter(e=>e.kind==='reinvestment'));
+  const deducted=round(paid+other+discountsDeducted+reinvested);
+  return {accruals,expenses,received,paid,other,discountsDeducted,embeddedDiscounts,pending,reinvested,deducted,available:round(received-deducted)};
 }
 const empty = (): CashProfitLedger => ({accruals:[],expenses:[],received:0,paid:0,other:0,discountsDeducted:0,embeddedDiscounts:0,deducted:0,available:0});
 
 export function cashProfitLedgers({sales,expenses,accounts,investors,customers,period,accountId,profitFromPaymentsOnly=false}: {
   sales: Sale[]; expenses: Expense[]; accounts: Account[]; investors: Investor[]; customers: Customer[];
   period: {start:string;end:string}; accountId?: string; profitFromPaymentsOnly?: boolean;
-}): {manager:CashProfitLedger; investors:Map<string,CashProfitLedger>} {
+}): {manager:CashProfitLedger; investors:Map<string,CashProfitLedger>; managerAccrualsByInvestor:Map<string,CashProfitLedger>} {
   const manager=empty(), per=new Map<string,CashProfitLedger>();
+  // Только начисления от капитала участника. Общие выплаты себе сюда не попадают.
+  const origins=new Map<string,CashProfitLedger>();
+  const originLedger=(id:string)=>{let l=origins.get(id);if(!l){l=empty();origins.set(id,l);}return l;};
   const investorLedger=(id:string)=>{let l=per.get(id);if(!l){l=empty();per.set(id,l);}return l;};
   const accountOf=new Map(accounts.map(a=>[a.id,a])), customerOf=new Map(customers.map(c=>[c.id,c]));
   const saleOf=new Map(sales.map(s=>[s.id,s]));
@@ -58,10 +70,13 @@ export function cashProfitLedgers({sales,expenses,accounts,investors,customers,p
     if(!scoped(sale.accountId)||sale.buyPrice<=0||sale.totalAmount<=sale.buyPrice)continue;
     const account=accountOf.get(sale.accountId);if(account?.type==='SHARED')continue;
     for(const p of saleMoneyIn(sale)){
+      if(isMonthlyPool(account)&&poolTime(p.date)>Date.now())continue;
+      if(monthlyPoolApplies(account,p.date)&&!account.poolAccounting.excludedSaleIds.includes(sale.id))continue;
       const discount=Math.max(0,Number('discountAmount' in p?p.discountAmount:0)||0);
       if((p.amount<=0&&!discount)||!inProfitPeriod(p.date,period))continue;
-      const profit=moneyInProfit(sale,p,profitFromPaymentsOnly);
-      const cut=discount ? Math.max(0,(p.amount+discount)*saleProfitMargin(sale,profitFromPaymentsOnly)-profit) : 0;
+      const poolMode=account?.poolAccounting?.profitFromPaymentsOnly??profitFromPaymentsOnly;
+      const profit=moneyInProfit(sale,p,poolMode);
+      const cut=discount ? Math.max(0,(p.amount+discount)*saleProfitMargin(sale,poolMode)-profit) : 0;
       const common={date:p.date,accountId:sale.accountId,accountName:account?.name||'Без счёта',saleId:sale.id,
         customerId:sale.customerId,customerName:customerOf.get(sale.customerId)?.name||'Неизвестно',
         productName:sale.productName,paymentAmount:p.amount,isDownPayment:isDownPaymentOf(sale,p.id),
@@ -77,12 +92,48 @@ export function cashProfitLedgers({sales,expenses,accounts,investors,customers,p
           amount:impact,fullAmount:discount,includedInAccruals:true,beforeDiscount:amount+impact});
       };
       add(manager,paymentManagerPercent(account,investors,sale,p));
+      if(account?.type==='POOL')for(const {investor,percentage} of paymentManagerOriginShares(account,investors,sale,p))add(originLedger(investor.id),percentage,investor);
       if(account)for(const {investor,percentage} of paymentProfitShares(account,investors,sale,p))add(investorLedger(investor.id),percentage,investor);
     }
   }
+  for(const account of accounts.filter(a=>scoped(a.id)&&isMonthlyPool(a))){
+    for(const report of poolMonthlyReports(account,investors,sales,expenses,Date.now(),profitFromPaymentsOnly)){
+      if(!inPoolProfitPeriod(report.date,period))continue;
+      const details=(id:string,amount?:number,percentage?:number,originId?:string):CashProfitDetail[]=>poolAllocationDetails(report,id,amount,percentage,originId).map(r=>{
+        const sale=r.saleId?saleOf.get(r.saleId):undefined;
+        const customerName=r.customerId?customerOf.get(r.customerId)?.name:undefined;
+        return {...r,saleId:sale?.id,customerName,title:customerName||r.title||r.productName||'Поступление'};
+      });
+      for(const allocation of report.allocations){
+        const recipient=investors.find(i=>i.id===allocation.id);
+        const ledger=allocation.id==='__manager__'?manager:investorLedger(allocation.id);
+        if(allocation.amount)ledger.accruals.push({id:`pool:${account.id}:${report.month}:${allocation.id}`,date:report.date,
+          amount:allocation.amount,title:`Прибыль за ${report.month}`,accountId:account.id,accountName:account.name,
+          investorId:recipient?.id,investorName:recipient?.name,preliminary:report.status!=='CLOSED',note:report.status==='CLOSED'?'Месяц рассчитан':'По данным на сегодня',
+          month:report.month,details:details(allocation.id)});
+        if(allocation.id==='__manager__'&&allocation.amount){
+          const weights=monthlyManagerOriginShares(account,investors,report.month,Date.parse(report.asOf));
+          for(const part of report.managerAllocations ?? allocatePoolMoney(allocation.amount,weights.map(w=>({id:w.investor.id,weight:w.percentage})))){
+            if(!part.amount)continue;
+            const investor=investors.find(i=>i.id===part.id);
+            originLedger(part.id).accruals.push({id:`pool:${account.id}:${report.month}:manager-origin:${part.id}`,date:report.date,
+              amount:part.amount,title:`Прибыль за ${report.month}`,accountId:account.id,accountName:account.name,
+              investorId:part.id,investorName:investor?.name,preliminary:report.status!=='CLOSED',note:report.status==='CLOSED'?'Месяц рассчитан':'По данным на сегодня',
+              month:report.month,details:details('__manager__',part.amount,weights.find(w=>w.investor.id===part.id)?.percentage||0,part.id)});
+          }
+        }
+      }
+    }
+    for(const r of account.poolAccounting!.reinvestments){
+      if(poolTime(r.date)>Date.now()||!inPoolProfitPeriod(r.date,period))continue;
+      investorLedger(r.investorId).expenses.push({id:r.id,date:r.date,amount:r.amount,title:'Реинвестировано',kind:'reinvestment',accountId:account.id,accountName:account.name,investorId:r.investorId});
+    }
+  }
   for(const e of expenses){
-    if(!scoped(e.accountId)||!inProfitPeriod(e.date,period))continue;
-    const account=accountOf.get(e.accountId),sale=e.saleId?saleOf.get(e.saleId):undefined;
+    const account=accountOf.get(e.accountId);
+    if(isMonthlyPool(account)&&poolTime(e.date)>Date.now())continue;
+    if(!scoped(e.accountId)||!(monthlyPoolApplies(account,e.date)?inPoolProfitPeriod(e.date,period):inProfitPeriod(e.date,period)))continue;
+    const sale=e.saleId?saleOf.get(e.saleId):undefined;
     const customerId=e.customerId||sale?.customerId;
     const base={date:e.date,title:e.title||e.category||'Расход',accountId:e.accountId,accountName:account?.name||'Без счёта',
       saleId:e.saleId,customerId,customerName:customerId?customerOf.get(customerId)?.name:undefined,
@@ -107,5 +158,11 @@ export function cashProfitLedgers({sales,expenses,accounts,investors,customers,p
     append(manager,getManagerProfitDeduction(e,account,investors),kind);
     for(const {investor} of getAccountShares(account,investors,e.date))append(investorLedger(investor.id),getInvestorProfitDeduction(e,account,investors,investor.id),kind,investor);
   }
-  return {manager:combineCashProfitLedgers([manager]),investors:new Map([...per].map(([id,l])=>[id,combineCashProfitLedgers([l])]))};
+  // Дробные копейки распределяем между источниками вместе, включая сторно.
+  // Иначе два источника по 0,005 ₽ показывали бы по копейке при общей 0,01 ₽.
+  const roundedOrigins=roundPoolProfitRows([...origins].flatMap(([originId,l])=>l.accruals.map(r=>({...r,originId}))));
+  for(const ledger of origins.values())ledger.accruals=[];
+  for(const {originId,...row} of roundedOrigins)originLedger(originId).accruals.push(row);
+  return {manager:combineCashProfitLedgers([manager]),investors:new Map([...per].map(([id,l])=>[id,combineCashProfitLedgers([l])])),
+    managerAccrualsByInvestor:new Map([...origins].map(([id,l])=>[id,combineCashProfitLedgers([l])]))};
 }
