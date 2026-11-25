@@ -111,7 +111,7 @@ export function cashProfitLedgers({sales,expenses,accounts,investors,customers,p
           amount:allocation.amount,title:`Прибыль за ${report.month}`,accountId:account.id,accountName:account.name,
           investorId:recipient?.id,investorName:recipient?.name,preliminary:report.status!=='CLOSED',note:report.status==='CLOSED'?'Месяц рассчитан':'По данным на сегодня',
           month:report.month,details:details(allocation.id)});
-        if(allocation.id==='__manager__'&&allocation.amount){
+        if(allocation.id==='__manager__'&&(allocation.amount||report.managerAllocations?.length)){
           const weights=monthlyManagerOriginShares(account,investors,report.month,Date.parse(report.asOf));
           for(const part of report.managerAllocations ?? allocatePoolMoney(allocation.amount,weights.map(w=>({id:w.investor.id,weight:w.percentage})))){
             if(!part.amount)continue;

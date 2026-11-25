@@ -215,6 +215,10 @@ export interface PoolTerms {
   profitBasis?: PoolProfitBasis;
 }
 type PoolProfitPart = { id: string; amount: number };
+type PoolEntryDateAdjustment = {
+  id: string; date: string; investorId: string; previousDate: string; entryDate: string;
+  months: string[]; parts: PoolProfitPart[]; managerOrigins: PoolProfitPart[];
+};
 type PoolProfitSourceParts = { parts?: PoolProfitPart[]; managerOrigins?: PoolProfitPart[] };
 export interface PoolMonthReport {
   issues?: string[]; month: string; status: 'PRELIMINARY' | 'CLOSED'; date: string; asOf: string;
@@ -225,12 +229,14 @@ export interface PoolMonthReport {
   carryParts?: PoolProfitPart[];
   managerAllocations?: PoolProfitPart[];
   managerCarryParts?: PoolProfitPart[];
+  entryDateAdjustments?: PoolEntryDateAdjustment[];
   sources: (PoolProfitSourceParts & { saleId: string; paymentId: string; date: string; amount: number; customerId?: string; productName?: string; earningMonths?: string[] })[];
   costRows: (PoolProfitSourceParts & { id: string; date: string; amount: number; title: string })[];
 }
 export interface PoolAccounting {
   revision?: number; version: 1; startMonth: string; profitFromPaymentsOnly?: boolean; openingTerms: PoolTerms; terms: (Partial<PoolTerms> & {date:string})[];
   adjustments?: { id: string; date: string; amount: number; reason: string; saleId?: string }[];
+  entryDateAdjustments?: PoolEntryDateAdjustment[];
   excludedSaleIds: string[]; closed: PoolMonthReport[];
   reinvestments: { id: string; investorId: string; date: string; amount: number; month?: string }[];
   requests?: { id: string; hash: string; action: string; refs?: { investors:string[]; sales:string[]; expenses:string[] } }[];

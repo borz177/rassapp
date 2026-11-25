@@ -4,12 +4,13 @@ const { Worker } = require('node:worker_threads');
 const P = require('./policy');
 const { MAX_BYTES, MAX_MIB, publicationDate } = require('./telegramArchive');
 const { importBirthDate } = require('./bulkImport');
+const { defaultSelection, validateSelection, matchesSelection } = require('./archiveSelection');
 
 const jobs = 'client_watchlist_archive_jobs';
 const records = 'client_watchlist_archive_records';
 const history = 'client_watchlist_archive_history';
-const jobFields = 'id,filename,state,progress,total,error,created_at';
-const statusView = row => ({ id: row.id, filename: row.filename, status: row.state, progress: row.progress, total: row.total, error: row.error, createdAt: row.created_at });
+const jobFields = 'id,filename,state,progress,total,scanned,error,created_at';
+const statusView = row => ({ id: row.id, filename: row.filename, status: row.state, progress: row.progress, total: row.total, scanned: row.scanned, error: row.error, createdAt: row.created_at });
 const publicErrors = {
   NO_MESSAGES: 'В файле нет текстовых сообщений экспорта Telegram.',
   TOO_MANY_MESSAGES: 'Слишком много сообщений. Загрузите части архива по отдельности.',
@@ -17,6 +18,7 @@ const publicErrors = {
 };
 const keyFor = (owner, job, ordinal) => `${owner}:${job}:${ordinal}`;
 const draftLimits = { name: 200, birthDate: 32, reason: 16, reasonDetails: 1000, source: 200, publishedAt: 80 };
+const knownValue = value => /^(?:[-–—?…]+|нет|не указан(?:а|о)?|неизвестн[ао])\.?$/iu.test(value) ? '' : value;
 
 function draftFields(body) {
   return Object.fromEntries(Object.entries(draftLimits).map(([key, max]) => {
@@ -25,15 +27,15 @@ function draftFields(body) {
     return [key, value.trim()];
   }));
 }
+function withPublicationDate(data, fallback) {
+  if (data.fields.publishedAt) return data;
+  return { ...data, dateFromImport: true, fields: { ...data.fields, publishedAt: new Date(fallback).toISOString() } };
+}
 function verifyDraft(fields) {
   const valid = {}, errors = [];
   const check = fn => { try { Object.assign(valid, fn()); } catch (e) { if (e.status !== 400) throw e; errors.push(e.message); } };
   check(() => ({ name: P.fullName(fields.name) }));
-  check(() => {
-    const birth = importBirthDate(fields.birthDate);
-    if (!birth.birthDate) throw P.problem(400, 'Укажите полную дату рождения.');
-    return birth;
-  });
+  check(() => importBirthDate(fields.birthDate));
   check(() => P.submissionReason(fields));
   check(() => ({ source: P.text(fields.source, 2, 200, 'источник информации') }));
   check(() => {
@@ -45,15 +47,20 @@ function verifyDraft(fields) {
 }
 
 function suggestedFields(message, source) {
-  const label = pattern => message.text.match(new RegExp(`^[ \\t]*(?:${pattern})[ \\t]*[:–—][ \\t]*([^\\r\\n]+)`, 'imu'))?.[1].trim() || '';
-  const firstLine = message.text.split(/\r?\n/u,1)[0];
-  const inline = firstLine.match(/^([\p{L}\p{M}'’.-]+(?:[ \t]+[\p{L}\p{M}'’.-]+){1,3})[ \t]+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:[ \t]+(.+))?$/u);
-  const reasonDetails = label('причина|основание') || inline?.[3] || '';
+  const label = pattern => message.text.match(new RegExp(`^[ \\t]*(?:${pattern})[ \\t]*[-:–—][ \\t]*([^\\r\\n]+)`, 'imu'))?.[1].trim() || '';
+  const lines = message.text.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
+  const named = label(String.raw`фио|ф\.\s*и\.\s*о\.`);
+  const inline = [named || lines[0], lines[1]].join('\n').match(/^([\p{L}\p{M}'’.-]+(?:[ \t]+[\p{L}\p{M}'’.-]+){1,3})[ \t\n]+\(?(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})\)?(?:[ \t]+([^\n]+))?(?:\n|$)/u);
+  const reasonDetails = knownValue(label('причина|основание') || inline?.[3] || '');
   const categories = { 'длительная просрочка': 'overdue', 'неисполнение обязательств': 'unfulfilled' };
   const reason = Object.hasOwn(categories, reasonDetails.toLowerCase()) ? categories[reasonDetails.toLowerCase()] : reasonDetails ? 'other' : '';
+  const firstLine = lines[0] || '';
+  const plainName = /^(?:\p{Lu}[\p{L}'’.-]+[ \t]+){2}\p{Lu}[\p{L}'’.-]*(?:ович|евич|овна|евна|ич|кызы|оглы)$/iu.test(firstLine)
+    && (firstLine === firstLine.toUpperCase() || /^(?:\p{Lu}\S+[ \t]+){2}\p{Lu}\S+$/u.test(firstLine)) ? firstLine : '';
+  const namedLine = reasonDetails && /^(?:\p{Lu}[\p{L}'’.-]+[ \t]+){1,3}\p{Lu}[\p{L}'’.-]+$/u.test(firstLine) ? firstLine : '';
   return draftFields({
-    name: (label(String.raw`фио|ф\.\s*и\.\s*о\.`) || inline?.[1] || '').slice(0, 200),
-    birthDate: (label(String.raw`дата рождения|д\.\s*р\.`) || inline?.[2] || '').slice(0, 32),
+    name: (inline?.[1] || named || plainName || namedLine).slice(0, 200),
+    birthDate: knownValue(label(String.raw`дата рождения|д\.\s*р\.`) || inline?.[2] || '').slice(0, 32),
     reason, reasonDetails: reason === 'other' ? reasonDetails.slice(0, 1000) : '', source,
     publishedAt: message.publishedAt || '',
   });
@@ -98,30 +105,36 @@ function createArchiveImports({ pool, vault, ensure }) {
           ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)
         RETURNING j.*`, [crypto.randomUUID()])).rows;
       if (!claimed) return;
-      const { html, source } = vault.decrypt(`${claimed.owner_id}:${claimed.id}`, 'telegram_archive', claimed.archive);
+      const { html, source, selection = defaultSelection } = vault.decrypt(`${claimed.owner_id}:${claimed.id}`, 'telegram_archive', claimed.archive);
       let last = 0;
       const messages = await parseOffThread(html, value => {
         if (value < last + 5) return;
         last = value;
         void progressUpdate(claimed, value).catch(() => {});
       });
+      const selected = [];
+      for (let index = 0; index < messages.length; index++) {
+        const message = messages[index];
+        const data = withPublicationDate({ message: { ...message, source }, fields: suggestedFields(message, source) }, claimed.created_at);
+        if (matchesSelection(message, verifyDraft(data.fields).valid, selection)) selected.push(data);
+        if (index % 250 === 249) await new Promise(resolve => setImmediate(resolve));
+      }
       await progressUpdate(claimed, 90);
       const db = await pool.connect();
       try {
         await db.query('BEGIN');
         const lock = await db.query(`SELECT 1 FROM ${jobs} WHERE id=$1 AND lease=$2 AND state='processing' FOR UPDATE`, [claimed.id, claimed.lease]);
         if (!lock.rowCount) { await db.query('ROLLBACK'); return; }
-        for (let i = 0; i < messages.length; i += 200) {
-          const batch = messages.slice(i, i + 200).map((message, j) => {
+        for (let i = 0; i < selected.length; i += 200) {
+          const batch = selected.slice(i, i + 200).map((data, j) => {
             const ordinal = i + j + 1;
-            const fields = suggestedFields(message, source);
-            return { ordinal, identity_index:identityIndex(claimed.owner_id,fields),
-              payload:save({ owner_id:claimed.owner_id, job_id:claimed.id, ordinal },{ message:{ ...message,source },fields }) };
+            return { ordinal, identity_index:identityIndex(claimed.owner_id,data.fields),
+              payload:save({ owner_id:claimed.owner_id, job_id:claimed.id, ordinal },data) };
           });
           await db.query(`INSERT INTO ${records}(job_id,owner_id,ordinal,payload,identity_index)
             SELECT $1,$2,x.ordinal,x.payload,x.identity_index FROM jsonb_to_recordset($3::jsonb) x(ordinal int,payload jsonb,identity_index text)`, [claimed.id, claimed.owner_id, JSON.stringify(batch)]);
         }
-        await db.query(`UPDATE ${jobs} SET archive=NULL,state='ready',total=$2,progress=100,lease=NULL,updated_at=now() WHERE id=$1`, [claimed.id,messages.length]);
+        await db.query(`UPDATE ${jobs} SET archive=NULL,state='ready',total=$2,scanned=$3,progress=100,lease=NULL,updated_at=now() WHERE id=$1`, [claimed.id,selected.length,messages.length]);
         await db.query('COMMIT');
       } catch (e) { await db.query('ROLLBACK').catch(() => {}); throw e; }
       finally { db.release(); }
@@ -133,14 +146,21 @@ function createArchiveImports({ pool, vault, ensure }) {
   const timer = setInterval(() => void tick(), 2000);
   timer.unref();
 
-  async function enqueue(db, owner, file, rawSource) {
+  async function enqueue(db, owner, file, rawSource, rawSelection) {
     if (!file || !/\.html?$/iu.test(file.originalname) || !file.buffer?.length || file.buffer.length > MAX_BYTES)
       throw P.problem(400, `Выберите HTML-файл экспорта Telegram размером до ${MAX_MIB} МБ.`);
     const source = P.text(rawSource, 2, 200, 'название источника');
+    let selection = defaultSelection;
+    if (rawSelection !== undefined) {
+      let parsed;
+      try { parsed = JSON.parse(rawSelection); }
+      catch { throw P.problem(400, 'Проверьте условия отбора архива.'); }
+      selection = validateSelection(parsed);
+    }
     let html;
     try { html = new TextDecoder('utf-8', { fatal: true }).decode(file.buffer); }
     catch { throw P.problem(400, 'Архив должен быть в кодировке UTF-8.'); }
-    const fileIndex = vault.index('telegram_file', [owner, crypto.createHash('sha256').update(file.buffer).digest('hex')]);
+    const fileIndex = vault.index('telegram_file', [owner, crypto.createHash('sha256').update(file.buffer).digest('hex'), selection, 3]);
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:telegram-enqueue',0))");
     const existing = (await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 AND file_index=$2`,[owner,fileIndex])).rows[0];
     if (existing && existing.state !== 'failed') return statusView(existing);
@@ -151,23 +171,34 @@ function createArchiveImports({ pool, vault, ensure }) {
     const displayName = /^messages\d*\.html?$/i.test(basename) ? basename : 'Архив Telegram';
     const result = await db.query(`INSERT INTO ${jobs}(id,owner_id,filename,file_index,archive) VALUES($1,$2,$3,$4,$5)
       ON CONFLICT(owner_id,file_index) DO UPDATE SET archive=EXCLUDED.archive,state='queued',progress=0,error=NULL,updated_at=now()
-      RETURNING ${jobFields}`,[id,owner,displayName,fileIndex,vault.encrypt(`${owner}:${id}`,'telegram_archive',{html,source})]);
+      RETURNING ${jobFields}`,[id,owner,displayName,fileIndex,vault.encrypt(`${owner}:${id}`,'telegram_archive',{html,source,selection})]);
     return statusView(result.rows[0]);
   }
   const list = async (db,owner) => ({ items:(await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 ORDER BY created_at DESC,id LIMIT 50`,[owner])).rows.map(statusView) });
-  async function detail(db, owner, jobId, { offset, limit }) {
+  async function detail(db, owner, jobId, { offset, limit, excluded = false }) {
     const job = (await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE id=$1 AND owner_id=$2`,[jobId,owner])).rows[0];
     if (!job) throw P.problem(404, 'Архив не найден.');
     const { rows } = await db.query(`SELECT r.*,e.status AS entry_status,EXISTS(
-        SELECT 1 FROM ${records} d WHERE d.owner_id=r.owner_id AND d.identity_index=r.identity_index
+        SELECT 1 FROM ${records} d WHERE d.owner_id=r.owner_id AND d.identity_index=r.identity_index AND NOT d.excluded
           AND (d.job_id,d.ordinal)<>(r.job_id,r.ordinal)) AS duplicate
       FROM ${records} r LEFT JOIN client_watchlist_entries e ON e.id=r.entry_id
-      WHERE r.job_id=$1 AND r.owner_id=$2 ORDER BY r.ordinal LIMIT $3 OFFSET $4`,[jobId,owner,limit+1,offset]);
-    return { job:statusView(job), items:rows.slice(0,limit).map(row => {
+      WHERE r.job_id=$1 AND r.owner_id=$2 AND r.excluded=$5 ORDER BY r.ordinal LIMIT $3 OFFSET $4`,[jobId,owner,limit+1,offset,excluded]);
+    const counts = (await db.query(`SELECT count(*) FILTER (WHERE NOT excluded)::int AS drafts,
+      count(*) FILTER (WHERE excluded)::int AS excluded FROM ${records} WHERE job_id=$1 AND owner_id=$2 AND state='draft'`, [jobId,owner])).rows[0];
+    return { job:statusView(job), draftCount:counts.drafts, excludedCount:counts.excluded, items:rows.slice(0,limit).map(row => {
       const data = row.payload ? open(row) : null;
-      return { ordinal:row.ordinal, version:row.version, state:row.state, entryStatus:row.entry_status, duplicate:row.duplicate, ...(data || {}),
+      return { ordinal:row.ordinal, version:row.version, state:row.state, entryStatus:row.entry_status, excluded:row.excluded, duplicate:row.duplicate, ...(data || {}),
         errors:data ? verifyDraft(data.fields).errors : [] };
     }), hasMore:rows.length > limit };
+  }
+  async function draftBatch(db, owner, jobId, after) {
+    const job = (await db.query(`SELECT state FROM ${jobs} WHERE id=$1 AND owner_id=$2`, [jobId,owner])).rows[0];
+    if (!job) throw P.problem(404, 'Архив не найден.');
+    if (job.state !== 'ready') throw P.problem(409, 'Сначала дождитесь обработки архива.');
+    const limit = 100;
+    const { rows } = await db.query(`SELECT * FROM ${records} WHERE job_id=$1 AND owner_id=$2 AND state='draft' AND NOT excluded AND ordinal>$3
+      ORDER BY ordinal LIMIT $4 FOR UPDATE`, [jobId,owner,after,limit+1]);
+    return { rows: rows.slice(0,limit), next: rows.length > limit ? rows[limit-1].ordinal : null };
   }
   async function rowFor(db, owner, jobId, ordinal, write = false) {
     if (!/^\d{1,5}$/.test(String(ordinal))) throw P.problem(404, 'Запись не найдена.');
@@ -182,12 +213,12 @@ function createArchiveImports({ pool, vault, ensure }) {
     return { items:changes.map(change=>({ version:change.version, action:change.action, date:change.created_at,
       ...vault.decrypt(identity(row.owner_id,row.job_id,row.ordinal),`telegram_history:${change.version}`,change.payload) })) };
   }
-  async function write(db, row, data, actor, action, { entryId=row.entry_id, state=row.state, sourceIndex=row.source_index } = {}) {
+  async function write(db, row, data, actor, action, { entryId=row.entry_id, state=row.state, sourceIndex=row.source_index, excluded=row.excluded } = {}) {
     await db.query(`INSERT INTO ${history}(job_id,ordinal,version,payload,actor_id,action) VALUES($1,$2,$3,$4,$5,$6)`,
       [row.job_id,row.ordinal,row.version+1,vault.encrypt(identity(row.owner_id,row.job_id,row.ordinal),`telegram_history:${row.version+1}`,{ before:open(row).fields, fields:data.fields }),actor,action]);
-    await db.query(`UPDATE ${records} SET payload=$4,version=version+1,entry_id=$5,state=$6,source_index=$7,identity_index=$8 WHERE job_id=$1 AND owner_id=$2 AND ordinal=$3`,
-      [row.job_id,row.owner_id,row.ordinal,save(row,data),entryId,state,sourceIndex,identityIndex(row.owner_id,data.fields)]);
-    return { version:row.version+1, state };
+    await db.query(`UPDATE ${records} SET payload=$4,version=version+1,entry_id=$5,state=$6,source_index=$7,identity_index=$8,excluded=$9 WHERE job_id=$1 AND owner_id=$2 AND ordinal=$3`,
+      [row.job_id,row.owner_id,row.ordinal,save(row,data),entryId,state,sourceIndex,identityIndex(row.owner_id,data.fields),excluded]);
+    return { version:row.version+1, state, excluded };
   }
   async function purgeRevoked(db, ids) {
     await db.query(`DELETE FROM ${history} h USING ${records} r WHERE h.job_id=r.job_id AND h.ordinal=r.ordinal AND r.entry_id=ANY($1::text[])`,[ids]);
@@ -200,7 +231,7 @@ function createArchiveImports({ pool, vault, ensure }) {
     if (row) await write(db,row,open(row),actor,action);
   }
 
-  return { enqueue,list,detail,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
+  return { enqueue,list,detail,draftBatch,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
 }
 
-module.exports = { createArchiveImports, draftFields, verifyDraft };
+module.exports = { createArchiveImports, draftFields, verifyDraft, withPublicationDate };

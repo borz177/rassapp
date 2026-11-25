@@ -1,7 +1,7 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { telegramMessages, publicationDate } = require('./telegramArchive');
-const { draftFields, verifyDraft } = require('./archiveImports');
+const { draftFields, verifyDraft, withPublicationDate } = require('./archiveImports');
 
 test('Telegram HTML preserves text and message dates without interpreting the archive', () => {
   const html = '<div class="message default" id="message42"><div class="date details" title="25.11.2026 15:30:04 UTC+05:00"></div>' +
@@ -13,16 +13,28 @@ test('Telegram HTML preserves text and message dates without interpreting the ar
   assert.equal(publicationDate('31.02.2026 10:00'),null);
   assert.equal(publicationDate('25.11.2026 24:00'),null);
   assert.equal(publicationDate('25.11.2026 12:30'),'2026-11-25T09:30:00.000Z');
+  assert.equal(publicationDate('5 октября 2023, 22:49:20'),'2023-10-05T19:49:20.000Z');
+  assert.equal(publicationDate('29 февраля 2024, 10:00:00 UTC+05:00'),'2024-02-29T05:00:00.000Z');
+  assert.equal(publicationDate('29 февраля 2023, 10:00:00'),null);
 });
 
-test('require complete date of birth and valid reason and source before submission', () => {
+test('birth date is optional, while explicit dates, reason and source are validated', () => {
   const good = { name:'Тестовый Синтетический Клиент',birthDate:'29.02.2000',reason:'other',reasonDetails:'Причина для теста',
     source:'Синтетический источник',publishedAt:'2020-01-01T12:30:00+03:00' };
   const result=verifyDraft(draftFields(good));
   assert.deepEqual(result.errors,[]);
   assert.equal(result.valid.birthDate,'2000-02-29');
-  assert.deepEqual(verifyDraft(draftFields({...good,birthDate:'2000'})).errors,['Укажите полную дату рождения.']);
+  assert.equal(verifyDraft(draftFields({...good,birthDate:'2000'})).valid.birthYear,2000);
+  const missing = verifyDraft(draftFields({...good,birthDate:''}));
+  assert.deepEqual(missing.errors,[]);
+  assert.equal(missing.valid.birthYear,null);
+  assert.match(verifyDraft(draftFields({...good,birthDate:'30.02.2000'})).errors[0],/дату рождения/);
   assert(verifyDraft(draftFields({...good,publishedAt:'9999-01-01T10:00:00Z',reason:'unknown'})).errors.length===2);
+  const withoutPublication = { fields: draftFields({...good,publishedAt:''}), message:{ publishedAt:null } };
+  const completed = withPublicationDate(withoutPublication, '2026-11-25T12:30:00+03:00');
+  assert.equal(completed.fields.publishedAt,'2026-11-25T09:30:00.000Z');
+  assert.equal(completed.dateFromImport,true);
+  assert.equal(completed.message.publishedAt,null);
 });
 
 test('large archive is parsed in slices and reports progress', () => {

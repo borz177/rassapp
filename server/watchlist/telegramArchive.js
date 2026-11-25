@@ -4,12 +4,19 @@ const MAX_MIB = 9;
 const MAX_BYTES = MAX_MIB * 1024 * 1024;
 const MAX_MESSAGES = 20000;
 const MAX_TEXT = 12000;
+const russianMonths = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля', 'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 
 function publicationDate(value) {
   if (typeof value !== 'string' || value.length > 80) return null;
   const raw = value.trim();
   const local = /^(\d{2})\.(\d{2})\.(\d{4})\s+(\d{2}:\d{2}(?::\d{2})?)(?:\s+UTC([+-]\d{2}:\d{2}))?$/u.exec(raw);
-  const iso = local ? `${local[3]}-${local[2]}-${local[1]}T${local[4]}${local[5] || '+03:00'}` : raw;
+  const spelled = /^(\d{1,2})\s+([а-я]+)\s+(\d{4}),\s*(\d{2}:\d{2}(?::\d{2})?)(?:\s+UTC([+-]\d{2}:\d{2}))?$/iu.exec(raw);
+  const month = spelled ? russianMonths.indexOf(spelled[2].toLowerCase()) + 1 : null;
+  if (spelled && !month) return null;
+  const displayDate = local || spelled;
+  const iso = displayDate
+    ? `${displayDate[3]}-${local ? local[2] : String(month).padStart(2, '0')}-${displayDate[1].padStart(2, '0')}T${displayDate[4]}${displayDate[5] || '+03:00'}`
+    : raw;
   const parts = /^(\d{4})-(\d{2})-(\d{2})T(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d(?:\.\d{1,3})?)?(Z|[+-]\d{2}:\d{2})?$/u.exec(iso);
   if (!parts) return null;
   const calendar = new Date(Date.UTC(+parts[1], +parts[2] - 1, +parts[3]));

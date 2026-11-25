@@ -39,6 +39,7 @@ async function ensureTables(pool) {
     CREATE UNIQUE INDEX IF NOT EXISTS client_watchlist_entry_active ON client_watchlist_entries(owner_id,customer_id)
       WHERE status IN ('pending','needs_info','published','hidden');
     CREATE INDEX IF NOT EXISTS client_watchlist_name ON client_watchlist_entries(name_index) WHERE status='published';
+    CREATE INDEX IF NOT EXISTS client_watchlist_import_name ON client_watchlist_entries(name_index) WHERE name_index IS NOT NULL;
     CREATE INDEX IF NOT EXISTS client_watchlist_year ON client_watchlist_entries(year_index) WHERE status='published';
     CREATE INDEX IF NOT EXISTS client_watchlist_related_client ON client_watchlist_entries(related_client_index)
       WHERE status='published' AND related_client_index IS NOT NULL;
@@ -78,6 +79,7 @@ async function ensureTables(pool) {
       created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
       UNIQUE (owner_id, file_index), UNIQUE (id, owner_id)
     );
+    ALTER TABLE client_watchlist_archive_jobs ADD COLUMN IF NOT EXISTS scanned int;
     CREATE INDEX IF NOT EXISTS client_watchlist_archive_queue ON client_watchlist_archive_jobs(state,updated_at);
     CREATE TABLE IF NOT EXISTS client_watchlist_archive_records (
       job_id text NOT NULL, owner_id text NOT NULL, ordinal int NOT NULL,
@@ -88,6 +90,7 @@ async function ensureTables(pool) {
       PRIMARY KEY (job_id, ordinal),
       FOREIGN KEY (job_id, owner_id) REFERENCES client_watchlist_archive_jobs(id, owner_id) ON DELETE CASCADE
     );
+    ALTER TABLE client_watchlist_archive_records ADD COLUMN IF NOT EXISTS excluded boolean NOT NULL DEFAULT false;
     CREATE INDEX IF NOT EXISTS client_watchlist_archive_entry ON client_watchlist_archive_records(entry_id) WHERE entry_id IS NOT NULL;
     CREATE INDEX IF NOT EXISTS client_watchlist_archive_identity ON client_watchlist_archive_records(owner_id,identity_index) WHERE identity_index IS NOT NULL;
     CREATE UNIQUE INDEX IF NOT EXISTS client_watchlist_archive_source ON client_watchlist_archive_records(owner_id,source_index) WHERE source_index IS NOT NULL;

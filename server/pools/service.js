@@ -185,6 +185,104 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
             fingerprint: hash({ id, revision: config.revision || 0, throughMonth, months, rows, investors: changedInvestors }) };
         return { data, account, changedInvestors, confirmation };
     };
+    const entryDatePlan = async (data, account, input, at) => {
+        const P = await modulePromise, F = await fundingPromise;
+        if (!P.isMonthlyPool(account)) fail(409, 'Сначала включите месячный учёт.');
+        const config = account.poolAccounting;
+        const investor = data.investors.find(i => i.id === input.investorId && account.poolMemberIds.includes(i.id));
+        if (!investor) fail(404, 'Инвестор не найден.');
+        if (data.accounts.some(a => a.id !== account.id && (a.ownerId === investor.id || a.poolMemberIds?.includes(investor.id) || a.partners?.includes(investor.id))))
+            fail(409, 'Инвестор связан с другим счётом. Сначала проверьте его участие.');
+
+        const updated = structuredClone(investor);
+        const first = updated.investmentPeriods?.length
+            ? [...updated.investmentPeriods].sort((a, b) => P.poolTime(a.joinedDate) - P.poolTime(b.joinedDate))[0]
+            : updated;
+        const originalTime = P.poolTime(first.joinedDate);
+        const time = typeof input.entryDate === 'string' && /^20\d{2}-\d{2}-\d{2}$/.test(input.entryDate) ? P.poolTime(input.entryDate) : NaN;
+        if (!Number.isFinite(time) || time > at || P.poolDay(time) !== input.entryDate)
+            fail(400, 'Укажите корректную дату входа, не позднее сегодняшней.');
+        if (!Number.isFinite(originalTime) || P.poolDay(originalTime) === input.entryDate)
+            fail(400, 'Укажите новую дату первого входа.');
+        if (first.leftPoolDate && time >= P.poolTime(first.leftPoolDate))
+            fail(400, 'Дата входа должна быть раньше первого выхода.');
+        if ((first.capitalChanges || []).some(change => P.poolTime(change.date) < time))
+            fail(409, 'После изменения часть операций с капиталом окажется раньше входа.');
+
+        const entryDate = new Date(time).toISOString();
+        const previousDate = first.joinedDate;
+        first.joinedDate = updated.joinedDate = entryDate;
+        const investors = data.investors.map(i => i.id === updated.id ? updated : i);
+        const sales = F.expandFundedSales(data.sales);
+        const start = P.poolMonthStart(config.startMonth);
+        const paymentsOnly = config.profitFromPaymentsOnly ?? !!data.settings[0]?.profitFromPaymentsOnly;
+        if (Math.min(time, originalTime) < start) {
+            const distributionChanged = calculate => {
+                const weights = members => calculate(members).filter(row => row.percentage).map(row => [row.investor.id, row.percentage]).sort();
+                return hash(weights(data.investors)) !== hash(weights(investors));
+            };
+            const changesLegacyPayments = sales.some(sale => sale.accountId === account.id && sale.buyPrice > 0
+                && P.poolMoneyIn(sale).some(payment => P.poolTime(payment.date) < start && P.poolTime(payment.date) <= at
+                    && P.moneyInProfit(sale, payment, paymentsOnly) && (
+                        distributionChanged(members => P.paymentProfitShares(account, members, sale, payment))
+                        || distributionChanged(members => P.paymentManagerOriginShares(account, members, sale, payment))
+                    )));
+            const changesLegacyCosts = data.expenses.some(expense => expense.accountId === account.id && expense.fromProfit
+                && expense.profitSource !== 'MANAGER' && expense.category !== 'Моя выплата' && !['INVESTMENT', 'PROFIT'].includes(expense.payoutType)
+                && P.poolTime(expense.date) < start && P.poolTime(expense.date) <= at
+                && distributionChanged(members => P.getAccountShares(account, members, expense.date)));
+            if (changesLegacyPayments || changesLegacyCosts)
+                fail(409, 'Дата меняет начисления до начала месячного учёта. Сначала сверьте старую историю.');
+        }
+        // Сравниваем только эффект новой даты. Прошлые поправки и проведённое
+        // реинвестирование остаются в журнале и не начисляются повторно.
+        const model = { ...account, poolAccounting: { ...config, closed: [], entryDateAdjustments: [] } };
+        const before = P.poolMonthlyReports(model, data.investors, sales, data.expenses, at, paymentsOnly);
+        const after = P.poolMonthlyReports(model, investors, sales, data.expenses, at, paymentsOnly);
+        const closed = new Map(config.closed.map(report => [report.month, report]));
+        const closedTotals = new Map(), openTotals = new Map(), origins = new Map();
+        const differences = (oldRows, newRows, totals) => {
+            const delta = new Map();
+            for (const [sign, rows] of [[-1, oldRows], [1, newRows]]) {
+                for (const row of rows || [])
+                    delta.set(row.id, (delta.get(row.id) || 0) + sign * Math.round(row.amount * 100));
+            }
+            for (const [id, cents] of delta)
+                totals.set(id, (totals.get(id) || 0) + cents);
+            return [...delta.values()].some(cents => cents !== 0);
+        };
+        const months = [];
+        for (const [index, next] of after.entries()) {
+            const old = before[index];
+            const frozen = closed.get(next.month);
+            if (next.issues.length || next.unallocated || (frozen && (old.issues.length || old.unallocated)))
+                fail(409, `${next.month}: ${next.issues[0] || old.issues[0] || 'проверьте нераспределённую прибыль перед изменением даты.'}`);
+            const changed = differences(old.allocations, next.allocations, frozen ? closedTotals : openTotals);
+            if (!frozen) continue;
+            const originChanged = differences(old.managerAllocations, next.managerAllocations, origins);
+            if (changed || originChanged) {
+                if (['gross', 'costs', 'distributable', 'carryOut'].some(key => Math.round(old[key] * 100) !== Math.round(frozen[key] * 100)))
+                    fail(409, `${next.month}: исходные суммы отличаются от закрытого расчёта. Сначала сверьте историю.`);
+                months.push(next.month);
+            }
+        }
+        if (months.length && P.poolMonth(at) < config.startMonth)
+            fail(409, 'Пока нет открытого месяца для проведения корректировки.');
+        if ([...closedTotals.values()].reduce((sum, value) => sum + value, 0) !== 0)
+            fail(409, 'Сумма прибыли пула изменилась. Проверьте исходные данные.');
+        const current = await balances(data, account, at);
+        const rows = ['__manager__', ...account.poolMemberIds].map(id => {
+            const balance = id === '__manager__' ? current.manager : current.investors[id];
+            const closedDelta = (closedTotals.get(id) || 0) / 100, openDelta = (openTotals.get(id) || 0) / 100;
+            return { id, name: id === '__manager__' ? 'Моя прибыль' : data.investors.find(i => i.id === id)?.name || 'Участник',
+                before: balance.earned, after: round(balance.earned + closedDelta + openDelta), closedDelta, openDelta,
+                availableAfter: round(balance.available + closedDelta + openDelta) };
+        });
+        const toParts = totals => [...totals].filter(([, cents]) => cents !== 0).map(([id, cents]) => ({ id, amount: cents / 100 }));
+        const journal = { investorId: investor.id, previousDate, entryDate, months, parts: toParts(closedTotals), managerOrigins: toParts(origins) };
+        const fingerprint = hash({ poolId: account.id, revision: config.revision || 0, month: P.poolMonth(at), investor: updated, journal, rows });
+        return { updated, journal, entryDateCorrection: { previousDate: P.poolDay(originalTime), entryDate: input.entryDate, months, rows, fingerprint } };
+    };
     const previewData = async (data, id, options = {}, applyHistory) => {
         const P = await modulePromise, account = data.accounts.find(a => a.id === id && a.type === 'POOL');
         if (!account)
@@ -243,7 +341,10 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
             }
         }
         const confirmation = options.closeCompleted ? (await completedPlan(data, id)).confirmation : undefined;
-        return { account, investors: data.investors.filter(i => account.poolMemberIds?.includes(i.id)), balances: account.poolAccounting ? await balances(data, account) : undefined, confirmation,
+        const entryDateCorrection = options.entryDateCorrection
+            ? (await entryDatePlan(data, account, options.entryDateCorrection, now())).entryDateCorrection
+            : undefined;
+        return { account, investors: data.investors.filter(i => account.poolMemberIds?.includes(i.id)), balances: account.poolAccounting ? await balances(data, account) : undefined, confirmation, entryDateCorrection,
             historicalContracts, comparison,
             reports: account.poolAccounting ? (await reports(data, account)).map(r => ({ ...r, fingerprint: hash(r) })) : [] };
     };
@@ -512,7 +613,21 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                     if (!changedInvestors.includes(investor))
                         changedInvestors.push(investor);
                 };
-                if (action === 'adjustment') {
+                if (action === 'correctEntryDate') {
+                    if (input.confirmed !== true || typeof input.fingerprint !== 'string')
+                        fail(400, 'Сначала проверьте расчёт и подтвердите исправление.');
+                    const plan = await entryDatePlan(data, account, input, P.poolTime(stamp));
+                    if (plan.entryDateCorrection.fingerprint !== input.fingerprint)
+                        fail(409, 'Данные изменились. Проверьте расчёт заново.');
+                    data.investors = data.investors.map(member => member.id === i.id ? plan.updated : member);
+                    const savedIndex = changedInvestors.findIndex(member => member.id === i.id);
+                    if (savedIndex === -1) changedInvestors.push(plan.updated);
+                    else changedInvestors[savedIndex] = plan.updated;
+                    config.entryDateAdjustments = [...(config.entryDateAdjustments || []), {
+                        id: `entry_date_${crypto.randomUUID()}`, date: stamp, ...plan.journal,
+                    }];
+                }
+                else if (action === 'adjustment') {
                     const amount = money(input.amount), reason = String(input.reason || '').trim(), date = P.poolEntryDate(input.date, now());
                     if (!amount || reason.length < 3 || reason.length > 500 || P.poolTime(date) < floor || P.poolTime(date) > now() + 1000 || input.confirmed !== true)
                         fail(400, 'Укажите сумму, причину и дату открытого периода.');

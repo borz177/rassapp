@@ -41,6 +41,115 @@ test('один requestId с другой суммой отвергается', a
 test('закрытие месяца сохраняет начисления, повторный запрос не создаёт второе реинвестирование', async () => { const f = await fixture({ auto: true }); const preview = await f.svc.preview(f.owner, f.id), report = preview.reports.find(r => r.month === '2026-11'); const input = { requestId: req(), month: '2026-11', confirmed: true, fingerprint: report.fingerprint }; await f.svc.mutate(f.owner, f.id, 'close', input); await f.svc.mutate(f.owner, f.id, 'close', input); const v = await f.svc.preview(f.owner, f.id); assert.equal(v.account.poolAccounting.closed.length, 1); assert.equal(v.account.poolAccounting.reinvestments.length, 1); assert.equal(v.investors.find(i => i.id === f.iid).initialAmount, 1025000); assert.equal(v.balances.investors[f.iid].available, 0); assert.equal((await db.query("SELECT id FROM data_items WHERE user_id=$1 AND type='sales'", [f.owner])).rows.length, 1); });
 test('зафиксированный автоматически месяц не меняется от повторного запроса старого клиента', async () => { const f=await fixture();const p=await f.svc.preview(f.owner,f.id);const snapshot=p.account.poolAccounting.closed[0];const changed=structuredClone(f.sale);changed.paymentPlan[0].amount=100000;await db.query('UPDATE data_items SET data=$1 WHERE id=$2',[JSON.stringify(changed),changed.id]);const v=await f.call('close',{month:'2026-11',confirmed:true,fingerprint:p.reports[0].fingerprint});assert.deepEqual(v.account.poolAccounting.closed[0],snapshot); });
 test('текущий месяц не фиксируется, завершённый рассчитывается без подтверждения',async()=>{const f=await fixture({now:'2026-11-20T10:00:00+03:00'});await assert.rejects(f.call('close',{month:'2026-11',confirmed:true}),e=>e.status===409);const g=await fixture();const v=await g.svc.preview(g.owner,g.id);assert.equal(v.account.poolAccounting.closed.length,1);assert.equal(v.balances.investors[g.iid].available,25000);});
+
+async function previewEntryDate(f, entryDate) {
+    const input = { investorId: f.bid, entryDate };
+    const { entryDateCorrection } = await f.svc.preview(f.owner, f.id, { entryDateCorrection: input });
+    return { input: { ...input, confirmed: true, fingerprint: entryDateCorrection.fingerprint }, review: entryDateCorrection };
+}
+
+// Второй капитал участвует 15 дней. База графика — 51 день, месячная — 20 дней.
+for (const [basis, expectedSecond] of [['MONTH', 18750], ['SCHEDULE_PERIOD', 7352.94]]) {
+    test(`исправление первого входа в открытом месяце по способу ${basis}`, async () => {
+        const f = await fixture({ now: '2026-11-26T09:00:00+03:00' });
+        f.account.poolAccounting.openingTerms.profitBasis = basis;
+        f.account.poolAccounting.terms[0].profitBasis = basis;
+        await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [JSON.stringify(f.account), f.id]);
+        f.ii[0].joinedDate = '2026-10-01T00:00:00+03:00';
+        await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [JSON.stringify(f.ii[0]), f.iid]);
+        f.sale.startDate = '2026-10-01';
+        f.sale.paymentPlan = [
+            { id: 'planned', date: '2026-11-21', amount: 200000, isPaid: true, isRealPayment: false },
+            { ...f.sale.paymentPlan[0], date: '2026-11-21' },
+        ];
+        await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [JSON.stringify(f.sale), f.sale.id]);
+        const plan = await previewEntryDate(f, '2026-11-06');
+        assert.equal(plan.review.rows.find(r => r.id === f.bid).after, expectedSecond);
+        assert.deepEqual(plan.review.months, []);
+        assert.equal((await f.svc.preview(f.owner, f.id)).investors.find(i => i.id === f.bid).joinedDate, f.ii[1].joinedDate);
+        const result = await f.call('correctEntryDate', plan.input);
+        assert.equal(result.balances.investors[f.bid].earned, expectedSecond);
+        assert.equal(result.balances.investors[f.iid].earned, 50000 - expectedSecond);
+        assert.equal(result.balances.manager.earned, 50000);
+        assert.equal(result.changed.sales.length + result.changed.expenses.length, 0);
+        assert.equal(result.account.poolAccounting.entryDateAdjustments[0].parts.length, 0);
+    });
+}
+
+test('закрытый месяц сохраняется, поправка видна в текущем месяце и не применяется повторно', async () => {
+    const f = await fixture({ auto: true });
+    const initial = await f.svc.preview(f.owner, f.id);
+    const snapshot = initial.account.poolAccounting.closed[0];
+    await save(f.owner, 'expenses', { id: `payout_${f.owner}`, accountId: f.id, investorId: f.bid, payoutType: 'PROFIT', date: '2026-12-01', amount: 10000 });
+    const plan = await previewEntryDate(f, '2026-11-21');
+    assert.deepEqual(plan.review.months, ['2026-11']);
+    assert.equal(plan.review.rows.find(r => r.id === f.bid).availableAfter, -10000);
+    const input = { ...plan.input, requestId: req() };
+    const result = await f.svc.mutate(f.owner, f.id, 'correctEntryDate', input);
+    const replay = await f.svc.mutate(f.owner, f.id, 'correctEntryDate', input);
+    assert(replay.replayed);
+    assert.deepEqual(result.account.poolAccounting.closed[0], snapshot);
+    assert.deepEqual(result.account.poolAccounting.reinvestments, initial.account.poolAccounting.reinvestments);
+    assert.equal(replay.account.poolAccounting.entryDateAdjustments.length, 1);
+    assert.equal(result.balances.investors[f.iid].earned, 50000);
+    assert.equal(result.balances.investors[f.bid].available, -10000);
+    const current = result.reports.find(r => r.month === '2026-12');
+    assert.equal(current.distributable, 0);
+    assert.equal(current.allocations.reduce((sum, row) => sum + row.amount, 0), 0);
+    assert.equal(P.poolAllocationDetails(current, f.bid)[0].amount, -25000);
+    assert.equal(P.poolAllocationDetails(current, '__manager__', 25000, undefined, f.iid)[0].amount, 25000);
+    assert.equal(result.changed.sales.length + result.changed.expenses.length, 0);
+    const reverse = await previewEntryDate(f, '2026-11-01');
+    const restored = await f.call('correctEntryDate', reverse.input);
+    assert.equal(restored.balances.investors[f.bid].earned, 25000);
+    assert.equal(restored.account.poolAccounting.entryDateAdjustments.length, 2);
+    assert.deepEqual(restored.account.poolAccounting.closed[0], snapshot);
+});
+
+test('исправление даты требует свежего сравнения, проверяет календарь и существующие движения капитала', async () => {
+    const f = await fixture();
+    for (const day of ['2026-11-31', '2026-12-02', '2026-11-01'])
+        await assert.rejects(previewEntryDate(f, day), e => e.status === 400);
+    const review = await previewEntryDate(f, '2026-11-21');
+    await f.call('capital', { investorId: f.bid, kind: 'DEPOSIT', amount: 1000 });
+    await assert.rejects(f.call('correctEntryDate', review.input), e => e.status === 409 && /заново/.test(e.message));
+    const older = await fixture({ now: '2026-11-26T09:00:00+03:00' });
+    await older.call('capital', { investorId: older.bid, kind: 'DEPOSIT', date: '2026-11-04', amount: 1000 });
+    await assert.rejects(previewEntryDate(older, '2026-11-06'), e => e.status === 409 && /капиталом/.test(e.message));
+});
+test('одна правка пересчитывает открытый месяц и переносит разницу из закрытого отдельно', async () => {
+    const f = await fixture({ now: '2026-12-25T09:00:00+03:00' });
+    f.ii[1].joinedDate = '2026-12-20T00:00:00+03:00';
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [JSON.stringify(f.ii[1]), f.bid]);
+    await save(f.owner, 'sales', { ...f.sale, id: `${f.sale.id}_dec`, paymentPlan: [
+        { ...f.sale.paymentPlan[0], id: 'early', date: '2026-12-10', amount: 100000 },
+        { ...f.sale.paymentPlan[0], id: 'late', date: '2026-12-22', amount: 100000 },
+    ] });
+    const plan = await previewEntryDate(f, '2026-11-15');
+    const second = plan.review.rows.find(row => row.id === f.bid);
+    assert.deepEqual([second.before, second.openDelta, second.closedDelta, second.after], [12500, 12500, 25000, 50000]);
+    const result = await f.call('correctEntryDate', plan.input);
+    assert.equal(result.reports[0].allocations.find(row => row.id === f.bid).amount, 0);
+    assert.equal(result.reports[1].allocations.find(row => row.id === f.bid).amount, 50000);
+    assert.equal(result.balances.investors[f.bid].available, second.availableAfter);
+    assert.equal(result.reports.reduce((sum, report) => sum + report.allocations.reduce((n, row) => n + row.amount, 0), 0), 200000);
+    const followingMonth = createPoolService({ pool: db, now: () => Date.parse('2027-01-04T09:00:00+03:00') });
+    const settled = await followingMonth.preview(f.owner, f.id);
+    assert.equal(settled.account.poolAccounting.closed[1].entryDateAdjustments.length, 1);
+    assert.equal(settled.balances.investors[f.bid].available, second.availableAfter);
+});
+
+test('первый вход до начала месячного учёта можно уточнить, пока не затронуты прежние начисления', async () => {
+    const f = await fixture({ now: '2026-11-25T09:00:00+03:00' });
+    f.ii[1].joinedDate = '2026-10-01T00:00:00+03:00';
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [JSON.stringify(f.ii[1]), f.bid]);
+    const plan = await previewEntryDate(f, '2026-10-20');
+    await save(f.owner, 'sales', {
+        ...f.sale, id: `${f.sale.id}_legacy`, startDate: '2026-10-10',
+        paymentPlan: [{ ...f.sale.paymentPlan[0], date: '2026-10-15' }],
+    });
+    await assert.rejects(f.call('correctEntryDate', plan.input), e => e.status === 409 && /старую историю/.test(e.message));
+});
 test('ручное реинвестирование доступной текущей прибыли не создаёт приход денег',async()=>{const f=await fixture({now:'2026-11-25T12:00:00+03:00'});await f.call('reinvest',{investorId:f.iid,amount:10000});const p=await f.svc.preview(f.owner,f.id);assert.equal(p.balances.investors[f.iid].available,15000);assert.equal(p.investors.find(i=>i.id===f.iid).initialAmount,1010000);await assert.rejects(f.call('reinvest',{investorId:f.iid,amount:15000.01}),e=>e.status===409);assert.equal((await db.query("SELECT id FROM data_items WHERE user_id=$1 AND type='sales'",[f.owner])).rows.length,1);});
 test('выплата после реинвестирования не может повторно использовать те же деньги', async () => { const f = await fixture(); let p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await f.call('reinvest', { investorId: f.iid, amount: 20000 }); const e = { id: 'payout', accountId: f.id, investorId: f.iid, payoutType: 'PROFIT', amount: 5000.01, date: '2026-12-01T09:00:00+03:00' }; await assert.rejects(f.svc.guardWrite(f.owner, 'expenses', e), e => e.status === 409); await f.svc.guardWrite(f.owner, 'expenses', { ...e, amount: 5000 }); });
 test('старая форма не меняет капитал, условия, закрытый платёж или сам журнал', async () => { const f = await fixture(); await assert.rejects(f.svc.guardWrite(f.owner, 'investors', { ...f.ii[0], initialAmount: 2e6 }, f.ii[0]), e => e.status === 409); await f.svc.guardWrite(f.owner, 'investors', { ...f.ii[0], phone: '123' }, f.ii[0]); await assert.rejects(f.svc.guardWrite(f.owner, 'accounts', { ...f.account, poolAccounting: undefined }, f.account), e => e.status === 409); let p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...f.sale, totalAmount: 300000 }, f.sale), e => e.status === 409); const future = { ...f.sale, paymentPlan: [...f.sale.paymentPlan, { id: 'new', amount: 1000, date: '2026-12-01T09:00:00+03:00', isPaid: true, isRealPayment: true }] }; await f.svc.guardWrite(f.owner, 'sales', future, f.sale); });

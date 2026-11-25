@@ -3,7 +3,7 @@ import type { Account, Investor, PoolMonthReport, PoolProfitBasis } from '../typ
 import GlassSheet, { SheetSection, SheetField, sheetInputClass } from './GlassSheet';
 import { api } from '../services/api';
 import { formatCurrency } from '../src/utils';
-import { poolMonth, poolMonthStart, nextPoolMonth, poolTermsAt, poolProfitBasis, poolProfitDisposition, isPoolMemberActiveAt } from '../shared/profit.js';
+import { poolDay, poolTime, poolMonth, poolMonthStart, nextPoolMonth, poolTermsAt, poolProfitBasis, poolProfitDisposition, isPoolMemberActiveAt } from '../shared/profit.js';
 import { appConfirm } from '../src/dialogs';
 type State = {
     balances?: {
@@ -32,6 +32,11 @@ const profitBasisLabels: Record<PoolProfitBasis, string> = {
     MONTH: 'По месяцу взноса',
     SCHEDULE_PERIOD: 'По полному периоду графика',
 };
+type EntryDateCorrection = {
+    months: string[];
+    fingerprint: string;
+    rows: { id: string; name: string; before: number; after: number; closedDelta: number; availableAfter: number }[];
+};
 export default function PoolAccountingSheet({ account, onClose, onChanged }: {
     account: Account;
     onClose: () => void;
@@ -56,6 +61,7 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
     const [excluded, setExcluded] = useState<string[]>([]), [verified, setVerified] = useState(false);
     const [operation, setOperation] = useState(''), [investorId, setInvestorId] = useState(''), [amount, setAmount] = useState(''), [name, setName] = useState(''), [rate, setRate] = useState('50'), [mode, setMode] = useState('PAYABLE');
     const [date, setDate] = useState(''), [effectiveMonth, setEffectiveMonth] = useState(nextPoolMonth(poolMonth(Date.now())));
+    const [entryDateCorrection, setEntryDateCorrection] = useState<EntryDateCorrection | null>(null);
     const [reason, setReason] = useState('');
     const [profitBasis, setProfitBasis] = useState<PoolProfitBasis | null>(null);
     const [management, setManagement] = useState<Record<string, string>>({});
@@ -72,11 +78,13 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
         appliedRevision.current=Number(r.account.poolAccounting?.revision||0);
         await load();
         if (action === 'profitBasis') setProfitBasis(null);
+        if (action === 'correctEntryDate') setEntryDateCorrection(null);
         setOperation('');
         setAmount('');
         setVerified(false);
     }
     catch (e: any) {
+        if (action === 'correctEntryDate' && e.status === 409) setEntryDateCorrection(null);
         setError(e.message);
     }
     finally {
@@ -94,7 +102,26 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
         ? month < config.startMonth ? config.startMonth : month > currentMonth ? (config.startMonth > currentMonth ? config.startMonth : currentMonth) : month
         : month;
     const report = data?.reports.find(r => r.month === selectedMonth);
-    const select = (id: string) => { setInvestorId(id); const i = data?.investors.find(i => i.id === id), terms = poolTermsAt(data?.account, Date.now()); setRate(String(terms?.members[id]?.rate ?? i?.profitPercentage ?? 50)); setMode(poolProfitDisposition(data?.account, id)); setOperation('capital'); setAmount(''); setDate(''); };
+    const activeInvestor = data?.investors.find(i => i.id === investorId);
+    const firstEntryTime = activeInvestor?.investmentPeriods?.length
+        ? Math.min(...activeInvestor.investmentPeriods.map(period => poolTime(period.joinedDate)))
+        : poolTime(activeInvestor?.joinedDate);
+    const firstEntryDay = Number.isFinite(firstEntryTime) ? poolDay(firstEntryTime) : '';
+    const select = (id: string) => { setInvestorId(id); const i = data?.investors.find(i => i.id === id), terms = poolTermsAt(data?.account, Date.now()); setRate(String(terms?.members[id]?.rate ?? i?.profitPercentage ?? 50)); setMode(poolProfitDisposition(data?.account, id)); setOperation('capital'); setAmount(''); setDate(''); setEntryDateCorrection(null); };
+    const previewEntryDate = async () => {
+        setBusy(true);
+        setError('');
+        setEntryDateCorrection(null);
+        try {
+            const result = await api.poolRequest(account.id, 'preview', { entryDateCorrection: { investorId, entryDate: date } });
+            applyAutomatic(result);
+            setEntryDateCorrection(result.entryDateCorrection);
+        } catch (e: any) {
+            setError(e.message);
+        } finally {
+            setBusy(false);
+        }
+    };
     const execute = () => {
         const common = { investorId, date: date || undefined };
         if (operation === 'adjustment')
@@ -175,15 +202,45 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
           </div>
         </details>
         <SheetSection title="Участники">
-          {data.investors.map(i => <button key={i.id} onClick={() => select(i.id)} className="flex w-full items-center justify-between gap-3 border-b border-slate-100 p-4 text-left last:border-0 dark:border-slate-700"><span className="min-w-0 break-words"><strong className="block text-sm">{i.name}</strong><span className="text-xs text-slate-500 dark:text-slate-400">{poolProfitDisposition(data.account, i.id) === 'REINVEST' ? 'Прибыль: в капитал' : 'Прибыль: к выплате'}{!isPoolMemberActiveAt(i, Date.now()) ? ' · Вышел' : ''}</span></span><span className="shrink-0 text-right"><span className="block text-xs text-slate-500 dark:text-slate-400">Капитал</span><span className="block text-sm tabular-nums">{money(i.initialAmount)} ›</span></span></button>)}
-          <button onClick={() => { setOperation('add'); setName(''); setAmount(''); setDate(''); setRate('50'); setMode('PAYABLE'); }} className="w-full p-4 text-primary-600">+ Добавить инвестора</button>
+          {data.investors.map(i => <button key={i.id} disabled={busy} onClick={() => select(i.id)} className="flex w-full items-center justify-between gap-3 border-b border-slate-100 p-4 text-left last:border-0 dark:border-slate-700"><span className="min-w-0 break-words"><strong className="block text-sm">{i.name}</strong><span className="text-xs text-slate-500 dark:text-slate-400">{poolProfitDisposition(data.account, i.id) === 'REINVEST' ? 'Прибыль: в капитал' : 'Прибыль: к выплате'}{!isPoolMemberActiveAt(i, Date.now()) ? ' · Вышел' : ''}</span></span><span className="shrink-0 text-right"><span className="block text-xs text-slate-500 dark:text-slate-400">Капитал</span><span className="block text-sm tabular-nums">{money(i.initialAmount)} ›</span></span></button>)}
+          <button disabled={busy} onClick={() => { setOperation('add'); setName(''); setAmount(''); setDate(''); setRate('50'); setMode('PAYABLE'); }} className="w-full p-4 text-primary-600">+ Добавить инвестора</button>
         </SheetSection>
-        <button onClick={() => { setOperation('adjustment'); setAmount(''); setReason(''); }} className="px-4 text-sm text-primary-600">Корректировка</button>
-        <button onClick={() => setOperation('management')} className="px-4 text-sm text-primary-600">Доли за управление</button>
+        <button disabled={busy} onClick={() => { setOperation('adjustment'); setAmount(''); setReason(''); }} className="px-4 text-sm text-primary-600">Корректировка</button>
+        <button disabled={busy} onClick={() => setOperation('management')} className="px-4 text-sm text-primary-600">Доли за управление</button>
         {operation && <SheetSection hint={operation === 'management' ? 'Проценты от управленческой части. Остаток остаётся владельцу.' : undefined} title={operation === 'add' ? 'Новый инвестор' : operation === 'management' ? 'Управление' : operation === 'adjustment' ? 'Корректировка' : data.investors.find(i => i.id === investorId)?.name || 'Операция'}>
           {!['add', 'management', 'adjustment'].includes(operation) && <div className="flex flex-wrap gap-2 p-3">{[['deposit', 'Пополнить'], ['withdraw', 'Вернуть вложение'], ['reinvest', 'Реинвестировать'], ['terms', 'Условия'], ...(!isPoolMemberActiveAt(data.investors.find(i => i.id === investorId) || {}, Date.now()) ? [['reentry', 'Повторный вход']] : [])].map(([id, label]) => <button key={id} onClick={() => { setOperation(id); setAmount(''); setDate(''); }} className={`min-h-[44px] rounded-xl px-3 py-2 text-xs ${operation === id ? 'bg-primary-600 text-white' : 'bg-slate-100 dark:bg-slate-700'}`}>{label}</button>)}</div>}
           {!['management', 'add', 'adjustment'].includes(operation) && investorId && data.balances?.investors[investorId] && <div className="space-y-2 px-4 py-3 text-sm">{[['Начислено', data.balances.investors[investorId].earned], ['Реинвестировано', data.balances.investors[investorId].reinvested], ['Получено инвестором', data.balances.investors[investorId].paid], ['К получению', data.balances.investors[investorId].available]].map(([label, value]) => <div className="flex justify-between gap-3" key={String(label)}><span>{label}</span><strong>{money(Number(value))}</strong></div>)}</div>}
-          {operation === 'capital' ? <p className="px-4 pb-4 text-xs text-slate-500">Выберите действие.</p> : <>
+          {operation === 'terms' && firstEntryDay && <button type="button" disabled={busy} className="px-4 py-2 text-sm font-semibold text-primary-600" onClick={() => {
+              setOperation('entryDate'); setDate(firstEntryDay); setEntryDateCorrection(null); setError('');
+          }}>Исправить дату входа</button>}
+          {operation === 'entryDate' && <div className="space-y-3 p-4 text-sm">
+            <SheetField label="Дата первого входа">
+              <input aria-label="Дата первого входа" type="date" max={poolDay()} value={date} disabled={busy}
+                onChange={e => { setDate(e.target.value); setEntryDateCorrection(null); }} className={sheetInputClass}/>
+            </SheetField>
+            <p className="text-xs text-slate-500 dark:text-slate-400">Дата поступления денег в кассу сохраняется.</p>
+            <button type="button" disabled={busy || !date || date === firstEntryDay} onClick={() => void previewEntryDate()}
+              className="min-h-11 rounded-xl bg-slate-100 px-4 font-semibold text-primary-600 disabled:opacity-40 dark:bg-slate-700">Проверить расчёт</button>
+            {entryDateCorrection && <div className="space-y-3" aria-live="polite">
+              <p className="text-slate-500 dark:text-slate-400">{entryDateCorrection.months.length
+                ? `Разница за закрытые месяцы (${entryDateCorrection.months.join(', ')}) будет проведена в текущем месяце.`
+                : 'Будет обновлён расчёт открытых месяцев.'}</p>
+              <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2 text-xs tabular-nums sm:text-sm">
+                <span>Начислено</span><span className="text-right">Сейчас</span><span className="text-right">После</span>
+                {entryDateCorrection.rows.map(row => <React.Fragment key={row.id}>
+                  <span className="min-w-0 break-words">{row.name}
+                    {!!row.closedDelta && <small className="block text-slate-500 dark:text-slate-400">За закрытые месяцы {row.closedDelta > 0 ? '+' : ''}{money(row.closedDelta)}</small>}
+                    {row.availableAfter < 0 && <small className="block text-rose-600 dark:text-rose-400">К выводу {money(row.availableAfter)}</small>}
+                  </span>
+                  <span className="text-right">{money(row.before)}</span><strong className="text-right">{money(row.after)}</strong>
+                </React.Fragment>)}
+              </div>
+              <button type="button" disabled={busy} className="w-full rounded-xl bg-primary-600 p-3 font-semibold text-white disabled:opacity-40"
+                onClick={() => void run('correctEntryDate', { investorId, entryDate: date, confirmed: true, fingerprint: entryDateCorrection.fingerprint })}>Подтвердить исправление</button>
+            </div>}
+          </div>}
+          {operation === 'capital' && <p className="px-4 pb-4 text-xs text-slate-500">Выберите действие.</p>}
+          {!['capital', 'entryDate'].includes(operation) && <>
             {operation === 'add' && <SheetField label="Имя"><input aria-label="Имя инвестора пула" value={name} onChange={e => setName(e.target.value)} className={sheetInputClass}/></SheetField>}
             {['add', 'deposit', 'withdraw', 'reinvest', 'reentry', 'adjustment'].includes(operation) && <SheetField label="Сумма"><input aria-label="Сумма операции пула" type="number" inputMode="decimal" min={operation === 'adjustment' ? undefined : 0} step="0.01" value={amount} onChange={e => setAmount(e.target.value)} className={sheetInputClass}/></SheetField>}
             {['add', 'deposit', 'withdraw', 'reentry', 'adjustment'].includes(operation) && <SheetField label="Дата" hint="Пусто — сейчас"><input aria-label="Дата операции пула" type="date" value={date} onChange={e => setDate(e.target.value)} className={sheetInputClass}/></SheetField>}

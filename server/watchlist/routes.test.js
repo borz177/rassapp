@@ -639,9 +639,10 @@ test('общий список: реальная локальная PostgreSQL, �
         <div class="text"><b>ФИО:</b> ${name}<br>Дата рождения: 17.04.1991<br>Причина: Длительная просрочка
         <script>secretScript()</script><img src="https://example.invalid/archive"><a href="https://example.invalid/source">Текст &amp; символ</a></div></div></div>`;
       const html='<html><body>'+message(50)+'<div class="message service" id="message51">Системное</div>'+message(52)+'</body></html>';
-      const upload=async (content, userId='admin', token=proof, expected=200) => {
+      const upload=async (content, userId='admin', token=proof, expected=200, selection) => {
         const body=new FormData();
         body.append('source','Тестовый канал');
+        if (selection !== undefined) body.append('selection', JSON.stringify(selection));
         body.append('archive',new Blob([content],{type:'text/html'}),'messages.html');
         const res=await fetch(`http://127.0.0.1:${server.address().port}/api/admin/watchlist/archives`,{
           method:'POST',headers:{'x-auth-token':userId,'x-watchlist-admin':token},body,
@@ -650,6 +651,14 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.equal(res.status,expected,JSON.stringify(json));
         return json;
       };
+      async function waitArchive(id) {
+        for (let attempt = 0; attempt < 75; attempt++) {
+          const detail = await adm(`/archives/${id}`);
+          if (['ready', 'failed'].includes(detail.job.status)) return detail;
+          await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        assert.fail('Очередь импорта не завершилась');
+      }
       await pool.query("INSERT INTO users(id,name,email,role,password) VALUES('archive_admin','Второй админ','archive@synthetic.test','admin',$1)",[hash]);
       const otherProof=(await req('archive_admin','admin/watchlist/unlock',{password:'Synthetic-password',code:currentCode()})).proof;
       const existing=(await adm('/overview')).settings;
@@ -716,9 +725,133 @@ test('общий список: реальная локальная PostgreSQL, �
         await adm(`/entries/${active.id}/delete`,{version:active.version,confirmed:true});
         assert.equal((await adm(`/archives/${job.id}`)).items[0].state,'removed');
         assert.deepEqual((await adm(record+'/history')).items,[]);
+        const originalBase = process.env.OPENROUTER_BASE_URL, originalKey = process.env.OPENROUTER_API_KEY;
+        const filter = { from: '2026-04-01', to: '2026-04-01', reasons: ['overdue'], includeAny: ['ёлка'], excludeAny: ['долг погашен'], requireReason: true };
+        const instruction = 'Возьми только сообщения первого апреля с длительной просрочкой и фразой ёлка, кроме погашенных долгов.';
+        const model = express();
+        model.use(express.json());
+        const requests = [];
+        model.post('/chat/completions', (request, response) => {
+          requests.push(request.body);
+          const value = request.body.messages.at(-1).content === instruction ? filter : { unsupported: true };
+          response.json({ choices: [{ message: { content: JSON.stringify(value) } }] });
+        });
+        const stub = await new Promise(resolve => { const handle = model.listen(0, '127.0.0.1', () => resolve(handle)); });
+        try {
+          process.env.OPENROUTER_BASE_URL = `http://127.0.0.1:${stub.address().port}`;
+          process.env.OPENROUTER_API_KEY = 'local-synthetic';
+          await req('admin', 'admin/watchlist/archives/selection', { instruction }, 403);
+          await req('owner', 'admin/watchlist/archives/selection', { instruction }, 403, true);
+          const interpreted = (await adm('/archives/selection', { instruction })).selection;
+          assert.deepEqual(interpreted, { ...filter, includeAny: ['елка'] });
+          assert.deepEqual(requests[0].messages.filter(row => row.role === 'user'), [{ role: 'user', content: instruction }]);
+          assert.equal(requests[0].provider.data_collection, 'deny');
+          await adm('/archives/selection', { instruction: 'Определи поведение человека по переписке' }, 422);
+          assert.equal(requests.length, 2);
+          const post = (number, date, content) => `<div class="message default" id="message${number}"><div class="date details" title="${date}"></div><div class="text">${content}</div></div>`;
+          const complete = 'Синтетический Тестовый Пример<br>17.04.1991<br>Причина: Длительная просрочка<br>ЁЛКА';
+          const mixed = [
+            post(100, '31.03.2026 21:00:00 UTC+00:00', complete),
+            post(101, '01.04.2026 12:00:00 UTC+03:00', complete + '<br>Долг погашен'),
+            post(102, '02.04.2026 12:00:00 UTC+03:00', complete),
+            post(103, '01.04.2026 12:00:00 UTC+03:00', 'Обсуждение без карточки, ЁЛКА'),
+            post(104, '01.04.2026 12:00:00 UTC+03:00', complete.replace('Длительная просрочка', 'Неисполнение обязательств')),
+          ].join('');
+          await upload(mixed, 'admin', proof, 400, { ...interpreted, from: '2026-04-31' });
+          const selected = await upload(mixed, 'admin', proof, 200, interpreted);
+          const result = await waitArchive(selected.id);
+          assert.equal(result.job.status, 'ready', result.job.error);
+          assert.deepEqual([result.job.scanned, result.job.total, result.items[0].message.messageId], [5, 1, '100']);
+          assert.equal((await upload(mixed, 'admin', proof, 200, interpreted)).id, selected.id);
+          const none = await upload(mixed, 'admin', proof, 200, { ...interpreted, includeAny: ['несуществующая фраза'] });
+          const empty = await waitArchive(none.id);
+          assert.notEqual(none.id, selected.id);
+          assert.deepEqual([empty.job.status, empty.job.scanned, empty.job.total, empty.items.length], ['ready', 5, 0, 0]);
+          assert.equal((await adm('/entries?name='+encodeURIComponent('Синтетический Тестовый Пример'))).items.length, 0);
+          assert.equal(requests.length, 2, 'Архив и сообщения остаются внутри сервера');
+        } finally {
+          await new Promise(resolve => stub.close(resolve));
+          if (originalBase === undefined) delete process.env.OPENROUTER_BASE_URL; else process.env.OPENROUTER_BASE_URL = originalBase;
+          if (originalKey === undefined) delete process.env.OPENROUTER_API_KEY; else process.env.OPENROUTER_API_KEY = originalKey;
+        }
+        const post = (number, text, date = '') => `<div class="message default" id="message${number}"><div class="date details" title="${date}"></div><div class="text">${text}</div></div>`;
+        const today = new Date(Date.now() + 3 * 3600000).toISOString().slice(0,10);
+        const anonymousDate = 'Карандашов Образец Тестович';
+        const taggedName = 'Известный Учебный Тестович';
+        const mixed = [
+          post(200,`ФИО: ${anonymousDate}<br>Дата рождения: не указана<br>Причина: —`),
+          post(201,`ФИО: ${taggedName} (06.02.1990)<br>Причина: Длительная просрочка`,'02.04.2026 10:00:00 UTC+03:00'),
+          post(202,`ФИО: ${taggedName}`),
+          post(203,'Проверьте сообщение в соседнем канале'),
+          post(204,'ФИО: Ошибочный Учебный Тестович<br>Дата рождения: 31.02.1991'),
+          ...Array.from({ length:99 }, (_, i) => post(300+i,`ФИО: Синтетический Образец Тестович${String.fromCharCode(1072+Math.floor(i/26),1072+i%26)}`)),
+        ].join('');
+        const bulkJob = await upload(mixed);
+        const ready = await waitArchive(bulkJob.id);
+        assert.deepEqual([ready.job.total, ready.job.scanned, ready.draftCount, ready.canPublish], [103,104,103,true]);
+        assert.equal(ready.items[0].dateFromImport, true);
+        assert.equal(new Date(Date.parse(ready.items[0].fields.publishedAt)+3*3600000).toISOString().slice(0,10),today);
+        assert.equal(ready.items[0].message.publishedAt, null);
+        assert.equal(ready.items[1].fields.birthDate,'06.02.1990');
+        const publishPath = `/archives/${bulkJob.id}/publish`;
+        const defaults = { basisVerified:true, shownVersion:POLICY_VERSION, defaultReason:'other', defaultReasonDetails:'Основание из сверенного источника' };
+        await adm(publishPath, { ...defaults,basisVerified:false },403);
+        await adm(publishPath, { ...defaults,shownVersion:'stale' },400);
+        await adm(publishPath, { ...defaults,defaultReasonDetails:'' },400);
+        const foreign = await fetch(`http://127.0.0.1:${server.address().port}/api/admin/watchlist${publishPath}`,{
+          method:'POST',headers:{'content-type':'application/json','x-auth-token':'archive_admin','x-watchlist-admin':otherProof},body:JSON.stringify(defaults),
+        });
+        assert.equal(foreign.status,404);
+        await adm('/settings',{...(await adm('/overview')).settings,submissionsPaused:true,reason:'Проверка паузы синтетической публикации'});
+        assert.equal((await adm(`/archives/${bulkJob.id}`)).canPublish,false);
+        await adm(publishPath,defaults,403);
+        await adm('/settings',{...(await adm('/overview')).settings,submissionsPaused:false,reason:'Восстановление после проверки паузы'});
+        const allPath = `/archives/${bulkJob.id}`;
+        const lastDraft = (await adm(allPath+'?offset=102&limit=1')).items[0];
+        const excludePath = allPath+`/records/${lastDraft.ordinal}`;
+        const excluded = await adm(excludePath,{action:'exclude',version:lastDraft.version});
+        assert.equal(excluded.excluded,true);
+        assert.equal((await adm(excludePath,{action:'exclude',version:lastDraft.version})).version,excluded.version);
+        assert.equal((await adm(allPath+'?offset=102&limit=1')).items.length,0);
+        const excludedList = await adm(allPath+'?excluded=1');
+        assert.deepEqual([excludedList.excludedCount,excludedList.draftCount,excludedList.items[0].ordinal],[1,102,lastDraft.ordinal]);
+        await adm(excludePath,{action:'restore',version:lastDraft.version},409);
+        await adm(excludePath,{action:'submit',version:excluded.version,confirmed:true,fields:lastDraft.fields},409);
+        const firstPage = await adm(publishPath,defaults);
+        assert.deepEqual(firstPage,{published:98,duplicates:1,invalid:1,review:0,next:100});
+        const lastPage = await adm(publishPath,{ ...defaults,after:firstPage.next });
+        assert.deepEqual(lastPage,{published:2,duplicates:0,invalid:0,review:0,next:null});
+        assert.equal((await adm(publishPath,defaults)).published,0);
+        assert.equal((await adm('/entries?name='+encodeURIComponent(lastDraft.fields.name))).items.length,0);
+        const [noBirth] = (await adm('/entries?name='+encodeURIComponent(anonymousDate))).items;
+        assert.equal(noBirth.birthDate,undefined);
+        assert.equal(noBirth.birthYear,null);
+        assert.equal(noBirth.status,'published');
+        assert.equal(noBirth.reason,'other');
+        assert.equal(noBirth.reasonDetails,defaults.defaultReasonDetails);
+        assert.equal(noBirth.telegramSource.dateFromImport,true);
+        const [retained] = (await adm('/entries?name='+encodeURIComponent(taggedName))).items;
+        assert.equal(retained.reason,'overdue');
+        assert.equal(retained.telegramSource.dateFromImport,undefined);
+        assert.equal((await adm(`/archives/${bulkJob.id}/records/1/history`)).items[0].action,'publish');
+        const afterPublish = await adm(`/archives/${bulkJob.id}`);
+        assert.equal(afterPublish.draftCount,2);
+        assert.match(afterPublish.items[3].errors.join(' '),/дату рождения/);
+        const restored = await adm(excludePath,{action:'restore',version:excluded.version});
+        assert.equal(restored.excluded,false);
+        assert.deepEqual((await adm(excludePath+'/history')).items.map(item=>item.action),['restored','excluded']);
+        assert.equal((await adm(publishPath,defaults)).published,1);
+        await adm(excludePath,{action:'exclude',version:restored.version+1},409);
+        const rejectedName = 'Отклонённый Учебный Тестович';
+        await adm('/entries/import',{text:`${rejectedName} 10.10.1990 Длительная просрочка`,action:'pending'});
+        const [moderated] = (await adm('/entries?name='+encodeURIComponent(rejectedName))).items;
+        await adm(`/entries/${moderated.id}/decision`,{version:moderated.version,action:'reject',note:'Синтетическое отклонение'});
+        const rejectedArchive = await upload(post(501,`ФИО: ${rejectedName}`));
+        await waitArchive(rejectedArchive.id);
+        assert.deepEqual(await adm(`/archives/${rejectedArchive.id}/publish`,defaults),{published:0,duplicates:0,invalid:0,review:1,next:null});
       } finally {
         if(entryId) await pool.query('DELETE FROM client_watchlist_entries WHERE id=$1',[entryId]);
-        await adm('/settings',{...(await adm('/overview')).settings,autoPublish:existing.autoPublish,reason:'Восстановление настроек теста'});
+        await adm('/settings',{...(await adm('/overview')).settings,autoPublish:existing.autoPublish,submissionsPaused:existing.submissionsPaused,reason:'Восстановление настроек теста'});
       }
     });
     await t.test('ограничения не обходятся API; отзыв доступен при паузе/без новых правил; финансы неизменны', async () => {

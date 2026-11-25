@@ -1,4 +1,4 @@
-// Изолированный реестр. Не использует generic data API, офлайн-очередь или LLM.
+// Изолированный реестр. Архив и записи обрабатываются внутри сервера.
 const crypto = require('node:crypto');
 const bcrypt = require('bcryptjs');
 const { loadVault, loadTotpSecret, totpCounter } = require('./crypto');
@@ -8,7 +8,8 @@ const P = require('./policy');
 const { parseImport } = require('./bulkImport');
 const multer = require('multer');
 const { MAX_BYTES, MAX_MIB } = require('./telegramArchive');
-const { createArchiveImports, draftFields, verifyDraft } = require('./archiveImports');
+const { createArchiveImports, draftFields, verifyDraft, withPublicationDate } = require('./archiveImports');
+const { interpretSelection } = require('./archiveSelection');
 const digest = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const id = () => crypto.randomUUID();
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -443,36 +444,53 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       return { ...view, ownerId:r.owner_id, ownerEmail:r.owner_email, ...(showSource ? { telegramSource:payload(r)?.telegramSource } : {}) };
     }), hasMore: r.rows.length > take };
   });
-  async function inspectImportRows(db, rows, revokedIds, ignoreEntryId = null) {
+  async function inspectImportRows(db, rows, revokedIds, ignoreEntryId = null, matchUnknownDate = false) {
     const candidates = rows.filter(row => !row.error).map(row => {
       const identity = [P.normalizeName(row.name), row.birthYear];
       const legacyId = 'import:' + vault.index('admin_import', identity);
       const customerId = row.birthDate ? 'import:' + vault.index('admin_import_date', [identity[0], row.birthDate]) : legacyId;
-      return { ...row, customerId, legacyId, key: vault.index('year', identity) };
+      return { ...row, customerId, legacyId, key: vault.index('year', identity), nameKey: vault.index('name', identity[0]) };
     });
-    const { rows: known } = await db.query(`SELECT id,payload,customer_id,year_index,status=ANY($4::text[]) AS active_source,
+    const { rows: known } = await db.query(`SELECT id,payload,customer_id,year_index,name_index,status=ANY($4::text[]) AS active_source,
       (status=ANY($4::text[]) AND (status NOT IN ('published','hidden') OR expires_at IS NULL OR expires_at>now())
         AND NOT(id=ANY($3::text[]))) AS active, review_required
-      FROM client_watchlist_entries WHERE (year_index=ANY($1::text[]) OR customer_id=ANY($2::text[])) AND id IS DISTINCT FROM $5::text`,
-    [candidates.map(row => row.key), candidates.flatMap(row => [row.customerId, row.legacyId]), revokedIds, P.ACTIVE, ignoreEntryId]);
+      FROM client_watchlist_entries WHERE (year_index=ANY($1::text[]) OR customer_id=ANY($2::text[]) OR name_index=ANY($6::text[])) AND id IS DISTINCT FROM $5::text`,
+    [candidates.map(row => row.key), candidates.flatMap(row => [row.customerId, row.legacyId]), revokedIds, P.ACTIVE, ignoreEntryId,
+      matchUnknownDate ? candidates.map(row => row.nameKey) : []]);
     const datesByYear = new Map();
-    const trackDate = (key, date) => {
-      if (!datesByYear.has(key)) datesByYear.set(key, new Set());
-      datesByYear.get(key).add(date);
+    const yearsByName = new Map(), reviewedYearsByName = new Map();
+    const track = (map, key, value) => {
+      if (!map.has(key)) map.set(key, new Set());
+      map.get(key).add(value);
     };
     for (const row of known) {
-      if (row.active) trackDate(row.year_index, payload(row)?.identity.birthDate ?? null);
+      if (!row.active && !(matchUnknownDate && row.review_required && row.name_index)) continue;
+      const person = payload(row)?.identity;
+      if (row.active) track(datesByYear, row.year_index, person?.birthDate ?? null);
+      if (matchUnknownDate && row.name_index) {
+        if (row.active) track(yearsByName, row.name_index, person?.birthYear ?? null);
+        if (row.review_required) track(reviewedYearsByName, row.name_index, person?.birthYear ?? null);
+      }
     }
     const activeSources = new Set(known.filter(row => row.active_source).map(row => row.customer_id));
     const needsReview = new Set(known.filter(row => row.review_required).map(row => row.customer_id));
+    const ambiguousName = (names, row) => {
+      const years = names.get(row.nameKey);
+      return years?.size > 0 && (!row.birthYear || years.has(null));
+    };
     // При повторе в одном списке сначала рассматриваем строки с полной датой.
     const bySpecificity = [...candidates].sort((a, b) => Number(Boolean(b.birthDate)) - Number(Boolean(a.birthDate)));
     const checked = new Map(bySpecificity.map(row => {
       const dates = datesByYear.get(row.key);
       const duplicate = activeSources.has(row.customerId) ||
-        (dates?.size > 0 && (!row.birthDate || dates.has(null) || dates.has(row.birthDate)));
-      if (!duplicate) trackDate(row.key, row.birthDate ?? null);
-      return [row.number, { ...row, duplicate: Boolean(duplicate), review: needsReview.has(row.customerId) || needsReview.has(row.legacyId) }];
+        (dates?.size > 0 && (!row.birthDate || dates.has(null) || dates.has(row.birthDate))) || ambiguousName(yearsByName, row);
+      if (!duplicate) {
+        track(datesByYear, row.key, row.birthDate ?? null);
+        if (matchUnknownDate) track(yearsByName, row.nameKey, row.birthYear ?? null);
+      }
+      const { nameKey, ...result } = row;
+      return [row.number, { ...result, duplicate: Boolean(duplicate),
+        review: Boolean(needsReview.has(row.customerId) || needsReview.has(row.legacyId) || ambiguousName(reviewedYearsByName, row)) }];
     }));
     return rows.map(row => checked.get(row.number) || row);
   }
@@ -515,7 +533,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     }
     return result;
   });
-  const readArchiveFile = multer({ storage:multer.memoryStorage(), limits:{ fileSize:MAX_BYTES, files:1, fields:1, fieldSize:1024, parts:3 } }).single('archive');
+  const readArchiveFile = multer({ storage:multer.memoryStorage(), limits:{ fileSize:MAX_BYTES, files:1, fields:2, fieldSize:8192, parts:4 } }).single('archive');
   let archiveUploads = 0;
   const receiveArchive = async (req,res,next) => {
     res.setHeader('Cache-Control','no-store, private');
@@ -537,27 +555,86 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   async function checkArchiveRecord(db, fields, ignoreEntryId) {
     const { valid, errors } = verifyDraft(fields);
     if (errors.length) throw P.problem(400, errors[0]);
-    const [candidate] = await inspectImportRows(db,[{ number:1,...valid }],requireImport(),ignoreEntryId);
-    if (candidate.duplicate) throw P.problem(409, 'В реестре уже есть запись с такими ФИО и датой рождения.');
+    const [candidate] = await inspectImportRows(db,[{ number:1,...valid }],requireImport(),ignoreEntryId,true);
+    if (candidate.duplicate) throw P.problem(409, 'В реестре уже есть возможный дубль с такими ФИО.');
     return candidate;
   }
+  const archiveSourceIndex = (owner, message) => vault.index('telegram_source',
+    [owner,message.source.trim().toLowerCase(),message.messageId,message.publishedAt || digest(message.text)]);
+  const archiveProvenance = (data, candidate) => ({
+    source:candidate.source,publishedAt:candidate.publishedAt,messageId:data.message.messageId,
+    ...(data.dateFromImport ? { dateFromImport:true } : {}),
+  });
   app.post('/api/admin/watchlist/archives',auth,receiveArchive,wrap(async (req,db) => {
     requireImport();
     if ((await settings(db)).submissions_paused) throw P.problem(403, 'Приём новых записей временно приостановлен.');
-    const job = await archives.enqueue(db,req.user.id,req.file,req.body?.source);
+    const job = await archives.enqueue(db,req.user.id,req.file,req.body?.source,req.body?.selection);
     await event(db,req.user.id,'ARCHIVE_UPLOADED',job.id);
     return job;
   },{ admin:true }));
+  let selectionInProgress = false;
+  adminRoute('post', '/archives/selection', async req => {
+    requireImport();
+    if (selectionInProgress) throw P.problem(429, 'FinUchetGPT уже готовит фильтр. Повторите чуть позже.');
+    await limit(req.user.id, 'archive_selection', 12);
+    if (selectionInProgress) throw P.problem(429, 'FinUchetGPT уже готовит фильтр. Повторите чуть позже.');
+    selectionInProgress = true;
+    try { return { selection: await interpretSelection(req.body?.instruction) }; }
+    finally { selectionInProgress = false; }
+  });
   adminRoute('get', '/archives', (req,db) => archives.list(db,req.user.id));
   adminRoute('get', '/archives/:jobId', async (req,db) => {
     const revoked = requireImport();
-    const view = await archives.detail(db,req.user.id,req.params.jobId,P.page(req.query));
-    const candidates = view.items.filter(row=>row.state==='draft' && !row.errors.length).map(row=>({ number:row.ordinal,...verifyDraft(row.fields).valid }));
+    const view = await archives.detail(db,req.user.id,req.params.jobId,{...P.page(req.query),excluded:req.query.excluded==='1'});
+    const candidates = view.items.filter(row=>row.state==='draft' && !row.excluded && !row.errors.length).map(row=>({ number:row.ordinal,...verifyDraft(row.fields).valid }));
     if (candidates.length) {
-      const checked = new Map((await inspectImportRows(db,candidates,revoked)).map(row=>[row.number,row.duplicate]));
+      const checked = new Map((await inspectImportRows(db,candidates,revoked,null,true)).map(row=>[row.number,row.duplicate]));
       for (const row of view.items) row.duplicate ||= !!checked.get(row.ordinal);
     }
-    return view;
+    return { ...view, canPublish:view.job.status==='ready' && canPublishImport(await settings(db)) };
+  });
+  adminRoute('post', '/archives/:jobId/publish', async (req, db) => {
+    const owner = req.user.id, b = req.body || {}, after = b.after ?? 0;
+    if (b.basisVerified !== true) throw P.problem(403, 'Подтвердите основание публикации записей.');
+    if (b.shownVersion !== P.POLICY_VERSION) throw P.problem(400, 'Обновите приложение, чтобы подтвердить публикацию.');
+    if (!Number.isInteger(after) || after < 0 || after > 20000) throw P.problem(400, 'Некорректная страница архива.');
+    const defaultReason = b.defaultReason ? P.submissionReason({ reason:b.defaultReason, reasonDetails:b.defaultReasonDetails }) : null;
+    await archiveLock(db);
+    const s = await settings(db), revoked = requireImport();
+    if (!canPublishImport(s)) throw P.problem(403, 'Публикация недоступна при текущих настройках.');
+    const { rows, next } = await archives.draftBatch(db, owner, req.params.jobId, after);
+    const result = { published:0, duplicates:0, invalid:0, review:0, next };
+    const batch = new Map();
+    const now = Date.now();
+    const seen = new Set();
+    const sources = new Map(rows.map(row => {
+      const data = archives.open(row);
+      return [row.ordinal, { data, index:archiveSourceIndex(owner,data.message) }];
+    }));
+    const existing = await db.query('SELECT source_index FROM client_watchlist_archive_records WHERE owner_id=$1 AND source_index=ANY($2::text[])',
+      [owner,[...sources.values()].map(row=>row.index)]);
+    for (const row of existing.rows) seen.add(row.source_index);
+    for (const row of rows) {
+      const source = sources.get(row.ordinal);
+      if (seen.has(source.index)) { result.duplicates++; continue; }
+      let data = withPublicationDate(source.data, now);
+      if (!data.fields.reason && defaultReason) data = { ...data, fields:draftFields({ ...data.fields, ...defaultReason }) };
+      const { valid, errors } = verifyDraft(data.fields);
+      if (errors.length) { result.invalid++; continue; }
+      seen.add(source.index);
+      batch.set(row.ordinal, { row, data, index:source.index, candidate:{ number:row.ordinal,...valid } });
+    }
+    const candidates = await inspectImportRows(db,[...batch.values()].map(item=>item.candidate),revoked,null,true);
+    for (const candidate of candidates) {
+      if (candidate.duplicate) { result.duplicates++; continue; }
+      if (candidate.review) { result.review++; continue; }
+      const { row, data, index } = batch.get(candidate.number);
+      const fields = { reason:candidate.reason, reasonDetails:candidate.reasonDetails, telegramSource:archiveProvenance(data,candidate) };
+      const imported = await insertEntry(db,owner,s,candidate,fields,{adminImport:true,publicationMode:'manual'});
+      await archives.write(db,row,data,owner,'publish',{entryId:imported.id,state:'submitted',sourceIndex:index});
+      result.published++;
+    }
+    return result;
   });
   adminRoute('get', '/archives/:jobId/records/:ordinal/history', (req,db) => {
     requireImport();
@@ -566,25 +643,37 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   adminRoute('post', '/archives/:jobId/records/:ordinal', async (req,db) => {
     requireImport();
     const owner=req.user.id, {jobId,ordinal}=req.params, b=req.body || {};
-    if (!['save','submit'].includes(b.action)) throw P.problem(400,'Выберите действие.');
+    if (!['save','submit','exclude','restore'].includes(b.action)) throw P.problem(400,'Выберите действие.');
     await archiveLock(db);
+    if (b.action==='exclude' || b.action==='restore') {
+      const row = await archives.rowFor(db,owner,jobId,ordinal,true);
+      if (row.state!=='draft' || !row.payload) throw P.problem(409,'Исключить или вернуть можно только черновик.');
+      const excluded = b.action==='exclude';
+      if (row.excluded===excluded) return { version:row.version,state:row.state,excluded };
+      revision(row,b.version);
+      return archives.write(db,row,archives.open(row),owner,excluded?'excluded':'restored',{excluded});
+    }
     const currentRow = await archives.rowFor(db,owner,jobId,ordinal);
     const registered = currentRow.entry_id && currentRow.state==='submitted' ? await entry(db,currentRow.entry_id,owner) : null;
     const row = await archives.rowFor(db,owner,jobId,ordinal,true);
     if (b.action==='submit' && row.state==='submitted') return { version:row.version,state:row.state };
     revision(row,b.version);
+    if (row.excluded) throw P.problem(409,'Сначала верните черновик в импорт.');
     if (!row.payload || row.state==='removed') throw P.problem(409,'Запись удалена.');
     if (row.state==='submitted' && !registered) throw P.problem(409,'Запись больше недоступна.');
     const data = archives.open(row);
-    data.fields = draftFields(b.fields);
+    const revisedFields = draftFields(b.fields);
+    if (data.fields.publishedAt !== revisedFields.publishedAt) delete data.dateFromImport;
+    data.fields = revisedFields;
     if (b.action==='save' && !registered) return archives.write(db,row,data,owner,'edited');
     if (b.confirmed!==true) throw P.problem(400,'Подтвердите проверку записи.');
     const s=await settings(db);
     if (s.submissions_paused) throw P.problem(403,'Приём новых записей временно приостановлен.');
     if (registered && (!['pending','hidden'].includes(registered.status) || registered.deleted_at))
       throw P.problem(409,'Исправление доступно у записи на проверке или после скрытия публикации.');
+    Object.assign(data, withPublicationDate(data, Date.now()));
     const candidate = await checkArchiveRecord(db,data.fields,registered?.id || null);
-    const provenance = { source:candidate.source,publishedAt:candidate.publishedAt,messageId:data.message.messageId };
+    const provenance = archiveProvenance(data,candidate);
     const fields = { reason:candidate.reason,reasonDetails:candidate.reasonDetails,telegramSource:provenance };
     if (registered) {
       const original = payload(registered);
@@ -597,8 +686,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       await event(db,owner,'ARCHIVE_ENTRY_CORRECTED',registered.id);
       return archives.write(db,row,data,owner,'corrected');
     }
-    const { message } = data;
-    const index = vault.index('telegram_source',[owner,message.source.trim().toLowerCase(),message.messageId,message.publishedAt || digest(message.text)]);
+    const index = archiveSourceIndex(owner,data.message);
     const duplicate = await db.query('SELECT 1 FROM client_watchlist_archive_records WHERE owner_id=$1 AND source_index=$2',[owner,index]);
     if (duplicate.rowCount) throw P.problem(409,'Это сообщение уже было отправлено на проверку.');
     const imported = await insertEntry(db,owner,s,candidate,fields,{adminImport:true,review:true,publicationMode:null});

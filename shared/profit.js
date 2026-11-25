@@ -738,6 +738,14 @@ const settleMonthlyAllocations = (sources, costs, carryIn, distributable, partic
     return { allocations, carryParts, managerAllocations, managerCarryParts };
 };
 
+const applyEntryDateParts = (rows, adjustments, key) => {
+    const cents = new Map(rows.map(row => [row.id, Math.round(row.amount * 100)]));
+    for (const adjustment of adjustments)
+        for (const part of adjustment[key])
+            cents.set(part.id, (cents.get(part.id) || 0) + Math.round(part.amount * 100));
+    return Array.from(cents, ([id, amount]) => ({ id, amount: amount / 100 }));
+};
+
 export const poolMonthlyReport = (account, investors, sales, expenses, month, now = Date.now(), paymentsOnly = false) => {
     const frozen = account.poolAccounting?.closed?.find(c => c.month === month);
     if (frozen)
@@ -831,8 +839,17 @@ export const poolMonthlyReport = (account, investors, sales, expenses, month, no
     );
     if (shares.some(s => !Number.isFinite(s.percentage) || s.percentage < 0) || hasCapital && Math.round(allocations.reduce((n, r) => n + r.amount, 0) * 100) !== Math.round(distributable * 100))
         issues.push('Проверьте условия распределения: суммы не сходятся.');
+    const entryDateAdjustments = (account.poolAccounting.entryDateAdjustments || []).filter(adjustment => {
+        const time = poolTime(adjustment.date);
+        return time >= from && time < end && time <= to && adjustment.months.length;
+    });
+    const corrected = entryDateAdjustments.length ? {
+        allocations: applyEntryDateParts(allocations, entryDateAdjustments, 'parts'),
+        managerAllocations: applyEntryDateParts(managerAllocations, entryDateAdjustments, 'managerOrigins'),
+        entryDateAdjustments,
+    } : { allocations, managerAllocations };
     return { month, status: 'PRELIMINARY', issues: [...new Set(issues)], date: new Date(Math.max(from, to - 1)).toISOString(), asOf: new Date(to).toISOString(), gross, costs, carryIn, carryOut, net, distributable,
-        unallocated: hasCapital ? 0 : distributable, shares: shares.map(({ investor, ...s }) => s), allocations, sources, costRows, carryParts, managerAllocations, managerCarryParts };
+        unallocated: hasCapital ? 0 : distributable, shares: shares.map(({ investor, ...s }) => s), ...corrected, sources, costRows, carryParts, managerCarryParts };
 };
 export const poolMonthlyReports = (account, investors, sales, expenses = [], now = Date.now(), paymentsOnly = false) => {
     if (!isMonthlyPool(account))
@@ -906,6 +923,9 @@ export const poolAllocationDetails = (report, recipientId, amountOverride, perce
             })),
             ...(report.costRows || []).map(({ parts, managerOrigins, ...row }) => ({
                 ...row, id: `cost:${row.id}`, kind: 'cost', amount: valueFor({ parts, managerOrigins }),
+            })),
+            ...(report.entryDateAdjustments || []).map(row => ({
+                id: row.id, date: row.date, title: 'Исправление даты входа инвестора', kind: 'cost', amount: valueFor(row),
             })),
         ];
         if (carry) rows.push({ id: 'carry', date: report.date, title: 'Покрытие прошлого убытка', kind: 'carry', amount: carry });

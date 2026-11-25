@@ -90,23 +90,30 @@ assert(await js('window.poolChanges[2].accounts[0].poolAccounting.reinvestments.
 await click('+ Добавить инвестора');await input('[aria-label="Имя инвестора пула"]','Оченьдлинноеимяинвесторадляпроверкипереносастрок');await input('[aria-label="Сумма операции пула"]','10000000000');await input('[aria-label="Дата операции пула"]','2026-12-01');await click('Сохранить');await wait('window.poolChanges.length===4');
 await win.setSize(390,844);await js('document.documentElement.classList.add("dark");document.querySelectorAll(".overflow-y-auto").forEach(e=>e.scrollTop=0)');await sleep(300);
 assert(await js('document.documentElement.scrollWidth<=window.innerWidth+1'),'Horizontal overflow');fs.writeFileSync(${JSON.stringify(path.join(scratch, 'mobile-dark.png'))},(await win.webContents.capturePage()).toPNG());
+await js('[...document.querySelectorAll("button")].find(e=>e.textContent.includes("Второй инвестор")).click()');
+await click('Условия');await click('Исправить дату входа');
+await input('[aria-label="Дата первого входа"]','2026-11-21');await click('Проверить расчёт');
+await wait('document.body.innerText.includes("Разница за закрытые месяцы (2026-11)")');
+assert(await js('window.poolChanges.length===4&&document.documentElement.scrollWidth<=innerWidth+1'),'Entry date preview wrote changes or overflowed');
+await click('Подтвердить исправление');await wait('window.poolChanges.length===5');
+assert(await js('window.poolChanges[4].accounts[0].poolAccounting.entryDateAdjustments.length===1'));
 await js('window.switchToLegacy()');await wait('document.body.innerText.includes("Сравнить расчёт")');await click('Сравнить расчёт');await wait('document.body.innerText.toLowerCase().includes("история с")');
 await js('document.querySelector("input[type=checkbox]").click()');await click('Сравнить расчёт');await wait('document.body.innerText.toLowerCase().includes("пример за")');
 assert(await js('document.documentElement.scrollWidth<=window.innerWidth+1'),'Comparison overflow');
-await js('[...document.querySelectorAll("label")].find(e=>e.textContent.includes("Суммы вложений и условия проверены")).querySelector("input").click()');await click('Включить с 2027-01');await wait('window.poolChanges.length===5');
-assert(await js('window.poolChanges[4].accounts[0].poolAccounting.startMonth==="2027-01"'));
+await js('[...document.querySelectorAll("label")].find(e=>e.textContent.includes("Суммы вложений и условия проверены")).querySelector("input").click()');await click('Включить с 2027-01');await wait('window.poolChanges.length===6');
+assert(await js('window.poolChanges[5].accounts[0].poolAccounting.startMonth==="2027-01"'));
 await wait('document.body.innerText.includes("Настройки расчёта прибыли")');
 await js('[...document.querySelectorAll("summary")].find(e=>e.textContent==="Настройки расчёта прибыли").click()');
 assert(await js('document.querySelector("select").value==="MONTH"'));
 await js('(()=>{const e=document.querySelector("select");e.value="SCHEDULE_PERIOD";e.dispatchEvent(new Event("change",{bubbles:true}))})()');
-await click('Сохранить способ расчёта');await wait('window.poolChanges.length===6');
-assert(await js('window.poolChanges[5].accounts[0].poolAccounting.terms.some(t=>t.profitBasis==="SCHEDULE_PERIOD"&&t.date==="2026-12-31T21:00:00.000Z")'));
+await click('Сохранить способ расчёта');await wait('window.poolChanges.length===7');
+assert(await js('window.poolChanges[6].accounts[0].poolAccounting.terms.some(t=>t.profitBasis==="SCHEDULE_PERIOD"&&t.date==="2026-12-31T21:00:00.000Z")'));
 await wait('[...document.querySelectorAll("button")].find(e=>e.textContent==="Сохранить способ расчёта").disabled');
 await js('window.switchToHistorical()');await wait('document.body.innerText.includes("Пул для пересчёта")&&document.body.innerText.includes("Сравнить расчёт")');
 await click('Сравнить расчёт');await wait('document.body.innerText.toLowerCase().includes("история с 2026-08 по 2026-12")');
 await js('[...document.querySelectorAll("label")].find(e=>e.textContent.includes("Суммы вложений и условия проверены")).querySelector("input").click()');
-await click('Включить с пересчётом');await wait('window.poolChanges.length===7');
-assert(await js('window.poolChanges[6].accounts[0].poolAccounting.closed.map(r=>r.month).join(",")==="2026-08,2026-09,2026-10,2026-11"'));
+await click('Включить с пересчётом');await wait('window.poolChanges.length===8');
+assert(await js('window.poolChanges[7].accounts[0].poolAccounting.closed.map(r=>r.month).join(",")==="2026-08,2026-09,2026-10,2026-11"'));
 await js('window.showCash()');await wait('!!window.cashSnapshot');await sleep(350);
 assert(await js('document.body.innerText.replaceAll(String.fromCharCode(160),"").replaceAll(" ","").includes("145000,00")'),'Current month is excluded from withdrawal');
 assert(!await js('document.body.innerText.includes("Подтвердить начисления")||document.body.innerText.includes("Пока не подтверждено")'),'Confirmation gate remains in withdrawal sheet');
@@ -126,7 +133,7 @@ assert.equal(errors.length,0,errors.join('\\n'));console.log(JSON.stringify({ok:
         if (code !== 0)
             throw Error(`Electron UI test exited ${code}; log: ${scratch}/electron.log`);
         const final = await service.preview(owner, id);
-        if (final.account.poolAccounting.closed.length !== 1 || final.balances.investors.two.available !== 20000)
+        if (final.account.poolAccounting.closed.length !== 1 || final.balances.investors.two.available !== -5000)
             throw Error('UI financial result mismatch');
         const confirmedCash=await service.preview(owner,cashAccount.id);
         if(confirmedCash.account.poolAccounting.closed.length!==3||confirmedCash.balances.manager.available!==145000||confirmedCash.balances.investors.cash_one.available!==72500)throw Error('One-click cash confirmation mismatch');
