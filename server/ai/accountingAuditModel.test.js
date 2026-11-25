@@ -67,9 +67,10 @@ test(
     try {
       await admin.query(`CREATE SCHEMA ${schema}`);
       pool = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
-      await pool.query(`CREATE TABLE users(id text PRIMARY KEY,name text,role text,manager_id text,subscription jsonb,whatsapp_settings jsonb);
+      await pool.query(`CREATE TABLE users(id text PRIMARY KEY,name text,role text,manager_id text,subscription jsonb,whatsapp_settings jsonb,blocked boolean DEFAULT false);
       CREATE TABLE data_items(id text PRIMARY KEY,user_id text,type text,data jsonb,updated_at timestamptz DEFAULT NOW());
       CREATE TABLE api_idempotency(user_id text,key text,endpoint text,request_hash text,status int,response jsonb,PRIMARY KEY(user_id,key));
+      CREATE TABLE ai_assistant_usage(user_id text,month text,requests int,prompt_tokens int,completion_tokens int,cost_usd numeric,cached_tokens int,PRIMARY KEY(user_id,month));
       INSERT INTO users(id,name,role,subscription) VALUES('owner','Владелец','manager','{"plan":"BUSINESS_PRO"}');`);
       const fixtures = {
         accounts: [{ id: 'acc', name: 'Основной счёт', type: 'MAIN', initialBalance: 100000 }],
@@ -144,6 +145,31 @@ test(
       const snapshot = await pool.query('SELECT id,data FROM data_items ORDER BY id');
       const audits = require('./accountingAudit').createAccountingAudits(pool);
       const report = await audits.page('owner', (await audits.create('owner')).id, { limit: 10 });
+      await t.test('Подробнее с ИИ вызывает модель только при наличии лимита и актуального отчёта', async () => {
+        let left = 0;
+        const { createAssistantRunner } = require('./runAssistant');
+        const run = createAssistantRunner({
+          pool, assistant, audits, state: async () => ({ allowedRole: true, consent: true, left, settings: { preferences: 'Уникальные личные предпочтения' } }),
+          subscriptionState: async () => ({ expired: false }), month: () => '2026-11',
+        });
+        const args = {
+          userId: 'owner', auditReportId: report.id, mode: 'auto', silent: true,
+          text: 'Разбери результаты сверки простыми словами. Назови важные расхождения, объясни суммы и укажи, какие записи проверить.',
+          history: [{ role: 'user', text: 'Уникальная приватная история' }],
+        };
+        await assert.rejects(run(args), { code: 'AI_LIMIT' });
+        assert.equal(seen.length, 0);
+        left = 1;
+        script.push({ content: 'Начните с записей в отчёте.' });
+        const out = await run(args);
+        assert.equal(out.left, 0);
+        assert.deepEqual(out.actions, []);
+        assert.equal(seen.length, 1);
+        const { messages, tools } = seen[0];
+        assert(!JSON.stringify(messages).includes('Уникальн'));
+        assert.deepEqual(tools.map(tool => tool.function.name), ['accounting_audit_findings']);
+        assert.equal((await pool.query('SELECT requests FROM ai_assistant_usage')).rows[0].requests, 1);
+      });
       await t.test('явное объяснение: только подробности текущего отчёта, даже в Авто', async () => {
         const r = await ask(
           'Объясни проверку',

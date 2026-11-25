@@ -6,6 +6,9 @@ const { ensureTables } = require('./schema');
 const { createRevocations } = require('./revocations');
 const P = require('./policy');
 const { parseImport } = require('./bulkImport');
+const multer = require('multer');
+const { MAX_BYTES, MAX_MIB } = require('./telegramArchive');
+const { createArchiveImports, draftFields, verifyDraft } = require('./archiveImports');
 const digest = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const id = () => crypto.randomUUID();
 const same = (a, b) => typeof a === 'string' && typeof b === 'string' && Buffer.byteLength(a) === Buffer.byteLength(b) && crypto.timingSafeEqual(Buffer.from(a), Buffer.from(b));
@@ -17,6 +20,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   let ready;
   const ensure = () => ready || (ready = prepareTables().catch(e => { ready = null; throw e; }));
   const requireVault = () => { if (!vault) throw P.problem(503, 'Защита общего списка ещё не настроена. Обратитесь к администратору.'); return vault; };
+  const archives = createArchiveImports({ pool, vault, ensure });
   const event = (db, actor, action, target = null) => db.query(
     'INSERT INTO client_watchlist_events(actor_id,action,target_id) VALUES($1,$2,$3)', [actor, action, target]);
   async function limit(user, action, max, seconds = 3600, amount = 1) {
@@ -91,7 +95,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         ...(includeBirthDate === true && d.identity.birthDate ? { birthDate: d.identity.birthDate } : {}) } : {}),
       basis: d?.basis, evidence: d?.evidence, note: d?.note, decision: d?.decision,
       status: r.deleted_at ? 'deleted' : r.status === 'published' && r.expires_at != null && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
-      version: r.version, createdAt: r.created_at, expiresAt: r.expires_at };
+      version: r.version, createdAt: r.created_at, publishedAt: r.status === 'published' ? r.published_at || undefined : undefined, expiresAt: r.expires_at };
   }
   async function entry(db, entryId, owner = null) {
     const r = await db.query('SELECT * FROM client_watchlist_entries WHERE id=$1 FOR UPDATE', [entryId]);
@@ -153,6 +157,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       const ids = [...revocations.read()];
       if (ids.length) await pool.query(`UPDATE client_watchlist_entries SET status='withdrawn',payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,
         source_fingerprint=NULL,version=version+1,updated_at=now() WHERE id=ANY($1::text[]) AND status NOT IN ('withdrawn','terminated')`, [ids]);
+      if (ids.length) await archives.purgeRevoked(pool,ids);
     }
   }
   let maintenanceAt = 0;
@@ -318,6 +323,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     // Сначала fsync независимого журнала, потом SQL commit. При сбое SQL запись
     // может скрыться раньше, но никогда не возвращается после восстановления БД.
     revocations.add(r.id);
+    await archives.purgeEntry(db,r.id);
     // Отзыв разрешён без нового согласия, права поиска, работающих ключей и включённого раздела.
     await db.query(`UPDATE client_watchlist_entries SET status='withdrawn',payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,
       source_fingerprint=NULL,version=version+1,updated_at=now() WHERE id=$1`, [r.id]);
@@ -431,10 +437,13 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         OR ($5::text IS NOT NULL AND e.name_index=$5)) ORDER BY e.created_at,e.id LIMIT $2 OFFSET $3`, [status, take + 1, offset, target, nameKey]);
     await event(db, req.user.id, 'ADMIN_ENTRIES_READ');
     for (const row of r.rows.slice(0, take)) await event(db, req.user.id, 'ADMIN_ENTRY_READ', row.id);
-    return { items: r.rows.slice(0, take).map(r => ({ ...ownEntry(r, true), ownerId: r.owner_id, ownerEmail: r.owner_email })), hasMore: r.rows.length > take };
+    return { items: r.rows.slice(0, take).map(r => {
+      const view = ownEntry(r, true);
+      const showSource = r.owner_id === req.user.id && r.customer_id.startsWith('import:') && !['withdrawn','terminated','deleted'].includes(view.status);
+      return { ...view, ownerId:r.owner_id, ownerEmail:r.owner_email, ...(showSource ? { telegramSource:payload(r)?.telegramSource } : {}) };
+    }), hasMore: r.rows.length > take };
   });
-  async function inspectImport(db, body, revokedIds) {
-    const rows = parseImport(body);
+  async function inspectImportRows(db, rows, revokedIds, ignoreEntryId = null) {
     const candidates = rows.filter(row => !row.error).map(row => {
       const identity = [P.normalizeName(row.name), row.birthYear];
       const legacyId = 'import:' + vault.index('admin_import', identity);
@@ -444,8 +453,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const { rows: known } = await db.query(`SELECT id,payload,customer_id,year_index,status=ANY($4::text[]) AS active_source,
       (status=ANY($4::text[]) AND (status NOT IN ('published','hidden') OR expires_at IS NULL OR expires_at>now())
         AND NOT(id=ANY($3::text[]))) AS active, review_required
-      FROM client_watchlist_entries WHERE year_index=ANY($1::text[]) OR customer_id=ANY($2::text[])`,
-    [candidates.map(row => row.key), candidates.flatMap(row => [row.customerId, row.legacyId]), revokedIds, P.ACTIVE]);
+      FROM client_watchlist_entries WHERE (year_index=ANY($1::text[]) OR customer_id=ANY($2::text[])) AND id IS DISTINCT FROM $5::text`,
+    [candidates.map(row => row.key), candidates.flatMap(row => [row.customerId, row.legacyId]), revokedIds, P.ACTIVE, ignoreEntryId]);
     const datesByYear = new Map();
     const trackDate = (key, date) => {
       if (!datesByYear.has(key)) datesByYear.set(key, new Set());
@@ -467,6 +476,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     }));
     return rows.map(row => checked.get(row.number) || row);
   }
+  const inspectImport = (db, body, revokedIds) => inspectImportRows(db, parseImport(body), revokedIds);
   function requireImport() {
     requireVault();
     return [...revocations.read()];
@@ -505,7 +515,97 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     }
     return result;
   });
+  const readArchiveFile = multer({ storage:multer.memoryStorage(), limits:{ fileSize:MAX_BYTES, files:1, fields:1, fieldSize:1024, parts:3 } }).single('archive');
+  let archiveUploads = 0;
+  const receiveArchive = async (req,res,next) => {
+    res.setHeader('Cache-Control','no-store, private');
+    try {
+      await ensure();
+      await current(pool,req,true);
+      await session(pool,req);
+      requireImport();
+      await limit(req.user.id,'archive_upload',30);
+      if (archiveUploads >= 3) throw P.problem(429,'Слишком много загрузок. Повторите позже.');
+      archiveUploads++;
+      try {
+        await new Promise((resolve,reject)=>readArchiveFile(req,res,err=>err ? reject(P.problem(400,`Загрузите один HTML-архив до ${MAX_MIB} МБ.`)) : resolve()));
+      } finally { archiveUploads--; }
+      next();
+    } catch (e) { res.status(e.status || 503).json({ msg:e.status ? e.message : 'Загрузка временно недоступна.' }); }
+  };
+  const archiveLock = db => db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:admin-import',0))");
+  async function checkArchiveRecord(db, fields, ignoreEntryId) {
+    const { valid, errors } = verifyDraft(fields);
+    if (errors.length) throw P.problem(400, errors[0]);
+    const [candidate] = await inspectImportRows(db,[{ number:1,...valid }],requireImport(),ignoreEntryId);
+    if (candidate.duplicate) throw P.problem(409, 'В реестре уже есть запись с такими ФИО и датой рождения.');
+    return candidate;
+  }
+  app.post('/api/admin/watchlist/archives',auth,receiveArchive,wrap(async (req,db) => {
+    requireImport();
+    if ((await settings(db)).submissions_paused) throw P.problem(403, 'Приём новых записей временно приостановлен.');
+    const job = await archives.enqueue(db,req.user.id,req.file,req.body?.source);
+    await event(db,req.user.id,'ARCHIVE_UPLOADED',job.id);
+    return job;
+  },{ admin:true }));
+  adminRoute('get', '/archives', (req,db) => archives.list(db,req.user.id));
+  adminRoute('get', '/archives/:jobId', async (req,db) => {
+    const revoked = requireImport();
+    const view = await archives.detail(db,req.user.id,req.params.jobId,P.page(req.query));
+    const candidates = view.items.filter(row=>row.state==='draft' && !row.errors.length).map(row=>({ number:row.ordinal,...verifyDraft(row.fields).valid }));
+    if (candidates.length) {
+      const checked = new Map((await inspectImportRows(db,candidates,revoked)).map(row=>[row.number,row.duplicate]));
+      for (const row of view.items) row.duplicate ||= !!checked.get(row.ordinal);
+    }
+    return view;
+  });
+  adminRoute('get', '/archives/:jobId/records/:ordinal/history', (req,db) => {
+    requireImport();
+    return archives.revisions(db,req.user.id,req.params.jobId,req.params.ordinal);
+  });
+  adminRoute('post', '/archives/:jobId/records/:ordinal', async (req,db) => {
+    requireImport();
+    const owner=req.user.id, {jobId,ordinal}=req.params, b=req.body || {};
+    if (!['save','submit'].includes(b.action)) throw P.problem(400,'Выберите действие.');
+    await archiveLock(db);
+    const currentRow = await archives.rowFor(db,owner,jobId,ordinal);
+    const registered = currentRow.entry_id && currentRow.state==='submitted' ? await entry(db,currentRow.entry_id,owner) : null;
+    const row = await archives.rowFor(db,owner,jobId,ordinal,true);
+    if (b.action==='submit' && row.state==='submitted') return { version:row.version,state:row.state };
+    revision(row,b.version);
+    if (!row.payload || row.state==='removed') throw P.problem(409,'Запись удалена.');
+    if (row.state==='submitted' && !registered) throw P.problem(409,'Запись больше недоступна.');
+    const data = archives.open(row);
+    data.fields = draftFields(b.fields);
+    if (b.action==='save' && !registered) return archives.write(db,row,data,owner,'edited');
+    if (b.confirmed!==true) throw P.problem(400,'Подтвердите проверку записи.');
+    const s=await settings(db);
+    if (s.submissions_paused) throw P.problem(403,'Приём новых записей временно приостановлен.');
+    if (registered && (!['pending','hidden'].includes(registered.status) || registered.deleted_at))
+      throw P.problem(409,'Исправление доступно у записи на проверке или после скрытия публикации.');
+    const candidate = await checkArchiveRecord(db,data.fields,registered?.id || null);
+    const provenance = { source:candidate.source,publishedAt:candidate.publishedAt,messageId:data.message.messageId };
+    const fields = { reason:candidate.reason,reasonDetails:candidate.reasonDetails,telegramSource:provenance };
+    if (registered) {
+      const original = payload(registered);
+      delete original.publication;
+      delete original.decision;
+      Object.assign(original,fields,{ identity:{ name:candidate.name,birthYear:candidate.birthYear,birthDate:candidate.birthDate } });
+      await db.query(`UPDATE client_watchlist_entries SET customer_id=$2,name_index=$3,year_index=$4,payload=$5,status='pending',
+        version=version+1,updated_at=now(),review_required=true,policy_version=$6 WHERE id=$1`,
+        [registered.id,candidate.customerId,vault.index('name',P.normalizeName(candidate.name)),candidate.key,vault.encrypt(registered.id,'entry',original),P.POLICY_VERSION]);
+      await event(db,owner,'ARCHIVE_ENTRY_CORRECTED',registered.id);
+      return archives.write(db,row,data,owner,'corrected');
+    }
+    const { message } = data;
+    const index = vault.index('telegram_source',[owner,message.source.trim().toLowerCase(),message.messageId,message.publishedAt || digest(message.text)]);
+    const duplicate = await db.query('SELECT 1 FROM client_watchlist_archive_records WHERE owner_id=$1 AND source_index=$2',[owner,index]);
+    if (duplicate.rowCount) throw P.problem(409,'Это сообщение уже было отправлено на проверку.');
+    const imported = await insertEntry(db,owner,s,candidate,fields,{adminImport:true,review:true,publicationMode:null});
+    return archives.write(db,row,data,owner,'submitted',{entryId:imported.id,state:'submitted',sourceIndex:index});
+  });
   adminRoute('post', '/entries/:id/decision', async (req, db) => {
+    await archiveLock(db);
     const s = await settings(db), r = await entry(db, req.params.id), b = req.body || {};
     if (r.deleted_at) throw P.problem(409, 'Запись удалена администратором.');
     revision(r, b.version);
@@ -522,6 +622,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         throw P.problem(403, 'Сначала проверьте основание и настройки публикации.');
       if (data?.adminImport === true && data.identity.birthDate && b.shownVersion !== P.POLICY_VERSION)
         throw P.problem(400, 'Обновите приложение, чтобы подтвердить публикацию полной даты рождения.');
+      if (data?.telegramSource) await checkArchiveRecord(db,{ ...data.identity,...data.telegramSource,...data },r.id);
       if (data?.adminImport !== true) {
         const a = await access(db, r.owner_id);
         if (a?.status !== 'granted' || !a.can_submit || (s.mode === 'pilot' && !a.pilot)) throw P.problem(403, 'У автора нет действующего доступа.');
@@ -530,7 +631,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       }
     }
     const status = { publish: 'published', needs_info: 'needs_info', reject: 'rejected', hide: 'hidden', terminate: 'terminated' }[b.action];
-    if (status === 'terminated') revocations.add(r.id);
+    if (status === 'terminated') { revocations.add(r.id); await archives.purgeEntry(db,r.id); }
     let encrypted = null;
     if (status !== 'terminated') {
       data.decision = note;
@@ -547,6 +648,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       policy_version=CASE WHEN $2='published' AND $6::boolean THEN $7 ELSE policy_version END,
       expires_at=CASE WHEN $2='published' THEN CASE WHEN $5::boolean THEN NULL ELSE now()+($4::int * interval '1 day') END ELSE expires_at END WHERE id=$1`,
     [r.id, status, encrypted, s.publication_days, s.publication_until_removed, data?.adminImport === true, P.POLICY_VERSION]);
+    if (data?.telegramSource) await archives.recordDecision(db,r.id,req.user.id,b.action);
     await event(db, req.user.id, 'ENTRY_' + b.action.toUpperCase(), r.id);
   });
   adminRoute('post', '/entries/:id/delete', async (req, db) => {
@@ -555,6 +657,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     revision(r, b.version);
     if (b.confirmed !== true) throw P.problem(400, 'Подтвердите удаление записи.');
     revocations.add(r.id);
+    await archives.purgeEntry(db,r.id);
     await db.query(`UPDATE client_watchlist_entries SET status='terminated',deleted_at=now(),payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,
       source_fingerprint=NULL,review_required=true,version=version+1,updated_at=now() WHERE id=$1`, [r.id]);
     await event(db, req.user.id, 'ENTRY_DELETED', r.id);
@@ -598,6 +701,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       const e = await entry(db, r.entry_id);
       if (!['withdrawn', 'terminated'].includes(e.status)) {
         revocations.add(e.id);
+        await archives.purgeEntry(db,e.id);
         await db.query(`UPDATE client_watchlist_entries SET status='terminated',payload=NULL,name_index=NULL,year_index=NULL,related_client_index=NULL,source_fingerprint=NULL,
           version=version+1,updated_at=now() WHERE id=$1`, [e.id]);
         await event(db, req.user.id, 'ENTRY_TERMINATE', e.id);
@@ -642,6 +746,22 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
   });
   const maintenanceTimer = setInterval(() => ensure().then(maintenance).catch(() => {}), 15 * 60000);
   maintenanceTimer.unref?.();
-  return { ensure, maintenance, close: () => clearInterval(maintenanceTimer) };
+  const checkSubmissionAccess = async userId => {
+    await ensure();
+    const db = await pool.connect();
+    try {
+      await db.query('BEGIN');
+      const req = { user: { id: userId } };
+      req.watchlistActor = await current(db, req);
+      await permitted(db, req, 'submit');
+      await db.query('COMMIT');
+    } catch (e) {
+      await db.query('ROLLBACK').catch(() => {});
+      throw e;
+    } finally {
+      db.release();
+    }
+  };
+  return { ensure, maintenance, checkSubmissionAccess, close: () => { clearInterval(maintenanceTimer); archives.close(); } };
 }
 module.exports = { registerWatchlistRoutes };

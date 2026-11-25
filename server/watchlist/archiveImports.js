@@ -1,0 +1,206 @@
+const crypto = require('node:crypto');
+const path = require('node:path');
+const { Worker } = require('node:worker_threads');
+const P = require('./policy');
+const { MAX_BYTES, MAX_MIB, publicationDate } = require('./telegramArchive');
+const { importBirthDate } = require('./bulkImport');
+
+const jobs = 'client_watchlist_archive_jobs';
+const records = 'client_watchlist_archive_records';
+const history = 'client_watchlist_archive_history';
+const jobFields = 'id,filename,state,progress,total,error,created_at';
+const statusView = row => ({ id: row.id, filename: row.filename, status: row.state, progress: row.progress, total: row.total, error: row.error, createdAt: row.created_at });
+const publicErrors = {
+  NO_MESSAGES: 'В файле нет текстовых сообщений экспорта Telegram.',
+  TOO_MANY_MESSAGES: 'Слишком много сообщений. Загрузите части архива по отдельности.',
+  INVALID_HTML: 'Не удалось разобрать структуру HTML-архива.',
+};
+const keyFor = (owner, job, ordinal) => `${owner}:${job}:${ordinal}`;
+const draftLimits = { name: 200, birthDate: 32, reason: 16, reasonDetails: 1000, source: 200, publishedAt: 80 };
+
+function draftFields(body) {
+  return Object.fromEntries(Object.entries(draftLimits).map(([key, max]) => {
+    const value = body?.[key] ?? '';
+    if (typeof value !== 'string' || value.length > max) throw P.problem(400, 'Одно из полей имеет неверный формат или превышает допустимый размер.');
+    return [key, value.trim()];
+  }));
+}
+function verifyDraft(fields) {
+  const valid = {}, errors = [];
+  const check = fn => { try { Object.assign(valid, fn()); } catch (e) { if (e.status !== 400) throw e; errors.push(e.message); } };
+  check(() => ({ name: P.fullName(fields.name) }));
+  check(() => {
+    const birth = importBirthDate(fields.birthDate);
+    if (!birth.birthDate) throw P.problem(400, 'Укажите полную дату рождения.');
+    return birth;
+  });
+  check(() => P.submissionReason(fields));
+  check(() => ({ source: P.text(fields.source, 2, 200, 'источник информации') }));
+  check(() => {
+    const publishedAt = publicationDate(fields.publishedAt);
+    if (!publishedAt || Date.parse(publishedAt) > Date.now()) throw P.problem(400, 'Проверьте дату публикации источника.');
+    return { publishedAt };
+  });
+  return { valid, errors };
+}
+
+function suggestedFields(message, source) {
+  const label = pattern => message.text.match(new RegExp(`^[ \\t]*(?:${pattern})[ \\t]*[:–—][ \\t]*([^\\r\\n]+)`, 'imu'))?.[1].trim() || '';
+  const firstLine = message.text.split(/\r?\n/u,1)[0];
+  const inline = firstLine.match(/^([\p{L}\p{M}'’.-]+(?:[ \t]+[\p{L}\p{M}'’.-]+){1,3})[ \t]+(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})(?:[ \t]+(.+))?$/u);
+  const reasonDetails = label('причина|основание') || inline?.[3] || '';
+  const categories = { 'длительная просрочка': 'overdue', 'неисполнение обязательств': 'unfulfilled' };
+  const reason = Object.hasOwn(categories, reasonDetails.toLowerCase()) ? categories[reasonDetails.toLowerCase()] : reasonDetails ? 'other' : '';
+  return draftFields({
+    name: (label(String.raw`фио|ф\.\s*и\.\s*о\.`) || inline?.[1] || '').slice(0, 200),
+    birthDate: (label(String.raw`дата рождения|д\.\s*р\.`) || inline?.[2] || '').slice(0, 32),
+    reason, reasonDetails: reason === 'other' ? reasonDetails.slice(0, 1000) : '', source,
+    publishedAt: message.publishedAt || '',
+  });
+}
+
+function parseOffThread(html, progress) {
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(path.join(__dirname, 'telegramArchive.js'), { workerData: { telegramArchive: true, html } });
+    const timer = setTimeout(() => { void worker.terminate(); reject(Error('TIMEOUT')); }, 90000);
+    timer.unref();
+    worker.on('message', msg => {
+      if (typeof msg.progress === 'number') { progress(msg.progress); return; }
+      if (msg.error) reject(Error(msg.error));
+      else resolve(msg.rows);
+    });
+    worker.on('error', reject);
+    worker.on('exit', () => { clearTimeout(timer); reject(Error('WORKER_EXIT')); });
+  });
+}
+
+function createArchiveImports({ pool, vault, ensure }) {
+  let running = false, closed = false;
+  const identity = (owner, job, ordinal) => keyFor(owner, job, ordinal);
+  const open = row => vault.decrypt(identity(row.owner_id, row.job_id, row.ordinal), 'telegram_record', row.payload);
+  const save = (row, value) => vault.encrypt(identity(row.owner_id, row.job_id, row.ordinal), 'telegram_record', value);
+  const identityIndex = (owner, fields) => {
+    const { valid } = verifyDraft(fields);
+    return valid.name && valid.birthDate ? vault.index('telegram_identity', [owner,P.normalizeName(valid.name),valid.birthDate]) : null;
+  };
+  const progressUpdate = (job, value) => pool.query(`UPDATE ${jobs} SET progress=GREATEST(progress,$3),updated_at=now() WHERE id=$1 AND lease=$2`, [job.id, job.lease, value]);
+  async function tick() {
+    if (closed || running || !vault) return;
+    running = true;
+    let claimed;
+    try {
+      await ensure();
+      // Lease protects a job shared by multiple server processes. Workers have a shorter timeout.
+      [claimed] = (await pool.query(`UPDATE ${jobs} j SET state='processing',progress=1,lease=$1,updated_at=now()
+        WHERE j.id=(SELECT id FROM ${jobs} WHERE archive IS NOT NULL
+          AND (state='queued' OR (state='processing' AND updated_at < now()-interval '3 minutes'))
+          AND NOT EXISTS (SELECT 1 FROM ${jobs} active WHERE active.state='processing' AND active.updated_at >= now()-interval '3 minutes')
+          ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)
+        RETURNING j.*`, [crypto.randomUUID()])).rows;
+      if (!claimed) return;
+      const { html, source } = vault.decrypt(`${claimed.owner_id}:${claimed.id}`, 'telegram_archive', claimed.archive);
+      let last = 0;
+      const messages = await parseOffThread(html, value => {
+        if (value < last + 5) return;
+        last = value;
+        void progressUpdate(claimed, value).catch(() => {});
+      });
+      await progressUpdate(claimed, 90);
+      const db = await pool.connect();
+      try {
+        await db.query('BEGIN');
+        const lock = await db.query(`SELECT 1 FROM ${jobs} WHERE id=$1 AND lease=$2 AND state='processing' FOR UPDATE`, [claimed.id, claimed.lease]);
+        if (!lock.rowCount) { await db.query('ROLLBACK'); return; }
+        for (let i = 0; i < messages.length; i += 200) {
+          const batch = messages.slice(i, i + 200).map((message, j) => {
+            const ordinal = i + j + 1;
+            const fields = suggestedFields(message, source);
+            return { ordinal, identity_index:identityIndex(claimed.owner_id,fields),
+              payload:save({ owner_id:claimed.owner_id, job_id:claimed.id, ordinal },{ message:{ ...message,source },fields }) };
+          });
+          await db.query(`INSERT INTO ${records}(job_id,owner_id,ordinal,payload,identity_index)
+            SELECT $1,$2,x.ordinal,x.payload,x.identity_index FROM jsonb_to_recordset($3::jsonb) x(ordinal int,payload jsonb,identity_index text)`, [claimed.id, claimed.owner_id, JSON.stringify(batch)]);
+        }
+        await db.query(`UPDATE ${jobs} SET archive=NULL,state='ready',total=$2,progress=100,lease=NULL,updated_at=now() WHERE id=$1`, [claimed.id,messages.length]);
+        await db.query('COMMIT');
+      } catch (e) { await db.query('ROLLBACK').catch(() => {}); throw e; }
+      finally { db.release(); }
+    } catch (e) {
+      if (claimed) await pool.query(`UPDATE ${jobs} SET state='failed',archive=NULL,lease=NULL,error=$3,updated_at=now() WHERE id=$1 AND lease=$2`,
+        [claimed.id, claimed.lease, publicErrors[e.message] || 'Архив не обработан. Повторите загрузку файла.']).catch(() => {});
+    } finally { running = false; }
+  }
+  const timer = setInterval(() => void tick(), 2000);
+  timer.unref();
+
+  async function enqueue(db, owner, file, rawSource) {
+    if (!file || !/\.html?$/iu.test(file.originalname) || !file.buffer?.length || file.buffer.length > MAX_BYTES)
+      throw P.problem(400, `Выберите HTML-файл экспорта Telegram размером до ${MAX_MIB} МБ.`);
+    const source = P.text(rawSource, 2, 200, 'название источника');
+    let html;
+    try { html = new TextDecoder('utf-8', { fatal: true }).decode(file.buffer); }
+    catch { throw P.problem(400, 'Архив должен быть в кодировке UTF-8.'); }
+    const fileIndex = vault.index('telegram_file', [owner, crypto.createHash('sha256').update(file.buffer).digest('hex')]);
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:telegram-enqueue',0))");
+    const existing = (await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 AND file_index=$2`,[owner,fileIndex])).rows[0];
+    if (existing && existing.state !== 'failed') return statusView(existing);
+    if ((await db.query(`SELECT count(*)::int AS count FROM ${jobs} WHERE state IN ('queued','processing')`)).rows[0].count >= 20)
+      throw P.problem(429, 'Очередь обработки заполнена. Повторите загрузку позже.');
+    const id = existing?.id || crypto.randomUUID();
+    const basename = path.basename(file.originalname);
+    const displayName = /^messages\d*\.html?$/i.test(basename) ? basename : 'Архив Telegram';
+    const result = await db.query(`INSERT INTO ${jobs}(id,owner_id,filename,file_index,archive) VALUES($1,$2,$3,$4,$5)
+      ON CONFLICT(owner_id,file_index) DO UPDATE SET archive=EXCLUDED.archive,state='queued',progress=0,error=NULL,updated_at=now()
+      RETURNING ${jobFields}`,[id,owner,displayName,fileIndex,vault.encrypt(`${owner}:${id}`,'telegram_archive',{html,source})]);
+    return statusView(result.rows[0]);
+  }
+  const list = async (db,owner) => ({ items:(await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 ORDER BY created_at DESC,id LIMIT 50`,[owner])).rows.map(statusView) });
+  async function detail(db, owner, jobId, { offset, limit }) {
+    const job = (await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE id=$1 AND owner_id=$2`,[jobId,owner])).rows[0];
+    if (!job) throw P.problem(404, 'Архив не найден.');
+    const { rows } = await db.query(`SELECT r.*,e.status AS entry_status,EXISTS(
+        SELECT 1 FROM ${records} d WHERE d.owner_id=r.owner_id AND d.identity_index=r.identity_index
+          AND (d.job_id,d.ordinal)<>(r.job_id,r.ordinal)) AS duplicate
+      FROM ${records} r LEFT JOIN client_watchlist_entries e ON e.id=r.entry_id
+      WHERE r.job_id=$1 AND r.owner_id=$2 ORDER BY r.ordinal LIMIT $3 OFFSET $4`,[jobId,owner,limit+1,offset]);
+    return { job:statusView(job), items:rows.slice(0,limit).map(row => {
+      const data = row.payload ? open(row) : null;
+      return { ordinal:row.ordinal, version:row.version, state:row.state, entryStatus:row.entry_status, duplicate:row.duplicate, ...(data || {}),
+        errors:data ? verifyDraft(data.fields).errors : [] };
+    }), hasMore:rows.length > limit };
+  }
+  async function rowFor(db, owner, jobId, ordinal, write = false) {
+    if (!/^\d{1,5}$/.test(String(ordinal))) throw P.problem(404, 'Запись не найдена.');
+    const r = (await db.query(`SELECT * FROM ${records} WHERE job_id=$1 AND owner_id=$2 AND ordinal=$3 ${write ? 'FOR UPDATE' : ''}`,[jobId,owner,ordinal])).rows[0];
+    if (!r) throw P.problem(404, 'Запись не найдена.');
+    return r;
+  }
+  async function revisions(db, owner, jobId, ordinal) {
+    const row = await rowFor(db,owner,jobId,ordinal);
+    const changes = (await db.query(`SELECT h.version,h.payload,h.action,h.created_at FROM ${history} h
+      JOIN ${records} r USING (job_id,ordinal) WHERE h.job_id=$1 AND r.owner_id=$2 AND h.ordinal=$3 ORDER BY h.version DESC LIMIT 30`,[jobId,owner,ordinal])).rows;
+    return { items:changes.map(change=>({ version:change.version, action:change.action, date:change.created_at,
+      ...vault.decrypt(identity(row.owner_id,row.job_id,row.ordinal),`telegram_history:${change.version}`,change.payload) })) };
+  }
+  async function write(db, row, data, actor, action, { entryId=row.entry_id, state=row.state, sourceIndex=row.source_index } = {}) {
+    await db.query(`INSERT INTO ${history}(job_id,ordinal,version,payload,actor_id,action) VALUES($1,$2,$3,$4,$5,$6)`,
+      [row.job_id,row.ordinal,row.version+1,vault.encrypt(identity(row.owner_id,row.job_id,row.ordinal),`telegram_history:${row.version+1}`,{ before:open(row).fields, fields:data.fields }),actor,action]);
+    await db.query(`UPDATE ${records} SET payload=$4,version=version+1,entry_id=$5,state=$6,source_index=$7,identity_index=$8 WHERE job_id=$1 AND owner_id=$2 AND ordinal=$3`,
+      [row.job_id,row.owner_id,row.ordinal,save(row,data),entryId,state,sourceIndex,identityIndex(row.owner_id,data.fields)]);
+    return { version:row.version+1, state };
+  }
+  async function purgeRevoked(db, ids) {
+    await db.query(`DELETE FROM ${history} h USING ${records} r WHERE h.job_id=r.job_id AND h.ordinal=r.ordinal AND r.entry_id=ANY($1::text[])`,[ids]);
+    await db.query(`UPDATE ${records} SET payload=NULL,identity_index=NULL,version=version+1,state='removed'
+      WHERE entry_id=ANY($1::text[]) AND state<>'removed'`,[ids]);
+  }
+  const purgeEntry = (db,entryId) => purgeRevoked(db,[entryId]);
+  async function recordDecision(db, entryId, actor, action) {
+    const row = (await db.query(`SELECT * FROM ${records} WHERE entry_id=$1 AND payload IS NOT NULL FOR UPDATE`,[entryId])).rows[0];
+    if (row) await write(db,row,open(row),actor,action);
+  }
+
+  return { enqueue,list,detail,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
+}
+
+module.exports = { createArchiveImports, draftFields, verifyDraft };

@@ -5584,6 +5584,7 @@ if (!user && !showSplash) {
                   {(requestClose: () => void) => (
                     <Suspense fallback={null}>
                       <AIAssistant
+                        key={user.id}
                         userId={user.id}
                         onBack={requestClose}
                         onDataChanged={() => { handleSync(); }}

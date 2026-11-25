@@ -31,6 +31,52 @@ const idsFromCall = (args = {}, result = '') => {
 
 // AI_MEMORY=0 — выключить без деплоя (откат: агент снова опирается только на текст истории)
 const enabled = () => process.env.AI_MEMORY !== '0';
+const personReference = /^(?:(?:а|и|тогда|теперь)\s+)*(?:он|она|у него|у не[её])(?!\p{L})|(?:покажи|отправь|напомни|запиши|прими|добавь|сколько|когда|чек|договор)\s+(?:ему|ей|его|её|у него|у не[её]|он|она)(?!\p{L})/iu;
+const contractReference = /(?:^|[^\p{L}])(?:этот договор|по этому договору)(?!\p{L})/iu;
+const contractRequest = /(?:оплат|вн[её]с|заплат|плат[её]ж|отправ|чек|график|по договору)/iu;
+const afterZa = /(?:^|\s)за\s+([\p{L}][\p{L}\p{N}-]*)/iu;
+const calendarWord = /^(?:этот|прошл|текущ|весь|месяц|недел|январ|феврал|март|апрел|ма[йея]$|июн|июл|август|сентябр|октябр|ноябр|декабр)/iu;
+
+const refersToFocus = text => contractReference.test(text) || (personReference.test(text.trim()) && /(?:долг|долж|договор|остат|оплат|вн[её]с|плат|напомн|чек|график|клиент|телефон)/iu.test(text));
+const namesProduct = text => {
+  const word = text.match(afterZa)?.[1];
+  return !!word && !calendarWord.test(word);
+};
+
+function focusFromCall(name, args, result, actions = [], readOk = false) {
+  if (name === 'customer_overview' || name === 'get_contract' || name === 'list_payments') {
+    let response;
+    try { response = JSON.parse(result); } catch { return undefined; }
+    if (name === 'customer_overview' && Array.isArray(response?.customers)) {
+      const customers = response.customers;
+      const contracts = customers.length === 1 ? customers[0].contracts || [] : [];
+      const active = contracts.filter(c => c.status === 'ACTIVE');
+      return { customers: customers.map(c => c.id), contracts: (active.length ? active : contracts.filter(c => c.status !== 'DRAFT')).map(c => c.contractId) };
+    }
+    const contractId = name === 'get_contract' ? args.id : args.contractId;
+    if (readOk && response && typeof contractId === 'string' && contractId) return { customers: [], contracts: [contractId] };
+  }
+  const action = actions.find(a => ['confirm', 'send_doc', 'contract_form', 'reschedule', 'delete_contract'].includes(a.kind) || (a.kind === 'done' && a.ok));
+  if (!action) return undefined;
+  const contractId = action.contractId || action.saleId || args.contractId || args.saleId;
+  const customerId = action.draft?.customerId || args.customerId;
+  if (!contractId && !customerId) return undefined;
+  return { customers: customerId ? [customerId] : [], contracts: contractId ? [contractId] : [] };
+}
+
+function contextualChoice(text, focus) {
+  if (!refersToFocus(text)) return null;
+  const customers = focus?.customers || [], contracts = focus?.contracts || [];
+  if (customers.length !== 1) return {
+    text: customers.length > 1 ? 'О каком клиенте речь?' : 'Уточните, о каком клиенте или договоре речь.',
+    options: customers.map(c => ({ label: c.label, ref: c.id })),
+  };
+  if ((contractRequest.test(text) || contractReference.test(text)) && contracts.length !== 1 && !namesProduct(text)) return {
+    text: contracts.length > 1 ? 'По какому договору?' : 'Уточните, по какому договору.',
+    options: contracts.map(c => ({ label: c.label, ref: c.id })),
+  };
+  return null;
+}
 
 const createMemory = pool => {
   let initialized;
@@ -41,6 +87,10 @@ const createMemory = pool => {
       PRIMARY KEY(user_id, thread_id, entity_id)
     );
     CREATE INDEX IF NOT EXISTS ai_thread_entities_recent ON ai_thread_entities(user_id, thread_id, seq DESC);
+    CREATE TABLE IF NOT EXISTS ai_thread_focus(
+      user_id TEXT NOT NULL, thread_id TEXT NOT NULL, customer_ids TEXT[] NOT NULL, contract_ids TEXT[] NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(), PRIMARY KEY(user_id, thread_id)
+    );
   `).catch(e => { initialized = null; throw e; });
 
   let counter = 0;
@@ -84,6 +134,55 @@ const createMemory = pool => {
       a.length ? note(userId, threadId, a, { acted: write }) : null,
       r.length ? note(userId, threadId, r.filter(id => !a.includes(id))) : null,
     ]);
+  };
+
+  const setFocus = async (userId, threadId, value) => {
+    if (!enabled() || !userId || !threadId || !value) return;
+    await ready();
+    const ids = list => [...new Set(list.filter(id => typeof id === 'string' && id))].slice(0, KEEP);
+    await pool.query(`WITH owned AS (SELECT
+        ARRAY(SELECT id FROM data_items WHERE user_id=$1 AND type='customers' AND id=ANY($3::text[]) ORDER BY id) customers,
+        ARRAY(SELECT id FROM data_items WHERE user_id=$1 AND type='sales' AND id=ANY($4::text[]) ORDER BY id) contracts)
+      INSERT INTO ai_thread_focus(user_id,thread_id,customer_ids,contract_ids)
+      SELECT $1,$2,customers,contracts FROM owned
+      WHERE cardinality(customers)+cardinality(contracts)>0 OR cardinality($3::text[])+cardinality($4::text[])=0
+      ON CONFLICT(user_id,thread_id) DO UPDATE SET customer_ids=EXCLUDED.customer_ids,contract_ids=EXCLUDED.contract_ids,updated_at=NOW()`,
+    [userId, threadId, ids(value.customers), ids(value.contracts)]);
+  };
+
+  const focus = async (userId, threadId) => {
+    if (!enabled() || !userId || !threadId) return null;
+    try {
+      await ready();
+      const { rows } = await pool.query(`SELECT i.id,i.type,i.data->>'productName' AS product,i.data->>'startDate' AS started,
+        c.id AS customer_id,c.data->>'name' AS customer_name,right(regexp_replace(coalesce(c.data->>'phone',''),'\\D','','g'),4) AS suffix
+        FROM ai_thread_focus f
+        JOIN data_items i ON i.user_id=f.user_id AND (i.type='customers' AND i.id=ANY(f.customer_ids) OR i.type='sales' AND i.id=ANY(f.contract_ids))
+        JOIN data_items c ON c.user_id=f.user_id AND c.type='customers' AND c.id=CASE WHEN i.type='customers' THEN i.id ELSE i.data->>'customerId' END
+        WHERE f.user_id=$1 AND f.thread_id=$2 AND f.updated_at>NOW()-INTERVAL '${TTL_HOURS} hours'
+          AND (i.type<>'sales' OR i.data->>'status' IS DISTINCT FROM 'DRAFT') ORDER BY i.id`, [userId, threadId]);
+      if (!rows.length) return null;
+      const customers = new Map(), contracts = [];
+      for (const row of rows) {
+        const name = clean(row.customer_name) || 'Клиент';
+        customers.set(row.customer_id, { id: row.customer_id, name, label: row.suffix ? `${name} · •${row.suffix}` : name });
+        if (row.type === 'sales') {
+          const product = clean(row.product) || 'Договор';
+          const date = /^\d{4}-\d{2}-\d{2}/.test(row.started || '') ? row.started.slice(0, 10).split('-').reverse().join('.') : '';
+          contracts.push({ id: row.id, customerId: row.customer_id, product, label: date ? `${product} · ${date}` : product });
+        }
+      }
+      return { customers: [...customers.values()], contracts };
+    } catch (e) {
+      console.warn('AI: текущий клиент недоступен:', e.message);
+      return null;
+    }
+  };
+  const visibleFocus = async (userId, threadId) => {
+    const current = await focus(userId, threadId);
+    if (current?.customers.length !== 1) return null;
+    const customer = current.customers[0], contract = current.contracts.length === 1 ? current.contracts[0] : null;
+    return contract ? { name: customer.name, product: contract.product, contractId: contract.id, customerId: customer.id } : { name: customer.name };
   };
 
   // Свежая выжимка для подсказки: клиенты (последние сверху) и их договоры из базы
@@ -137,10 +236,19 @@ const createMemory = pool => {
     ].join('\n');
   };
 
-  const clear = async userId => { await ready(); await pool.query('DELETE FROM ai_thread_entities WHERE user_id = $1', [userId]); };
-  const sweep = async () => { await ready(); await pool.query(`DELETE FROM ai_thread_entities WHERE updated_at < NOW() - INTERVAL '2 days'`); };
+  const clear = async (userId, threadId = null) => {
+    await ready();
+    const values = [userId, threadId];
+    await pool.query('DELETE FROM ai_thread_entities WHERE user_id=$1 AND ($2::text IS NULL OR thread_id=$2)', values);
+    await pool.query('DELETE FROM ai_thread_focus WHERE user_id=$1 AND ($2::text IS NULL OR thread_id=$2)', values);
+  };
+  const sweep = async () => {
+    await ready();
+    await pool.query(`DELETE FROM ai_thread_entities WHERE updated_at < NOW() - INTERVAL '2 days';
+      DELETE FROM ai_thread_focus WHERE updated_at < NOW() - INTERVAL '2 days'`);
+  };
 
-  return { ready, note, noteCall, recall, prompt, clear, sweep };
+  return { enabled, ready, note, noteCall, setFocus, focus, visibleFocus, recall, prompt, clear, sweep };
 };
 
-module.exports = { createMemory, _test: { idsFromCall, clean } };
+module.exports = { createMemory, focusFromCall, contextualChoice, refersToFocus, namesProduct, _test: { idsFromCall, clean } };

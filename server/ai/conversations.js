@@ -25,7 +25,7 @@ const createConversations = pool => {
   };
   const rows = async (userId, threadId) => (await pool.query(`SELECT * FROM (SELECT * FROM ai_turns WHERE user_id=$1 AND thread_id=$2 ORDER BY created_at DESC LIMIT 40) t ORDER BY created_at`, [userId,threadId])).rows;
   const history = async (userId, threadId) => {
-    const past = (await rows(userId,threadId)).filter(r => r.status === 'done');
+    const past = (await rows(userId,threadId)).filter(r => r.status === 'done' && r.result?.watchlistRequest !== true);
     const ids = past.flatMap(r => (r.result?.actions || []).map(a => a.id));
     await actionStore.ready();
     await clientActions.ready();
@@ -49,8 +49,8 @@ const createConversations = pool => {
   };
   const list = async userId => {
     const threadId = await thread(userId);
-    const list = await rows(userId, threadId);
-    return { threadId, messages: list.flatMap(r => [
+    const [list, focus] = await Promise.all([rows(userId, threadId), memory.visibleFocus(userId, threadId)]);
+    return { threadId, focus, messages: list.flatMap(r => [
       { id: r.id, role: 'user', text: r.question, ...(r.result?.heard ? { heard: r.result.heard } : {}), note: r.channel === 'alice' ? 'Запрос с колонки Алиса' : undefined },
       { id: `reply_${r.id}`, role: 'assistant', text: r.result?.reply || (r.status === 'running' ? `Задача выполняется: ${r.step || 'обработка запроса'}` : 'Запрос прервался. Проверьте журнал действий перед повтором.'),
         actions: (r.result?.actions || []).map(a => ({ ...a, auto: false })), workflow: { id: r.id, status: r.status, step: r.step, plan: r.plan }, error: r.status === 'failed' },
@@ -65,7 +65,10 @@ const createConversations = pool => {
       const previous = (await pool.query('SELECT * FROM ai_turns WHERE user_id=$1 AND id=$2', [args.userId,id])).rows[0];
       if (previous) {
         if (previous.input_hash !== inputHash) throw Object.assign(new Error('Этот запрос уже использован с другими данными.'), { status: 409, code: 'AI_REQUEST_CONFLICT' });
-        if (previous.status === 'done') return { ...previous.result, replayed: true };
+        if (previous.status === 'done') {
+          const active = await thread(args.userId);
+          return { ...previous.result, replayed: true, ...(active === previous.thread_id ? { focus: await memory.visibleFocus(args.userId, active) } : {}) };
+        }
         throw Object.assign(new Error('Предыдущий запуск прервался или ещё выполняется. Проверьте журнал действий перед повтором.'), { status: 409, code: 'AI_REQUEST_UNCERTAIN' });
       }
       let threadId = await thread(args.userId);
@@ -88,7 +91,7 @@ const createConversations = pool => {
         }));
         const out = { ...result, requestId: id, threadId };
         await pool.query("UPDATE ai_turns SET status='done',result=$3,step='Завершено',updated_at=NOW() WHERE user_id=$1 AND id=$2", [args.userId,id,JSON.stringify(out)]);
-        return out;
+        return { ...out, focus: await memory.visibleFocus(args.userId, threadId) };
       } catch (e) {
         await pool.query("UPDATE ai_turns SET status='failed',step='Нужна проверка результата',updated_at=NOW() WHERE user_id=$1 AND id=$2", [args.userId,id]).catch(() => {});
         throw e;
@@ -98,9 +101,10 @@ const createConversations = pool => {
   const clear = async (userId, archive = false) => {
     await ready();
     const db = await pool.connect();
+    let previousThread;
     try {
       await db.query('BEGIN');
-      await db.query('SELECT id FROM ai_threads WHERE user_id=$1 FOR UPDATE',[userId]);
+      previousThread = (await db.query('SELECT id FROM ai_threads WHERE user_id=$1 FOR UPDATE',[userId])).rows[0]?.id;
       if ((await db.query("SELECT id FROM ai_turns WHERE user_id=$1 AND status='running'",[userId])).rowCount) throw new Error('Дождитесь завершения запроса.');
       if (!archive) await db.query('DELETE FROM ai_turns WHERE user_id=$1',[userId]);
       await db.query('UPDATE ai_threads SET id=$2,updated_at=NOW() WHERE user_id=$1',[userId,randomUUID()]);
@@ -108,7 +112,8 @@ const createConversations = pool => {
     } catch (e) { await db.query('ROLLBACK'); throw e; }
     finally { db.release(); }
     // Память разговора привязана к ветке: новая ветка и так начинается с нуля, старую убираем
-    await memory.clear(userId).catch(e => console.warn('AI: память разговора не очищена:', e.message));
+    if (!previousThread) return;
+    await memory.clear(userId, previousThread).catch(e => console.warn('AI: память разговора не очищена:', e.message));
   };
   const setPlan = async (userId, steps) => {
     const current = turnContext.getStore();
@@ -123,7 +128,8 @@ const createConversations = pool => {
   const task = async (userId, id) => {
     await ready();
     const row = (await pool.query(`SELECT id,question,status,step,plan,result FROM ai_turns WHERE user_id=$1
-      AND ($2::text IS NULL OR id=$2) AND id<>$3 ORDER BY created_at DESC LIMIT 1`,[userId,id || null,turnContext.getStore()?.id || ''])).rows[0];
+      AND ($2::text IS NULL OR id=$2) AND id<>$3 AND result->>'watchlistRequest' IS DISTINCT FROM 'true'
+      ORDER BY created_at DESC LIMIT 1`,[userId,id || null,turnContext.getStore()?.id || ''])).rows[0];
     if (!row) return { found: false };
     const actions = (await pool.query(`SELECT id,status,result,payload->>'summary' AS summary FROM ai_actions WHERE user_id=$1 AND payload->>'turnId'=$2 ORDER BY created_at`,[userId,row.id])).rows;
     return { ...row, actions, note: 'Выполненные действия не повторять. executing, undoing, uncertain требуют проверки записи, а не повторного выполнения. Продолжать только невыполненные шаги по просьбе владельца.' };

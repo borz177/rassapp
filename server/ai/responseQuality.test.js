@@ -11,6 +11,7 @@ test('ответ агента: неподтверждённые суммы не 
   const previous={base:process.env.OPENROUTER_BASE_URL,key:process.env.OPENROUTER_API_KEY};
   const model=http.createServer((req,res)=>{let b='';req.on('data',d=>b+=d);req.on('end',()=>{
     const body=JSON.parse(b);seen.push(body);const next=script.shift()||{content:''};
+    if(next.error){res.statusCode=next.status||502;res.end(JSON.stringify({error:{message:next.error}}));return;}
     const calls=next.tool?[{index:0,id:`call_${seen.length}`,type:'function',function:{name:next.tool,arguments:JSON.stringify(next.args||{})}}]:undefined;
     if(body.stream){res.setHeader('Content-Type','text/event-stream');res.end(`data: ${JSON.stringify({choices:[{delta:{content:next.content||'',tool_calls:calls}}],usage:{}})}\n\ndata: [DONE]\n\n`);}
     else {res.setHeader('Content-Type','application/json');res.end(JSON.stringify({choices:[{message:{role:'assistant',content:next.content||'',tool_calls:calls}}],usage:{}}));}
@@ -39,7 +40,44 @@ test('ответ агента: неподтверждённые суммы не 
     await t.test('пустой повтор не возвращает прежний ответ с плохой суммой, в том числе в потоке',async()=>{
       const events=[];const r=await ask('Проверь общую сумму',[{content:bad},{content:''}],{onStream:ev=>events.push(ev)});
       assert.match(r.reply,/Не удалось надёжно проверить суммы/);assert(!r.reply.includes('987654321'));assert(!r.reply.includes('⚠️'));assert.deepEqual(r.actions,[]);
-      assert(events.some(e=>e.reset),'Сомнительный текст удаляется из текущего потока');assert.equal(seen.length,2);
+      assert.deepEqual(events,[],'Черновик с непроверенной суммой не попадает в чат');assert.equal(seen.length,2);
+    });
+    await t.test('сбой обеих моделей при проверке суммы сохраняет ответ и подготовленную карточку',async()=>{
+      const events=[];
+      const r=await ask('Добавь задачу проверить кассу',[
+        {tool:'create_task',args:{title:'Проверить кассу'}},{content:bad},
+        {error:'Provider returned an empty response'},{error:'Provider returned an empty response'},
+      ],{onStream:e=>events.push(e)});
+      assert.match(r.reply,/Не удалось надёжно проверить суммы/);
+      assert(!r.reply.includes('987654321'));assert.equal(r.actions[0].kind,'confirm');assert.equal(seen.length,4);
+      assert.deepEqual(events,[]);
+      assert.equal((await pool.query("SELECT count(*)::int AS n FROM data_items WHERE type='tasks'")).rows[0].n,0);
+    });
+    await t.test('справка о возможностях отвечает без модели и без карточки операции',async()=>{
+      const r=await ask('Что ты умеешь?',[]);assert.match(r.reply,/подготовить договор/);assert.deepEqual(r.actions,[]);assert.equal(seen.length,0);
+    });
+    await t.test('успешная запасная модель отмечается на том же запросе как восстановление',async()=>{
+      const r=await ask('Расскажи кратко про приложение',[{error:'Provider returned an empty response'},{content:'Здесь можно вести учёт договоров.'}],{silent:false});
+      assert.match(r.reply,/вести учёт/);assert.equal(seen.length,2);
+      await assistant.quality.flush();
+      const {rows}=await pool.query("SELECT user_id,outcome FROM ai_signals WHERE kind='model_fallback' ORDER BY id DESC LIMIT 1");
+      assert.deepEqual(rows,[{user_id:'owner',outcome:'corrected'}]);
+    });
+    await t.test('ожидаемая прибыль по названному счёту берётся из его графика и долей финансирования',async()=>{
+      const {mskDay,addMonthsDay}=require('./collections');
+      const month=addMonthsDay(mskDay(),1).slice(0,7), first=`${month}-01`, due=`${month}-20`;
+      const names=new Intl.DateTimeFormat('ru-RU',{month:'long',timeZone:'Europe/Moscow'}).format(new Date(`${month}-15T12:00:00Z`));
+      const rows=[['accounts',{id:'ma',name:'Магомед',type:'MAIN'}],['accounts',{id:'ma2',name:'Магомед резерв',type:'MAIN'}],
+        ['sales',{id:'shared',customerId:'cust',accountId:'acc',type:'INSTALLMENT',status:'ACTIVE',startDate:first,buyPrice:8000,totalAmount:12000,downPayment:2000,remainingAmount:10000,funding:[{accountId:'acc',amount:2000},{accountId:'ma',amount:6000}],paymentPlan:[{id:'planned',date:due,amount:10000,isRealPayment:false}]}],
+        ['sales',{id:'not-ma',customerId:'cust',accountId:'ma2',type:'INSTALLMENT',status:'ACTIVE',startDate:first,buyPrice:10000,totalAmount:20000,downPayment:0,remainingAmount:20000,paymentPlan:[{id:'other',date:due,amount:20000,isRealPayment:false}]}],
+        ['settings',{id:'forecast-test-settings',profitFromPaymentsOnly:true}]];
+      try{
+        for(const[type,item]of rows)await pool.query('INSERT INTO data_items(id,user_id,type,data) VALUES($1,$2,$3,$4)',[item.id,'owner',type,JSON.stringify(item)]);
+        const r=await ask(`Счет: магомед\nОжидаемая прибыль на ${names} какая ?`,[]);
+        assert.match(r.reply,/счёт «Магомед»/);assert.match(r.reply,/3\s000 ₽/);assert.equal(seen.length,0);
+        const missing=await ask(`Ожидаемая прибыль в ${month} по счёту неизвестный`,[]);
+        assert.match(missing.reply,/Счёт не найден/);assert.equal(seen.length,0);
+      }finally{await pool.query('DELETE FROM data_items WHERE id=ANY($1::text[])',[rows.map(([,r])=>r.id)]);}
     });
     await t.test('повтор снова ошибся — безопасное объяснение вместо неподтверждённого ответа',async()=>{
       const r=await ask('Покажи суммы',[{content:bad},{content:'Итого 876543219 ₽.'}]);assert.match(r.reply,/Не удалось надёжно проверить суммы/);assert(!/987654321|876543219/.test(r.reply));assert.equal(seen.length,2);
@@ -67,7 +105,7 @@ test('ответ агента: неподтверждённые суммы не 
     });
     await t.test('после одного повтора текст не изображает отсутствующую карточку',async()=>{
       const events=[];const r=await ask('Добавь задачу проверить кассу',[{content:'Нажмите «Подтвердить».'},{content:'Нажмите «Подтвердить».'}],{silent:false,onStream:e=>events.push(e)});
-      assert.match(r.reply,/не подготовлено и не выполнено/);assert.equal(seen.length,2);assert.equal(r.actions.length,0);assert(events.some(e=>e.reset));
+      assert.match(r.reply,/не подготовлено и не выполнено/);assert.equal(seen.length,2);assert.equal(r.actions.length,0);assert.deepEqual(events,[]);
       await assistant.quality.flush();
       const row=(await pool.query("SELECT outcome,run_id FROM ai_signals WHERE kind='honesty_fix' ORDER BY id DESC LIMIT 1")).rows[0];assert.equal(row.outcome,'blocked');assert(row.run_id);
     });

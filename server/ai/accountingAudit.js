@@ -2,7 +2,9 @@
 const crypto = require('node:crypto');
 const domain = require('../api/domain');
 const {reviewFingerprint} = require('./auditReviewIdentity');
-const VERSION = 2;
+const VERSION = 4;
+const FINDING_VERSION = 2;
+const MIN_SCHEDULE_DIFFERENCE_CENTS = 100;
 const TYPES = [
   'accounts',
   'sales',
@@ -17,6 +19,8 @@ const TYPES = [
 const hash = (value) => crypto.createHash('sha256').update(JSON.stringify(value)).digest('hex');
 const round = (n) => Math.round(n * 100) / 100;
 const num = (n) => (Number.isFinite(Number(n)) ? Number(n) : 0);
+const auditDate = (date) => Number.isFinite(Date.parse(date))
+  ? new Date(date).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' }) : null;
 const groupRows = (rows) =>
   Object.fromEntries(TYPES.map((type) => [type, rows.filter((r) => r.type === type).map((r) => r.data)]));
 const fail = (status, message) => {
@@ -112,6 +116,31 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
   const relevantExpenses = expenses.filter(
     (e) => all || selected.has(e.accountId) || contractIds.has(e.saleId) || linkedPurchases.has(e.id)
   );
+  const linkedInvestors = new Set(accounts.filter(a => !a.isArchived).flatMap(a => [a.ownerId, ...(a.poolMemberIds || []), ...(a.partners || [])]).filter(Boolean));
+  const deposits = sales.filter(inScope).flatMap(s => {
+    if (s.type !== 'CASH' && s.type != null) return [];
+    const key = /^system_deposit_(.+)$/.exec(s.customerId || '')?.[1];
+    const investorId = key || (invById.has(s.customerId) ? s.customerId : null);
+    return investorId ? [{ sale: s, investorId }] : [];
+  });
+  const historyKey = (accountId, investorId) => JSON.stringify([accountId, investorId]);
+  const unmatchedDeposits = new Map(), unmatchedReturns = new Map();
+  const group = (map, k, entry) => { if (!map.has(k)) map.set(k, []); map.get(k).push(entry); };
+  for (const { sale, investorId } of deposits) {
+    if (!invById.has(investorId) && !linkedInvestors.has(investorId) && account.has(sale.accountId)) group(unmatchedDeposits, historyKey(sale.accountId, investorId), sale);
+  }
+  for (const e of relevantExpenses) {
+    if (e.isRefund !== true && e.payoutType === 'INVESTMENT' && e.investorId && !invById.has(e.investorId)) group(unmatchedReturns, historyKey(e.accountId, e.investorId), e);
+  }
+  const returnedDeposits = new Map();
+  for (const [key, incoming] of unmatchedDeposits) {
+    const outgoing = unmatchedReturns.get(key) || [];
+    if (incoming.length !== 1 || outgoing.length !== 1) continue;
+    const [sale] = incoming, [expense] = outgoing;
+    const amount = domain.collected(sale);
+    if (amount > 0 && round(amount) === round(num(expense.amount)) && Date.parse(sale.startDate) <= Date.parse(expense.date)) returnedDeposits.set(sale.id, expense);
+  }
+  const historicalReturnIds = new Set([...returnedDeposits.values()].map(e => e.id));
   const findings = [];
   const ref = (kind, id, label, contractId) => ({ kind, id, label, ...(contractId ? { contractId } : {}) });
   const contractRef = (s) => ref('contract', s.id, 'Открыть договор');
@@ -122,17 +151,17 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
     severity,
     title,
     explanation,
-    { sale, sourceId, sources = [], facts = [], difference, nextStep } = {}
+    { sale, sourceId, sources = [], facts = [], difference, nextStep, accountName } = {}
   ) => {
     findings.push({
-      id: hash([VERSION, code, sale?.id, sourceId, sources]).slice(0, 24),
+      id: hash([FINDING_VERSION, code, sale?.id, sourceId, sources]).slice(0, 24),
       code,
       severity,
       title,
       explanation,
       customer: sale ? names.get(sale.customerId) || 'Клиент не найден' : undefined,
       product: sale?.productName || undefined,
-      accountName: sale ? account.get(sale.accountId)?.name || 'Без счёта' : undefined,
+      accountName: accountName || (sale ? account.get(sale.accountId)?.name || 'Без счёта' : undefined),
       facts,
       sources,
       difference: Number.isFinite(difference) ? round(difference) : undefined,
@@ -217,7 +246,8 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
     if (scheduled.length && !legacyPayments) {
       const sum = round(scheduled.reduce((n, p) => n + num(p.amount), 0)),
         due = round(Math.max(0, num(s.totalAmount) - num(s.downPayment)));
-      if (Math.min(Math.abs(sum - due), Math.abs(sum - Math.max(0, due - discounts))) > 0.011)
+      const differenceCents = Math.round(100 * Math.min(Math.abs(sum - due), Math.abs(sum - Math.max(0, due - discounts))));
+      if (differenceCents >= MIN_SCHEDULE_DIFFERENCE_CENTS)
         add(
           'schedule_review',
           'review',
@@ -410,16 +440,16 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
         'В старых записях источник мог не сохраняться. Требуется уточнение.',
         { sourceId: e.id, sources, facts: [fact('Сумма', num(e.amount))] }
       );
-    if (e.category === 'Выплата инвестора' || e.payoutType || e.investorId) {
+    if (!historicalReturnIds.has(e.id) && e.category !== 'Моя выплата' && (e.category === 'Выплата инвестора' || e.payoutType || e.investorId)) {
       const inv = invById.get(e.investorId),
         a = account.get(e.accountId);
       if (!inv)
         add(
           'payout_investor',
-          'confirmed',
-          'Получатель выплаты не найден',
-          'Нет инвестора, указанного в расходе.',
-          { sourceId: e.id, sources }
+          !e.investorId || linkedInvestors.has(e.investorId) ? 'confirmed' : 'review',
+          e.investorId ? 'Карточка получателя выплаты не найдена' : 'В выплате не указан получатель',
+          'Расход есть в истории. Без получателя сверка не может отнести его к конкретному инвестору.',
+          { sourceId: e.id, sources, accountName: a?.name || 'Счёт не найден', facts: [fact('Сумма выплаты', num(e.amount)), ...(auditDate(e.date) ? [fact('Дата', auditDate(e.date), 'text')] : [])], nextStep: 'Откройте расход и сверьте получателя с исходной операцией.' }
         );
       else if (
         a &&
@@ -446,23 +476,23 @@ function buildAccountingAudit(data, accountIds = null, now = new Date().toISOStr
         );
     }
   }
-  for (const s of sales.filter(inScope)) {
-    const id = invById.has(s.customerId)
-      ? s.customerId
-      : String(s.customerId || '').startsWith('system_deposit_')
-      ? String(s.customerId).slice('system_deposit_'.length)
-      : null;
-    if (!id) continue;
+  for (const { sale: s, investorId: id } of deposits) {
     const inv = invById.get(id),
       a = account.get(s.accountId),
       sources = [ref('income', s.id, 'Открыть внесение')];
-    if (!inv)
+    const oldReturn = returnedDeposits.get(s.id);
+    const facts = [fact('Сумма внесения', round(domain.collected(s))), ...(auditDate(s.startDate) ? [fact('Дата внесения', auditDate(s.startDate), 'text')] : [])];
+    if (oldReturn)
+      add('historical_investor_return', 'information', 'Историческое вложение и возврат',
+        'На одном счёте сохранились внесение и возврат на ту же сумму с одной ссылкой на инвестора. Его карточки больше нет.',
+        { sourceId: s.id, sources: [...sources, ref('expense', oldReturn.id, 'Открыть возврат')], accountName: a?.name, facts: [...facts, fact('Сумма возврата', num(oldReturn.amount)), fact('Дата возврата', auditDate(oldReturn.date), 'text')], nextStep: 'При необходимости откройте обе операции. По этой паре разница между внесением и возвратом — 0 ₽.' });
+    else if (!inv)
       add(
         'deposit_investor',
-        'confirmed',
-        'Инвестор внесения не найден',
-        'Внесение содержит явную ссылку на отсутствующего инвестора.',
-        { sourceId: s.id, sources }
+        linkedInvestors.has(id) ? 'confirmed' : 'review',
+        'Карточка инвестора по внесению не найдена',
+        a ? 'Сумма есть в истории счёта. Внесение ссылается на карточку инвестора, которой сейчас нет.' : 'Внесение сохранилось в истории. Связанные карточка инвестора и счёт не найдены.',
+        { sourceId: s.id, sources, accountName: a?.name || 'Счёт не найден', facts, nextStep: 'Сверьте, кому принадлежали деньги. Сумма внесения сама по себе не показывает остаток капитала или потерю.' }
       );
     else if (!a || !(a.ownerId === id || a.poolMemberIds?.includes(id) || a.partners?.includes(id)))
       add(
@@ -617,7 +647,7 @@ function createAccountingAudits(pool) {
     const {repairRebuiltSchedule}=await import(require('url').pathToFileURL(require('path').join(__dirname,'../../shared/saleSchedule.js')).href);
     const findings=report.findings.map(f=>{
       const mark=byId.get(f.id),sale=salesById.get(f.sources.find(ref=>ref.kind==='contract')?.id);
-      return {...f,reviewedAt:!stale&&f.severity!=='confirmed'&&mark&&mark.source_fingerprint===reviewFingerprint(f,data,VERSION)?mark.checked_at:null,
+      return {...f,reviewedAt:!stale&&f.severity!=='confirmed'&&mark&&mark.source_fingerprint===reviewFingerprint(f,data,FINDING_VERSION)?mark.checked_at:null,
         repairable:!stale&&f.code==='schedule_review'&&!!sale&&!!repairRebuiltSchedule(sale)};
     });
     const counts={...report.counts,reviewed:findings.filter(f=>f.reviewedAt).length};
@@ -678,7 +708,7 @@ function createAccountingAudits(pool) {
     if(checked)await pool.query(`INSERT INTO ai_accounting_reviews(user_id,finding_id,source_fingerprint,report_id) VALUES($1,$2,$3,$4)
       ON CONFLICT(user_id,finding_id) DO UPDATE SET source_fingerprint=EXCLUDED.source_fingerprint,report_id=EXCLUDED.report_id,
       checked_at=CASE WHEN ai_accounting_reviews.source_fingerprint=EXCLUDED.source_fingerprint THEN ai_accounting_reviews.checked_at ELSE now() END`,
-      [userId,finding.id,reviewFingerprint(finding,groupRows(rows),VERSION),reportId]);
+      [userId,finding.id,reviewFingerprint(finding,groupRows(rows),FINDING_VERSION),reportId]);
     else await pool.query('DELETE FROM ai_accounting_reviews WHERE user_id=$1 AND finding_id=$2',[userId,finding.id]);
     return {ok:true,checked,financialDataChanged:false};
   };

@@ -9,7 +9,9 @@ import Sheet from './Sheet';
 import { SquarePen, Trash2, RotateCcw, ShieldCheck, Zap, MoreHorizontal, Settings2, Plus, ChevronDown, Check, FileText } from 'lucide-react';
 import AIAssistantSettings, { type AISettings } from './AIAssistantSettings';
 import AIActionCard, { type AIAction } from './AIActionCard';
-import { api } from '../services/api';
+import WatchlistQuickAddSheet from './WatchlistQuickAddSheet';
+import type { WatchlistReasonDraft } from '../src/watchlist';
+import { api, type AIConversationFocus } from '../services/api';
 import { startRecording, compressImage, MAX_RECORD_SECONDS, Recording } from '../src/aiMedia';
 import { isIOSApp, publicOrigin } from '../src/platform';
 import { haptic } from './feedback';
@@ -27,8 +29,7 @@ import { animateScrollTop, KEYBOARD_MS, prefersReducedMotion } from '../src/easi
  *    «Отменить». Без обязательных полей договора агент спрашивает в любом
  *    режиме (server/ai/assistant.js).
  *
- * История разговора живёт на устройстве (localStorage, без фото и голоса) —
- * на сервере её нет.
+ * В общей истории текущий клиент и договор приходят с сервера.
  */
 
 type Action = AIAction;
@@ -202,11 +203,6 @@ const toHistory = (messages: Msg[]) => messages
     };
   });
 
-/** Черновой текст во время печати — без служебных пометок, которые сервер всё равно уберёт в итоге */
-const livePreview = (t: string) => t
-  .replace(/\[(Черновик договора|Договор оформлен|Выполнено|Отменено|Отправлено|Не выполнено|Не отправлено|Ждёт подтверждения|Карточка|Кнопка)[^\]]*\]?/g, '')
-  .replace(/\[(Отменить|Подтвердить|Отправить|Открыть форму договора|Открыть договор)\]/g, '');
-
 // Первая — «Оформить договор», выделенная: так узнают, что агент оформляет договоры
 // (по нажатию он спросит клиента, товар, закуп, наценку и срок)
 const CONTRACT_SUGGESTION = { label: 'Оформить договор', text: 'Оформи договор' };
@@ -306,6 +302,7 @@ const ChatMenu: React.FC<{ hasChat: boolean; busy: boolean; onNew: () => void; o
 const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreateContract, onSendDocument, onDeleteContract, onShowContract, onExportReport, onExportCustomers, whatsappEnabled, onDataChanged, onOpenTariffs, contractAccountName, onOpenWhatsApp, onOpenTemplate, onReschedule, auditRequest, onAuditConsumed, onShowAuditContract }) => {
   const [status, setStatus] = useState<any>(null);
   const [messages, setMessages] = useState<Msg[]>(() => readStore(userId));
+  const [currentSubject, setCurrentSubject] = useState<AIConversationFocus | null>(null);
   // Сообщения, что были при открытии, — без анимации появления: иначе вся
   // история разворачивалась заново и лента росла уже после прокрутки вниз
   const shownAtOpen = useRef<Set<string>>(new Set(messages.map(m => m.id)));
@@ -353,7 +350,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   // Что агент делает сейчас — приходит с сервера по шагам («Ищу клиента…»)
   const [stepLabel, setStepLabel] = useState('');
   // Ответ, пока он печатается (до итога с карточками)
-  const [liveText, setLiveText] = useState('');
   useEffect(() => {
     if (!sending) { setElapsed(0); return; }
     const started = Date.now();
@@ -365,6 +361,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
   const [level, setLevel] = useState(0);
   const [micError, setMicError] = useState<string | null>(null);
   const [consentOpen, setConsentOpen] = useState(false);
+  const [watchlistDraft, setWatchlistDraft] = useState<{ customerId: string; reason?: WatchlistReasonDraft } | null>(null);
   const [consentChecked, setConsentChecked] = useState(false);
   const listEnd = useRef<HTMLDivElement>(null);
   // Место под нижней панелью (режим, поле ввода, фото): на телефоне она висит
@@ -782,6 +779,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     return () => { alive = false; clearInterval(timer); document.removeEventListener('visibilitychange', onVisible); };
   }, [userId, status?.allowedRole, status?.aliceEnabled, status?.sharedHistory]);
   const sharedThread = useRef<string | null>((() => { try { return localStorage.getItem(`finuchet_ai_thread_${userId}`); } catch { return null; } })());
+  const historyGeneration = useRef(0);
   useEffect(() => {
     if (!status?.sharedHistory || !status?.allowedRole || sending) return;
     let alive = true;
@@ -791,11 +789,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       // вернулись — догоняем сразу (visibilitychange ниже)
       if (busy || running.current || document.hidden) return;
       busy = true;
+      const generation = historyGeneration.current;
       try {
         const remote = await api.aiAssistant.history();
-        if (!alive || running.current) return;
+        if (!alive || running.current || generation !== historyGeneration.current) return;
         const changedThread = sharedThread.current !== null && sharedThread.current !== remote.threadId;
         sharedThread.current = remote.threadId;
+        setCurrentSubject(remote.focus ?? null);
         try { localStorage.setItem(`finuchet_ai_thread_${userId}`, remote.threadId); } catch { /* без хранилища */ }
         setMessages(current => {
           const byId = new Map<string, Msg>(current.map(m => [m.id,m]));
@@ -940,15 +940,13 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     const req = { id: userMsg.id, ctrl: new AbortController(), userMsgId: userMsg.id };
     running.current = req;
     setStepLabel('');
-    setLiveText('');
     try {
       const r = await api.aiAssistant.message({
         text: [payload.text, payload.note && `[${payload.note}]`].filter(Boolean).join(' '),
         auditReportId: payload.auditReportId, history, sharedHistory: !!status?.sharedHistory, image: sentImages[0], images: sentImages.length > 1 ? sentImages : undefined, audio: payload.audio, mode: payload.forceConfirm ? 'confirm' : mode, requestId: req.id,
-      }, req.ctrl.signal,
-        label => { if (running.current === req) setStepLabel(label); },
-        piece => { if (running.current === req) setLiveText(t => piece === null ? '' : t + piece); });
+      }, req.ctrl.signal, label => { if (running.current === req) setStepLabel(label); });
       setStatus((s: any) => s ? { ...s, left: r.left } : s);
+      if (running.current === req && r.focus !== undefined) setCurrentSubject(r.focus);
       if (typeof r.heard === 'string' && r.heard) setMessages(ms => ms.map(m => m.id === userMsg.id ? { ...m, heard: r.heard } : m));
       let actions: Action[] = r.actions || [];
       if (r.cancelled) {
@@ -978,7 +976,6 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     } finally {
       if (running.current === req) running.current = null;
       setSending(false);
-      setLiveText('');
       setStopping(false);
     }
   };
@@ -1240,6 +1237,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       try { await api.aiAssistant.clearHistory(true); sharedThread.current = null; }
       catch (e: any) { toast.error(e.message); return; }
     }
+    historyGeneration.current++;
+    setCurrentSubject(null);
     writeStore(userId, status?.sharedHistory ? [] : messages, true);
     setPrevChat(status?.sharedHistory ? [] : messages);
     setMessages([]);
@@ -1255,6 +1254,8 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
       try { await api.aiAssistant.clearHistory(); sharedThread.current = null; }
       catch (e: any) { toast.error(e.message); return; }
     }
+    historyGeneration.current++;
+    setCurrentSubject(null);
     setMessages([]);
     setClearOpen(false);
   };
@@ -1265,6 +1266,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
     <div ref={rootRef} className="ai-chat-root flex flex-col min-h-[calc(100dvh-9rem)] md:min-h-[calc(100dvh-6rem)] max-w-3xl mx-auto w-full">
       {statementRows && <AIStatementPreview rows={statementRows} onClose={() => setStatementRows(null)} onPrepare={t => { setStatementRows(null); send({ text: t, forceConfirm: true }); }} />}
       {journalOpen && <AIAgentJournal onClose={() => setJournalOpen(false)} onDataChanged={onDataChanged} />}
+      {watchlistDraft && <WatchlistQuickAddSheet userId={userId} customerId={watchlistDraft.customerId} initialReason={watchlistDraft.reason} onClose={() => setWatchlistDraft(null)} />}
       {/* Шапка */}
       {/* В пустом чате шар один — большой посередине; маленький в шапке появляется вместе с перепиской */}
       <div className="flex items-center gap-3 pb-3 md:sticky md:top-0 md:z-20 md:pt-3 md:-mt-3 md:bg-slate-50/90 md:dark:bg-slate-900/90 md:backdrop-blur">
@@ -1275,6 +1277,9 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
             {status ? (status.plan ? `${status.plan.name} · осталось ${status.left} из ${status.plan.monthly} в этом месяце` : `Пробный доступ · осталось ${status.left} запросов`) : 'Загружаем…'}
             {status && !iosApp && <span className="ml-1 font-semibold text-violet-600 dark:text-violet-300">· Тарифы ›</span>}
           </button>
+          {currentSubject && (currentSubject.contractId
+            ? <button type="button" onClick={() => onShowContract(currentSubject.contractId!, currentSubject.customerId)} className="mt-1 block max-w-full truncate text-left text-xs text-violet-700 hover:underline dark:text-violet-300" title="Открыть договор">{currentSubject.name} · {currentSubject.product}</button>
+            : <p className="mt-1 truncate text-xs text-slate-600 dark:text-slate-300">Клиент · {currentSubject.name}</p>)}
         </div>
         {/* Меню «⋯»: на телефоне — в верхней панели (не уезжает при прокрутке), на компьютере — в закреплённой шапке */}
         {topbarSlot && phone
@@ -1360,10 +1365,21 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                               accountName={a.kind === 'contract_form' ? contractAccountName?.(a.draft) : undefined}
                   choicesActive={m.id === messages[messages.length - 1]?.id}
                   onAuditExplain={id => send({text:'Объясни эту проверку учёта: что нужно проверить первым и какие записи открыть?',auditReportId:id,forceConfirm:true})}
+                  onAuditExplainWithAI={id => send({ text: 'Разбери результаты сверки простыми словами. Назови важные расхождения, объясни суммы и укажи, какие записи проверить.', auditReportId: id, forceConfirm: true })}
+                  onOpenWatchlist={(customerId, reason) => setWatchlistDraft({ customerId, reason })}
                   onAuditRefresh={ids => startAccountingAudit(ids, newId())}
                   onAuditOpenContract={onShowAuditContract || onShowContract}
                   onAuditChanged={onDataChanged}
-                  onChoose={i => { if (a.kind !== 'choices') return; patchAction(m.id, a.id, { state: 'done', chosen: i }); send({ text: a.options[i].label, note: a.options[i].ref }); }}
+                  onChoose={i => {
+                    if (a.kind !== 'choices') return;
+                    const { label, ref } = a.options[i];
+                    if (a.watchlistReason && ref?.startsWith('watchlist:')) {
+                      setWatchlistDraft({ customerId: ref.slice('watchlist:'.length), reason: a.watchlistReason });
+                      return;
+                    }
+                    patchAction(m.id, a.id, { state: 'done', chosen: i });
+                    send({ text: label, note: ref });
+                  }}
                   onConfirm={() => confirm(m.id, a)}
                   onCancel={() => cancel(m.id, a)}
                   onUndo={() => undo(m.id, a)}
@@ -1391,14 +1407,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
         {sending && (
           <div className="ai-msg-in flex gap-2">
             <AIOrb size={28} className="mt-1" />
-            {/* Ответ печатается — пузырь с текстом; пока текста нет — точки и что делаю */}
-            {liveText.trim() && !stopping ? (
-              <div className="max-w-[85%] rounded-3xl rounded-bl-lg bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 border border-slate-200/80 dark:border-slate-700 px-4 py-2.5 text-[15px] leading-snug whitespace-pre-wrap [overflow-wrap:anywhere]">
-                {renderRich(livePreview(liveText))}
-                <span aria-hidden className="ai-caret inline-block w-[2px] h-[1.05em] -mb-[0.15em] ml-0.5 bg-violet-500 rounded-full" />
-              </div>
-            ) : (
-              <div className="rounded-3xl rounded-bl-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-4 py-3 flex gap-1.5 items-center">
+            <div role="status" className="rounded-3xl rounded-bl-lg bg-white dark:bg-slate-800 border border-slate-200/80 dark:border-slate-700 px-4 py-3 flex gap-1.5 items-center">
                 <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
                 <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
                 <span className="ai-dot w-2 h-2 rounded-full bg-violet-500" />
@@ -1409,8 +1418,7 @@ const AIAssistant: React.FC<Props> = ({ userId, onBack, onOpenContract, onCreate
                       {stepLabel && <span key={stepLabel} className="ai-msg-in ml-1.5 text-xs text-slate-500 dark:text-slate-400">{stepLabel}</span>}
                       {elapsed >= 4 && <span className="ml-1 text-xs tabular-nums text-slate-400 dark:text-slate-500">· {elapsed} с</span>}
                     </>}
-              </div>
-            )}
+            </div>
           </div>
         )}
         {/* Место под полем ввода: последнее сообщение не прячется за ним */}

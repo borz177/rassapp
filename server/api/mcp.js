@@ -160,8 +160,9 @@ const TOOLS = [
       days: { type: 'integer', description: 'Сколько дней вперёд, начиная с сегодня; по умолчанию 30, максимум 1100' },
       untilEnd: { type: 'boolean', description: 'До последнего платежа по всем договорам — для «по месяцам до конца», «пока не закончатся договоры»' },
       month: { type: 'string', description: 'Один месяц целиком, YYYY-MM — для «в ноябре», «в следующем месяце» (текущий — с сегодня)' },
+      accountId: { type: 'string', description: 'Прогноз по одному счёту. Идентификатор из list_accounts. Для запроса по счёту передай его обязательно.' },
     },
-    request: args => ({ method: 'GET', path: `/reports/forecast?${query({ days: args.days, untilEnd: args.untilEnd, month: args.month })}` }),
+    request: args => ({ method: 'GET', path: `/reports/forecast?${query({ days: args.days, untilEnd: args.untilEnd, month: args.month, accountId: args.accountId })}` }),
   },
   {
     name: 'sales_breakdown',

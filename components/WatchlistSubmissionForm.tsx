@@ -1,24 +1,26 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { ShieldAlert, UserPlus, X } from 'lucide-react';
 import { api } from '../services/api';
-import { WATCHLIST_REASONS, WatchlistPreview, WatchlistStatus, WatchlistSubmissionResult, watchlistCanSearch, watchlistCanSubmit, watchlistDate } from '../src/watchlist';
+import { WATCHLIST_REASONS, WatchlistPreview, WatchlistReasonDraft, WatchlistStatus, WatchlistSubmissionResult, watchlistCanSearch, watchlistCanSubmit, watchlistDate } from '../src/watchlist';
 import { WatchlistError, WatchlistField, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
 
 /** Одна форма для списка, карточки клиента и договора. Источник личности — сервер. */
 const WatchlistSubmissionForm: React.FC<{
   userId: string; customerId: string; onSaved: (entry: WatchlistSubmissionResult) => void | Promise<void>;
-  onBusyChange?: (busy: boolean) => void; onChooseAnother?: () => void;
-}> = ({ userId, customerId, onSaved, onBusyChange, onChooseAnother }) => {
+  onBusyChange?: (busy: boolean) => void; onChooseAnother?: () => void; initialReason?: WatchlistReasonDraft;
+}> = ({ userId, customerId, onSaved, onBusyChange, onChooseAnother, initialReason }) => {
+  const initialCategory = initialReason?.reason ?? 'overdue';
+  const initialDetails = initialReason?.reasonDetails ?? '';
   const [preview, setPreview] = useState<WatchlistPreview | null>(null);
   const [loading, setLoading] = useState(true), [error, setError] = useState<string | null>(null), [saving, setSaving] = useState(false);
-  const [reason, setReason] = useState('overdue'), [details, setDetails] = useState(''), [confirmed, setConfirmed] = useState(false);
+  const [reason, setReason] = useState<string>(initialCategory), [details, setDetails] = useState(initialDetails), [confirmed, setConfirmed] = useState(false);
   const [guarantorSaleId, setGuarantorSaleId] = useState(''), [guarantorReason, setGuarantorReason] = useState('');
   const alive = useRef(false), request = useRef<AbortController | null>(null);
   useEffect(() => {
     alive.current = true;
     const controller = new AbortController();
-    setPreview(null); setLoading(true); setError(null); setReason('overdue'); setDetails(''); setConfirmed(false);
+    setPreview(null); setLoading(true); setError(null); setReason(initialCategory); setDetails(initialDetails); setConfirmed(false);
     setGuarantorSaleId(''); setGuarantorReason('');
     (async () => {
       const s = await api.watchlistRequest<WatchlistStatus>('/watchlist/status', { signal: controller.signal });
@@ -30,7 +32,7 @@ const WatchlistSubmissionForm: React.FC<{
       if (!controller.signal.aborted) setPreview(p);
     })().catch(e => { if (!controller.signal.aborted) setError(e.message); }).finally(() => { if (!controller.signal.aborted) setLoading(false); });
     return () => { alive.current = false; controller.abort(); request.current?.abort(); request.current = null; };
-  }, [userId, customerId]);
+  }, [userId, customerId, initialCategory, initialDetails]);
   const guarantors = preview?.guarantors ?? [];
   const guarantor = guarantors.find(item => item.saleId === guarantorSaleId);
   const selectGuarantor = (saleId: string) => {
@@ -63,8 +65,8 @@ const WatchlistSubmissionForm: React.FC<{
           </div>
         </div>
       </WatchlistPrivateContent>}
-      <WatchlistField label="Причина"><select disabled={saving} className={wlInput} value={reason} onChange={e => { setReason(e.target.value); if (e.target.value !== 'other') setDetails(''); }}>{Object.entries(WATCHLIST_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></WatchlistField>
-      {reason === 'other' && <WatchlistField label="Описание причины"><textarea disabled={saving} className={wlInput} rows={3} minLength={3} maxLength={1000} value={details} onChange={e => setDetails(e.target.value)} placeholder="Описание увидят участники поиска. Без паспортных данных и контактов." /></WatchlistField>}
+      <WatchlistField label="Причина"><select disabled={saving} className={wlInput} value={reason} onChange={e => { setReason(e.target.value); setConfirmed(false); if (e.target.value !== 'other') setDetails(''); }}>{Object.entries(WATCHLIST_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></WatchlistField>
+      {reason === 'other' && <WatchlistField label="Описание причины"><textarea disabled={saving} className={wlInput} rows={3} minLength={3} maxLength={1000} value={details} onChange={e => { setDetails(e.target.value); setConfirmed(false); }} placeholder="Описание увидят участники поиска. Без паспортных данных и контактов." /></WatchlistField>}
       {guarantor ? <section className={`${wlCard} space-y-3`} aria-label="Поручитель">
         <div className="flex items-center justify-between gap-2">
           <h3 className="min-w-0 break-words text-sm font-semibold">Поручитель{guarantors.length === 1 ? ` · ${guarantor.name}` : ''}</h3>

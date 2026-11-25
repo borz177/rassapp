@@ -641,6 +641,7 @@ const openApiSpec = {
           { name: 'days', in: 'query', schema: { type: 'integer', minimum: 1, maximum: 1100, default: 30 }, description: 'Сколько дней вперёд, начиная с сегодня' },
           { name: 'untilEnd', in: 'query', schema: { type: 'boolean' }, description: 'До последнего платежа по всем договорам (days тогда не нужен)' },
           { name: 'month', in: 'query', schema: { type: 'string' }, description: 'Один месяц целиком, YYYY-MM (текущий — с сегодня)' },
+          { name: 'accountId', in: 'query', schema: { type: 'string' }, description: 'Один счёт с учётом долей совместно профинансированных договоров' },
         ],
         responses: { 200: { description: 'Прогноз', content: { 'application/json': { schema: { type: 'object', properties: { data: { type: 'object' } } } } } }, ...errorResponses },
       },

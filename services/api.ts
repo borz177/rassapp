@@ -8,6 +8,13 @@ import { mergeInvestor } from '../src/syncMerge';
 import { contractsTowardLimit, contractLimitOf, COUNTS_ALL_CONTRACTS } from '../src/contractLimit';
 import { isBundledApp, SERVER_ORIGIN } from '../src/platform';
 
+export interface AIConversationFocus {
+  name: string;
+  product?: string;
+  contractId?: string;
+  customerId?: string;
+}
+
 // ── Отложенные сохранения инвесторов: от какой версии сделано изменение ─────────
 // Инвестор уходит на сервер целиком. Если сохранение отложено (нет связи), а
 // инвестора тем временем поменяли с другого устройства, прежняя версия затёрла бы
@@ -461,7 +468,7 @@ export const api = {
       const res = await fetchWithAuth(`${API_URL}${path}`, {
         method: options.method || 'GET', cache: 'no-store', signal: options.signal,
         headers: options.proof ? { 'x-watchlist-admin': options.proof } : undefined,
-        body: options.body === undefined ? undefined : JSON.stringify(options.body),
+        body: options.body instanceof FormData ? options.body : options.body === undefined ? undefined : JSON.stringify(options.body),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) throw Object.assign(new Error(data.msg || 'Не удалось выполнить запрос.'), { status: res.status });
@@ -2255,7 +2262,7 @@ export const api = {
         if (!res.ok) throw new Error(result.msg || 'Не удалось проверить выписку');
         return result;
       },
-      history: async (): Promise<{ threadId: string; messages: any[] }> => {
+      history: async (): Promise<{ threadId: string; messages: any[]; focus?: AIConversationFocus | null }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/history`);
         if (!res.ok) throw new Error('История недоступна');
         return res.json();
@@ -2298,7 +2305,7 @@ export const api = {
         onStep?: (label: string) => void,
         /** Текст ответа по мере появления: кусок; null — начать заново */
         onDelta?: (piece: string | null) => void,
-      ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean; heard?: string }> => {
+      ): Promise<{ reply: string; actions: any[]; left: number; cancelled?: boolean; heard?: string; focus?: AIConversationFocus | null }> => {
         const res = await fetchWithAuth(`${API_URL}/ai/assistant/message`, {
           method: 'POST', body: JSON.stringify(onStep ? { ...body, stream: true } : body), timeout: 200000, signal,
         });

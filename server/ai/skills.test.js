@@ -242,6 +242,44 @@ test('умения: реструктуризация, досрочное пог�
     const undoBatch = await assistant.undoAction('owner', card.id);
     assert.equal(undoBatch.ok, true, undoBatch.text);
     assert.equal(await dump(), beforeBatch.replace(/"updated_at"[^,]*,?/g, ''));
+
+    await pool.query("INSERT INTO data_items(id,user_id,type,data) VALUES($1,'owner','customers',$2)", ['cust3', { id: 'cust3', name: 'Сидоров Сергей' }]);
+    await pool.query("INSERT INTO data_items(id,user_id,type,data) VALUES($1,'owner','sales',$2)", ['p3', { ...sale('p3', { first: -5 }), customerId: 'cust3', productName: 'Пылесос' }]);
+    try {
+      const text = 'Оприходуй Иванов Иван за айфон, Петров Пётр и Сидоров Сергей, их ежемесячный приход, кроме последнего: он отдал 3 500 рублей.';
+      const scheduled = [{ customer: 'Иванов Иван', product: 'айфон', amountFromSchedule: true }, { customer: 'Петров Пётр', amountFromSchedule: true }];
+      const reply = { content: 'Проверьте и нажмите «Подтвердить».' };
+      const mixedBefore = await dump();
+      r = await ask(text, [
+        { tool: 'create_income', args: { amount: 3500, accountId: 'acc' } },
+        { tool: 'record_payments', args: { payments: [...scheduled, { customer: 'Сидоров Сергей', amount: 3500 }] } },
+        reply,
+      ], 'auto');
+      assert.equal(r.actions.length, 1);
+      card = r.actions[0];
+      assert.equal(card.kind, 'confirm');
+      assert.equal(card.tool, 'record_payments');
+      assert.deepEqual(card.args.payments.map(p => [p.contractId, p.amount]), [['r',5000],['p2',10000],['p3',3500]]);
+      assert.match(card.summary, /Иванов Иван — iPhone 16 — 5\s000 ₽ \(по графику за/);
+      assert.match(card.summary, /Сидоров Сергей — Пылесос — 3\s500 ₽/);
+      assert.equal(await dump(), mixedBefore);
+      await assistant.cancelAction('owner', card.id);
+      r = await ask(text, [
+        { tool: 'record_payments', args: { payments: [...scheduled, { customer: 'Сидоров Сергей', amount: 4000 }] } },
+        { content: 'Уточните сумму Сидорова.' },
+      ]);
+      assert.equal(r.actions.length, 0);
+      assert.match(lastToolResult(), /подтвердить явно названную сумму/);
+      r = await ask('Оприходуй платежи от Иванова и Петрова по графику', [
+        { tool: 'record_payments', args: { payments: [{ customer: 'Иванов', amountFromSchedule: true }, scheduled[1]] } },
+        { content: 'Уточните договор Иванова.' },
+      ]);
+      assert.equal(r.actions.length, 0);
+      assert.match(lastToolResult(), /несколько договоров/);
+      assert.equal(await dump(), mixedBefore);
+    } finally {
+      await pool.query("DELETE FROM data_items WHERE user_id='owner' AND id IN ('cust3','p3')");
+    }
     // Неясная строка (у Иванова два договора, товар не назван) — карточки нет, ничего не записано
     script.push({ tool: 'record_payments', args: { payments: [{ customer: 'Петров', amount: 4000 }, { customer: 'Иванов', amount: 3000 }] } }, { content: 'Уточните договор Иванова.' });
     r = await assistant.reply({ user, text: 'Петров 4000, Иванов 3000', mode: 'confirm', silent: true });

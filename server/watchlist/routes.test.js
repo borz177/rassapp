@@ -144,6 +144,42 @@ test('общий список: реальная локальная PostgreSQL, �
       assert.deepEqual(Object.keys(preview).sort(), ['birthYear', 'customerId', 'fingerprint', 'name']);
     });
     const submit = p => ({ ...p, reason: 'overdue', basis: 'subject_consent', evidence: 'Синтетическое согласие: состав и круг получателей проверяются', note: 'Синтетическая ситуация для модерации', confirmed: true });
+    await t.test('агент готовит форму в пределах своего аккаунта и текущего допуска без запроса к модели', async () => {
+      const jwt = require('jsonwebtoken');
+      const assistant = require('../ai/assistant').createAssistant({
+        pool, jwt, jwtSecret: 'synthetic-watchlist', port: server.address().port, checkWatchlistSubmission: service.checkSubmissionAccess,
+      });
+      const run = require('../ai/runAssistant').createAssistantRunner({
+        pool, assistant, state: async () => ({ allowedRole: true, consent: true, left: 0 }), month: () => '2026-11',
+      });
+      const ask = (text, userId = 'owner', options = {}) => run({ userId, text, mode: 'auto', ...options });
+      const entriesBefore = (await pool.query('SELECT id FROM client_watchlist_entries ORDER BY id')).rows;
+      const denied = await ask('Добавь Дополнительного в ЧС', 'other');
+      assert.deepEqual(denied.actions, []);
+      assert.match(denied.reply, /доступ администратора/);
+      const ready = await ask('Занеси дополнительного тестового клиента в чёрный список: не вернул товар');
+      assert.equal(ready.left, 0);
+      assert.equal(ready.modelUsed, false);
+      assert.deepEqual(ready.actions.map(({ kind, customerId }) => ({ kind, customerId })), [{ kind: 'watchlist_prepare', customerId: 'extra_client' }]);
+      assert.deepEqual(ready.actions[0].watchlistReason, { reason: 'other', reasonDetails: 'не вернул товар' });
+      assert.deepEqual((await ask('Добавь Семёнова в ЧС')).actions, [], 'Одинаковые ФИО требуют перехода на нужную карточку');
+      const ambiguous = await ask('Добавь тестового в ЧС за длительную просрочку');
+      assert.equal(ambiguous.actions[0].kind, 'choices');
+      assert.deepEqual(ambiguous.actions[0].watchlistReason, { reason: 'overdue' });
+      const option = ambiguous.actions[0].options.find(o => o.ref === 'watchlist:extra_client');
+      assert.equal((await ask(`${option.label} [${option.ref}]`)).actions[0].customerId, 'extra_client');
+      assert.deepEqual((await ask('Чужой клиент [watchlist:other_client]')).actions, []);
+      assert.deepEqual((await ask('Добавь в ЧС всех клиентов')).actions, []);
+      assert.deepEqual((await ask('Добавь Дополнительного в ЧС', 'owner', { allowWrites: false })).actions, []);
+      try {
+        await pool.query('UPDATE client_watchlist_settings SET submissions_paused=true WHERE id=1');
+        assert.match((await ask(`${option.label} [${option.ref}]`)).reply, /временно приостановлен/);
+      } finally {
+        await pool.query('UPDATE client_watchlist_settings SET submissions_paused=false WHERE id=1');
+      }
+      assert.deepEqual((await pool.query('SELECT id FROM client_watchlist_entries ORDER BY id')).rows, entriesBefore);
+      assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows, snapshot);
+    });
     await t.test('короткая форма: без основания и ситуации; описание только для другой причины; проверка администратора сохраняется', async () => {
       const p = await user('/preview', { customerId: 'extra_client' });
       const minimal = { ...p, reason: 'overdue', confirmed: true };
@@ -594,6 +630,95 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.deepEqual((await pool.query('SELECT * FROM data_items ORDER BY id')).rows, snapshot);
       } finally {
         await pool.query('DELETE FROM client_watchlist_entries WHERE id=ANY($1::text[])', [created]);
+      }
+    });
+    await t.test('Telegram HTML: очередь, изоляция, исправления, дубликаты и отдельная ручная публикация', async () => {
+      const name='Архивов Пример Тестович';
+      const message=(id)=>`<div class="message default clearfix" id="message${id}"><div class="body">
+        <div class="pull_right date details" title="01.04.2026 12:30:15 UTC+03:00">12:30</div>
+        <div class="text"><b>ФИО:</b> ${name}<br>Дата рождения: 17.04.1991<br>Причина: Длительная просрочка
+        <script>secretScript()</script><img src="https://example.invalid/archive"><a href="https://example.invalid/source">Текст &amp; символ</a></div></div></div>`;
+      const html='<html><body>'+message(50)+'<div class="message service" id="message51">Системное</div>'+message(52)+'</body></html>';
+      const upload=async (content, userId='admin', token=proof, expected=200) => {
+        const body=new FormData();
+        body.append('source','Тестовый канал');
+        body.append('archive',new Blob([content],{type:'text/html'}),'messages.html');
+        const res=await fetch(`http://127.0.0.1:${server.address().port}/api/admin/watchlist/archives`,{
+          method:'POST',headers:{'x-auth-token':userId,'x-watchlist-admin':token},body,
+        });
+        const json=await res.json();
+        assert.equal(res.status,expected,JSON.stringify(json));
+        return json;
+      };
+      await pool.query("INSERT INTO users(id,name,email,role,password) VALUES('archive_admin','Второй админ','archive@synthetic.test','admin',$1)",[hash]);
+      const otherProof=(await req('archive_admin','admin/watchlist/unlock',{password:'Synthetic-password',code:currentCode()})).proof;
+      const existing=(await adm('/overview')).settings;
+      let entryId;
+      try {
+        await adm('/settings',{...existing,autoPublish:true,reason:'Синтетическая проверка запрета автопубликации'});
+        await upload(html,'owner',proof,403);
+        const job=await upload(html);
+        assert.equal(job.status,'queued');
+        assert.equal((await upload(html)).id,job.id);
+        const denied=await fetch(`http://127.0.0.1:${server.address().port}/api/admin/watchlist/archives/${job.id}`,
+          {headers:{'x-auth-token':'archive_admin','x-watchlist-admin':otherProof}});
+        assert.equal(denied.status,404);
+        let detail;
+        for(let attempt=0;attempt<75;attempt++) {
+          detail=await adm(`/archives/${job.id}?limit=1&offset=0`);
+          if(detail.job.status==='ready' || detail.job.status==='failed') break;
+          await new Promise(resolve=>setTimeout(resolve,100));
+        }
+        assert.equal(detail.job.status,'ready',detail.job.error);
+        assert.equal(detail.job.progress,100);
+        assert.equal(detail.job.total,2);
+        assert.equal(detail.hasMore,true);
+        assert.equal(detail.items[0].duplicate,true,'Дубль обнаружен за пределами первой страницы');
+        const row=detail.items[0];
+        assert.match(row.message.text,/Текст & символ/);
+        assert.doesNotMatch(row.message.text,/secretScript|example.invalid/);
+        assert.equal(row.message.publishedAt,'2026-04-01T09:30:15.000Z');
+        assert.equal(row.fields.name,name);
+        assert.equal(row.fields.birthDate,'17.04.1991');
+        const stored=(await pool.query('SELECT payload FROM client_watchlist_archive_records WHERE job_id=$1 AND ordinal=1',[job.id])).rows[0];
+        assert(!JSON.stringify(stored).includes(name));
+        assert.equal((await pool.query('SELECT archive FROM client_watchlist_archive_jobs WHERE id=$1',[job.id])).rows[0].archive,null);
+        assert.equal((await adm('/entries?name='+encodeURIComponent(name))).items.length,0);
+        const record=`/archives/${job.id}/records/1`;
+        const submission={version:row.version,fields:{...row.fields,reason:'unfulfilled'},action:'submit',confirmed:true};
+        await adm(record,{...submission,fields:{...submission.fields,birthDate:'31.02.1991'}},400);
+        await adm(record,{...submission,confirmed:false},400);
+        assert.equal((await adm(record,submission)).state,'submitted');
+        assert.equal((await adm(record,submission)).state,'submitted','Повтор отправки идемпотентен');
+        const entry=(await adm('/entries?name='+encodeURIComponent(name))).items[0];
+        entryId=entry.id;
+        assert.equal(entry.status,'pending');
+        assert.equal(entry.telegramSource.source,'Тестовый канал');
+        assert.equal((await user('/search',{name})).items.length,0);
+        const [duplicate]=(await adm(`/archives/${job.id}?limit=1&offset=1`)).items;
+        await adm(`/archives/${job.id}/records/2`,{...submission,version:duplicate.version,fields:duplicate.fields},409);
+        const review=(await adm(`/archives/${job.id}`)).items[0];
+        const edited=await adm(record,{...submission,version:review.version,action:'save',fields:{...submission.fields,reason:'overdue'}});
+        assert.equal(edited.version,review.version+1);
+        await adm(record,{...submission,version:review.version,action:'save'},409);
+        const changes=(await adm(record+'/history')).items;
+        assert.deepEqual(changes.map(change=>change.action),['corrected','submitted']);
+        assert.equal(changes[0].before.reason,'unfulfilled');
+        assert.equal(changes[0].fields.reason,'overdue');
+        const fresh=(await adm('/entries?name='+encodeURIComponent(name))).items[0];
+        await adm(`/entries/${fresh.id}/decision`,{version:fresh.version,action:'publish',basisVerified:true,shownVersion:POLICY_VERSION,note:'Проверено в синтетическом тесте'});
+        const published=(await user('/search',{name})).items[0];
+        assert.equal(published.id,entryId);
+        assert.equal(published.telegramSource,undefined);
+        assert.equal((await adm(record+'/history')).items[0].action,'publish');
+        await adm(record,{...submission,version:edited.version+1,action:'save'},409);
+        const active=(await adm('/entries?name='+encodeURIComponent(name))).items[0];
+        await adm(`/entries/${active.id}/delete`,{version:active.version,confirmed:true});
+        assert.equal((await adm(`/archives/${job.id}`)).items[0].state,'removed');
+        assert.deepEqual((await adm(record+'/history')).items,[]);
+      } finally {
+        if(entryId) await pool.query('DELETE FROM client_watchlist_entries WHERE id=$1',[entryId]);
+        await adm('/settings',{...(await adm('/overview')).settings,autoPublish:existing.autoPublish,reason:'Восстановление настроек теста'});
       }
     });
     await t.test('ограничения не обходятся API; отзыв доступен при паузе/без новых правил; финансы неизменны', async () => {

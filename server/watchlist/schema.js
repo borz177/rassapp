@@ -70,6 +70,33 @@ async function ensureTables(pool) {
     CREATE TABLE IF NOT EXISTS client_watchlist_admin_factors (
       user_id text PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE, last_counter bigint NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS client_watchlist_archive_jobs (
+      id text PRIMARY KEY, owner_id text NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+      filename text NOT NULL, file_index text NOT NULL, archive jsonb,
+      state text NOT NULL DEFAULT 'queued' CHECK (state IN ('queued','processing','ready','failed')),
+      progress int NOT NULL DEFAULT 0, total int NOT NULL DEFAULT 0, error text, lease text,
+      created_at timestamptz NOT NULL DEFAULT now(), updated_at timestamptz NOT NULL DEFAULT now(),
+      UNIQUE (owner_id, file_index), UNIQUE (id, owner_id)
+    );
+    CREATE INDEX IF NOT EXISTS client_watchlist_archive_queue ON client_watchlist_archive_jobs(state,updated_at);
+    CREATE TABLE IF NOT EXISTS client_watchlist_archive_records (
+      job_id text NOT NULL, owner_id text NOT NULL, ordinal int NOT NULL,
+      payload jsonb, version int NOT NULL DEFAULT 1,
+      entry_id text REFERENCES client_watchlist_entries(id) ON DELETE SET NULL,
+      source_index text, identity_index text,
+      state text NOT NULL DEFAULT 'draft' CHECK (state IN ('draft','submitted','removed')),
+      PRIMARY KEY (job_id, ordinal),
+      FOREIGN KEY (job_id, owner_id) REFERENCES client_watchlist_archive_jobs(id, owner_id) ON DELETE CASCADE
+    );
+    CREATE INDEX IF NOT EXISTS client_watchlist_archive_entry ON client_watchlist_archive_records(entry_id) WHERE entry_id IS NOT NULL;
+    CREATE INDEX IF NOT EXISTS client_watchlist_archive_identity ON client_watchlist_archive_records(owner_id,identity_index) WHERE identity_index IS NOT NULL;
+    CREATE UNIQUE INDEX IF NOT EXISTS client_watchlist_archive_source ON client_watchlist_archive_records(owner_id,source_index) WHERE source_index IS NOT NULL;
+    CREATE TABLE IF NOT EXISTS client_watchlist_archive_history (
+      job_id text NOT NULL, ordinal int NOT NULL, version int NOT NULL, payload jsonb NOT NULL,
+      actor_id text, action text NOT NULL, created_at timestamptz NOT NULL DEFAULT now(),
+      PRIMARY KEY (job_id, ordinal, version),
+      FOREIGN KEY (job_id, ordinal) REFERENCES client_watchlist_archive_records(job_id, ordinal) ON DELETE CASCADE
+    );
   `);
 }
 module.exports = { ensureTables };

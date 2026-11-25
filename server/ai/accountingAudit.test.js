@@ -87,6 +87,23 @@ test('платежи, скидка и остаток долга считаютс
   d.sales[0].remainingAmount = 90000;
   assert.equal((await run(d)).findings.find((f) => f.code === 'debt_mismatch').difference, 2000);
 });
+test('сверка графика пропускает расхождения меньше рубля, включая график после скидки', async () => {
+  for (const delta of [-1, -0.99, -0.02, 0.02, 0.99, 1]) {
+    const d = base();
+    d.sales[0].paymentPlan[0].amount += delta;
+    const report = await run(d);
+    assert.equal(report.findings.some(f => f.code === 'schedule_review'), Math.abs(delta) >= 1, `Разница ${delta} ₽`);
+  }
+
+  const d = base();
+  const sale = d.sales[0];
+  sale.paymentPlan.at(-1).discountAmount = 2000;
+  sale.paymentPlan[0].amount -= 2000.45;
+  sale.remainingAmount = 88000.45;
+  const report = await run(d);
+  assert(!report.findings.some(f => f.code === 'schedule_review'));
+  assert.equal(report.findings.find(f => f.code === 'debt_mismatch').difference, 0.45);
+});
 test('одинаковые оплаты — подозрение, а начальный минус, склад, поставщик и импорт не доказательство ошибки', async () => {
   const d = base();
   d.sales[0].paymentPlan.push({
@@ -222,7 +239,6 @@ test('совместный закуп проверяется по частям, 
       accountId: 'a',
       amount: 1000,
       category: 'Выплата инвестора',
-      investorId: 'missing',
       payoutType: 'PROFIT',
     }
   );
@@ -230,6 +246,26 @@ test('совместный закуп проверяется по частям, 
   assert(r.findings.some((f) => f.code === 'funding_purchase'));
   assert(r.findings.some((f) => f.code === 'payout_source' && f.severity === 'review'));
   assert(r.findings.some((f) => f.code === 'payout_investor' && f.severity === 'confirmed'));
+});
+
+test('старый возврат учтён одной парой, незакрытая запись требует уточнения, действующая связь проверяется', async () => {
+  const d = base();
+  d.accounts[0].type = 'POOL';
+  d.accounts[0].poolMemberIds = ['still-linked'];
+  const deposit = (id, investorId, n) => ({ id, accountId: 'a', type: 'CASH', customerId: `system_deposit_${investorId}`, totalAmount: n, downPayment: n, startDate: '2026-07-21' });
+  const returned = (id, investorId, n) => ({ id, accountId: 'a', category: 'Выплата инвестора', investorId, payoutType: 'INVESTMENT', amount: n, date: '2026-07-22' });
+  d.sales.push(deposit('first', 'former', 500000), deposit('second', 'unresolved', 100000), deposit('third', 'still-linked', 100000));
+  d.expenses.push(returned('return', 'former', 500000), returned('part-return', 'unresolved', 10000));
+  const before = JSON.stringify(d), report = await run(d);
+  assert.equal(report.version, VERSION);
+  const pair = report.findings.find(f => f.code === 'historical_investor_return');
+  assert.equal(pair.severity, 'information');
+  assert.deepEqual(pair.sources.map(s => s.id), ['first','return']);
+  assert.equal(pair.facts.find(f => f.label === 'Сумма возврата').value, 500000);
+  assert.equal(report.findings.find(f=>f.code==='deposit_investor'&&f.sources[0].id==='second').severity, 'review');
+  assert.equal(report.findings.find(f=>f.code==='deposit_investor'&&f.sources[0].id==='third').severity, 'confirmed');
+  assert.equal(report.findings.find(f=>f.code==='payout_investor'&&f.sources[0].id==='part-return').severity, 'review');
+  assert.equal(JSON.stringify(d), before);
 });
 test('область проверки проверяется сервером, общий капитал не размножается по счетам', async () => {
   await domain.ready;

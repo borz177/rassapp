@@ -433,7 +433,21 @@ const AccountActionModal = ({
                             </button>
                         )}
 
-                        {isManager && onPoolAccounting && account.type === 'POOL' && <button onClick={()=>{onPoolAccounting(account);onClose();}} className="w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-primary-600 hover:bg-slate-50 dark:hover:bg-slate-700">Учёт общего пула</button>}
+                        {isManager && onPoolAccounting && account.type === 'POOL' && (
+                            <button
+                                type="button"
+                                onClick={() => { onPoolAccounting(account); onClose(); }}
+                                className="w-full text-left px-4 py-3 text-sm text-slate-700 dark:text-slate-300 hover:bg-sky-50 dark:hover:bg-sky-950/40 rounded-xl flex items-center gap-3 transition-all"
+                            >
+                                <span aria-hidden="true" className="w-8 h-8 shrink-0 bg-sky-50 dark:bg-sky-900/30 rounded-lg flex items-center justify-center text-sky-600 dark:text-sky-400">
+                                    {ICONS.DateTime}
+                                </span>
+                                <div>
+                                    <span className="font-medium">Учёт общего пула</span>
+                                    <p className="text-xs text-slate-400 dark:text-slate-500">Прибыль по месяцам и участники</p>
+                                </div>
+                            </button>
+                        )}
                         {isManager && onManagementShare && account.type === 'POOL' && !account.poolAccounting && (
                             <button
                                 onClick={() => { onManagementShare(account); onClose(); }}

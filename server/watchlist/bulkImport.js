@@ -58,4 +58,4 @@ function parseImport(body) {
   });
 }
 
-module.exports = { parseImport };
+module.exports = { parseImport, importBirthDate };

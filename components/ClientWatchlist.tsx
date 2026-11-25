@@ -9,7 +9,7 @@ import WatchlistSearchPanel from './WatchlistSearchPanel';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
 import WatchlistSubmissionForm from './WatchlistSubmissionForm';
 import { appConfirm } from '../src/dialogs';
-import { WATCHLIST_POLICY_VERSION, WATCHLIST_REASONS, WATCHLIST_STATUS, WatchlistEntry, WatchlistPage, WatchlistStatus, watchlistDate, watchlistSearchText } from '../src/watchlist';
+import { WATCHLIST_POLICY_VERSION, WATCHLIST_REASONS, WATCHLIST_STATUS, WatchlistEntry, WatchlistPage, WatchlistStatus, watchlistDate, watchlistDateTime, watchlistSearchText } from '../src/watchlist';
 import { WATCHLIST_ACCESS_CHANGED } from '../src/hooks/useWatchlistSubmitAccess';
 import { WatchlistError, WatchlistField, WatchlistRules, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
 
@@ -144,6 +144,7 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
       </WatchlistPrivateContent>
       {selected.status === 'published' && selected.publicationMode === 'auto' && <p className="text-sm text-indigo-600 dark:text-indigo-300">Опубликовано автоматически</p>}
       {selected.decision && <p className={`${wlCard} whitespace-pre-wrap break-words text-sm`}>Решение администратора: {selected.decision}</p>}
+      {selected.status === 'published' && selected.publishedAt && <p className="text-sm text-slate-500">Опубликовано {watchlistDateTime(selected.publishedAt)}</p>}
       {selected.status === 'published' && <p className="text-sm text-slate-500">{selected.expiresAt ? `Публикация до ${watchlistDate(selected.expiresAt)}` : 'Публикация до удаления'}</p>}
       {selected.status === 'needs_info' && canAdd && <>{selected.subjectKind !== 'guarantor' && <WatchlistField label="Причина"><select className={wlInput} value={reason} onChange={e => changeReason(e.target.value)}>{Object.entries(WATCHLIST_REASONS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></WatchlistField>}{reason === 'other' && <WatchlistField label="Описание причины"><textarea className={wlInput} rows={3} minLength={3} maxLength={1000} value={reasonDetails} onChange={e => setReasonDetails(e.target.value)} /></WatchlistField>}<WatchlistField label="Ответ администратору"><textarea className={wlInput} rows={3} minLength={3} maxLength={1500} value={response} onChange={e => setResponse(e.target.value)} /></WatchlistField><label className="flex gap-3 text-sm"><input type="checkbox" checked={confirmed} onChange={e => setConfirmed(e.target.checked)} />Подтверждаю</label><button className={wlButton} disabled={busy || !confirmed || !reasonValid || response.trim().length < 3} onClick={() => run(async () => { await api.watchlistRequest(`/watchlist/entries/${selected.id}/resubmit`, { method: 'POST', body: { version: selected.version, reason, ...(reason === 'other' ? { reasonDetails: reasonDetails.trim() } : {}), response: response.trim(), confirmed } }); setSelected(null); await read(); })}>Отправить дополнение</button></>}
       {!['withdrawn', 'terminated', 'deleted'].includes(selected.status) && <button className={`${wlSecondary} text-red-600 dark:text-red-300`} disabled={busy} onClick={() => withdraw(selected)}>Убрать из общего списка</button>}

@@ -10,6 +10,7 @@ export const WATCHLIST_STATUS: Record<string, string> = {
   deleted: 'Удалено администратором',
 };
 export const WATCHLIST_REASONS: Record<string, string> = { overdue: 'Длительная просрочка', unfulfilled: 'Неисполнение обязательств', other: 'Другая причина' };
+export type WatchlistReasonDraft = { reason: 'overdue' | 'unfulfilled'; reasonDetails?: never } | { reason: 'other'; reasonDetails: string };
 export const WATCHLIST_BASES: Record<string, string> = { subject_consent: 'Отдельное согласие клиента', other_lawful_basis: 'Иное законное основание' };
 export interface WatchlistStatus {
   adminAccess?: boolean; adminOnly?: boolean;
@@ -18,7 +19,7 @@ export interface WatchlistStatus {
 }
 export interface WatchlistEntry {
   id: string; customerId: string; name: string; birthYear: number | null; reason?: string; reasonDetails?: string; response?: string; basis?: string;
-  evidence?: string; note?: string; decision?: string; publicationMode?: 'auto' | 'manual'; status: string; version: number; createdAt: string; expiresAt?: string | null;
+  evidence?: string; note?: string; decision?: string; publicationMode?: 'auto' | 'manual'; status: string; version: number; createdAt: string; publishedAt?: string; expiresAt?: string | null;
   subjectKind?: 'guarantor';
 }
 export type WatchlistSubmissionResult = WatchlistEntry & { guarantorEntry?: WatchlistEntry };
@@ -27,7 +28,9 @@ export interface WatchlistMatch {
   guarantors?: { id: string; name: string }[];
 }
 export interface WatchlistPage<T> { items: T[]; hasMore: boolean }
-export const watchlistDate = (v?: string) => v ? new Date(v).toLocaleDateString('ru-RU') : '—';
+const watchlistTimeZone = 'Europe/Moscow';
+export const watchlistDate = (v?: string) => v ? new Date(v).toLocaleDateString('ru-RU', { timeZone: watchlistTimeZone }) : '—';
+export const watchlistDateTime = (v: string | Date) => `${new Date(v).toLocaleString('ru-RU', { timeZone: watchlistTimeZone })} МСК`;
 export const watchlistBirthDateLabel = ({ birthDate, birthYear }: { birthDate?: string; birthYear?: number | null }): string =>
   birthDate ? birthDate.split('-').reverse().join('.') : birthYear ? `${birthYear} г.` : 'Дата рождения не указана';
 

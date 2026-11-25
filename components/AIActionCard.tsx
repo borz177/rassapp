@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import AccountingAuditCard from './AccountingAuditCard';
 import type {AuditSummary} from '../src/accountingAudit';
+import type { WatchlistReasonDraft } from '../src/watchlist';
 import { CalendarClock, Check, Download, FileSpreadsheet, FileText, MessageCircle, Receipt, RotateCcw, Send, ShieldAlert, Trash2, Undo2 } from 'lucide-react';
 
 /**
@@ -18,7 +19,8 @@ export type SendState = 'busy' | 'done' | 'error';
 
 export type AIAction =
   | { id: string; kind: 'accounting_audit'; title: string; report: AuditSummary }
-  | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; state?: 'done'; chosen?: number }
+  | { id: string; kind: 'watchlist_prepare'; title: string; customerId: string; summary: string; watchlistReason?: WatchlistReasonDraft }
+  | { id: string; kind: 'choices'; title: string; options: { label: string; ref?: string }[]; watchlistReason?: WatchlistReasonDraft; state?: 'done'; chosen?: number }
   | { id: string; kind: 'confirm'; tool: string; title: string; summary: string; contractId?: string; overLimit?: number; always?: boolean; checkPhone?: string;
       /** Сумма прочитана с фото чека — сверить */
       fromPhoto?: boolean;
@@ -61,6 +63,8 @@ const mutedLine = 'mt-2 text-sm text-slate-500';
 
 interface Props {
   onAuditExplain?: (id: string) => void;
+  onAuditExplainWithAI?: (id: string) => void;
+  onOpenWatchlist?: (customerId: string, reason?: WatchlistReasonDraft) => void;
   onAuditRefresh?: (ids: string[] | null) => Promise<void>;
   onAuditOpenContract?: (id: string, customerId?: string) => void | Promise<void>;
   onAuditChanged?: () => void;
@@ -133,7 +137,17 @@ const AIActionCard: React.FC<Props> = (p) => {
   // «Отменить» договор — со вторым нажатием: удаляется целый договор
   const [askDelete, setAskDelete] = useState(false);
 
-  if (a.kind === 'accounting_audit') return <AccountingAuditCard report={a.report} disabled={p.sending} onExplain={p.onAuditExplain || (()=>{})} onRefresh={p.onAuditRefresh || (async()=>{})} onOpenContract={p.onAuditOpenContract || (()=>{})} onDataChanged={p.onAuditChanged}/>;
+  if (a.kind === 'accounting_audit') return <AccountingAuditCard report={a.report} disabled={p.sending} onExplain={p.onAuditExplain || (()=>{})} onExplainWithAI={p.onAuditExplainWithAI} onRefresh={p.onAuditRefresh || (async()=>{})} onOpenContract={p.onAuditOpenContract || (()=>{})} onDataChanged={p.onAuditChanged}/>;
+
+  if (a.kind === 'watchlist_prepare') return (
+    <div className={shell}>
+      <p className="font-bold text-slate-900 dark:text-slate-100">{a.title}</p>
+      <p className="mt-1 break-words text-sm text-slate-600 dark:text-slate-300">{a.summary}</p>
+      <button type="button" className={`${primary} mt-3 w-full`} disabled={!p.onOpenWatchlist} onClick={() => p.onOpenWatchlist?.(a.customerId, a.watchlistReason)}>
+        Открыть форму
+      </button>
+    </div>
+  );
 
   if (a.kind === 'choices') {
     return (

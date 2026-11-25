@@ -1,5 +1,6 @@
 import React, { useLayoutEffect, useState } from 'react';
 import { Capacitor, registerPlugin } from '@capacitor/core';
+import { watchlistDateTime } from '../src/watchlist';
 
 const nativePrivacy = registerPlugin<{ setProtected(options: { enabled: boolean }): Promise<void> }>('FinuchetScreenPrivacy');
 const desktopPrivacy = (window as Window & {
@@ -56,8 +57,7 @@ export default function WatchlistPrivateContent({ userId, children, className = 
     }
     protection.then(() => {
       if (!enabledViews.has(id)) return;
-      const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
-      setView({ userId, mark: `${accountCode(userId)} · ${timestamp} UTC` });
+      setView({ userId, mark: `${accountCode(userId)} · ${watchlistDateTime(new Date())}` });
     }).catch(() => { if (enabledViews.has(id)) setFailed(true); });
 
     return () => {

@@ -939,10 +939,16 @@ const createApiV1Router = ({ pool, checkContractLimit, planLimits, checkFeatureA
     const month = req.query.month ? String(req.query.month) : null;
     if (month && !/^\d{4}-(0[1-9]|1[0-2])$/.test(month)) return fail(res, 400, CODES.VALIDATION, 'month — ГГГГ-ММ.');
     const userId = tenant(req);
-    const [sales, customers, investors] = await Promise.all([
+    const accountId = req.query.accountId == null ? '' : String(req.query.accountId);
+    const [rawSales, customers, investors, account, settings] = await Promise.all([
       loadAll(userId, 'sales'), loadAll(userId, 'customers'), loadAll(userId, 'investors'),
+      accountId ? loadOne(userId, 'accounts', accountId) : null, loadAll(userId, 'settings'),
     ]);
-    const r = require('../ai/collections').forecast({ sales, customers, investors, days, untilEnd, month });
+    if (accountId && !account) return fail(res, 404, CODES.NOT_FOUND, 'Счёт не найден.');
+    await domain.ready;
+    const sales = accountId ? domain.expandFundedSales(rawSales).filter(sale => sale.accountId === accountId) : rawSales;
+    const profitFromPaymentsOnly = account?.poolAccounting?.profitFromPaymentsOnly ?? !!settings[0]?.profitFromPaymentsOnly;
+    const r = require('../ai/collections').forecast({ sales, customers, investors, days, untilEnd, month, profitFromPaymentsOnly });
     if (r.error) return fail(res, 400, CODES.VALIDATION, r.error);
     ok(res, r);
   }));

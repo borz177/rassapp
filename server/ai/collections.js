@@ -17,6 +17,39 @@ const isDay = (v) => /^\d{4}-\d{2}-\d{2}$/.test(String(v || '')) && !isNaN(Date.
 // Строки графика хранятся полночью по Москве (так их пишет приложение)
 const mskMidnight = (day) => new Date(`${day}T00:00:00+03:00`).toISOString();
 
+const forecastMonths = ['январ[ьея]', 'феврал[ьея]', 'март[ае]?', 'апрел[ьея]', 'ма[йея]', 'июн[ьея]', 'июл[ьея]', 'август[ае]?', 'сентябр[ьея]', 'октябр[ьея]', 'ноябр[ьея]', 'декабр[ьея]'].map(m => new RegExp(`^${m}$`, 'iu'));
+const namedCalendarMonth = (period, today, direction) => {
+  const [word, year, unit, extra] = period.trim().split(/\s+/u);
+  const index = forecastMonths.findIndex(re => re.test(word));
+  if (index < 0 || (year && !/^20\d{2}$/.test(year)) || (unit && !/^год[ау]?$/.test(unit)) || extra) return null;
+  const mm = String(index + 1).padStart(2, '0');
+  const current = today.slice(5, 7);
+  const offset = direction === 'past' ? (mm > current ? -1 : 0) : (mm < current ? 1 : 0);
+  return `${year || (Number(today.slice(0, 4)) + offset)}-${mm}`;
+};
+const requestedProfitMonth = (text, today = mskDay()) => {
+  const raw = String(text || '').trim();
+  const heading = raw.match(/^сч[её]т\s*:\s*([^\r\n]{1,100})\r?\n+/iu);
+  let question = (heading ? raw.slice(heading[0].length) : raw).trim().replace(/[?!.]+$/u, '').trim();
+  const account = question.match(/\s+по\s+сч[её]ту\s+([^\r\n]{1,100})$/iu);
+  if (heading && account) return null;
+  if (account && /[.!?]\s+\p{L}/u.test(account[1])) return null;
+  if (account) question = question.slice(0, account.index);
+  const match = question.match(/^(?:(?:какая|покажи|скажи)\s+)?(?:ожидаемая прибыль|прогноз прибыли)\s+(?:на|в|за)\s+([\p{L}\d-]+(?:\s+[\p{L}\d]+){0,2}?)(?:\s+какая)?$/iu);
+  if (!match) return null;
+  const period = match[1].toLowerCase().replace(/ё/g, 'е');
+  let month;
+  if (/^\d{4}-(0[1-9]|1[0-2])$/.test(period)) month = period;
+  else if (/^(?:следующем|следующий) месяц[е]?$/.test(period)) month = addMonthsDay(today, 1).slice(0, 7);
+  else if (/^(?:этом|этот|текущем|текущий) месяц[е]?$/.test(period)) month = today.slice(0, 7);
+  else {
+    month = namedCalendarMonth(period, today, 'future');
+    if (!month) return null;
+  }
+  const name = (heading?.[1] || account?.[1] || '').trim().replace(/^[«"][\s]*|[\s]*[»"]$/g, '');
+  return { month, ...(name ? { account: name } : {}) };
+};
+
 /** День того же числа через k месяцев; 31-е в коротком месяце — последний день */
 const addMonthsDay = (day, k, dom = Number(day.slice(8, 10))) => {
   const y = Number(day.slice(0, 4)), m = Number(day.slice(5, 7)) - 1 + k;
@@ -61,7 +94,7 @@ const onTimeRate = (d) => (d.paymentsDue >= 3 ? 1 - d.paidLate / d.paymentsDue :
  * untilEnd — до последнего платежа по всем договорам («распиши до конца»).
  */
 const MAX_DAYS = 1100;
-const forecast = ({ sales, customers = [], investors = [], today = mskDay(), days = 30, untilEnd = false, month = null }) => {
+const forecast = ({ sales, customers = [], investors = [], today = mskDay(), days = 30, untilEnd = false, month = null, profitFromPaymentsOnly = false }) => {
   const investorIds = new Set(investors.map(i => i.id));
   const contracts = sales.filter(s => isContract(s, investorIds));
   let n = Math.min(Math.max(Math.round(Number(days) || 30), 1), MAX_DAYS);
@@ -69,8 +102,9 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
   if (/^\d{4}-\d{2}$/.test(String(month || ''))) {
     const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
     if (last < today) return { error: 'Этот месяц уже прошёл — для прошедших месяцев monthly_report.' };
+    if (daysBetween(today, last) >= MAX_DAYS) return { error: 'Конец выбранного месяца за пределами прогноза на 1100 дней.' };
     const from = `${month}-01` > today ? `${month}-01` : today;
-    const f = forecast({ sales, customers, investors, today, days: daysBetween(today, last) + 1 });
+    const f = forecast({ sales, customers, investors, today, days: daysBetween(today, last) + 1, profitFromPaymentsOnly });
     const m = f.byMonth.find(x => x.month === month) || { month, count: 0, customers: 0, total: 0, realistic: 0, profit: 0, from, to: last, fullMonth: from === `${month}-01` };
     return { month, from, to: last, ...m, overdueNow: f.overdueNow, basis: f.basis };
   }
@@ -109,7 +143,7 @@ const forecast = ({ sales, customers = [], investors = [], today = mskDay(), day
     if (o > 0) { overdueNow += o; overdueContracts++; }
     const r = rate.get(s.customerId);
     const p = r.rate ?? avg;
-    const margin = domain.profitMargin(s);
+    const margin = domain.profitMargin(s, profitFromPaymentsOnly);
     for (const row of openRows(s)) {
       if (row.day < today || row.day > end) continue;
       count++; total += row.open; realistic += row.open * p; profit += row.open * margin; payers.add(s.customerId);
@@ -301,6 +335,6 @@ const restructurePlan = (sale, months, firstDay, today = mskDay(), now = Date.no
 };
 
 module.exports = {
-  mskDay, addDays, daysBetween, isDay, addMonthsDay, openRows, forecast,
+  mskDay, addDays, daysBetween, isDay, addMonthsDay, openRows, forecast, requestedProfitMonth, namedCalendarMonth,
   promiseStatus, stageOf, collectionQueue, promiseDigest, payoffQuote, restructurePlan,
 };

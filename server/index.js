@@ -963,6 +963,7 @@ app.use(express.json({
     // маршрута. Тело этого адреса разбирает сам маршрут — см. api/oauthRoutes.js.
     if (req.url.startsWith('/api/oauth/token')) return false;
     if (req.url.startsWith('/api/contract-templates/recognize')) return false;
+    if (req.url === '/api/admin/watchlist/archives' && req.is('multipart/form-data')) return false;
     return true;
   }
 }));
@@ -1612,7 +1613,7 @@ const logAdminAction = async (adminId, action, targetUserId, details) => {
 };
 
 // Отдельные таблицы/права/ключи. Не расширяет доступ к data_items других аккаунтов.
-require('./watchlist/routes').registerWatchlistRoutes(app, { pool, auth });
+const watchlist = require('./watchlist/routes').registerWatchlistRoutes(app, { pool, auth });
 
 // --- HELPER FUNCTIONS ---
 // Безопасное прибавление месяцев. Обычный setMonth на 29-31 числе «переливается»
@@ -4529,7 +4530,10 @@ const saveAgentDocument = async (dataUrl, label) => {
   await fs.promises.writeFile(path.join(uploadDir, filename), c.buffer);
   return { fileUrl: `/uploads/documents/${filename}`, fileSize: c.buffer.length, mimeType: c.mimetype || 'image/jpeg' };
 };
-const aiAssistant = createAssistant({ pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument, checkFeatureAccess, poolAccountingService });
+const aiAssistant = createAssistant({
+  pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument, checkFeatureAccess,
+  poolAccountingService, checkWatchlistSubmission: watchlist.checkSubmissionAccess,
+});
 // Идущие запросы к агенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
 const aiRunning = new Map();
 const aiMonth = () => new Date().toLocaleDateString('sv-SE', { timeZone: 'Europe/Moscow' }).slice(0, 7);
@@ -4663,9 +4667,12 @@ app.post('/api/ai/assistant/consent', auth, async (req, res) => {
 const aiConversations = require('./ai/conversations').createConversations(pool);
 const aiClientActions = require('./ai/clientActions').createClientActions(pool);
 const accountingAudits=require('./ai/accountingAuditRoutes').registerAccountingAuditRoutes(app, { pool, auth, allowed: aiAgentAllowed, conversations: aiConversations });
+const { localAuditIntent } = require('./ai/auditQuestions');
+const { watchlistIntent } = require('./ai/watchlistIntent');
+const { poolQuestionIntent } = require('./ai/poolQuestions');
 const runAssistantTurn = require('./ai/runAssistant').createAssistantRunner({
   conversations: aiConversations,
-  pool, assistant: aiAssistant, state: aiAssistantState,
+  pool, assistant: aiAssistant, state: aiAssistantState, audits: accountingAudits,
   subscriptionState: getSubscriptionState, month: aiMonth,
 });
 
@@ -4745,7 +4752,8 @@ app.post('/api/ai/assistant/message', auth, async (req, res) => {
     const st = await aiAssistantState(req.user.id);
     if (!st?.allowedRole) return res.status(403).json({ msg: 'Агент доступен владельцу аккаунта.' });
     if (!st.consent) return res.status(403).json({ code: 'AI_CONSENT_REQUIRED', msg: 'Нужно согласие на обработку данных агентом.' });
-    if (st.left <= 0) return res.status(402).json({ code: 'AI_LIMIT', msg: 'Запросы к агенту закончились.' });
+    const intentInput = { text, image, images, audio, auditReportId };
+    if (st.left <= 0 && !localAuditIntent(intentInput) && !watchlistIntent(intentInput) && !poolQuestionIntent(intentInput)) return res.status(402).json({ code: 'AI_LIMIT', msg: 'Запросы к агенту закончились.' });
     if (reqKey) aiRunning.set(reqKey, stop);
     if (stream === true) {
       res.writeHead(200, { 'Content-Type': 'application/x-ndjson; charset=utf-8', 'Cache-Control': 'no-cache, no-transform', 'X-Accel-Buffering': 'no' });

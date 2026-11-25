@@ -22,6 +22,7 @@ const button =
 export default function AccountingAuditCard({
   report,
   onExplain,
+  onExplainWithAI,
   onRefresh,
   onOpenContract,
   onDataChanged,
@@ -29,6 +30,7 @@ export default function AccountingAuditCard({
 }: {
   report: AuditSummary;
   onExplain: (id: string) => void;
+  onExplainWithAI?: (id: string) => void;
   onRefresh: (accountIds: string[] | null) => Promise<void>;
   onOpenContract: (id: string, customerId?: string) => void | Promise<void>;
   onDataChanged?: () => void;
@@ -284,9 +286,9 @@ export default function AccountingAuditCard({
                 <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">
                   {f.title}
                 </span>
-                {(f.customer || f.product) && (
+                {(f.customer || f.product || f.accountName) && (
                   <span className="block text-xs text-slate-500 mt-1">
-                    {[f.customer, f.product].filter(Boolean).join(' · ')}
+                    {f.customer || f.product ? [f.customer, f.product].filter(Boolean).join(' · ') : f.accountName}
                   </span>
                 )}
               </span>
@@ -408,12 +410,17 @@ export default function AccountingAuditCard({
           disabled={stale || disabled || loading || !!error || !data}
           onClick={() => onExplain(report.id)}
         >
-          <Sparkles size={13} className="inline mr-1" />
-          Объяснить с ИИ
+          Объяснить результаты
         </button>
+        {onExplainWithAI && (
+          <button className={button} disabled={stale || disabled || loading || !!error || !data} onClick={() => onExplainWithAI(report.id)}>
+            <Sparkles size={13} className="inline mr-1" />
+            Подробнее с ИИ
+          </button>
+        )}
       </div>
       <p className="text-[11px] text-slate-500">
-        Сверка и просмотр записей — без обращения к модели. Объяснение ИИ использует запрос агента.
+        Сверка и краткое объяснение бесплатны. «Подробнее с ИИ» использует запрос из лимита.
       </p>
       <details className="text-[11px] text-slate-500">
         <summary className="cursor-pointer">Что проверено</summary>

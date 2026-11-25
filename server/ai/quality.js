@@ -97,7 +97,7 @@ module.exports = ({ pool }) => {
     const status = Object.hasOwn(OUTCOMES,outcome) ? outcome : kind.startsWith('guard_') ? 'protected' : kind === 'stop' ? 'cancelled' : 'unknown';
     const write = ready.then(() => pool.query(
       `INSERT INTO ai_signals (user_id, kind, tool, question, answer, detail, run_id, outcome) VALUES ($1, $2, $3, $4, $5, $6, $7, $8) RETURNING id`,
-      [userId || null, kind, tool ? String(tool).slice(0, 60) : null, question ? mask(question) : null, answer ? mask(answer, 700) : null, detail ? mask(detail, 300) : null, run?.id || null, status],
+      [userId || run?.userId || null, kind, tool ? String(tool).slice(0, 60) : null, question ? mask(question) : null, answer ? mask(answer, 700) : null, detail ? mask(detail, 300) : null, run?.id || null, status],
     )).catch(e => { console.error('ai signal:', e.message); return null; });
     if (run) run.events.push({kind,write,status});
   };
@@ -107,7 +107,7 @@ module.exports = ({ pool }) => {
   };
   const trackReply = fn => async args => {
     if(args.silent) return fn(args);
-    const run={id:randomUUID(),events:[],resolved:{}};
+    const run={id:randomUUID(),userId:args.user?.id,events:[],resolved:{}};
     return context.run(run,async()=>{
       let result, failure;
       try { result=await fn(args); return result; }

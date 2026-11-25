@@ -16,6 +16,7 @@ const disposition = d => { if (!['PAYABLE', 'REINVEST'].includes(d))
 
 function historyIssues(P, account, members, sales, expenses, reports, rows) {
     const issues = [];
+    const capitalIssues = [];
     if (!validMonth(reports[0]?.month)) issues.push('Проверьте дату начала истории пула.');
     if ((account.poolMemberIds || []).some(id => !members.some(i => i.id === id))) issues.push('В пуле есть отсутствующий участник.');
     if (expenses.some(e => e.payoutType === 'PROFIT' && !members.some(i => i.id === e.investorId))) issues.push('В истории есть выплата без участника пула.');
@@ -29,13 +30,19 @@ function historyIssues(P, account, members, sales, expenses, reports, rows) {
         const openings = new Map(periods.map(p => [p, Number(p.initialAmount) - (p.capitalChanges || []).reduce((sum, e) => sum + Number(e.delta), 0)]));
         const deposits = sales.filter(s => s.type === 'CASH' && s.totalAmount > 0 && [i.id, `system_deposit_${i.id}`].includes(s.customerId));
         const returns = expenses.filter(e => e.investorId === i.id && e.payoutType === 'INVESTMENT' && e.amount > 0);
-        const unresolved = deposits.filter(s => {
+        const unmatchedDeposits = deposits.filter(s => {
             if (links.has(s.id)) return !matches(s.id, s.startDate, s.totalAmount);
             const opening = [...openings].find(([p, amount]) => Math.abs(amount - s.totalAmount) < 0.005 && Math.abs(P.poolTime(p.joinedDate) - P.poolTime(s.startDate)) < 86400000);
             if (opening) openings.delete(opening[0]);
             return !opening;
-        }).length + returns.filter(e => !matches(e.id, e.date, -Number(e.amount))).length;
+        });
+        const unmatchedReturns = returns.filter(e => !matches(e.id, e.date, -Number(e.amount)));
+        const unresolved = unmatchedDeposits.length + unmatchedReturns.length;
         if (unresolved) issues.push(`${i.name}: операций капитала, требующих сверки — ${unresolved}.`);
+        capitalIssues.push(
+            ...unmatchedDeposits.map(s => ({ investor: i.name, type: 'deposit', date: s.startDate, amount: Number(s.totalAmount) })),
+            ...unmatchedReturns.map(e => ({ investor: i.name, type: 'return', date: e.date, amount: Number(e.amount) })),
+        );
     }
     for (const report of reports) {
         if (report.issues.length) issues.push(`${report.month}: ${report.issues[0]}`);
@@ -50,7 +57,7 @@ function historyIssues(P, account, members, sales, expenses, reports, rows) {
         if (![row.current, row.proposed, paid, personal].every(Number.isFinite)) issues.push(`${row.name}: проверьте суммы начислений и выплат.`);
         if (paid > 0 && row.proposed < round(paid + personal)) issues.push(`${row.name}: по новому расчёту не хватает прибыли на проведённые выплаты.`);
     }
-    return [...new Set(issues)];
+    return { issues: [...new Set(issues)], capitalIssues };
 }
 
 const projection = (item, cutoff, P) => !item ? null : item.type === 'CASH' ? item : {
@@ -226,11 +233,11 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
             rows.push({ id: '__manager__', name: 'За управление и личные договоры', current: round((legacyGross.get('__manager__') || 0) - managerCost), proposed: round(proposedProfit('__manager__') + personal) });
             comparison = { month, asOf: new Date(to).toISOString(), rows };
             if (history) {
-                const issues = historyIssues(P, account, members, ss.filter(s => inside(s.startDate)), expenses.filter(e => inside(e.date)), monthly, rows);
+                const { issues, capitalIssues } = historyIssues(P, account, members, ss.filter(s => inside(s.startDate)), expenses.filter(e => inside(e.date)), monthly, rows);
                 const sort = items => [...items].sort((a, b) => a.id.localeCompare(b.id));
                 const sources = monthly.map(r => ({ month: r.month, sources: r.sources.map(s => [s.saleId, s.paymentId]).sort(), costs: r.costRows.map(e => e.id).sort() }));
                 const fingerprint = hash({ account, terms, excluded: proposal.poolAccounting.excludedSaleIds, paymentsOnly, month, investors: sort(members), sales: sort(ss), expenses: sort(expenses), sources, rows: sort(rows) });
-                comparison = { ...comparison, startMonth, issues, fingerprint };
+                comparison = { ...comparison, startMonth, issues, capitalIssues: capitalIssues.sort((a, b) => P.poolTime(b.date) - P.poolTime(a.date)).slice(0, 20), fingerprint };
                 if (applyHistory && !issues.length)
                     applyHistory({ ...proposal.poolAccounting, closed: monthly.filter(r => r.month < month).map(r => ({ ...r, status: 'CLOSED' })) });
             }

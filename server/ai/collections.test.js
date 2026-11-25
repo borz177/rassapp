@@ -24,6 +24,14 @@ test('строки графика: частично оплаченная стр�
   assert.equal(open.length, 11);
 });
 
+test('месячный прогноз распознаёт счёт и год, а прочие просьбы оставляет агенту', () => {
+  assert.deepEqual(c.requestedProfitMonth('Счет: Магомед\nОжидаемая прибыль на декабрь какая ?', '2026-11-24'), { month: '2026-12', account: 'Магомед' });
+  assert.deepEqual(c.requestedProfitMonth('Прогноз прибыли на следующий месяц по счёту «Общий»', '2026-12-31'), { month: '2027-01', account: 'Общий' });
+  assert.deepEqual(c.requestedProfitMonth('Какая ожидаемая прибыль в январе 2028 года?', '2026-11-24'), { month: '2028-01' });
+  assert.equal(c.requestedProfitMonth('Ожидаемая прибыль на декабрь по счёту X. Отправь отчёт', '2026-11-24'), null);
+  assert.match(c.forecast({ sales: [], today: '2026-11-24', month: '2030-01' }).error, /за пределами прогноза/);
+});
+
 test('месяцы: 31-е в коротком месяце — последний день', () => {
   assert.equal(c.addMonthsDay('2026-01-31', 1), '2026-02-28');
   assert.equal(c.addMonthsDay('2026-11-15', 2), '2027-01-15');
