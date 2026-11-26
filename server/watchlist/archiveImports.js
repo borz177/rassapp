@@ -228,7 +228,19 @@ function createArchiveImports({ pool, vault, ensure }) {
       RETURNING ${jobFields}`,[id,owner,displayName,fileIndex,vault.encrypt(`${owner}:${id}`,'telegram_archive',{html,source,selection})]);
     return statusView(result.rows[0]);
   }
-  const list = async (db,owner) => ({ items:(await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 ORDER BY created_at DESC,id LIMIT 50`,[owner])).rows.map(statusView) });
+  const list = async (db,owner) => ({ items:(await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 AND cleared_at IS NULL ORDER BY created_at DESC,id LIMIT 50`,[owner])).rows.map(statusView) });
+  async function clearList(db, owner) {
+    await db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:telegram-enqueue',0))");
+    const { rows } = await db.query(`SELECT id FROM ${jobs} WHERE owner_id=$1 AND cleared_at IS NULL
+      AND state IN ('ready','failed') ORDER BY id FOR UPDATE`, [owner]);
+    const ids = rows.map(row => row.id);
+    await db.query(`DELETE FROM ${records} WHERE owner_id=$1 AND job_id=ANY($2::text[]) AND state='draft' AND entry_id IS NULL`, [owner,ids]);
+    await db.query(`UPDATE ${jobs} SET cleared_at=now(),archive=NULL,file_index='cleared:'||id
+      WHERE owner_id=$1 AND id=ANY($2::text[])`, [owner,ids]);
+    const pending = (await db.query(`SELECT count(*)::int AS count FROM ${jobs}
+      WHERE owner_id=$1 AND cleared_at IS NULL AND state IN ('queued','processing')`, [owner])).rows[0].count;
+    return { cleared: ids.length, pending };
+  }
   async function detail(db, owner, jobId, { offset, limit, excluded = false }) {
     const job = (await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE id=$1 AND owner_id=$2`,[jobId,owner])).rows[0];
     if (!job) throw P.problem(404, 'Архив не найден.');
@@ -285,7 +297,7 @@ function createArchiveImports({ pool, vault, ensure }) {
     if (row) await write(db,row,open(row),actor,action);
   }
 
-  return { enqueue,list,detail,draftBatch,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
+  return { enqueue,list,clearList,detail,draftBatch,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
 }
 
 module.exports = { createArchiveImports, draftFields, verifyDraft, withPublicationDate, messageDrafts, linkArchiveReasons, MAX_ARCHIVE_RECORDS };

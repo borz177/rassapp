@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { appConfirm } from '../src/dialogs';
 import { copyText } from '../src/clipboard';
 import { toast } from '../src/toast';
 import GlassSheet from './GlassSheet';
@@ -198,6 +199,14 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
   const cardReason = fields?.reason === 'other' && fields.reasonDetails === '❌' ? 'cross' : fields?.reason;
   return <GlassSheet title="Импорт из Telegram" onClose={onClose} confirmClose={() => !working.current}>
     <div className="space-y-4 p-4">
+      {jobs.length > 0 && <button type="button" className={wlSecondary} disabled={busy} onClick={() => void run(async () => {
+        if (!await appConfirm({ title: 'Очистить список импортов?', message: 'Файлы исчезнут из списка, неопубликованные черновики будут удалены. Опубликованные записи ЧС сохранятся.',
+            confirmLabel: 'Очистить', cancelLabel: 'Отмена', destructive: true })) return;
+        const result = await request('/archives/clear', { confirmed: true });
+        setJobs((await request('/archives')).items);
+        openJob('');
+        setFeedback(result.pending ? 'Список очищен. Обрабатываемые файлы пока оставлены.' : 'Список импортов очищен');
+      })}>Очистить список импортов</button>}
       <WatchlistError message={error || null} />
       {feedback && <p role="status" className="text-sm text-emerald-700 dark:text-emerald-300">{feedback}</p>}
       {!jobId && <>

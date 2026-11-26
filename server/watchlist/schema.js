@@ -80,6 +80,7 @@ async function ensureTables(pool) {
       UNIQUE (owner_id, file_index), UNIQUE (id, owner_id)
     );
     ALTER TABLE client_watchlist_archive_jobs ADD COLUMN IF NOT EXISTS scanned int;
+    ALTER TABLE client_watchlist_archive_jobs ADD COLUMN IF NOT EXISTS cleared_at timestamptz;
     CREATE INDEX IF NOT EXISTS client_watchlist_archive_queue ON client_watchlist_archive_jobs(state,updated_at);
     CREATE TABLE IF NOT EXISTS client_watchlist_archive_records (
       job_id text NOT NULL, owner_id text NOT NULL, ordinal int NOT NULL,

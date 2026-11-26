@@ -898,6 +898,20 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.equal((await adm('/entries?name='+encodeURIComponent(crossName))).items.length,0);
         assert.equal((await adm(`/archives/${fillJob.id}/publish`,defaults)).published,2);
         assert.equal((await user('/search',{name:crossName})).items[0].reasonDetails,'❌');
+        const entriesBeforeClear=(await pool.query('SELECT id,status,payload FROM client_watchlist_entries ORDER BY id')).rows;
+        const foreignJob='foreign_clear_test';
+        await pool.query("INSERT INTO client_watchlist_archive_jobs(id,owner_id,filename,file_index,state) VALUES($1,'other','messages.html',$1,'ready')",[foreignJob]);
+        await adm('/archives/clear',{confirmed:false},400);
+        const cleared=await adm('/archives/clear',{confirmed:true});
+        assert(cleared.cleared>0);
+        assert.deepEqual((await adm('/archives')).items,[]);
+        assert.equal((await pool.query("SELECT count(*)::int AS n FROM client_watchlist_archive_records WHERE owner_id='admin' AND state='draft'")).rows[0].n,0);
+        assert.deepEqual((await pool.query('SELECT id,status,payload FROM client_watchlist_entries ORDER BY id')).rows,entriesBeforeClear);
+        assert.equal((await pool.query('SELECT cleared_at FROM client_watchlist_archive_jobs WHERE id=$1',[foreignJob])).rows[0].cleared_at,null);
+        assert((await pool.query("SELECT count(*)::int AS n FROM client_watchlist_archive_records WHERE owner_id='admin' AND state='submitted'")).rows[0].n>0);
+        const reloaded=await upload(mixed);
+        assert.notEqual(reloaded.id,bulkJob.id);
+        await waitArchive(reloaded.id);
       } finally {
         if(entryId) await pool.query('DELETE FROM client_watchlist_entries WHERE id=$1',[entryId]);
         await adm('/settings',{...(await adm('/overview')).settings,autoPublish:existing.autoPublish,submissionsPaused:existing.submissionsPaused,reason:'Восстановление настроек теста'});

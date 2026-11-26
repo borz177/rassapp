@@ -609,6 +609,14 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     finally { selectionInProgress = false; }
   });
   adminRoute('get', '/archives', (req,db) => archives.list(db,req.user.id));
+  adminRoute('post', '/archives/clear', async (req,db) => {
+    if (req.body?.confirmed !== true) throw P.problem(400, 'Подтвердите очистку списка импортов.');
+    requireImport();
+    await archiveLock(db);
+    const result = await archives.clearList(db,req.user.id);
+    await event(db,req.user.id,'ARCHIVE_LIST_CLEARED');
+    return result;
+  });
   adminRoute('get', '/archives/:jobId', async (req,db) => {
     const revoked = requireImport();
     const view = await archives.detail(db,req.user.id,req.params.jobId,{...P.page(req.query),excluded:req.query.excluded==='1'});
