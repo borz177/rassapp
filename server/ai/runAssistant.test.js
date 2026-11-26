@@ -117,3 +117,14 @@ test('сверка по тексту и объяснение карточки н
   stale=true;
   await assert.rejects(s.run({userId:'u',text:'Объясни эту проверку учёта: что проверить?',auditReportId:'report'}),{status:409,code:'AUDIT_STALE'});
 });
+
+test('ЧС: поиск по полному ФИО распознаётся отдельно от добавления', () => {
+  const {watchlistIntent}=require('./watchlistIntent');
+  for(const text of ['Проверь Иванов Иван Иванович в ЧС','Найди в черном списке Иванов Иван Иванович','Посмотри Иванов Иван Иванович по ЧС','Можешь проверить Иванов Иван Иванович в черном списке','Пожалуйста проверь чёрный список Иванов Иван Иванович']) {
+    assert.deepEqual(watchlistIntent({text}),{search:true,name:'Иванов Иван Иванович',birthYear:null},text);
+  }
+  assert.deepEqual(watchlistIntent({text:'Проверь Иванов Иван Иванович в ЧС 1990'}),{search:true,name:'Иванов Иван Иванович',birthYear:1990});
+  assert.equal(watchlistIntent({text:'Проверь Иванов Иван Иванович в ЧС',channel:'alice'}),null);
+  assert.equal(watchlistIntent({text:'Проверь баланс'}),null);
+  assert.equal(watchlistIntent({text:'Проверь Иванова и Петрова в ЧС'}).unsupported,true);
+});

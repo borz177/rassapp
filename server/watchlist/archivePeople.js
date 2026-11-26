@@ -31,9 +31,10 @@ const inlineComment = /^(.+?)[ \t]*(?:[,:–—]|[ \t]+-[ \t]+)[ \t]*(.+)$/u;
 const conversationalReason = /^(?!.*(?:интервью|сайтом|приложением|импортом|сервером|интернетом))(?:(?:я\s+)?(?:ему\s+|ей\s+)?(?:больше\s+|никогда\s+)не\s+(?:дам|даю|выдам|выдаю|буду\s+давать)(?=$|[\s.,!])|(?:я\s+)?не\s+(?:дам|выдам)(?=$|[\s.,!])|(?:вс[её]\s+время|постоянно|вечно)\s+(?:с\s+ним\s+|с\s+ней\s+)?(?:какие[\s-]*то\s+)?проблемы(?=$|[\s.,!])|(?:с\s+ним|с\s+ней)\s+(?:(?:вс[её]\s+время|постоянно)\s+)?(?:какие[\s-]*то\s+)?проблемы(?=$|[\s.,!]))/iu;
 const paymentExperience = /^(?:(?:ему|ей|им)\s+не\s+(?:давать|давайте|выдавать|выдавайте)|не\s+(?:давайте|выдавайте)(?:\s+(?:ему|ей|им|рассрочку|товар|кредит))?|(?:я\s+)?не\s+рекомендую\s+(?:давать|выдавать|оформлять)|(?:трудн(?:ый|ая)|тяж[её]л(?:ый|ая))\s+клиент(?:ка)?|(?:не\s+бер[её]т\s+трубку|трубку\s+не\s+бер[её]т)|(?:платит|оплачивает|платежи)\s+(?:с\s+задержк(?:ой|ами)|с\s+опозданием)|(?:постоянно\s+)?задерживает\s+(?:платежи|оплату)|кормит\s+обещаниями|(?:только\s+)?обещает\s*[,—–-]?\s*(?:но\s+)?не\s+(?:платит|отда[её]т)|(?:еле|с\s+трудом)\s+(?:забрали|вернул|отдал)(?:\s+(?:деньги|долг))?)(?=$|[\s.,!❌⛔])/iu;
 const archiveReasonVariants = /^(?:(?:(?:категорически|вообще|никогда|пока)\s+)?(?:ничего|нечего)\s+не\s+давать|(?:категорически|вообще|никогда|пока)\s+не\s+давать|не\s+давать\s+(?:ничего|вообще)|(?:очень\s+)?проблемн(?:ый|ая|ые)|неплат[её]жеспособн(?:ый|ая|ые)|в\s+просрочке|просрочки)(?=$|[\s\p{P}\p{S}])/iu;
+const reportedReason = /^(?:(?:мать|мама|отец|родители)\s+просил(?:а|и)?(?=\s).*?(?:не\s+давать|ничего(?:\s+ему|\s+ей)?\s+(?:не\s+)?давать)|на\s+звонки\s+не\s+отвечает|полный\s+бл[эе]к|мне\s+(?:(?:он|она)\s+)?(?:должен|должна|долг))(?=$|[\s\p{P}\p{S}])/iu;
 const isExperience = text => {
   if (/^(?:проблемные\s+вопросы|в\s+просрочке\s+нет)(?=$|[\s.,!])/iu.test(text)) return false;
-  return conversationalReason.test(text) || paymentExperience.test(text) || archiveReasonVariants.test(text);
+  return conversationalReason.test(text) || paymentExperience.test(text) || archiveReasonVariants.test(text) || reportedReason.test(text);
 };
 
 function resolveStatement(line) {
@@ -48,6 +49,8 @@ function resolveStatement(line) {
   if (/^не\s+выходит\s+на\s+связь(?=$|[\s.,!❌⛔])/iu.test(text)) return 'Не выходит на связь';
   if (/^не\s+отвечает(?=$|[\s.,!❌⛔])/iu.test(text)) return 'Не отвечает';
   if (unlabelledReason.test(text)) return text;
+  const embeddedRefusal = text.match(/(?:^|[\s,;])((?:никому\s+)?(?:ничего\s+)?не\s+давать(?:\s+(?:ему|ей|им|ничего|рассрочку))?[\s.!❌❎✖🚫🛑]*)$/iu);
+  if (embeddedRefusal) return embeddedRefusal[1].trim();
   return '';
 }
 
@@ -68,6 +71,8 @@ function birthField(value, labelled = false) {
   const raw = value.trim();
   const match = dateMatch.exec(raw);
   if (!match) {
+    const shortDate = raw.match(/^(\d{1,2}[./-]\d{1,2}[./-]\d{2})(?!\d)(?:\s*г\.?\s*р\.?)?/iu);
+    if (shortDate) return { date: shortDate[1], tail: raw.slice(shortDate[0].length).trim() };
     const explicitYear = raw.match(/^\(?(\d{4})\s*(?:г\.\s*р\.?|год(?:а)?\s+рождения)(?=$|[\s,.;)!❌])\)?/iu);
     if (explicitYear) return { date: explicitYear[1], tail: raw.slice(explicitYear[0].length).trim() };
     if (!labelled) return null;
@@ -140,7 +145,7 @@ function archivePeople(text) {
       .filter(line => !sharedReasonLabel.test(line))
       .map(line => knownValue(reasonLabel.exec(line)?.[1]?.trim() || '')).find(Boolean);
     const reasonLines = [birth.tail, ...fragment.slice(header.lines)];
-    const conversational = reasonLines.filter(line => isExperience(line));
+    const conversational = reasonLines.filter(line => isExperience(line.replace(/^[\p{P}\p{S}\s]+/u, '')));
     const direct = conversational.length ? conversational.join('\n') : reasonLines.map(resolveStatement).find(Boolean);
     return { name: header.name, birthDate: birth.date, comment: own || direct, inlineComment: conversational.length > 0 || !!birth.tail && !!reasonFromLine(birth.tail), cross: fragment.some(line => crossMark.test(line)),
       text: headers.length === 1 ? text : fragment.join('\n') };
@@ -154,7 +159,7 @@ function archivePeople(text) {
     : !sharedReasons.length && comments.size === 1 ? comments.values().next().value
     : !sharedReasons.length && !comments.size && standaloneCross ? crossReason : '';
   return people.map(({cross,comment,inlineComment,...person}) => ({
-    ...person, reasonText: cross || (people.length === 1 && preface.some(line => crossMark.test(line))) ? crossReason : comment || common,
+    ...person, reasonText: comment || (cross || (people.length === 1 && preface.some(line => crossMark.test(line))) ? crossReason : common),
   }));
 }
 

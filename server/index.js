@@ -4532,7 +4532,7 @@ const saveAgentDocument = async (dataUrl, label) => {
 };
 const aiAssistant = createAssistant({
   pool, jwt, jwtSecret: JWT_SECRET, port: PORT, saveDocumentImage: saveAgentDocument, checkFeatureAccess,
-  poolAccountingService, checkWatchlistSubmission: watchlist.checkSubmissionAccess,
+  poolAccountingService, checkWatchlistSubmission: watchlist.checkSubmissionAccess, searchWatchlist: watchlist.searchForAgent,
 });
 // Идущие запросы к агенту: `${userId}:${requestId}` → AbortController («Стоп» в чате)
 const aiRunning = new Map();

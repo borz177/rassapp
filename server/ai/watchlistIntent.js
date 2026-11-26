@@ -24,6 +24,16 @@ function reasonDraft(value) {
 function watchlistIntent({ text, image, images, audio, channel = 'app', auditReportId } = {}) {
   if (channel !== 'app' || image || images?.length || audio || auditReportId) return null;
   const question = typeof text === 'string' ? text.trim() : '';
+  const search = question.match(/^(?:(?:пожалуйста|можешь|можете|давай)[,\s]+)*(?:проверь(?:те)?|проверить|проверишь|найти|найди(?:те)?|поищи|посмотри|есть\s+ли)\s+(.+)$/iu);
+  if (search && /(?<!\p{L})(?:ч\s*\.?\s*с\.?|ч[её]рн(?:ый|ом)\s+спис(?:ок|ке))(?!\p{L})/iu.test(search[1])) {
+    let target = search[1].replace(/(?<!\p{L})(?:(?:в|по)\s+)?(?:ч\s*\.?\s*с\.?|ч[её]рн(?:ый|ом)\s+спис(?:ок|ке))/iu, '').replace(/^(?:есть\s+ли\s+)?(?:клиента?\s+|клиентку\s+)?/iu, '').replace(/[?!.,]+$/u,'').trim();
+    const year = target.match(/(?:[,\s]+)(19\d{2}|20\d{2})(?:\s*г\.?\s*р\.?)?$/iu);
+    if (year) target = target.slice(0,year.index).trim();
+    if (/^[\p{L}'’.-]+(?:\s+[\p{L}'’.-]+){1,3}$/u.test(target)
+        && !/(?:^|\s)(?:и|или|не)(?:\s|$)/iu.test(target))
+      return { search: true, name: target, birthYear: year ? Number(year[1]) : null };
+    return { search: true, unsupported: true };
+  }
   const choice = question.match(selection);
   if (choice) return { customerId: choice[1] };
   const body = question.match(request)?.[1];

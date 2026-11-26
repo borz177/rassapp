@@ -31,7 +31,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     if (r.rows[0].count > max) throw P.problem(429, 'Слишком много запросов. Попробуйте позже.');
   }
   async function current(db, req, admin = false) {
-    const r = await db.query('SELECT id,role,blocked,password FROM users WHERE id=$1', [req.user?.id]);
+    const r = await db.query('SELECT id,role,blocked,password,subscription FROM users WHERE id=$1', [req.user?.id]);
     const user = r.rows[0];
     if (!user || user.blocked || (admin ? user.role !== 'admin' : !['manager', 'admin'].includes(user.role)))
       throw P.problem(403, admin ? 'Доступ только администратору.' : 'Раздел доступен владельцу аккаунта.');
@@ -55,6 +55,13 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     revocations.read();
     const user = req.user.id;
     const admin = req.watchlistActor?.role === 'admin';
+    if (action === 'search' && !admin) {
+      const raw = req.watchlistActor?.subscription;
+      let subscription;
+      try { subscription = typeof raw === 'string' ? JSON.parse(raw) : raw; } catch {}
+      if (!subscription?.plan || !(Date.parse(subscription.expiresAt) > Date.now()))
+        throw P.problem(403, 'Для поиска по ЧС нужна активная подписка тарифа и выданный доступ к ЧС.');
+    }
     const s = await settings(db), a = await access(db, user);
     // Администратор не подаёт заявку себе. Закрытый режим разрешает ему
     // подготовку записей; публичный доступ и публикация остаются отдельными.
@@ -217,7 +224,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     await db.query('INSERT INTO client_watchlist_acceptances(user_id,version) VALUES($1,$2) ON CONFLICT DO NOTHING', [req.user.id, P.POLICY_VERSION]);
     await event(db, req.user.id, 'RULES_ACCEPTED', P.POLICY_VERSION);
   });
-  route('post', '/search', async (req, db) => {
+  async function search(db, req) {
     const s = await permitted(db, req, 'search');
     await limit(req.user.id, 'search', s.search_limit);
     const name = P.normalizeName(req.body?.name), year = P.birthYear(req.body?.birthYear);
@@ -250,7 +257,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     }
     await event(db, req.user.id, 'SEARCH');
     return { items, limited: r.rows.length > 20 };
-  });
+  }
+  route('post', '/search', (req,db) => search(db,req));
   route('get', '/mine', async (req, db) => {
     const { offset, limit: take } = P.page(req.query);
     const r = await db.query('SELECT * FROM client_watchlist_entries WHERE owner_id=$1 ORDER BY created_at DESC,id LIMIT $2 OFFSET $3', [req.user.id, take + 1, offset]);
@@ -898,6 +906,21 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       db.release();
     }
   };
-  return { ensure, maintenance, checkSubmissionAccess, close: () => { clearInterval(maintenanceTimer); archives.close(); } };
+  const searchForAgent = async (userId, body) => {
+    await ensure();
+    const db = await pool.connect();
+    try {
+      await db.query('BEGIN');
+      const req = { user: { id: userId }, body };
+      req.watchlistActor = await current(db,req);
+      const result = await search(db,req);
+      await db.query('COMMIT');
+      return result;
+    } catch (error) {
+      await db.query('ROLLBACK').catch(() => {});
+      throw error;
+    } finally { db.release(); }
+  };
+  return { ensure, maintenance, checkSubmissionAccess, searchForAgent, close: () => { clearInterval(maintenanceTimer); archives.close(); } };
 }
 module.exports = { registerWatchlistRoutes };

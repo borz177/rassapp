@@ -49,17 +49,34 @@ export function installKeyboardClass() {
   if (typeof window === 'undefined' || !coarse()) return;
   const root = document.documentElement;
   let off = 0;
+  let overlayFocus: { scrollY: number } | null = null;
+  const editable = () => isTextField(document.activeElement) || !!(document.activeElement as HTMLElement)?.isContentEditable;
+  const recover = () => {
+    if (editable() || keyboardNow() || window.visualViewport?.scale !== 1) return;
+    root.classList.remove('kb-open');
+    if (!overlayFocus) return;
+    const previous = overlayFocus;
+    overlayFocus = null;
+    // Safari прокручивает окно под fixed-формой. Возвращаем положение страницы,
+    // которое было до открытия клавиатуры, когда ввод уже завершён.
+    window.scrollTo({ top: previous.scrollY, left: 0, behavior: 'instant' });
+  };
   document.addEventListener('focusin', (e) => {
     const t = e.target as Element;
     if (!isTextField(t) && !(t as HTMLElement)?.isContentEditable) return;
     window.clearTimeout(off);
+    let parent: HTMLElement | null = (t as HTMLElement).parentElement;
+    while (parent && getComputedStyle(parent).position !== 'fixed') parent = parent.parentElement;
+    if (parent && !overlayFocus) overlayFocus = { scrollY: window.scrollY };
+    if (!parent) overlayFocus = null;
     root.classList.add('kb-open');
   });
   // Фокус переходит с поля на поле — не мигаем панелью
   document.addEventListener('focusout', () => {
     window.clearTimeout(off);
     off = window.setTimeout(() => {
-      if (!isTextField(document.activeElement)) root.classList.remove('kb-open');
+      if (!editable()) root.classList.remove('kb-open');
+      recover();
     }, 120);
   });
   // Страховка: страницу закрыли, пока поле было в фокусе, — iPhone не присылает
@@ -71,7 +88,10 @@ export function installKeyboardClass() {
     }
   };
   document.addEventListener('touchstart', settle, { capture: true, passive: true });
-  window.visualViewport?.addEventListener('resize', settle);
+  window.visualViewport?.addEventListener('resize', () => { settle(); recover(); });
+  window.visualViewport?.addEventListener('scroll', recover);
+  window.addEventListener('pageshow', recover);
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) recover(); });
   window.addEventListener('popstate', () => window.setTimeout(settle, 50));
 }
 

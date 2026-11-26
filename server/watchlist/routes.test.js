@@ -27,7 +27,7 @@ test('общий список: реальная локальная PostgreSQL, �
   try {
     await root.query(`CREATE SCHEMA ${schema}`);
     pool = new Pool({ connectionString: url, options: `-c search_path=${schema}` });
-    await pool.query(`CREATE TABLE users(id text PRIMARY KEY,name text,email text,role text,blocked boolean DEFAULT false,password text);
+    await pool.query(`CREATE TABLE users(id text PRIMARY KEY,name text,email text,role text,blocked boolean DEFAULT false,password text,subscription jsonb DEFAULT '{"plan":"BUSINESS","expiresAt":"2099-01-01T00:00:00Z"}');
       CREATE TABLE data_items(id text PRIMARY KEY,user_id text,type text,data jsonb);`);
     const hash = await bcrypt.hash('Synthetic-password', 4);
     for (const [u, role] of [['admin', 'admin'], ['owner', 'manager'], ['other', 'manager'], ['employee', 'employee'], ['investor', 'investor'], ['former_admin', 'manager']])
@@ -142,6 +142,17 @@ test('общий список: реальная локальная PostgreSQL, �
       await user('/preview', { customerId: 'other_client' }, 404);
       preview = await user('/preview', { customerId: 'client' });
       assert.deepEqual(Object.keys(preview).sort(), ['birthYear', 'customerId', 'fingerprint', 'name']);
+    });
+    await t.test('поиск по странице и агенту требует действующий тариф помимо допуска', async () => {
+      for(const subscription of [null, {plan:'BUSINESS',expiresAt:'2020-01-01'}, {plan:'BUSINESS',expiresAt:'invalid'}]) {
+        await pool.query("UPDATE users SET subscription=$1 WHERE id='owner'",[subscription]);
+        await user('/search',{name:customer.name},403);
+        await assert.rejects(service.searchForAgent('owner',{name:customer.name}),error=>error.status===403&&/подписка/.test(error.message));
+      }
+      await pool.query("UPDATE users SET subscription=$1 WHERE id='owner'",[{plan:'BUSINESS',expiresAt:'2099-01-01'}]);
+      assert.deepEqual((await service.searchForAgent('owner',{name:customer.name})).items,[]);
+      await user('/search',{name:customer.name});
+      await assert.rejects(service.searchForAgent('other',{name:customer.name}),{status:403});
     });
     const submit = p => ({ ...p, reason: 'overdue', basis: 'subject_consent', evidence: 'Синтетическое согласие: состав и круг получателей проверяются', note: 'Синтетическая ситуация для модерации', confirmed: true });
     await t.test('агент готовит форму в пределах своего аккаунта и текущего допуска без запроса к модели', async () => {

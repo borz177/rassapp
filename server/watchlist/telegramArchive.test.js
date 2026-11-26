@@ -237,3 +237,31 @@ test('messages6 wording variants remain readable and unrelated phrases are exclu
     assert.equal(linkedDrafts([message('1',nameOne),message('2',text,{replyTo:'1'})])[0].fields.reason,'');
   }
 });
+
+test('reported explanations and crosses preserve the source text together', () => {
+  const reason='Мать просила закинуть его и никому ничего ему давать❌';
+  const [row]=messageDrafts(message('1',nameOne+', 07.01.2001 г.р., проживает г. Учебный\nАдрес: Учебная улица, номер 84.\n'+reason),'Тестовый источник',Date.now(),defaultSelection);
+  assert.equal(row.fields.reasonDetails,reason);
+  assert(!row.fields.reasonDetails.includes('Адрес'));
+  const text='На звонки не отвечает очень трудный клиент ❌❌❌';
+  const [calls]=messageDrafts(message('2',nameOne+' 21.12.1998\n'+text),'Тестовый источник',Date.now(),defaultSelection);
+  assert.equal(calls.fields.reasonDetails,text);
+  const [crossOnly]=messageDrafts(message('3',nameOne+' 21.12.1998 ❌❌❌'),'Тестовый источник',Date.now(),defaultSelection);
+  assert.equal(crossOnly.fields.reasonDetails,'❌');
+  const [reply]=linkedDrafts([message('1',nameOne),message('2','Мне он должен 231.',{replyTo:'1'})]);
+  assert.equal(reply.fields.reasonDetails,'Мне он должен 231.');
+});
+
+test('short birth year retains a review error while the reason remains available', () => {
+  const [row]=messageDrafts(message('1',nameOne+'\n12.01.02 мать просила не давать. Полный блэк. Мне долг 100тр.'),'Тестовый источник',Date.now(),defaultSelection);
+  assert.equal(row.fields.birthDate,'12.01.02');
+  assert.equal(row.fields.reasonDetails,'мать просила не давать. Полный блэк. Мне долг 100тр.');
+  assert(verifyDraft(row.fields).errors.length>0);
+  const rows=messageDrafts(message('2',nameOne+' 01.02.1990\nМать просила не давать❌\n'+nameTwo+' 03.04.1991'),'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(rows.map(row=>row.fields.reasonDetails),['Мать просила не давать❌','']);
+});
+
+test('refusal after a locality is extracted without putting the address in the reason', () => {
+  const [row]=messageDrafts(message('1',nameOne+' 25.03.1977г-с Учебное не давать❌❌❌'),'Тестовый источник',Date.now(),defaultSelection);
+  assert.equal(row.fields.reasonDetails,'не давать❌❌❌');
+});

@@ -785,7 +785,7 @@ const compact = (v) => {
   return v;
 };
 
-function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null, checkFeatureAccess = null, poolAccountingService = null, checkWatchlistSubmission = null }) {
+function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null, checkFeatureAccess = null, poolAccountingService = null, checkWatchlistSubmission = null, searchWatchlist = null }) {
   const basePool = pool;
   const localTransaction = new (require('node:async_hooks').AsyncLocalStorage)();
   pool = new Proxy(basePool, { get(target, prop) {
@@ -1581,6 +1581,22 @@ function createAssistant({ pool, jwt, jwtSecret, port, saveDocumentImage = null,
   const prepareWatchlist = async ({ userId, intent, readOnly, signal }) => {
     const response = (reply, actions = []) => ({ reply, actions, usage: { prompt: 0, cached: 0, completion: 0, cost: 0 } });
     if (signal?.aborted) return { ...response(''), cancelled: true };
+    if (intent.search) {
+      if (intent.unsupported) return response('Напишите полное ФИО одного человека. Год рождения можно добавить после имени.');
+      if (!searchWatchlist) return response('Проверка ЧС доступна владельцу аккаунта в приложении.');
+      try {
+        const result = await searchWatchlist(userId, { name: intent.name, birthYear: intent.birthYear });
+        if (!result.items.length) return response('По указанным ФИО совпадений в ЧС не найдено.');
+        const reasons = { overdue: 'Длительная просрочка', unfulfilled: 'Неисполнение обязательств' };
+        return response(result.items.map(item => [
+          'Найдено совпадение по ФИО: ' + item.name + (item.birthYear ? ', ' + item.birthYear + ' г.р.' : ''),
+          item.reason === 'other' ? item.reasonDetails : reasons[item.reason],
+          item.guarantors?.length ? 'Поручители: ' + item.guarantors.map(g => g.name).join(', ') : '',
+        ].filter(Boolean).join('\n')).join('\n\n') + (result.limited ? '\nЕсть дополнительные совпадения. Уточните год рождения.' : ''));
+      } catch (error) {
+        return response([400,403,429].includes(error.status) ? error.message : 'Чёрный список временно недоступен. Попробуйте позже.');
+      }
+    }
     if (readOnly || !checkWatchlistSubmission) return response('Добавление в чёрный список доступно в приложении при наличии допуска.');
     try {
       await checkWatchlistSubmission(userId);

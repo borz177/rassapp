@@ -33,10 +33,31 @@ test('ответ агента: неподтверждённые суммы не 
     const app=express();app.use(express.json());const secret='local-synthetic-secret';let assistant;
     app.use('/api/v1',(req,res,next)=>{const sub=assistant.verifyAgentToken((req.get('authorization')||'').replace(/^Bearer /,''));if(sub!=='owner')return res.sendStatus(401);req.apiAuth={userId:sub,scopes:['read','write'],key:{isAgent:true}};next();},require('../api/v1').createApiV1Router({pool,checkContractLimit:async()=>({allowed:true}),planLimits:{}}));
     server=await new Promise(r=>{const s=app.listen(0,'127.0.0.1',()=>r(s));});
-    assistant=require('./assistant').createAssistant({pool,jwt,jwtSecret:secret,port:server.address().port,checkFeatureAccess:async()=>({allowed:true})});
+    let watchlistResult={items:[]},watchlistError=null;
+    const watchlistCalls=[];
+    assistant=require('./assistant').createAssistant({pool,jwt,jwtSecret:secret,port:server.address().port,checkFeatureAccess:async()=>({allowed:true}),
+      searchWatchlist:async(owner,body)=>{watchlistCalls.push({owner,body});if(watchlistError)throw watchlistError;return watchlistResult;}});
     const user={id:'owner',name:'Владелец'},bad='По данным учёта сумма 987654321 ₽.';
     const ask=async(text,steps,extra={})=>{assert.equal(script.length,0,'Все ответы предыдущего сценария использованы');script.push(...steps);seen.length=0;return assistant.reply({user,text,silent:true,...extra});};
     const snapshot=await pool.query('SELECT id,data FROM data_items ORDER BY id');
+    await t.test('поиск ЧС отвечает из базы без модели и передаёт запрет доступа', async()=>{
+      const input={user,text:'Проверь Учебный Первый Примерович в ЧС 1990',silent:true};
+      let answer=await assistant.reply(input);
+      assert.match(answer.reply,/совпадений.*не найдено/);
+      assert.equal(answer.usage.cost,0);
+      assert.deepEqual(watchlistCalls.at(-1),{owner:'owner',body:{name:'Учебный Первый Примерович',birthYear:1990}});
+      watchlistResult={items:[{name:'Учебный Первый Примерович',birthYear:1990,reason:'other',reasonDetails:'Причина из базы'}]};
+      answer=await assistant.reply(input);
+      assert.match(answer.reply,/Причина из базы/);
+      assert.equal(answer.actions.length,0);
+      watchlistError=Object.assign(new Error('Для поиска нужна активная подписка'),{status:403});
+      answer=await assistant.reply(input);
+      assert.match(answer.reply,/активная подписка/);
+      assert(!answer.reply.includes('Причина из базы'));
+      assert.equal(seen.length,0);
+      watchlistError=null;
+    });
+
     await t.test('пустой повтор не возвращает прежний ответ с плохой суммой, в том числе в потоке',async()=>{
       const events=[];const r=await ask('Проверь общую сумму',[{content:bad},{content:''}],{onStream:ev=>events.push(ev)});
       assert.match(r.reply,/Не удалось надёжно проверить суммы/);assert(!r.reply.includes('987654321'));assert(!r.reply.includes('⚠️'));assert.deepEqual(r.actions,[]);
@@ -121,7 +142,7 @@ test('ответ агента: неподтверждённые суммы не 
     });
     await t.test('справка о чёрном списке не открывает его данные через модель',async()=>{
       await ask('Есть чёрный список?',[{tool:'app_help',args:{topic:'watchlist'}},{content:'Да, раздел «Чёрный список» доступен после одобрения.'}]);
-      const tool=seen.at(-1).messages.filter(m=>m.role==='tool').at(-1).content;assert.match(tool,/не могу искать или публиковать/);assert(!tool.includes('passport'));
+      const tool=seen.at(-1).messages.filter(m=>m.role==='tool').at(-1).content;assert.match(tool,/активной подписке тарифа/);assert(!tool.includes('passport'));
     });
     await t.test('сомнительный текст не отменяет подготовленную карточку и не повторяет запись',async()=>{
       const r=await ask('Добавь задачу: проверить кассу',[{tool:'create_task',args:{title:'Проверить кассу'}},{content:bad},{content:''}]);
