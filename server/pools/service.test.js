@@ -486,3 +486,22 @@ test('полный ввод истории: два инвестора задни
     const data=await f.svc.load(db,f.owner);
     assert.equal(data.sales.filter(s=>s.accountId===id&&s.type==='CASH').reduce((sum,s)=>sum+s.totalAmount,0),200000);
 });
+
+test('исправления даты без денежных поправок и пустые закрытые месяцы разрешают раннего инвестора', async () => {
+    const f = await fixture();
+    const first=await f.svc.mutate(f.owner,'new','addInvestor',{requestId:req(),newPoolName:'Без договоров',name:'Первый',date:'2026-11-01',amount:100000,rate:50});
+    const id=first.account.id;
+    const investorId=first.changed.investors[0].id;
+    const initial=await f.svc.preview(f.owner,id);
+    await f.svc.mutate(f.owner,id,'close',{requestId:req(),month:'2026-11',confirmed:true,fingerprint:initial.reports[0].fingerprint});
+    const correction=await f.svc.preview(f.owner,id,{entryDateCorrection:{investorId,entryDate:'2026-11-02'}});
+    const changed=await f.svc.mutate(f.owner,id,'correctEntryDate',{requestId:req(),investorId,entryDate:'2026-11-02',confirmed:true,fingerprint:correction.entryDateCorrection.fingerprint});
+    assert.equal(changed.account.poolAccounting.entryDateAdjustments.length,1);
+    const next=await f.svc.mutate(f.owner,id,'addInvestor',{requestId:req(),name:'Раньше',date:'2026-10-15',amount:50000,rate:50});
+    assert.equal(next.account.poolAccounting.startMonth,'2026-10');
+    assert.equal(next.investors.length,2);
+    assert.equal(next.account.poolAccounting.entryDateAdjustments.length,1);
+    const final=await f.svc.preview(f.owner,id);
+    assert(final.reports.every(report=>!report.issues.length && report.gross===0));
+    assert.equal(final.balances.investors[investorId].earned,0);
+});

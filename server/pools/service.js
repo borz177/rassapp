@@ -43,7 +43,9 @@ function isPoolOpening(data, account) {
 function canExtendPoolOpening(data, account, P) {
     const config = account.poolAccounting;
     if (!config || Number(account.initialBalance || 0) !== 0 || Object.keys(config.openingTerms?.members || {}).length
-        || config.adjustments?.length || config.entryDateAdjustments?.length || config.reinvestments?.length
+        || config.adjustments?.length || config.entryDateAdjustments?.some(change =>
+            change.months?.length || change.parts?.some(part => Number(part.amount) !== 0)
+            || change.managerOrigins?.some(part => Number(part.amount) !== 0)) || config.reinvestments?.length
         || account.lossEvents?.length) return false;
     if (config.closed.some(report => report.sources?.length || report.costRows?.length || report.issues?.length
         || [report.gross, report.costs, report.distributable, report.carryIn, report.carryOut, report.unallocated,
