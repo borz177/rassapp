@@ -262,6 +262,180 @@ test('первый вход до начала месячного учёта мо
 test('ручное реинвестирование доступной текущей прибыли не создаёт приход денег',async()=>{const f=await fixture({now:'2026-11-25T12:00:00+03:00'});await f.call('reinvest',{investorId:f.iid,amount:10000});const p=await f.svc.preview(f.owner,f.id);assert.equal(p.balances.investors[f.iid].available,15000);assert.equal(p.investors.find(i=>i.id===f.iid).initialAmount,1010000);await assert.rejects(f.call('reinvest',{investorId:f.iid,amount:15000.01}),e=>e.status===409);assert.equal((await db.query("SELECT id FROM data_items WHERE user_id=$1 AND type='sales'",[f.owner])).rows.length,1);});
 test('выплата после реинвестирования не может повторно использовать те же деньги', async () => { const f = await fixture(); let p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await f.call('reinvest', { investorId: f.iid, amount: 20000 }); const e = { id: 'payout', accountId: f.id, investorId: f.iid, payoutType: 'PROFIT', amount: 5000.01, date: '2026-12-01T09:00:00+03:00' }; await assert.rejects(f.svc.guardWrite(f.owner, 'expenses', e), e => e.status === 409); await f.svc.guardWrite(f.owner, 'expenses', { ...e, amount: 5000 }); });
 test('старая форма не меняет капитал, условия, закрытый платёж или сам журнал', async () => { const f = await fixture(); await assert.rejects(f.svc.guardWrite(f.owner, 'investors', { ...f.ii[0], initialAmount: 2e6 }, f.ii[0]), e => e.status === 409); await f.svc.guardWrite(f.owner, 'investors', { ...f.ii[0], phone: '123' }, f.ii[0]); await assert.rejects(f.svc.guardWrite(f.owner, 'accounts', { ...f.account, poolAccounting: undefined }, f.account), e => e.status === 409); let p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...f.sale, totalAmount: 300000 }, f.sale), e => e.status === 409); const future = { ...f.sale, paymentPlan: [...f.sale.paymentPlan, { id: 'new', amount: 1000, date: '2026-12-01T09:00:00+03:00', isPaid: true, isRealPayment: true }] }; await f.svc.guardWrite(f.owner, 'sales', future, f.sale); });
+
+for (const basis of ['MONTH', 'SCHEDULE_PERIOD']) {
+    test(`договор задним числом без поступлений можно добавить и исправить после закрытия месяца (${basis})`, async () => {
+        const f = await fixture();
+        f.account.poolAccounting.openingTerms.profitBasis = basis;
+        f.account.poolAccounting.terms[0].profitBasis = basis;
+        await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [f.account, f.id]);
+        const before = await f.svc.preview(f.owner, f.id);
+        assert.equal(P.poolProfitBasis(before.account, '2026-12-01'), basis);
+        const historical = { ...f.sale, id: req(), startDate: '2026-11-10',
+            paymentPlan: [{ id: 'planned', date: '2026-11-25', amount: 200000, isPaid: false, isRealPayment: false }] };
+        await f.svc.guardWrite(f.owner, 'sales', historical);
+        await save(f.owner, 'sales', historical);
+        const edited = { ...historical, buyPrice: 120000, totalAmount: 240000,
+            paymentPlan: [{ ...historical.paymentPlan[0], amount: 240000 }] };
+        await f.svc.guardWrite(f.owner, 'sales', edited, historical);
+        await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [edited, edited.id]);
+        const after = await f.svc.preview(f.owner, f.id);
+        assert.deepEqual(after.account.poolAccounting.closed, before.account.poolAccounting.closed);
+        assert.deepEqual(after.balances, before.balances);
+        assert.equal(after.reports.find(r => r.month === '2026-12').gross, 0);
+        // Первый фактический платёж — в открытом месяце, без повторного начисления ноября.
+        const paid = { ...edited, paymentPlan: [...edited.paymentPlan,
+            { id: 'received', date: '2026-12-01T08:00:00+03:00', amount: 20000, isPaid: true, isRealPayment: true }] };
+        await f.svc.guardWrite(f.owner, 'sales', paid, edited);
+        await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [paid, paid.id]);
+        const result = await f.svc.preview(f.owner, f.id);
+        assert.deepEqual(result.account.poolAccounting.closed, before.account.poolAccounting.closed);
+        assert.equal(result.reports.find(r => r.month === '2026-12').gross, 10000);
+        assert.equal(result.balances.investors[f.iid].earned, 27500);
+        assert.equal(result.balances.investors[f.bid].earned, 27500);
+        assert.equal(result.balances.manager.earned, 55000);
+    });
+}
+
+test('дата неоплаченного договора может быть раньше начала месячного учёта; обычный счёт не ограничен', async () => {
+    const f = await fixture();
+    await f.svc.preview(f.owner, f.id);
+    const sale = { ...f.sale, id: req(), startDate: '2026-10-05', paymentPlan: [] };
+    await f.svc.guardWrite(f.owner, 'sales', sale);
+    await save(f.owner, 'sales', sale);
+    await f.svc.guardWrite(f.owner, 'sales', null, sale, true);
+    const ordinary = { ...f.sale, id: req(), accountId: 'ordinary-account', downPayment: 10000 };
+    await f.svc.guardWrite(f.owner, 'sales', ordinary);
+});
+
+test('связанный закуп исторического договора сохраняется один раз и не меняет прибыль закрытого месяца', async () => {
+    const f = await fixture();
+    const before = await f.svc.preview(f.owner, f.id);
+    const cash = async () => {
+        const { ready, accountBalances } = require('../api/domain');
+        await ready;
+        const d = await f.svc.load(db, f.owner);
+        return accountBalances(d.accounts, d.sales, d.expenses, d.retailSales)[f.id];
+    };
+    const initialCash = await cash();
+    const sale = { ...f.sale, id: req(), paymentPlan: [] };
+    await f.svc.guardWrite(f.owner, 'sales', sale);
+    await save(f.owner, 'sales', sale);
+    const expense = { id: `exp_sale_${sale.id}`, accountId: f.id, date: sale.startDate,
+        category: 'Себестоимость', amount: sale.buyPrice, isRefund: false };
+    await f.svc.guardWrite(f.owner, 'expenses', expense);
+    await save(f.owner, 'expenses', expense);
+    assert.equal(await cash(), initialCash - sale.buyPrice);
+    const replay = { ...expense, poolRevision: undefined };
+    await f.svc.guardWrite(f.owner, 'expenses', replay, expense);
+    assert.equal(replay.poolRevision, expense.poolRevision);
+    const changed = { ...sale, buyPrice: 120000 };
+    await f.svc.guardWrite(f.owner, 'sales', changed, sale);
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [changed, changed.id]);
+    const changedExpense = { ...expense, amount: changed.buyPrice };
+    await f.svc.guardWrite(f.owner, 'expenses', changedExpense, expense);
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [changedExpense, changedExpense.id]);
+    assert.equal(await cash(), initialCash - changed.buyPrice);
+    const after = await f.svc.preview(f.owner, f.id);
+    assert.deepEqual(after.account.poolAccounting.closed, before.account.poolAccounting.closed);
+    assert.deepEqual(after.balances, before.balances);
+    await f.svc.guardWrite(f.owner, 'sales', null, changed, true);
+    await db.query('DELETE FROM data_items WHERE id=$1', [changed.id]);
+    await f.svc.guardWrite(f.owner, 'expenses', null, changedExpense, true);
+    await db.query('DELETE FROM data_items WHERE id=$1', [changedExpense.id]);
+    assert.equal(await cash(), initialCash);
+});
+
+test('исключение закупа не пропускает произвольные расходы и списания прибыли задним числом', async () => {
+    const f = await fixture();
+    await f.svc.preview(f.owner, f.id);
+    const purchase = { id: `exp_sale_${f.sale.id}`, accountId: f.id, date: '2026-11-05',
+        amount: f.sale.buyPrice, category: 'Себестоимость', isRefund: false };
+    for (const patch of [{ id: req() }, { id: 'exp_sale_unknown' }, { amount: 1 },
+        { fromProfit: true }, { category: 'Прочее' }, { isRefund: true }]) {
+        await assert.rejects(f.svc.guardWrite(f.owner, 'expenses', { ...purchase, ...patch }), { status: 409 });
+    }
+    const oldCost = { ...purchase, fromProfit: true };
+    await save(f.owner, 'expenses', oldCost);
+    await assert.rejects(f.svc.guardWrite(f.owner, 'expenses', purchase, oldCost), { status: 409 });
+});
+
+test('исторический совместный договор списывает с пула только его долю закупа', async () => {
+    const f = await fixture();
+    const before = await f.svc.preview(f.owner, f.id);
+    const sale = { ...f.sale, id: req(), accountId: 'ordinary-account', paymentPlan: [],
+        funding: [{ accountId: 'ordinary-account', amount: 40000 }, { accountId: f.id, amount: 60000 }] };
+    await f.svc.guardWrite(f.owner, 'sales', sale);
+    await save(f.owner, 'sales', sale);
+    const purchase = { id: `exp_sale_${sale.id}__${f.id}`, accountId: f.id, date: sale.startDate,
+        amount: 60000, category: 'Себестоимость', isRefund: false };
+    await assert.rejects(f.svc.guardWrite(f.owner, 'expenses', { ...purchase, amount: sale.buyPrice }), { status: 409 });
+    await f.svc.guardWrite(f.owner, 'expenses', purchase);
+    await save(f.owner, 'expenses', purchase);
+    const paid = { ...sale, paymentPlan: [{ id: 'received', date: '2026-12-01T08:00:00+03:00',
+        amount: 20000, isPaid: true, isRealPayment: true }] };
+    await f.svc.guardWrite(f.owner, 'sales', paid, sale);
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [paid, paid.id]);
+    const result = await f.svc.preview(f.owner, f.id);
+    assert.equal(result.reports.find(r => r.month === '2026-12').gross, 6000);
+    assert.equal(result.balances.investors[f.iid].earned, 26500);
+    assert.deepEqual(result.account.poolAccounting.closed, before.account.poolAccounting.closed);
+});
+
+test('после выплат нельзя дополнять закрытые поступления; перенос уже проведённого платежа защищён', async () => {
+    const f = await fixture();
+    await save(f.owner, 'expenses', { id: req(), accountId: f.id, date: '2026-12-01',
+        investorId: f.iid, payoutType: 'PROFIT', amount: 1000 });
+    const before = await f.svc.preview(f.owner, f.id);
+    const unpaid = { ...f.sale, id: req(), paymentPlan: [] };
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...unpaid, downPayment: 10000 }), e =>
+        e.status === 409 && /Первый взнос/.test(e.message));
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...unpaid, type: 'CASH' }), { status: 409 });
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...f.sale, id: req() }), e =>
+        e.status === 409 && /Платёж/.test(e.message));
+    await f.svc.guardWrite(f.owner, 'sales', unpaid);
+    await save(f.owner, 'sales', unpaid);
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...unpaid, downPayment: 10000 }, unpaid), { status: 409 });
+    const paid = { ...unpaid, paymentPlan: [{ id: 'today', date: '2026-12-01T08:00:00+03:00', amount: 10000, isPaid: true, isRealPayment: true }] };
+    await f.svc.guardWrite(f.owner, 'sales', paid, unpaid);
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [paid, paid.id]);
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...paid,
+        paymentPlan: [{ ...paid.paymentPlan[0], date: '2026-11-25' }] }, paid), { status: 409 });
+    assert.deepEqual((await f.svc.preview(f.owner, f.id)).account.poolAccounting.closed, before.account.poolAccounting.closed);
+});
+
+test('ввод истории продолжается после первого платежа: новые договоры, первый взнос и несколько прошлых поступлений', async () => {
+    const f = await fixture();
+    const first = await f.svc.mutate(f.owner, 'new', 'addInvestor', { requestId: req(),
+        newPoolName: 'Ввод истории', name: 'Первый', amount: 1000000, rate: 50, date: '2026-10-01' });
+    const id = first.account.id;
+    const second = await f.svc.mutate(f.owner, id, 'addInvestor', { requestId: req(),
+        name: 'Второй', amount: 1000000, rate: 50, date: '2026-10-01' });
+    const add = async sale => { await f.svc.guardWrite(f.owner, 'sales', sale); await save(f.owner, 'sales', sale); };
+    const received = (paymentId, date, amount) => ({ id: paymentId, date, amount, isPaid: true, isRealPayment: true });
+    const one = { ...f.sale, id: req(), accountId: id, startDate: '2026-10-05',
+        paymentPlan: [received('first', '2026-11-20', 20000)] };
+    await add(one);
+    const afterOne = await f.svc.preview(f.owner, id);
+    assert.equal(afterOne.balances.manager.earned, 5000);
+    assert.equal(afterOne.account.poolAccounting.closed.length, 2);
+    const two = { ...one, id: req(), downPayment: 10000,
+        poolRevision: undefined, _poolWriteHash: undefined,
+        paymentPlan: [received('second', '2026-11-10', 20000)] };
+    await add(two);
+    const updated = { ...one, paymentPlan: [...one.paymentPlan, received('third', '2026-11-25', 20000)] };
+    await f.svc.guardWrite(f.owner, 'sales', updated, one);
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [updated, updated.id]);
+    const result = await f.svc.preview(f.owner, id);
+    assert.deepEqual(result.account.poolAccounting.closed.map(r => r.gross), [5000, 30000]);
+    assert.equal(result.balances.manager.earned, 17500);
+    assert(second.investors.every(i => result.balances.investors[i.id].earned === 8750));
+    const replay = structuredClone(updated);
+    await f.svc.guardWrite(f.owner, 'sales', replay, updated);
+    assert.deepEqual((await f.svc.preview(f.owner, id)).balances, result.balances);
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...updated,
+        paymentPlan: updated.paymentPlan.slice(1) }, updated), { status: 409 });
+});
 test('атомарное создание инвестора: ошибка сохранения депозита откатывает весь состав', async () => { const f = await fixture(); await db.query(`CREATE FUNCTION fail_pool_deposit() RETURNS trigger LANGUAGE plpgsql AS $$ BEGIN IF NEW.user_id='${f.owner}' AND NEW.type='sales' AND NEW.data->>'productName'='Вложение в общий пул' THEN RAISE EXCEPTION 'test rollback'; END IF; RETURN NEW; END $$`); await db.query('CREATE TRIGGER fail_deposit BEFORE INSERT ON data_items FOR EACH ROW EXECUTE FUNCTION fail_pool_deposit()'); try {
     await assert.rejects(f.call('addInvestor', { name: 'Третий', amount: 1000, rate: 50, disposition: 'PAYABLE' }));
     const v = await f.svc.preview(f.owner, f.id);
@@ -308,7 +482,8 @@ async function httpRun(f, run, { v1 = false, atomic = false } = {}) {
         app.use(writes.middleware);
     }
     if (v1)
-        app.use('/v1', require('../api/v1').createApiV1Router({ pool: tx.db, poolAccountingService: svc }));
+        app.use('/v1', require('../api/v1').createApiV1Router({ pool: tx.db, poolAccountingService: svc,
+            checkContractLimit: async () => ({ allowed: true }) }));
     else
         app.post('/payout', async (req, res) => { try {
             const e = { id: `payout_${req.body.id}`, accountId: f.id, investorId: f.iid, payoutType: 'PROFIT', amount: req.body.amount, date: '2026-12-01T09:00:00+03:00' };
@@ -330,6 +505,94 @@ async function httpRun(f, run, { v1 = false, atomic = false } = {}) {
 test('HTTP: параллельные выплаты не расходуют одну подтверждённую прибыль дважды', async () => { const f = await fixture(); const p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await httpRun(f, async (url) => { const post = id => fetch(url + '/payout', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, amount: 15000 }) }); const results = await Promise.all([post(req()), post(req())]); assert.deepEqual(results.map(r => r.status).sort(), [200, 409]); }); assert.equal((await f.svc.preview(f.owner, f.id)).balances.investors[f.iid].available, 10000); });
 test('HTTP: вложенная транзакция идемпотентности возвращает один результат и один расход', async () => { const f = await fixture(); const p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await httpRun(f, async (url) => { const body = { id: req(), amount: 1000 }, key = req(), options = { method: 'POST', headers: { 'content-type': 'application/json', 'idempotency-key': key }, body: JSON.stringify(body) }; assert.equal((await fetch(url + '/payout', options)).status, 200); const repeat = await fetch(url + '/payout', options); assert.equal(repeat.status, 200); assert.equal(repeat.headers.get('idempotent-replay'), 'true'); }, { atomic: true }); assert.equal((await f.svc.preview(f.owner, f.id)).balances.investors[f.iid].available, 24000); });
 test('HTTP API/ИИ: закрытый платёж нельзя удалить через отдельный маршрут платежей', async () => { const f = await fixture(); const p = await f.svc.preview(f.owner, f.id); await f.call('close', { month: '2026-11', confirmed: true, fingerprint: p.reports[0].fingerprint }); await httpRun(f, async (url) => { const r = await fetch(url + '/v1/payments/p', { method: 'DELETE' }); assert.equal(r.status, 409); assert.match((await r.json()).error.message, /закрытый месяц/); }, { v1: true }); assert.equal((await db.query('SELECT data FROM data_items WHERE id=$1', [f.sale.id])).rows[0].data.paymentPlan.length, 1); });
+
+test('HTTP: параллельный ввод прошлых платежей пересчитывает месяц без потери денег и повторных начислений', async () => {
+    const f = await fixture();
+    await f.svc.preview(f.owner, f.id);
+    const sale = { ...f.sale, id: req(), paymentPlan: [], remainingAmount: 200000 };
+    await save(f.owner, 'sales', sale);
+    await httpRun(f, async url => {
+        const post = amount => fetch(url + '/v1/payments', { method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ contractId: sale.id, date: '2026-11-25', amount }) });
+        const results = await Promise.all([post(10000), post(20000)]);
+        for (const r of results) assert.equal(r.status, 201, JSON.stringify(await r.json()));
+    }, { v1: true });
+    const v = await f.svc.preview(f.owner, f.id);
+    assert.equal(v.balances.manager.earned, 57500);
+    assert.equal(v.balances.investors[f.iid].earned, 28750);
+    const saved = (await db.query('SELECT data FROM data_items WHERE id=$1', [sale.id])).rows[0].data;
+    assert.equal(saved.paymentPlan.filter(p => p.isPaid).length, 2);
+    assert.equal(saved.remainingAmount, 170000);
+});
+
+test('HTTP: отказ сохранения платежа откатывает пересчитанный закрытый месяц', async () => {
+    const f = await fixture();
+    const before = await f.svc.preview(f.owner, f.id);
+    const sale = { ...f.sale, id: req(), paymentPlan: [], remainingAmount: 200000 };
+    await save(f.owner, 'sales', sale);
+    await db.query(`CREATE FUNCTION fail_history_payment() RETURNS trigger LANGUAGE plpgsql AS $$
+        BEGIN IF NEW.id='${sale.id}' THEN RAISE EXCEPTION 'test history rollback'; END IF; RETURN NEW; END $$`);
+    await db.query('CREATE TRIGGER history_payment BEFORE UPDATE ON data_items FOR EACH ROW EXECUTE FUNCTION fail_history_payment()');
+    try {
+        await httpRun(f, async url => {
+            const r = await fetch(url + '/v1/payments', { method: 'POST', headers: { 'content-type': 'application/json' },
+                body: JSON.stringify({ contractId: sale.id, date: '2026-11-25', amount: 10000 }) });
+            assert.equal(r.status, 500);
+        }, { v1: true });
+        const after = await f.svc.preview(f.owner, f.id);
+        assert.deepEqual(after.account.poolAccounting, before.account.poolAccounting);
+        assert.deepEqual(after.balances, before.balances);
+        assert.deepEqual((await db.query('SELECT data FROM data_items WHERE id=$1', [sale.id])).rows[0].data.paymentPlan, []);
+    } finally {
+        await db.query('DROP TRIGGER history_payment ON data_items');
+        await db.query('DROP FUNCTION fail_history_payment()');
+    }
+});
+
+test('ввод прошлых платежей не переписывает проведённое реинвестирование', async () => {
+    const f = await fixture({ auto: true });
+    const before = await f.svc.preview(f.owner, f.id);
+    await assert.rejects(f.svc.guardWrite(f.owner, 'sales', { ...f.sale, id: req() }), { status: 409 });
+    const after = await f.svc.preview(f.owner, f.id);
+    assert.deepEqual(after.account, before.account);
+    assert.deepEqual(after.investors, before.investors);
+});
+
+test('прошлый платёж до входа второго инвестора не начисляет ему прибыль', async () => {
+    const f = await fixture();
+    await db.query('UPDATE data_items SET data=$1 WHERE id=$2', [
+        { ...f.ii[1], joinedDate: '2026-11-15T00:00:00+03:00' }, f.bid]);
+    const before = await f.svc.preview(f.owner, f.id);
+    const sale = { ...f.sale, id: req(), paymentPlan: [
+        { id: 'early', date: '2026-11-05', amount: 10000, isPaid: true, isRealPayment: true }] };
+    await f.svc.guardWrite(f.owner, 'sales', sale);
+    await save(f.owner, 'sales', sale);
+    const after = await f.svc.preview(f.owner, f.id);
+    assert.equal(after.balances.investors[f.iid].earned - before.balances.investors[f.iid].earned, 2500);
+    assert.equal(after.balances.investors[f.bid].earned, before.balances.investors[f.bid].earned);
+    assert.equal(after.balances.manager.earned - before.balances.manager.earned, 2500);
+});
+
+test('HTTP API/ИИ: договор с прошлой датой сохраняется после автоматического закрытия месяца', async () => {
+    const f = await fixture();
+    await save(f.owner, 'customers', { id: `customer_${f.owner}`, name: 'Тестовый клиент' });
+    const before = await f.svc.preview(f.owner, f.id);
+    await httpRun(f, async url => {
+        const result = await fetch(url + '/v1/contracts', { method: 'POST', headers: { 'content-type': 'application/json' },
+            body: JSON.stringify({ customerId: `customer_${f.owner}`, accountId: f.id,
+                productName: 'Исторический товар', buyPrice: 100000, totalAmount: 200000,
+                startDate: '2026-11-05', installments: 4 }) });
+        const body = await result.json();
+        assert.equal(result.status, 201, JSON.stringify(body));
+        const persisted = (await db.query('SELECT data FROM data_items WHERE id=$1', [body.data.id])).rows[0].data;
+        assert.equal(P.poolDay(persisted.startDate), '2026-11-05');
+        assert.equal(persisted.remainingAmount, 200000);
+        assert(persisted.paymentPlan.every(row => !row.isPaid));
+    }, { v1: true });
+    const after = await f.svc.preview(f.owner, f.id);
+    assert.deepEqual(after.account.poolAccounting.closed, before.account.poolAccounting.closed);
+    assert.deepEqual(after.balances, before.balances);
+});
 test('предварительное сравнение старого пула не сохраняет новый режим', async () => { const f = await fixture({ monthly: false, now: '2026-11-25T10:00:00+03:00' }), before = await db.query('SELECT data FROM data_items WHERE id=$1', [f.id]); const p = await f.svc.preview(f.owner, f.id); assert(p.comparison); assert.equal(p.comparison.rows.find(r => r.id === f.iid).proposed, 25000); assert.deepEqual((await db.query('SELECT data FROM data_items WHERE id=$1', [f.id])).rows, before.rows); });
 
 test('переход с историей пересчитывает все месяцы, сохраняет выплаты и не меняет операции', async () => {

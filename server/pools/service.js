@@ -470,6 +470,7 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
         const tracked = !isDelete && item && ['sales', 'expenses'].includes(type) && active.some(a => touches(item, a) || touches(previous, a));
         const originalHash = tracked ? hash(Object.fromEntries(Object.entries(item).filter(([key]) => !['poolRevision', '_poolWriteHash'].includes(key)))) : null;
         let replay = false;
+        const historicalPlans = [];
         if (tracked && Number(item.poolRevision || 0) !== Number(previous?.poolRevision || 0)) {
             if (previous?._poolWriteHash !== originalHash)
                 fail(409, 'Запись изменилась на другом устройстве. Обновите данные перед сохранением.');
@@ -505,12 +506,51 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                 if (capital(item) || capital(previous))
                     fail(409, 'Пополнение и возврат капитала оформляются через общий пул.');
                 if (cutoff) {
-                    if (previous && (P.poolTime(previous.startDate) < cutoff || (previous.paymentPlan || []).some(p => p.isPaid && p.isRealPayment !== false && P.poolTime(p.date) < cutoff)) && hash(projection(item, cutoff, P)) !== hash(projection(previous, cutoff, P)))
+                    const receipts = sale => sale ? P.poolMoneyIn(sale).filter(p => Number(p.amount) > 0 || Number(p.discountAmount) > 0) : [];
+                    const oldReceipts = new Map(receipts(previous).map(p => [p.id, p]));
+                    const newHistorical = receipts(item).filter(p => P.poolTime(p.date) < cutoff && !oldReceipts.has(p.id));
+                    let appendHistory = false;
+                    if (!isDelete && !replay && item?.type === 'INSTALLMENT' && closed && newHistorical.length) {
+                        // Начальный ввод истории: можно дополнять поступления, пока
+                        // прибыль ещё не выплачивалась и не превращалась в капитал.
+                        const head = sale => { const { payments, ...rest } = projection(sale, cutoff, P); return rest; };
+                        const incoming = new Map(receipts(item).map(p => [p.id, p]));
+                        const paymentFields = p => ({ id: p.id, date: p.date, amount: p.amount,
+                            discountAmount: p.discountAmount, discountFromProfit: p.discountFromProfit });
+                        const unchanged = !previous || hash(head(item)) === hash(head(previous));
+                        const preservesReceipts = [...oldReceipts].every(([id, p]) =>
+                            hash(paymentFields(p)) === hash(paymentFields(incoming.get(id) || {})));
+                        const usedProfit = c.reinvestments?.length || c.adjustments?.length || c.entryDateAdjustments?.length
+                            || a.lossEvents?.length || data.expenses.some(e => touched(e) && (e.fromProfit
+                                || ['PROFIT', 'INVESTMENT'].includes(e.payoutType) || e.category === 'Моя выплата'));
+                        if (unchanged && preservesReceipts && !usedProfit
+                            && newHistorical.every(p => P.poolTime(p.date) >= P.poolMonthStart(c.startMonth))) {
+                            const candidate = structuredClone(data);
+                            const target = candidate.accounts.find(account => account.id === a.id);
+                            target.poolAccounting.closed = [];
+                            candidate.sales = candidate.sales.filter(s => s.id !== item.id).concat([structuredClone(item)]);
+                            const plan = await completedPlan(candidate, a.id, closed.month);
+                            if (plan.changedInvestors.length)
+                                fail(409, 'Для ввода прошлых платежей сначала отключите автоматическое реинвестирование прибыли.');
+                            plan.account.poolAccounting.revision = Number(c.revision || 0) + 1;
+                            historicalPlans.push(plan.account);
+                            appendHistory = true;
+                        }
+                    }
+                    // Дата оформления сама по себе не начисляет прибыль. Защищаем
+                    // поступления закрытого периода, а не неоплаченный договор.
+                    const hasClosedMoney = sale => sale && (sale.type === 'CASH'
+                        ? P.poolTime(sale.startDate) < cutoff
+                        : Number(sale.downPayment || 0) !== 0 && P.poolTime(sale.startDate) < cutoff
+                            || (sale.paymentPlan || []).some(p => p.isPaid && p.isRealPayment !== false && P.poolTime(p.date) < cutoff));
+                    if (!appendHistory && previous && (hasClosedMoney(previous) || hasClosedMoney(item)) && hash(projection(item, cutoff, P)) !== hash(projection(previous, cutoff, P)))
                         fail(409, 'Данные входят в закрытый месяц. Нужна отдельная корректировка.');
-                    if (!previous && P.poolTime(item.startDate) < cutoff)
-                        fail(409, 'Нельзя добавлять договор в закрытый месяц.');
+                    if (!previous && item.type === 'CASH' && P.poolTime(item.startDate) < cutoff)
+                        fail(409, 'Поступление относится к закрытому месяцу.');
+                    if (!appendHistory && !previous && Number(item.downPayment || 0) !== 0 && P.poolTime(item.startDate) < cutoff)
+                        fail(409, 'Первый взнос относится к закрытому месяцу. Договор без первого взноса можно оформить этой датой.');
                     const old = new Set((previous?.paymentPlan || []).filter(p => p.isPaid && p.isRealPayment !== false).map(p => p.id));
-                    if ((item?.paymentPlan || []).some(p => p.isPaid && p.isRealPayment !== false && !old.has(p.id) && P.poolTime(p.date) < cutoff))
+                    if (!appendHistory && (item?.paymentPlan || []).some(p => p.isPaid && p.isRealPayment !== false && !old.has(p.id) && P.poolTime(p.date) < cutoff))
                         fail(409, 'Платёж относится к закрытому месяцу.');
                 }
             }
@@ -532,14 +572,28 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                 if (item?.payoutType === 'INVESTMENT' || previous?.payoutType === 'INVESTMENT' || item?.category === 'Моя выплата' && item?.managerPayoutSource === 'CAPITAL')
                     fail(409, 'Возврат капитала оформляется через общий пул.');
                 if (cutoff && ((previous && P.poolTime(previous.date) < cutoff) || (!previous && P.poolTime(item.date) < cutoff)))
-                    if (hash(item) !== hash(previous))
-                        fail(409, 'Расход относится к закрытому месяцу.');
+                    if (hash(item) !== hash(previous)) {
+                        // Форма договора отдельным запросом сохраняет закуп.
+                        // Он уменьшает деньги счёта, но не прибыль месяца.
+                        const purchaseShape = e => e && !e.fromProfit && !e.payoutType && !e.isRefund
+                            && e.category === 'Себестоимость' && typeof e.id === 'string' && e.id.startsWith('exp_sale_');
+                        const expense = item || previous;
+                        const sale = data.sales.find(s => s.type === 'INSTALLMENT' && !s.supplierId
+                            && expense.id === `exp_sale_${s.id}${s.accountId === expense.accountId ? '' : `__${expense.accountId}`}`);
+                        const part = sale && (await fundingPromise).fundingPieces(sale).find(s => s.accountId === expense.accountId);
+                        const linkedPurchase = purchaseShape(expense) && (!previous || purchaseShape(previous))
+                            && (isDelete || part && money(expense.amount) > 0 && money(expense.amount) === money(part.buyPrice));
+                        if (!linkedPurchase) fail(409, 'Расход относится к закрытому месяцу.');
+                    }
             }
         }
         if (tracked && !replay) {
             item.poolRevision = Number(previous?.poolRevision || 0) + 1;
             item._poolWriteHash = originalHash;
         }
+        // В HTTP-записи это та же транзакция, что и сохранение договора:
+        // отказ последующей валидации откатывает и пересчёт снимков.
+        for (const account of historicalPlans) await save(pool, owner, 'accounts', account);
     };
     const mutate = async (owner, accountId, action, input = {}) => {
         if (typeof input.requestId !== 'string' || !/^[\w-]{12,120}$/.test(input.requestId))
