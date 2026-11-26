@@ -1,5 +1,5 @@
 import React, { useEffect, useId, useRef, useState } from 'react';
-import { ClipboardList } from 'lucide-react';
+import { ClipboardList, LockKeyhole } from 'lucide-react';
 import { Customer } from '../types';
 import { api } from '../services/api';
 import GlassSheet from './GlassSheet';
@@ -75,6 +75,10 @@ const ClientWatchlist: React.FC<{ customers: Customer[]; userId: string }> = ({ 
         {canAdd && <button className={`${wlButton} shrink-0 whitespace-nowrap`} onClick={() => { resetAdd(); setMineOpen(false); setSelected(null); setAdd(true); }}>+ Добавить</button>}
       </div>
     </div>
+    <aside aria-label="Конфиденциальность" className="flex items-start gap-2.5 rounded-xl border border-slate-200/80 bg-slate-50/80 px-3 py-2.5 dark:border-slate-700 dark:bg-slate-800/60">
+      <LockKeyhole size={16} aria-hidden="true" className="mt-0.5 shrink-0 text-slate-500 dark:text-slate-400" />
+      <p className="text-xs leading-relaxed text-slate-600 dark:text-slate-300"><strong className="font-semibold text-slate-800 dark:text-slate-100">Конфиденциально.</strong> Сведения предназначены только для проверки клиентов. Разглашение, публикация и передача третьим лицам запрещены.</p>
+    </aside>
     {status?.adminOnly && <p className="text-sm text-slate-500 dark:text-slate-400">Доступ администратора. Общий доступ выключен; новые записи сохраняются на проверку.</p>}
     <WatchlistError message={error} />
     {notice && <p role="status" className="rounded-xl bg-emerald-50 p-3 text-sm text-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200">{notice}</p>}
