@@ -1,7 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Loader2 } from 'lucide-react';
 import { api } from '../services/api';
-import { WatchlistStatus, WATCHLIST_REASONS, watchlistBirthDateLabel } from '../src/watchlist';
+import { WatchlistStatus, WATCHLIST_REASONS, watchlistBirthDateLabel, watchlistDate } from '../src/watchlist';
 import { useWatchlistSearch } from '../src/hooks/useWatchlistSearch';
 import GlassSheet from './GlassSheet';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
@@ -48,6 +48,7 @@ const WatchlistSearchPanel: React.FC<{
         <p className="text-sm text-slate-500 dark:text-slate-400">{watchlistBirthDateLabel(item)}</p>
         <p className="whitespace-pre-wrap break-words text-sm font-medium text-red-800 dark:text-red-300">Причина со слов автора: {reason(item)}</p>
         <WatchlistGuarantors guarantors={item.guarantors} />
+        {item.publishedAt && <p className="text-xs text-slate-500 dark:text-slate-400">Опубликовано {watchlistDate(item.publishedAt)}</p>}
         <button type="button" className="text-sm text-indigo-600 dark:text-indigo-300" onClick={() => { setSelectedId(item.id); setReporting(true); }}>Сообщить об ошибке</button>
       </WatchlistPrivateContent>)}
       {search.limited && <p className="text-sm text-slate-500 dark:text-slate-400">Совпадений много. Уточните год на странице чёрного списка.</p>}
@@ -59,6 +60,7 @@ const WatchlistSearchPanel: React.FC<{
           <p className="text-sm text-slate-500">{watchlistBirthDateLabel(selected)}</p>
           {!reporting && <p className="whitespace-pre-wrap break-words text-sm font-medium text-red-800 dark:text-red-300">Причина со слов автора: {reason(selected)}</p>}
           {!reporting && <WatchlistGuarantors guarantors={selected.guarantors} />}
+          {!reporting && selected.publishedAt && <p className="text-xs text-slate-500 dark:text-slate-400">Опубликовано {watchlistDate(selected.publishedAt)}</p>}
         </WatchlistPrivateContent>
         {reporting ? <><WatchlistField label="Что нужно проверить"><textarea className={wlInput} rows={5} maxLength={1500} value={message} onChange={e => setMessage(e.target.value)} placeholder="Опишите ошибку. Не указывайте номер паспорта." /></WatchlistField><button type="button" disabled={busy || message.trim().length < 15} className={wlButton} onClick={report}>Отправить обращение</button></>
           : <><p className="text-sm text-slate-500">Совпадение ФИО не подтверждает личность клиента.</p><button type="button" className={wlSecondary} onClick={() => setReporting(true)}>Сообщить об ошибке</button></>}

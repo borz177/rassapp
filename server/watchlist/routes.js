@@ -90,14 +90,17 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         WHERE id=$1 AND related_client_index IS NULL AND payload=$3`, [row.id, relatedClientIndex(row.owner_id, customerId), row.payload]);
     }
   }
+  function displayedPublication(r, d) {
+    const sourceDate = d?.telegramSource && !d.telegramSource.dateFromImport
+      ? publicationDate(d.telegramSource.publishedAt) : null;
+    return sourceDate || r.published_at || undefined;
+  }
   function ownEntry(r, includeBirthDate = false) {
     try {
       if (!['withdrawn', 'terminated'].includes(r.status) && revocations.read().has(r.id))
         return { id: r.id, customerId: r.customer_id, name: 'Публикация удалена', birthYear: null, status: 'withdrawn', version: r.version, createdAt: r.created_at };
     } catch { /* Доступ автора к собственным материалам не становится общим доступом. */ }
     const d = payload(r);
-    const sourceDate = d?.telegramSource && !d.telegramSource.dateFromImport
-      ? publicationDate(d.telegramSource.publishedAt) : null;
     return { id: r.id, customerId: r.customer_id, name: d?.identity.name || 'Публикация удалена', birthYear: d?.identity.birthYear ?? null,
       reason: d?.reason, reasonDetails: d?.reasonDetails, response: d?.response, publicationMode: d?.publication?.mode,
       ...(d?.guarantor ? { subjectKind: 'guarantor' } : {}),
@@ -105,7 +108,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         ...(includeBirthDate === true && d.identity.birthDate ? { birthDate: d.identity.birthDate } : {}) } : {}),
       basis: d?.basis, evidence: d?.evidence, note: d?.note, decision: d?.decision,
       status: r.deleted_at ? 'deleted' : r.status === 'published' && r.expires_at != null && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
-      version: r.version, createdAt: r.created_at, publishedAt: r.status === 'published' ? sourceDate || r.published_at || undefined : undefined, expiresAt: r.expires_at };
+      version: r.version, createdAt: r.created_at, publishedAt: r.status === 'published' ? displayedPublication(r, d) : undefined, expiresAt: r.expires_at };
   }
   async function entry(db, entryId, owner = null) {
     const r = await db.query('SELECT * FROM client_watchlist_entries WHERE id=$1 FOR UPDATE', [entryId]);
@@ -230,7 +233,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const name = P.normalizeName(req.body?.name), year = P.birthYear(req.body?.birthYear);
     const match = year === null ? 'name_index=$1' : 'year_index=ANY($1::text[])';
     const key = year === null ? vault.index('name', name) : [vault.index('year', [name, year]), vault.index('year', [name, null])];
-    const r = await db.query(`SELECT id,owner_id,customer_id,policy_version,payload FROM client_watchlist_entries WHERE ${match} AND ${publishedSearchFilter}
+    const r = await db.query(`SELECT id,owner_id,customer_id,policy_version,payload,published_at FROM client_watchlist_entries WHERE ${match} AND ${publishedSearchFilter}
       ORDER BY id LIMIT 21`, [key, [...revocations.read()]]);
     // Для «Другой причины» выдаём только её отдельное описание, не старое note.
     // Основание, ответы автора, решения и прочие служебные поля закрыты.
@@ -238,6 +241,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const items = r.rows.slice(0, 20).map(row => {
       const d = payload(row);
       const item = { id: row.id, name: d.identity.name, birthYear: d.identity.birthYear,
+        publishedAt: displayedPublication(row, d),
         ...(row.policy_version === P.POLICY_VERSION && d.adminImport === true && d.identity.birthDate
           ? { birthDate: d.identity.birthDate } : {}),
         reason: P.REASONS.includes(d.reason) ? d.reason : null,

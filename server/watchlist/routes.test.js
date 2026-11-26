@@ -220,7 +220,7 @@ test('общий список: реальная локальная PostgreSQL, �
       await adm(`/entries/${other.id}/decision`, { version: updated.version, action: 'publish', basisVerified: true, note: 'Синтетическая проверка перед публикацией' });
       const matches = (await user('/search', { name: p.name })).items;
       assert.equal(matches.length, 1);
-      assert.deepEqual(Object.keys(matches[0]).sort(), ['birthYear', 'id', 'name', 'reason', 'reasonDetails']);
+      assert.deepEqual(Object.keys(matches[0]).sort(), ['birthYear', 'id', 'name', 'publishedAt', 'reason', 'reasonDetails']);
       assert.equal(matches[0].reason, 'other');
       assert.equal(matches[0].reasonDetails, description);
       assert.ok(!JSON.stringify(matches).includes('Причина уточнена автором заявки'));
@@ -243,7 +243,7 @@ test('общий список: реальная локальная PostgreSQL, �
       await adm(`/entries/${first.id}/decision`, { version: first.version, action: 'publish', basisVerified: false, note: 'Проверено для теста' }, 403);
       await adm(`/entries/${first.id}/decision`, { version: first.version, action: 'publish', basisVerified: true, note: 'Проверено для теста' });
       let m = (await user('/search', { name: 'семенов тест тестович', birthYear: 1988 })).items;
-      assert.equal(m.length, 1); assert.deepEqual(Object.keys(m[0]).sort(), ['birthYear', 'id', 'name', 'reason']);
+      assert.equal(m.length, 1); assert.deepEqual(Object.keys(m[0]).sort(), ['birthYear', 'id', 'name', 'publishedAt', 'reason']);
       assert.equal(m[0].reason, 'overdue');
       for (const privateText of [customer.phone, customer.passportNumber, 'Синтетическое согласие', 'Синтетическая ситуация', 'Проверено для теста']) {
         if (privateText) assert.ok(!JSON.stringify(m).includes(privateText));
@@ -304,7 +304,7 @@ test('общий список: реальная локальная PostgreSQL, �
         for (const reason of ['unfulfilled', undefined, 'Закрытый произвольный текст']) {
           await pool.query('UPDATE client_watchlist_entries SET payload=$2 WHERE id=$1', [first.id, vault.encrypt(first.id, 'entry', { ...data, reason, reasonDetails: 'Скрыто для стандартной или неизвестной причины' })]);
           const match = (await user('/search', { name: customer.name })).items.find(e => e.id === first.id);
-          assert.deepEqual(Object.keys(match).sort(), ['birthYear', 'id', 'name', 'reason']);
+          assert.deepEqual(Object.keys(match).sort(), ['birthYear', 'id', 'name', 'publishedAt', 'reason']);
           assert.equal(match.reason, reason === 'unfulfilled' ? reason : null);
           assert.ok(!JSON.stringify(match).includes('Закрытый произвольный текст'));
         }
@@ -560,7 +560,7 @@ test('общий список: реальная локальная PostgreSQL, �
         await pool.query('UPDATE data_items SET data=$1 WHERE id=$2', [sale, saleId]);
         await adm(`/entries/${guarantor.id}/decision`, decision);
         const { items } = await user('/search', { name: sale.guarantorName });
-        assert.deepEqual(items, [{ id: guarantor.id, name: sale.guarantorName, birthYear: null, reason: 'other', reasonDetails: body.guarantor.reasonDetails }]);
+        assert.deepEqual(items, [{ id: guarantor.id, name: sale.guarantorName, birthYear: null, publishedAt: (await pool.query('SELECT published_at FROM client_watchlist_entries WHERE id=$1',[guarantor.id])).rows[0].published_at.toISOString(), reason: 'other', reasonDetails: body.guarantor.reasonDetails }]);
         await user(`/entries/${guarantor.id}/withdraw`, {});
         assert.equal((await searchBuyer()).guarantors, undefined);
         assert.equal((await pool.query('SELECT related_client_index FROM client_watchlist_entries WHERE id=$1', [guarantor.id])).rows[0].related_client_index, null);
@@ -613,7 +613,8 @@ test('общий список: реальная локальная PostgreSQL, �
         await pool.query('UPDATE client_watchlist_entries SET policy_version=$2 WHERE id=$1', [found.id, PREVIOUS_POLICY_VERSION]);
         await adm(`/entries/${found.id}/decision`, { ...decision, shownVersion: POLICY_VERSION });
         const match = (await user('/search', { name: found.name })).items[0];
-        assert.deepEqual(match, { id: found.id, name: found.name, birthYear: found.birthYear, birthDate: '1991-04-17', reason: 'overdue' });
+        const publishedDate = (await pool.query('SELECT published_at FROM client_watchlist_entries WHERE id=$1',[found.id])).rows[0].published_at.toISOString();
+        assert.deepEqual(match, { id: found.id, name: found.name, birthYear: found.birthYear, birthDate: '1991-04-17', publishedAt: publishedDate, reason: 'overdue' });
         await req('employee', 'watchlist/search', { name: found.name }, 403);
         await pool.query('UPDATE client_watchlist_entries SET policy_version=$2 WHERE id=$1', [found.id, PREVIOUS_POLICY_VERSION]);
         assert.equal((await user('/search', { name: found.name })).items[0].birthDate, undefined);
@@ -730,6 +731,7 @@ test('общий список: реальная локальная PostgreSQL, �
         const published=(await user('/search',{name})).items[0];
         assert.equal(published.id,entryId);
         assert.equal(published.telegramSource,undefined);
+        assert.equal(published.publishedAt,'2026-04-01T09:30:15.000Z');
         assert.equal((await adm(record+'/history')).items[0].action,'publish');
         await adm(record,{...submission,version:edited.version+1,action:'save'},409);
         const active=(await adm('/entries?name='+encodeURIComponent(name))).items[0];
@@ -846,6 +848,8 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.equal(noBirth.telegramSource.dateFromImport,true);
         const actualPublication=(await pool.query('SELECT published_at FROM client_watchlist_entries WHERE id=$1',[noBirth.id])).rows[0].published_at;
         assert.equal(new Date(noBirth.publishedAt).getTime(),new Date(actualPublication).getTime());
+        const [publicNoDate] = (await user('/search',{name:anonymousDate})).items;
+        assert.equal(publicNoDate.publishedAt,noBirth.publishedAt);
         const [retained] = (await adm('/entries?name='+encodeURIComponent(taggedName))).items;
         assert.equal(retained.reason,'overdue');
         assert.equal(retained.telegramSource.dateFromImport,undefined);

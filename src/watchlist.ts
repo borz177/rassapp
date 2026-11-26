@@ -25,6 +25,7 @@ export interface WatchlistEntry {
 export type WatchlistSubmissionResult = WatchlistEntry & { guarantorEntry?: WatchlistEntry };
 export interface WatchlistMatch {
   id: string; name: string; birthYear: number | null; birthDate?: string; reason?: string | null; reasonDetails?: string;
+  publishedAt?: string;
   guarantors?: { id: string; name: string }[];
 }
 export interface WatchlistPage<T> { items: T[]; hasMore: boolean }
