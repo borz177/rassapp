@@ -48,6 +48,45 @@ async function previewEntryDate(f, entryDate) {
     return { input: { ...input, confirmed: true, fingerprint: entryDateCorrection.fingerprint }, review: entryDateCorrection };
 }
 
+for (const firstDate of ['2026-11-10', '2026-12-01']) {
+    test(`новый пул с первым входом ${firstDate} принимает более раннего инвестора`, async () => {
+        const f = await fixture();
+        const add = (accountId, input) => f.svc.mutate(f.owner, accountId, 'addInvestor', input);
+        const first = await add('new', {
+            requestId: req(), newPoolName: 'Новый пул', name: 'Первый',
+            amount: 100000, rate: 100, date: firstDate,
+        });
+        const id = first.account.id;
+        assert.equal(first.account.poolAccounting.startMonth, firstDate.slice(0, 7));
+        assert.equal(P.poolDay(first.changed.sales[0].startDate), firstDate);
+        assert.deepEqual((await f.svc.preview(f.owner, id)).account.poolAccounting.closed, []);
+
+        const secondInput = { requestId: req(), name: 'Второй', amount: 100000, rate: 100, date: '2026-10-05' };
+        const second = await add(id, secondInput);
+        assert.equal(second.account.poolAccounting.startMonth, '2026-10');
+        assert.equal(P.poolDay(second.changed.sales[0].startDate), secondInput.date);
+        assert.equal(P.poolDay(second.account.poolAccounting.openingTerms.date), '2026-10-01');
+        assert.equal(P.poolDay(second.investors.find(i => i.name === 'Первый').joinedDate), firstDate);
+        const replay = await add(id, secondInput);
+        assert.equal(replay.replayed, true);
+        assert.equal(replay.changed.sales.length, 2);
+        assert.deepEqual(replay.account.poolAccounting.closed, []);
+
+        await save(f.owner, 'sales', {
+            ...f.sale, id: `opening_sale_${f.owner}`, accountId: id, startDate: '2026-11-15',
+        });
+        const settled = await f.svc.preview(f.owner, id);
+        const { closed } = settled.account.poolAccounting;
+        assert.deepEqual(closed.map(r => r.month), ['2026-10', '2026-11']);
+        const [a, b] = ['Первый', 'Второй'].map(name => settled.investors.find(i => i.name === name).id);
+        const expectedFirst = firstDate === '2026-11-10' ? 50000 : 0;
+        assert.equal(settled.balances.investors[a].earned, expectedFirst);
+        assert.equal(settled.balances.investors[b].earned, 100000 - expectedFirst);
+        await assert.rejects(add(id, { ...secondInput, requestId: req(), date: '2026-09-01' }), e => e.status === 409);
+        assert.deepEqual((await f.svc.preview(f.owner, id)).account.poolAccounting.closed, closed);
+    });
+}
+
 // Второй капитал участвует 15 дней. База графика — 51 день, месячная — 20 дней.
 for (const [basis, expectedSecond] of [['MONTH', 18750], ['SCHEDULE_PERIOD', 7352.94]]) {
     test(`исправление первого входа в открытом месяце по способу ${basis}`, async () => {

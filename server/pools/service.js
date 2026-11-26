@@ -14,6 +14,28 @@ const validMonth = m => typeof m === 'string' && /^20\d{2}-(0[1-9]|1[0-2])$/.tes
 const disposition = d => { if (!['PAYABLE', 'REINVEST'].includes(d))
     fail(400, 'Выберите, что делать с прибылью.'); return d; };
 
+function isPoolOpening(data, account) {
+    const config = account.poolAccounting;
+    if (Number(account.initialBalance || 0) !== 0 || account.lossEvents?.length
+        || data.expenses.some(e => e.accountId === account.id)
+        || data.retailSales.some(s => s.accountId === account.id)) return false;
+    if (config && (config.closed?.length || config.adjustments?.length || config.entryDateAdjustments?.length
+        || config.reinvestments?.length || Object.keys(config.openingTerms?.members || {}).length)) return false;
+    const deposits = new Map();
+    for (const id of account.poolMemberIds || []) {
+        const investor = data.investors.find(i => i.id === id);
+        const periods = investor?.investmentPeriods;
+        if (!/^(?:u_)?inv_pool_[a-f0-9]{20}$/.test(id) || periods?.length !== 1
+            || investor.leftPoolDate || periods[0].leftPoolDate || periods[0].capitalChanges?.length) return false;
+        deposits.set(`dep_${id.replace(/^u_/, '')}`, `system_deposit_${id}`);
+    }
+    return data.sales.every(sale => {
+        if (sale.accountId !== account.id && !sale.funding?.some(f => f.accountId === account.id)) return true;
+        return sale.accountId === account.id && sale.type === 'CASH' && sale.buyPrice === 0
+            && !sale.funding?.length && deposits.has(sale.id) && deposits.get(sale.id) === sale.customerId;
+    });
+}
+
 function historyIssues(P, account, members, sales, expenses, reports, rows) {
     const issues = [];
     const capitalIssues = [];
@@ -365,7 +387,10 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
             await db.query('SELECT id FROM data_items WHERE user_id=$1 ORDER BY id FOR UPDATE',[owner]);
             const data = await load(db,owner);
             for (const account of data.accounts.filter(a=>P.isMonthlyPool(a)&&(!accountId||a.id===accountId))) {
-                if (account.poolAccounting.startMonth>=current || account.poolAccounting.closed?.some(r=>r.month===previousMonth)) continue;
+                // Пока введены только начальные вложения, владелец ещё может
+                // заносить историю состава пула. Закрывать пустые месяцы рано.
+                if (account.poolAccounting.startMonth>=current || account.poolAccounting.closed?.some(r=>r.month===previousMonth)
+                    || isPoolOpening(data, account)) continue;
                 try {
                     const plan = await completedPlan(data,account.id,previousMonth);
                     if (!plan.confirmation.count) continue;
@@ -567,12 +592,26 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                     if (limit >= 0 && data.investors.length >= limit)
                         fail(403, 'Достигнут лимит инвесторов.');
                 }
-                if (!account.poolAccounting && !data.sales.some(s => s.accountId === account.id) && !account.poolMemberIds?.length)
-                    initialize(P.poolMonth(now()));
                 const normalized = P.poolEntryDate(input.date, now());
-                const date = !account.poolAccounting && /^\d{4}-\d{2}-\d{2}$/.test(input.date||'') && input.date!==P.poolDay(now()) && normalized!=='Invalid Date' ? new Date(`${input.date}T00:00:00Z`).toISOString() : normalized, time = P.poolTime(date);
-                if (!Number.isFinite(time) || time > now() + 1000)
-                    fail(400, 'Дата вложения не может быть в будущем.');
+                if (!Number.isFinite(P.poolTime(normalized)) || P.poolTime(normalized) > now() + 1000)
+                    fail(400, 'Укажите корректную дату вложения, не позднее сегодняшней.');
+                const entryMonth = P.poolMonth(normalized), currentMonth = P.poolMonth(stamp);
+                const opening = isPoolOpening(data, account);
+                if (!account.poolAccounting && !account.poolMemberIds?.length && !data.sales.some(s => s.accountId === account.id))
+                    initialize(opening ? entryMonth : currentMonth);
+                else if (opening && account.poolAccounting?.startMonth <= currentMonth && entryMonth < account.poolAccounting.startMonth) {
+                    if (!validMonth(entryMonth)) fail(400, 'Проверьте дату вложения.');
+                    const config = account.poolAccounting;
+                    const previous = config.openingTerms.date;
+                    const date = new Date(P.poolMonthStart(entryMonth)).toISOString();
+                    config.startMonth = entryMonth;
+                    config.openingTerms = { ...config.openingTerms, date };
+                    config.terms = config.terms.map((term, index) => index === 0 && term.date === previous
+                        ? { ...term, date } : term);
+                }
+                const date = !account.poolAccounting && /^\d{4}-\d{2}-\d{2}$/.test(input.date || '') && input.date !== P.poolDay(now())
+                    ? new Date(`${input.date}T00:00:00Z`).toISOString() : normalized;
+                const time = P.poolTime(date);
                 const last = account.poolAccounting?.closed?.at(-1);
                 if (account.poolAccounting && time < (last ? P.poolMonthStart(P.nextPoolMonth(last.month)) : Math.min(P.poolMonthStart(account.poolAccounting.startMonth), P.poolMonthStart(P.poolMonth(now())))))
                     fail(409, 'Месяц вложения уже закрыт.');
@@ -594,7 +633,6 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                 data.investors.push(i);
                 account.poolMemberIds = [...(account.poolMemberIds || []), i.id];
                 if (account.poolAccounting) {
-                    const prior = P.poolTermsAt(account, now());
                     account.poolAccounting.terms.push({ date: new Date(Math.max(time, P.poolMonthStart(account.poolAccounting.startMonth))).toISOString(), members: { [i.id]: { rate: input.rate, disposition: input.disposition || 'PAYABLE' } } });
                 }
                 if (amount > 0) {
