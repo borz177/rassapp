@@ -1400,10 +1400,16 @@ export const api = {
     },
 
     deleteUser: async (userId: string) => {
-        await fetchWithAuth(`${API_URL}/users/manage`, {
+        const response = await fetchWithAuth(`${API_URL}/users/manage`, {
             method: 'POST',
             body: JSON.stringify({ action: 'delete', userData: { id: userId } })
         });
+        if (response.status === 409) {
+            const error = await response.json().catch(() => ({}));
+            if (error.code === 'POOL_MEMBER_DELETE_BLOCKED') {
+                throw Object.assign(new Error(error.msg), { code: error.code });
+            }
+        }
     },
 
     updateProfile: async (userId: string, profileData: { name?: string; phone?: string; email?: string }): Promise<User> => {

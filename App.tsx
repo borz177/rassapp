@@ -3293,6 +3293,10 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
  const handleDeleteInvestor = async (id: string) => {
   if (!isManager) return;
+  if (accounts.some(account => account.type === 'POOL' && account.poolAccounting?.version === 1 && account.poolMemberIds?.includes(id))) {
+    showNotificationModal('Инвестор общего пула', 'Оформите выход через «Учёт общего пула». Карточка сохранится для истории.', 'warning');
+    return;
+  }
   if (!await appConfirm('Удалить инвестора?')) return;
 
   try {
@@ -3324,7 +3328,11 @@ const handleUpdateInvestor = async (updated: Investor, password?: string) => {
 
   } catch (error) {
     console.error('Ошибка удаления инвестора:', error);
-    alert('Не удалось удалить инвестора');
+    if ((error as { code?: string })?.code === 'POOL_MEMBER_DELETE_BLOCKED') {
+      showNotificationModal('Инвестор общего пула', friendlyError(error), 'warning');
+    } else {
+      alert('Не удалось удалить инвестора');
+    }
     // ✅ Откат: перезагружаем данные
     loadData();
   }

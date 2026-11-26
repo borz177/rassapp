@@ -33,7 +33,7 @@ function createPoolTransactions(raw) {
             const value = target[key];
             return typeof value === 'function' ? value.bind(target) : value;
         } });
-    const middleware = async (req, res, next) => {
+    const middleware = async (req, res, next, { memberId = null } = {}) => {
         if (['GET', 'HEAD', 'OPTIONS'].includes(req.method))
             return next();
         const owner = req.apiAuth?.userId || (req.user?.role === 'employee' || req.user?.role === 'investor' ? req.user.managerId : req.user?.id);
@@ -42,7 +42,11 @@ function createPoolTransactions(raw) {
         let client, ended = false;
         const json = res.json.bind(res), end = res.end.bind(res);
         try {
-            const has = (await raw.query("SELECT 1 FROM data_items WHERE user_id=$1 AND type='accounts' AND data->'poolAccounting'->>'version'='1' LIMIT 1", [owner])).rows.length;
+            const has = (await raw.query(`
+                SELECT 1 FROM data_items WHERE user_id=$1 AND type='accounts' AND (
+                    ($2::text IS NULL AND data->'poolAccounting'->>'version'='1')
+                    OR ($2::text IS NOT NULL AND data->>'type'='POOL' AND data->'poolMemberIds' ? $2)
+                ) LIMIT 1`, [owner, memberId])).rows.length;
             if (!has)
                 return next();
             client = await raw.connect();

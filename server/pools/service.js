@@ -31,6 +31,10 @@ function isPoolOpening(data, account) {
     }
     return data.sales.every(sale => {
         if (sale.accountId !== account.id && !sale.funding?.some(f => f.accountId === account.id)) return true;
+        // Ввод договоров без поступлений — продолжение начального ввода истории.
+        // Первый проведённый платёж включает обычное закрытие месяцев.
+        if (sale.type === 'INSTALLMENT' && Number(sale.downPayment || 0) === 0
+            && !(sale.paymentPlan || []).some(p => p.isPaid && p.isRealPayment !== false)) return true;
         return sale.accountId === account.id && sale.type === 'CASH' && sale.buyPrice === 0
             && !sale.funding?.length && deposits.has(sale.id) && deposits.get(sale.id) === sale.customerId;
     });
@@ -438,6 +442,16 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
         const automatic = await settleOwner(owner,id);
         return { ...await previewData(await load(pool,owner),id,options), settlementIssues:automatic.issues,
             ...(automatic.changed.accounts.length?{changed:automatic.changed}:{}) };
+    };
+    // Вызывается в транзакции под той же блокировкой владельца, что и операции пула.
+    const guardMemberDeletion = async (db, owner, memberId) => {
+        const { rows } = await db.query(`
+            SELECT 1 FROM data_items
+            WHERE user_id = $1 AND type = 'accounts' AND data->>'type' = 'POOL'
+              AND data->'poolAccounting'->>'version' = '1' AND data->'poolMemberIds' ? $2
+            LIMIT 1`, [owner, memberId]);
+        if (rows.length)
+            fail(409, 'Оформите выход инвестора через «Учёт общего пула». Его карточка нужна для сохранения истории.');
     };
     const guardWrite = async (owner, type, item, previous = null, isDelete = false) => {
         if (!['accounts', 'investors', 'sales', 'expenses', 'settings', 'retailSales'].includes(type))
@@ -901,6 +915,6 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                 db.release();
         }
     };
-    return { preview, mutate, guardWrite, load, reports, balances, settleOwner, fingerprint: hash };
+    return { preview, mutate, guardWrite, guardMemberDeletion, load, reports, balances, settleOwner, fingerprint: hash };
 }
 module.exports = { createPoolService, validMonth };

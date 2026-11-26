@@ -5136,7 +5136,13 @@ app.delete('/api/upload/document', auth, async (req, res) => {
 
 
 // User Management (Create / Update / Delete for Sub-users)
-app.post('/api/users/manage', auth, async (req, res) => {
+app.post('/api/users/manage', auth, (req, res, next) => {
+  const memberId = req.body?.userData?.id;
+  if (req.body?.action === 'delete' && typeof memberId === 'string' && ['manager', 'admin'].includes(req.user.role)) {
+    return poolTransactions.middleware(req, res, next, { memberId });
+  }
+  next();
+}, async (req, res) => {
   const { action, userData } = req.body;
 
   if (req.user.role !== 'manager' && req.user.role !== 'admin') {
@@ -5294,6 +5300,12 @@ app.post('/api/users/manage', auth, async (req, res) => {
     if (action === 'delete') {
   const investorId = userData.id;
   const managerId = req.user.id;
+  try {
+    await poolAccountingService.guardMemberDeletion(pool, managerId, investorId);
+  } catch (error) {
+    if (error.status === 409) return res.status(409).json({ code: 'POOL_MEMBER_DELETE_BLOCKED', msg: error.message });
+    throw error;
+  }
 
   // Счёт инвестора участвует в совместном договоре (Sale.funding) — удаление
   // унесло бы часть денег чужого договора. Сначала уберите счёт из договора.

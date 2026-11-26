@@ -48,6 +48,43 @@ async function previewEntryDate(f, entryDate) {
     return { input: { ...input, confirmed: true, fingerprint: entryDateCorrection.fingerprint }, review: entryDateCorrection };
 }
 
+test('профиль участника месячного пула защищён при удалении через управление пользователями', async () => {
+    const monthly = await fixture();
+    const legacy = await fixture({ monthly: false });
+    await assert.rejects(monthly.svc.guardMemberDeletion(db, monthly.owner, monthly.iid), error =>
+        error.status === 409 && /Учёт общего пула/.test(error.message));
+    await monthly.svc.guardMemberDeletion(db, monthly.owner, legacy.iid);
+    await legacy.svc.guardMemberDeletion(db, legacy.owner, legacy.iid);
+    const preview = await monthly.svc.preview(monthly.owner, monthly.id);
+    assert(preview.investors.some(investor => investor.id === monthly.iid));
+    assert.equal(preview.balances.investors[monthly.iid].earned, 25000);
+});
+
+test('при выходе возвращается капитал один раз, а прошлый расчёт и карточка сохраняются', async () => {
+    const f = await fixture();
+    const { account } = await f.svc.preview(f.owner, f.id);
+    const [closed] = account.poolAccounting.closed;
+    const { ready, accountBalances } = require('../api/domain');
+    await ready;
+    const cash = ({ accounts, sales, expenses, retailSales }) => accountBalances(accounts, sales, expenses, retailSales)[f.id];
+    const initialCash = cash(await f.svc.load(db, f.owner));
+    const withdraw = { requestId: req(), investorId: f.iid, kind: 'WITHDRAW', amount: 1000000 };
+    const first = await f.svc.mutate(f.owner, f.id, 'capital', withdraw);
+    assert.equal(first.changed.expenses[0].payoutType, 'INVESTMENT');
+    assert.equal(first.changed.expenses[0].fromProfit, false);
+    assert((await f.svc.mutate(f.owner, f.id, 'capital', withdraw)).replayed);
+    const exit = await f.call('exit', { investorId: f.iid });
+    assert.equal(exit.changed.expenses.length, 0);
+    assert.deepEqual(exit.account.poolAccounting.closed, [closed]);
+    assert.equal(exit.balances.investors[f.iid].available, 25000);
+    assert(exit.investors.find(i => i.id === f.iid).leftPoolDate);
+    const data = await f.svc.load(db, f.owner);
+    assert.equal(cash(data), initialCash - 1000000);
+    assert.deepEqual(data.expenses.map(e => e.amount), [1000000]);
+    assert.deepEqual(data.sales, [f.sale]);
+    await assert.rejects(f.svc.guardMemberDeletion(db, f.owner, f.iid), { status: 409 });
+});
+
 for (const firstDate of ['2026-11-10', '2026-12-01']) {
     test(`новый пул с первым входом ${firstDate} принимает более раннего инвестора`, async () => {
         const f = await fixture();
@@ -116,7 +153,8 @@ test('в новом пуле договор текущего месяца и п�
     const november = final.account.poolAccounting.closed.find(report => report.month === '2026-11');
     assert.equal(november.gross, 0);
     assert(november.shares.some(row => row.investorId === thirdId));
-    assert.equal(final.balances.investors[thirdId].earned, 33333.33);
+    const amounts = Object.values(final.balances.investors).map(row => Math.round(row.earned * 100));
+    assert.deepEqual(amounts.sort((a, b) => a - b), [3333333, 3333333, 3333334]);
 });
 
 // Второй капитал участвует 15 дней. База графика — 51 день, месячная — 20 дней.
@@ -406,4 +444,45 @@ test('текущая выплата после автоматического р
     const f=await automaticFixture(true),v=await f.svc.preview(f.owner,f.id),available=v.balances.investors[f.iid].available;
     const e={id:req(),accountId:f.id,payoutType:'PROFIT',investorId:f.iid,date:'2027-01-15',amount:available};await f.svc.guardWrite(f.owner,'expenses',e);
     await assert.rejects(f.svc.guardWrite(f.owner,'expenses',{...e,id:req(),poolRevision:undefined,amount:Math.round((available+0.01)*100)/100}),e=>e.status===409);
+});
+
+test('полный ввод истории: два инвестора задним числом, затем договоры через обычную запись', async () => {
+    const f = await fixture();
+    const firstInput = {requestId:req(),newPoolName:'Исторический',name:'Ранний',amount:100000,rate:50,date:'2026-10-01'};
+    const first = await f.svc.mutate(f.owner,'new','addInvestor',firstInput);
+    const id=first.account.id;
+    // Открытие кассы и фоновый расчёт между добавлениями.
+    await f.svc.preview(f.owner,id);
+    await f.svc.settleOwner(f.owner,id);
+    const secondInput={requestId:req(),name:'Поздний',amount:100000,rate:50,date:'2026-11-10'};
+    const second=await f.svc.mutate(f.owner,id,'addInvestor',secondInput);
+    await f.svc.mutate(f.owner,id,'addInvestor',secondInput);
+    const before=await f.svc.preview(f.owner,id);
+    assert.equal(before.account.poolAccounting.closed.length,0);
+    assert.equal(before.account.poolMemberIds.length,2);
+    const early=first.changed.investors[0].id, late=second.changed.investors[0].id;
+    for(const [n,day] of [[1,'2026-11-05'],[2,'2026-11-20']]) {
+        const sale={...f.sale,id:`historical_${f.owner}_${n}`,accountId:id,startDate:day,
+            paymentPlan:[{id:`plan_${n}`,date:day,amount:100000,isPaid:false,isRealPayment:false}]};
+        sale.buyPrice=50000;
+        sale.totalAmount=100000;
+        await f.svc.guardWrite(f.owner,'sales',sale);
+        await save(f.owner,'sales',sale);
+    }
+    const empty=await f.svc.preview(f.owner,id);
+    assert.equal(empty.account.poolAccounting.closed.length,0);
+    // Неоплаченные договоры не должны закрывать прошлые месяцы до ввода платежей.
+    const current=await f.svc.load(db,f.owner);
+    const saved=current.sales.find(s=>s.id===`historical_${f.owner}_1`);
+    const paid={...saved,paymentPlan:[...saved.paymentPlan,{id:'paid',date:'2026-11-05',amount:100000,isPaid:true,isRealPayment:true}]};
+    await f.svc.guardWrite(f.owner,'sales',paid,saved);
+    await db.query("UPDATE data_items SET data=$1 WHERE id=$2",[paid,paid.id]);
+    const result=await f.svc.preview(f.owner,id);
+    assert.equal(result.balances.investors[early].earned,25000);
+    assert.equal(result.balances.investors[late].earned,0);
+    assert.equal(result.balances.manager.earned,25000);
+    assert.equal(before.investors.find(i=>i.id===late).initialAmount,100000);
+    assert.equal(result.account.poolMemberIds.length,2);
+    const data=await f.svc.load(db,f.owner);
+    assert.equal(data.sales.filter(s=>s.accountId===id&&s.type==='CASH').reduce((sum,s)=>sum+s.totalAmount,0),200000);
 });

@@ -86,10 +86,10 @@ assert(await js('window.poolChanges[0].investors.some(i=>i.id==="one"&&i.initial
 await js('[...document.querySelectorAll("button")].find(e=>e.textContent.includes("Второй инвестор")).click()');await click('Пополнить');
 assert(await js('[...document.querySelectorAll("[role=dialog]")].some(e=>e.getAttribute("aria-label")==="Пополнить"&&!e.closest("[inert], [aria-hidden=true]"))'));
 assert(await js('getComputedStyle([...document.querySelectorAll("button")].find(e=>e.textContent==="Сохранить")).color==="rgb(0, 0, 0)"'));
-await input('[aria-label="Сумма операции пула"]','10000');await click('Сохранить');await wait('window.poolChanges.length===2');
+await input('[aria-label="Сумма операции пула"]','10000');await click('Сохранить');await click('Подтвердить');await wait('window.poolChanges.length===2');
 assert(await js('window.poolChanges[1].investors.some(i=>i.id==="two"&&i.initialAmount===1010000)'));
 await wait('[...document.querySelectorAll("[role=dialog]")].some(e=>e.getAttribute("aria-label")==="Второй инвестор")');
-await click('Реинвестировать');await input('[aria-label="Сумма операции пула"]','5000');await click('Сохранить');await wait('window.poolChanges.length===3');
+await click('Реинвестировать');await input('[aria-label="Сумма операции пула"]','5000');await click('Сохранить');await click('Подтвердить');await wait('window.poolChanges.length===3');
 assert(await js('window.poolChanges[2].accounts[0].poolAccounting.reinvestments.some(r=>r.investorId==="two"&&r.amount===5000)'));
 await wait('[...document.querySelectorAll("[role=dialog]")].some(e=>e.getAttribute("aria-label")==="Второй инвестор")');
 await click('Назад');await wait('!document.querySelector("[inert]")');
@@ -98,7 +98,13 @@ for(const label of ['Корректировка','Доли за управлен
     assert(await js('[...document.querySelectorAll("[role=dialog]")].some(e=>!e.closest("[inert], [aria-hidden=true]")&&e.getAttribute("aria-label")==='+JSON.stringify(label)+')'));
     await click('Назад');await wait('!document.querySelector("[inert]")');
 }
-await click('+ Добавить инвестора');await input('[aria-label="Имя инвестора пула"]','Оченьдлинноеимяинвесторадляпроверкипереносастрок');await input('[aria-label="Сумма операции пула"]','10000000000');await input('[aria-label="Дата операции пула"]','2026-12-01');await click('Сохранить');await wait('window.poolChanges.length===4');await wait('!document.querySelector("[inert]")');
+await click('Корректировка');await input('[aria-label="Сумма операции пула"]','123');
+await click('Назад');
+assert(await js('document.body.innerText.includes("Закрыть без сохранения?")'));
+await click('Продолжить');
+assert(await js('[...document.querySelectorAll("input")].some(e=>e.getAttribute("aria-label")==="Сумма операции пула"&&e.value==="123")'));
+await click('Назад');await click('Закрыть');await wait('!document.querySelector("[inert]")');
+await click('+ Добавить инвестора');await input('[aria-label="Имя инвестора пула"]','Оченьдлинноеимяинвесторадляпроверкипереносастрок');await input('[aria-label="Сумма операции пула"]','10000000000');await input('[aria-label="Дата операции пула"]','2026-12-01');await click('Сохранить');await click('Подтвердить');await wait('window.poolChanges.length===4');await wait('!document.querySelector("[inert]")');
 await win.setSize(390,844);await js('document.documentElement.classList.add("dark");document.querySelectorAll(".overflow-y-auto").forEach(e=>e.scrollTop=0)');await sleep(300);
 assert(await js('document.documentElement.scrollWidth<=window.innerWidth+1'),'Horizontal overflow');fs.writeFileSync(${JSON.stringify(path.join(scratch, 'mobile-dark.png'))},(await win.webContents.capturePage()).toPNG());
 await js('[...document.querySelectorAll("button")].find(e=>e.textContent.includes("Второй инвестор")).click()');

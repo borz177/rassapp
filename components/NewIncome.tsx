@@ -1,5 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { friendlyError } from '../src/friendlyError';
+import ModalPortal from './ModalPortal';
+import { useBackInterceptor } from './transitions/PagePush';
+import { useKeyboardAvoidance } from '../src/keyboard';
 import TabPill from './TabPill';
 import TopBarBack from './TopBarBack';
 import { Customer, Account, Investor, Sale, User, RetailSale } from '../types';
@@ -577,13 +580,30 @@ const commonData = {
     );
   };
 
+  const formRoot = useRef<HTMLDivElement>(null);
+  useKeyboardAvoidance(formRoot);
+  const initialForm = useRef({ date, account: initialData?.accountId || '', customer: initialData?.customerId || '' });
+  const leaving = useRef(false);
+  const dirty = !!amount || !!note || !!discountValue || !!category || !!newCategory
+    || date !== initialForm.current.date || selectedCustomerId !== initialForm.current.customer
+    || selectedInvestorId !== '' || targetAccountId !== initialForm.current.account;
+  const requestLeave = async () => {
+    if (leaving.current || isConfirming || isSubmitting || paymentDone) return;
+    leaving.current = true;
+    try {
+      if (!dirty || await appConfirm({ title: 'Выйти из прихода?', message: 'Введённые данные будут сброшены.',
+          confirmLabel: 'Выйти', cancelLabel: 'Продолжить ввод' })) onClose();
+    } finally { leaving.current = false; }
+  };
+  useBackInterceptor(dirty || isSubmitting || isConfirming, () => { void requestLeave(); });
+
   const getAccountName = (id: string) => accounts.find(a => a.id === id)?.name || 'Неизвестный счет';
 
   return (
-    <div className="space-y-4 animate-fade-in pb-20">
+    <div ref={formRoot} className="space-y-4 animate-fade-in pb-20">
       {renderContractContent()}
       <div className="flex items-center gap-3 border-b border-slate-200 dark:border-slate-700 pb-4 pt-2">
-        <TopBarBack onClick={onClose} />
+        <TopBarBack onClick={() => void requestLeave()} />
         <h2 className="text-xl font-bold text-slate-800 dark:text-white">Оформление прихода</h2>
       </div>
       {(() => {
@@ -868,12 +888,13 @@ const commonData = {
         </button>
       </form>
       {showConfirmModal && (
+        <ModalPortal onClose={() => { if (!isConfirming && !paymentDone) handleCancel(); }}>
         <div
           className="fixed inset-0 z-modal flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in"
           onClick={() => { if (!isConfirming && !paymentDone) handleCancel(); }}
         >
           <div
-            className="bg-white dark:bg-slate-800 w-full max-w-sm rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
+            className="bg-white dark:bg-slate-800 w-full max-w-sm max-h-[85dvh] overflow-y-auto rounded-2xl shadow-2xl p-6 space-y-4 animate-dialog-in"
             onClick={e => e.stopPropagation()}
           >
             {/* Приход зачислен — подтверждение перед уходом на другой экран */}
@@ -983,6 +1004,7 @@ const commonData = {
             )}
           </div>
         </div>
+        </ModalPortal>
       )}
     </div>
   );

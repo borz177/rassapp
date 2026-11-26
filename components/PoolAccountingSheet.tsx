@@ -157,7 +157,36 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
             setBusy(false);
         }
     };
-    const execute = () => {
+    const formSnapshot = JSON.stringify({ amount, name, rate, mode, date, effectiveMonth, reason, management, profitBasis });
+    const openedForm = useRef(formSnapshot);
+    useEffect(() => { openedForm.current = formSnapshot; }, [operation]);
+    const confirmLeave = async () => {
+        if (busy) return false;
+        return operation === 'capital' || openedForm.current === formSnapshot
+            || await appConfirm({ title: 'Закрыть без сохранения?', message: 'Изменения будут сброшены.',
+                confirmLabel: 'Закрыть', cancelLabel: 'Продолжить' });
+    };
+    const confirming = useRef(false);
+    const editEntryDate = () => {
+        setDate(firstEntryDay);
+        setEntryDateCorrection(null);
+        setError('');
+        setOperation('entryDate');
+    };
+    const execute = async () => {
+        if (busy || confirming.current) return;
+        if (['deposit', 'withdraw', 'reinvest', 'reentry', 'adjustment', 'add'].includes(operation)) {
+            confirming.current = true;
+            try {
+                if (!await appConfirm({ title: operationTitles[operation as Operation],
+                    message: [activeInvestor?.name, money(Number(amount || 0)), date ? date.split('-').reverse().join('.') : 'Сегодня'].filter(Boolean).join(' · '),
+                    confirmLabel: 'Подтвердить', cancelLabel: 'Проверить данные' })) return;
+            } finally { confirming.current = false; }
+        }
+        if ((operation === 'terms' || operation === 'management') && effectiveMonth < nextMonth) {
+            setError('Новые проценты действуют со следующего месяца. Дату участия измените через «Исправить дату входа».');
+            return;
+        }
         const common = { investorId, date: date || undefined };
         if (operation === 'adjustment')
             void run('adjustment', { amount: Number(amount), reason, date:common.date, confirmed: true });
@@ -238,7 +267,7 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
     </ModalParkContext.Provider>
     {data && config && operation && <GlassSheet key={operation} title={operation === 'capital' && activeInvestor ? activeInvestor.name : operationTitles[operation]}
         subtitle={investorAction ? activeInvestor?.name : account.name} onClose={back} cancelLabel="Назад"
-        zIndex={10010} confirmClose={() => !busy} fit="content">
+        zIndex={10010} confirmClose={confirmLeave} fit="content">
       <div className="space-y-4 pb-3">
         {error && <p role="alert" className="rounded-2xl bg-rose-50 p-4 text-sm text-rose-700 dark:bg-rose-950/30 dark:text-rose-300">{error}</p>}
         {operation === 'basis' ? <SheetSection>
@@ -256,6 +285,11 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
           </div>
         </SheetSection> : <SheetSection hint={operation === 'management' ? 'Проценты от управленческой части. Остаток остаётся владельцу.' : undefined}>
           {operation === 'capital' && <>
+            {firstEntryDay && <button type="button" disabled={busy} onClick={editEntryDate}
+                className="flex min-h-11 w-full items-center justify-between px-4 py-3 text-left text-sm text-slate-900 dark:text-slate-100">
+              <span>Дата входа<span className="mt-1 block text-xs text-slate-500">{firstEntryDay.split('-').reverse().join('.')}</span></span>
+              <span className="text-primary-600">Изменить ›</span>
+            </button>}
             {investorId && data.balances?.investors[investorId] && <dl className="space-y-2 px-4 py-3 text-sm">
               {[
                 ['Начислено', data.balances.investors[investorId].earned],
@@ -276,9 +310,7 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
                 {operationTitles[action]} <span aria-hidden="true" className="text-slate-400">›</span>
               </button>)}
           </>}
-          {operation === 'terms' && firstEntryDay && <button type="button" disabled={busy} className="px-4 py-2 text-sm font-semibold text-primary-600" onClick={() => {
-              setOperation('entryDate'); setDate(firstEntryDay); setEntryDateCorrection(null); setError('');
-          }}>Исправить дату входа</button>}
+          {operation === 'terms' && firstEntryDay && <button type="button" disabled={busy} className="px-4 py-2 text-sm font-semibold text-primary-600" onClick={editEntryDate}>Исправить дату входа</button>}
           {operation === 'entryDate' && <div className="space-y-3 p-4 text-sm">
             <SheetField label="Дата первого входа">
               <input aria-label="Дата первого входа" type="date" max={poolDay()} value={date} disabled={busy}
@@ -301,7 +333,7 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
                   <span className="text-right">{money(row.before)}</span><strong className="text-right">{money(row.after)}</strong>
                 </React.Fragment>)}
               </div>
-              <button type="button" disabled={busy} className="w-full rounded-xl bg-primary-600 p-3 font-semibold text-white disabled:opacity-40"
+              <button type="button" disabled={busy} className={saveClass}
                 onClick={() => void run('correctEntryDate', { investorId, entryDate: date, confirmed: true, fingerprint: entryDateCorrection.fingerprint })}>Подтвердить исправление</button>
             </div>}
           </div>}
@@ -311,7 +343,7 @@ export default function PoolAccountingSheet({ account, onClose, onChanged }: {
             {['add', 'deposit', 'withdraw', 'reentry', 'adjustment'].includes(operation) && <SheetField label={operation === 'add' ? 'Дата начала участия' : 'Дата'} hint="Пусто — сегодня"><input aria-label="Дата операции пула" type="date" max={poolDay()} value={date} onChange={e => setDate(e.target.value)} className={sheetInputClass}/></SheetField>}
             {['add', 'terms'].includes(operation) && <><SheetField label="Доля инвестора в прибыли"><input type="number" min="0" max="100" step="0.01" aria-label="Доля инвестора" value={rate} onChange={e => setRate(e.target.value)} className={sheetInputClass}/></SheetField><SheetField label="Прибыль" hint="По согласованным условиям"><select aria-label="Что делать с прибылью" value={mode} onChange={e => setMode(e.target.value)} className={sheetInputClass}><option value="PAYABLE">К получению</option><option value="REINVEST">Реинвестировать</option></select></SheetField></>}
             {operation === 'management' && data.investors.map(i => <SheetField key={i.id} label={i.name}><input aria-label={`За управление: ${i.name}`} type="number" min="0" max="100" value={management[i.id] || ''} onChange={e => setManagement(x => ({ ...x, [i.id]: e.target.value }))} className={sheetInputClass}/></SheetField>)}
-            {['terms', 'management'].includes(operation) && <SheetField label="Действует с"><input type="month" min={nextPoolMonth(poolMonth(Date.now()))} value={effectiveMonth} onChange={e => operation === 'management' ? selectManagementMonth(e.target.value) : setEffectiveMonth(e.target.value)} className={sheetInputClass}/></SheetField>}
+            {['terms', 'management'].includes(operation) && <SheetField label="Новые проценты действуют с" hint="Со следующего месяца или позднее"><input aria-label="Месяц новых условий" type="month" min={nextPoolMonth(poolMonth(Date.now()))} value={effectiveMonth} onChange={e => operation === 'management' ? selectManagementMonth(e.target.value) : setEffectiveMonth(e.target.value)} className={sheetInputClass}/></SheetField>}
             {operation === 'adjustment' && <><SheetField label="Причина"><input aria-label="Причина корректировки" value={reason} onChange={e => setReason(e.target.value)} className={sheetInputClass}/></SheetField><p className="px-4 text-xs text-slate-500">Плюс увеличивает прибыль, минус уменьшает. Деньги в кассе не меняются.</p></>}
             {operation === 'reinvest' && <p className="px-4 text-xs text-slate-500">Из доступной прибыли. Повторного поступления в кассу нет.</p>}
             <div className="p-4"><button disabled={busy || (operation === 'terms' || operation === 'management') && !effectiveMonth} onClick={execute} className={saveClass}>{busy ? 'Сохранение…' : 'Сохранить'}</button></div>
