@@ -1,4 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
+import { copyText } from '../src/clipboard';
+import { toast } from '../src/toast';
 import GlassSheet from './GlassSheet';
 import WatchlistPrivateContent from './WatchlistPrivateContent';
 import { WatchlistError, WatchlistField, wlButton, wlCard, wlInput, wlSecondary } from './WatchlistUI';
@@ -15,6 +17,10 @@ type ArchiveBatch = { published: number; duplicates: number; invalid: number; re
 type ReasonBatch = { filled: number; processed: number; next: number | null };
 type ArchiveAction = 'publish' | 'fill-reason';
 type Revision = { version: number; date: string; action: string; before: Fields; fields: Fields };
+async function copyName(name: string) {
+  if (await copyText(name.trim())) toast.success('ФИО скопировано');
+  else toast.error('Не удалось скопировать ФИО');
+}
 const labels: Record<keyof Fields, string> = {
   name: 'ФИО', birthDate: 'Дата рождения', reason: 'Причина', reasonDetails: 'Описание причины', source: 'Источник информации', publishedAt: 'Дата публикации сообщения',
 };
@@ -279,14 +285,18 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
         {!detail.canPublish && <p className="text-xs text-slate-500">Публикация недоступна при текущих настройках.</p>}
       </div>}
       {detail?.items.length && !selected ? <WatchlistPrivateContent userId={userId} showWatermark={false} className="space-y-3">
-        {detail.items.map(row => <button className={`${wlCard} block w-full text-left`} type="button" key={row.ordinal} onClick={() => select(row)} disabled={row.state==='removed'}>
-          <span className="block font-semibold break-words">{row.fields?.name || `Сообщение № ${row.ordinal}`}</span>
+        {detail.items.map(row => <div className={`${wlCard} w-full text-left`} key={row.ordinal}>
+          {row.fields?.name ? <button type="button" className="block min-h-11 w-full text-left font-semibold break-words active:opacity-60"
+            aria-label={`Скопировать ФИО: ${row.fields.name}`} onClick={() => void copyName(row.fields!.name)}>{row.fields.name}</button>
+            : <span className="block font-semibold">Сообщение № {row.ordinal}</span>}
+          <button className="block w-full text-left" type="button" onClick={() => select(row)} disabled={row.state==='removed'}>
           {row.fields && <span className="mt-1 block break-words text-sm">
             {row.fields.birthDate && `${row.fields.birthDate} · `}
             {row.fields.reason === 'other' ? row.fields.reasonDetails || 'Причина не указана' : WATCHLIST_REASONS[row.fields.reason] || 'Причина не указана'}
           </span>}
           <span className="block text-sm text-slate-500">{rowStatus(row)}{row.duplicate ? ' · возможный дубль' : row.errors.length && row.state==='draft' ? ' · проверьте поля' : ''}</span>
-        </button>)}
+          </button>
+        </div>)}
         {(detail.hasMore || page > 0) && <div className="flex justify-between gap-2">
           <button className={wlSecondary} disabled={!page} onClick={() => { setDetail(null); setPage(n => n-1); }}>Назад</button>
           <button className={wlSecondary} disabled={!detail.hasMore} onClick={() => { setDetail(null); setPage(n => n+1); }}>Далее</button>
@@ -311,6 +321,7 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
           {selected.duplicate && <p className="text-sm text-amber-700 dark:text-amber-300">Возможный дубль. Проверьте ФИО и дату рождения.</p>}
           {selected.errors.length > 0 && <ul className="space-y-1 text-xs text-amber-700 dark:text-amber-300">{selected.errors.map(text => <li key={text}>{text}</li>)}</ul>}
           <fieldset disabled={busy || !mayEdit} className="space-y-3">
+            <div className="flex items-center justify-between gap-3"><span className="text-sm font-medium text-slate-600 dark:text-slate-300">ФИО</span><button type="button" disabled={!fields.name.trim()} onClick={() => void copyName(fields.name)} className="min-h-11 text-sm font-semibold text-indigo-600 disabled:opacity-40 dark:text-indigo-400">Скопировать ФИО</button></div>
             <WatchlistField label={labels.name}><input className={wlInput} maxLength={200} value={fields.name} onChange={e => setField('name', e.target.value)} /></WatchlistField>
             <WatchlistField label="Дата рождения · необязательно"><input className={wlInput} maxLength={32} placeholder="ДД.ММ.ГГГГ или год" value={fields.birthDate} onChange={e => setField('birthDate', e.target.value)} /></WatchlistField>
             <WatchlistField label={labels.reason}><select className={wlInput} value={cardReason} onChange={e => setCardReason(e.target.value)}><option value="">Выберите причину</option><option value="cross">❌</option>{Object.entries(WATCHLIST_REASONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></WatchlistField>
