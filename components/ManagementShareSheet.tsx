@@ -75,7 +75,7 @@ const ManagementShareSheet: React.FC<Props> = ({ account, investors, onClose, on
           <p className="px-1 text-[14px] leading-relaxed text-slate-600 dark:text-slate-300">
             Каждый инвестор получает свой процент с прибыли, которую заработали его деньги.
             Остаток — сейчас это <b className="text-slate-900 dark:text-white">{round(rest)}%</b> всей прибыли пула —
-            плата за управление. По умолчанию она ваша как менеджера. Если дело ведут участники пула,
+            плата за управление. По умолчанию она ваша как управляющего. Если дело ведут участники пула,
             отдайте её им.
           </p>
         </SheetSection>
@@ -88,7 +88,7 @@ const ManagementShareSheet: React.FC<Props> = ({ account, investors, onClose, on
           <SheetSection
             title="Кому и сколько от остатка"
             hint={valid
-              ? (splitTotal < 100 && splitTotal > 0 ? `Не распределено ${round(100 - splitTotal)}% остатка — это останется менеджеру.` : 'Например, 50% и 50% — поровну двоим, кто ведёт дело.')
+              ? (splitTotal < 100 && splitTotal > 0 ? `Не распределено ${round(100 - splitTotal)}% остатка — это останется управляющему.` : 'Например, 50% и 50% — поровну двоим, кто ведёт дело.')
               : 'Вместе больше 100% остатка раздать нельзя.'}
           >
             {members.map(m => (
@@ -116,7 +116,7 @@ const ManagementShareSheet: React.FC<Props> = ({ account, investors, onClose, on
             </div>
           ))}
           <div className="flex items-center justify-between px-4 py-3">
-            <span className="text-[15px] text-slate-500 dark:text-slate-400">Менеджер</span>
+            <span className="text-[15px] text-slate-500 dark:text-slate-400">Управляющий</span>
             <span className="text-[15px] font-semibold tabular-nums text-slate-500 dark:text-slate-400">{round(managerLeft)} ₽</span>
           </div>
         </SheetSection>

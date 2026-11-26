@@ -455,7 +455,7 @@ const Reports: React.FC<ReportsProps> = ({
     ].filter(d => d.value > 0);
 
     const barData = [
-        { name: 'Менеджер', Ожидается: data.expectedManagerProfit, Получено: data.realizedManagerProfit },
+        { name: 'Управляющий', Ожидается: data.expectedManagerProfit, Получено: data.realizedManagerProfit },
         { name: 'Инвесторы', Ожидается: data.expectedInvestorProfit, Получено: data.realizedInvestorProfit },
     ];
 
@@ -519,7 +519,7 @@ const Reports: React.FC<ReportsProps> = ({
                 if (pDate < startDate || pDate > endDate) return;
                 const profitFromPayment = moneyInProfit(sale, p, profitFromPaymentsOnly);
                 const mgrPct = paymentManagerPercent(account, investors as Investor[], sale, p) / 100;
-                ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).received += profitFromPayment * mgrPct;
+                ensure(MGR, () => ({ label: 'Управляющий', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).received += profitFromPayment * mgrPct;
                 paymentProfitShares(account, investors as Investor[], sale, p).forEach(({ investor, percentage }) => {
                     ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).received += profitFromPayment * (percentage / 100);
                 });
@@ -527,7 +527,7 @@ const Reports: React.FC<ReportsProps> = ({
             if ((sale.status === 'ACTIVE' || sale.status === 'DRAFT') && sale.remainingAmount > 0) {
                 const gross = sale.remainingAmount * profitMargin;
                 const mgrPct = expectedManagerPercent(account, investors as Investor[], sale) / 100;
-                ensure(MGR, () => ({ label: 'Менеджер', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).expected += gross * mgrPct;
+                ensure(MGR, () => ({ label: 'Управляющий', isManager: true, sharePercent: getManagerSharePercent(account, investors as Investor[]), received: 0, expected: 0 })).expected += gross * mgrPct;
                 expectedProfitShares(account, investors as Investor[], sale).forEach(({ investor, percentage }) => {
                     ensure(investor.id, () => ({ label: investor.name, isManager: false, sharePercent: percentage, received: 0, expected: 0 })).expected += gross * (percentage / 100);
                 });
@@ -535,7 +535,7 @@ const Reports: React.FC<ReportsProps> = ({
         });
 
         if(isMonthlyPool(account)&&monthlyIncome){
-            ensure(MGR,()=>({label:'Менеджер',isManager:true,sharePercent:getManagerSharePercent(account,investors),received:0,expected:0}));
+            ensure(MGR,()=>({label:'Управляющий',isManager:true,sharePercent:getManagerSharePercent(account,investors),received:0,expected:0}));
             for(const id of account.poolMemberIds||[]){const investor=investors.find(i=>i.id===id);if(investor)
                 ensure(id,()=>({label:investor.name,isManager:false,sharePercent:0,received:0,expected:0}));}
             for(const [id,row]of rows)row.received=id===MGR?monthlyIncome.manager.received:monthlyIncome.investors.get(id)?.received||0;
@@ -573,9 +573,9 @@ const Reports: React.FC<ReportsProps> = ({
             `ОСНОВНЫЕ ПОКАЗАТЕЛИ${sep}${sep}`,
             `Показатель${sep}Сумма (₽)${sep}`,
             `Поступления от клиентов${collectionNote ? ' (без первых взносов)' : ''}${sep}${data.customerPaymentsInPeriod.toFixed(2)}${sep}`,
-            `Ожидаемая прибыль (менеджер)${sep}${data.expectedManagerProfit.toFixed(2)}${sep}`,
+            `Ожидаемая прибыль (управляющий)${sep}${data.expectedManagerProfit.toFixed(2)}${sep}`,
             `Ожидаемая прибыль (инвесторы)${sep}${data.expectedInvestorProfit.toFixed(2)}${sep}`,
-            `Реализованная прибыль (менеджер)${sep}${data.realizedManagerProfit.toFixed(2)}${sep}`,
+            `Реализованная прибыль (управляющий)${sep}${data.realizedManagerProfit.toFixed(2)}${sep}`,
             `Реализованная прибыль (инвесторы)${sep}${data.realizedInvestorProfit.toFixed(2)}${sep}`,
             `Итого ожидается${sep}${totalExpected.toFixed(2)}${sep}`,
             `Итого реализовано${sep}${totalRealized.toFixed(2)}${sep}`,
@@ -1070,13 +1070,13 @@ const Reports: React.FC<ReportsProps> = ({
                                             <Legend wrapperStyle={{ fontSize: '12px', paddingTop: '8px' }} />
                                             <Bar dataKey="Ожидается" fill="#CBD5E1" radius={[6, 6, 0, 0]} />
                                             <Bar dataKey="Получено" fill={MANAGER_PALETTE.color} radius={[6, 6, 0, 0]}>
-                                                {barData.map(row=><Cell key={row.name} fill={row.name==='Менеджер'?MANAGER_PALETTE.color:INVESTOR_GROUP_PALETTE.color}/>)}
+                                                {barData.map(row=><Cell key={row.name} fill={row.name==='Управляющий'?MANAGER_PALETTE.color:INVESTOR_GROUP_PALETTE.color}/>)}
                                             </Bar>
                                         </BarChart>
                                     </ResponsiveContainer>
                                 </div>
                                 <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-700 space-y-3">
-                                    <ProgressRow label="Менеджер — план/факт" realized={data.realizedManagerProfit} expected={data.expectedManagerProfit} color="emerald" showCents={appSettings.showCents} />
+                                    <ProgressRow label="Управляющий — план/факт" realized={data.realizedManagerProfit} expected={data.expectedManagerProfit} color="emerald" showCents={appSettings.showCents} />
                                     {hasInvestors && (
                                         <ProgressRow label="Инвесторы — план/факт" realized={data.realizedInvestorProfit} expected={data.expectedInvestorProfit} color="indigo" showCents={appSettings.showCents} />
                                     )}
@@ -1143,7 +1143,7 @@ const Reports: React.FC<ReportsProps> = ({
                                     <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">из активных и завершённых контрактов</p>
                                 </div>
                                 <div className="bg-gradient-to-br from-sky-50 to-white dark:from-sky-900/20 dark:to-slate-800 p-4 rounded-xl border border-sky-100 dark:border-sky-900/40">
-                                    <p className="text-xs font-medium text-sky-600 dark:text-sky-400 mb-1">Прогноз менеджера</p>
+                                    <p className="text-xs font-medium text-sky-600 dark:text-sky-400 mb-1">Прогноз управляющего</p>
                                     <p className="text-2xl font-bold text-sky-700 dark:text-sky-400">{formatCurrency(data.expectedManagerProfit, appSettings.showCents)} ₽</p>
                                     <p className="text-xs text-sky-500 dark:text-sky-400/80 mt-1">{totalExpected > 0 ? Math.round((data.expectedManagerProfit / totalExpected) * 100) : 0}% от общей суммы</p>
                                 </div>

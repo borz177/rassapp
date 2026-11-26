@@ -632,7 +632,7 @@ const InvestorDetails: React.FC<InvestorDetailsProps> = ({
                 <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold shrink-0 ${POOL_PARTICIPANT_PALETTE.bg} ${POOL_PARTICIPANT_PALETTE.text}`}>М</div>
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Менеджер</span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Управляющий</span>
                     <span className={`text-sm font-bold ${POOL_PARTICIPANT_PALETTE.text}`}>{Math.round(poolComposition.mgrPercent * 10) / 10}% приб.</span>
                   </div>
                   <div className="w-full bg-slate-100 dark:bg-slate-700 rounded-full h-1.5">

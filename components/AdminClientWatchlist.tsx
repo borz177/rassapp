@@ -45,9 +45,24 @@ const AdminClientWatchlist: React.FC<{ userId: string }> = ({ userId }) => {
   useEffect(() => {
     alive.current = true;
     api.watchlistRequest<typeof lock>('/admin/watchlist/lock').then(r => alive.current && setLock(r)).catch(e => alive.current && setError(e.message));
-    const hidden = () => { if (document.hidden) clear(); };
+    const gracePeriod = 15 * 60 * 1000;
+    let hiddenAt: number | null = document.hidden ? Date.now() : null;
+    let hiddenTimer: ReturnType<typeof setTimeout> | undefined;
+    const hidden = () => {
+      if (hiddenTimer) clearTimeout(hiddenTimer);
+      if (document.hidden) {
+        hiddenAt ??= Date.now();
+        hiddenTimer = setTimeout(clear, Math.max(0, gracePeriod - (Date.now() - hiddenAt)));
+      } else {
+        // В фоне браузер может приостановить таймер — проверяем срок при возврате.
+        if (hiddenAt !== null && Date.now() - hiddenAt >= gracePeriod) clear();
+        hiddenAt = null;
+        if (proofRef.current && Date.now() >= expires.current) clear();
+      }
+    };
+    hidden();
     document.addEventListener('visibilitychange', hidden);
-    return () => { alive.current = false; sequence.current++; releaseProof(); document.removeEventListener('visibilitychange', hidden); };
+    return () => { alive.current = false; sequence.current++; if (hiddenTimer) clearTimeout(hiddenTimer); releaseProof(); document.removeEventListener('visibilitychange', hidden); };
   }, []);
   useEffect(() => {
     if (!proof) return;
@@ -115,7 +130,7 @@ const AdminClientWatchlist: React.FC<{ userId: string }> = ({ userId }) => {
       const result = await request('/unlock', { password, code }, '');
       if (!alive.current || document.hidden || seq !== sequence.current) return;
       setPassword(''); setCode(''); expires.current = new Date(result.expiresAt).getTime(); proofRef.current = result.proof; setProof(result.proof); await load(result.proof);
-    }); }}><h3 className="font-bold">Подтвердите вход</h3><p className="text-sm text-slate-500">Пароль и код из приложения-аутентификатора. Доступ действует 10 минут и закрывается при уходе с окна.</p>
+    }); }}><h3 className="font-bold">Подтвердите вход</h3><p className="text-sm text-slate-500">Пароль и код из приложения-аутентификатора. Доступ действует 8 часов. При сворачивании можно вернуться в течение 15 минут. Выход из раздела закрывает доступ.</p>
       {lock && !lock.configured ? <p className="rounded-xl bg-amber-50 p-3 text-sm text-amber-800 dark:bg-amber-950/40 dark:text-amber-200">Сначала настройте второй фактор общего списка на сервере. Инструкция: docs/client-watchlist-operations.md.</p> : <>
         <WatchlistField label="Пароль администратора"><input type="password" autoComplete="current-password" className={wlInput} value={password} onChange={e => setPassword(e.target.value)} maxLength={200} required /></WatchlistField>
         <WatchlistField label="Одноразовый код"><input className={wlInput} inputMode="numeric" autoComplete="one-time-code" value={code} onChange={e => setCode(e.target.value.replace(/\D/g, '').slice(0, 6))} pattern="[0-9]{6}" required /></WatchlistField>

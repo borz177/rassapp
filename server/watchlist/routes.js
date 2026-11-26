@@ -7,7 +7,7 @@ const { createRevocations } = require('./revocations');
 const P = require('./policy');
 const { parseImport } = require('./bulkImport');
 const multer = require('multer');
-const { MAX_BYTES, MAX_MIB } = require('./telegramArchive');
+const { MAX_BYTES, MAX_MIB, publicationDate } = require('./telegramArchive');
 const { createArchiveImports, draftFields, verifyDraft, withPublicationDate, MAX_ARCHIVE_RECORDS } = require('./archiveImports');
 const { interpretSelection } = require('./archiveSelection');
 const digest = value => crypto.createHash('sha256').update(String(value)).digest('hex');
@@ -89,6 +89,8 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         return { id: r.id, customerId: r.customer_id, name: 'Публикация удалена', birthYear: null, status: 'withdrawn', version: r.version, createdAt: r.created_at };
     } catch { /* Доступ автора к собственным материалам не становится общим доступом. */ }
     const d = payload(r);
+    const sourceDate = d?.telegramSource && !d.telegramSource.dateFromImport
+      ? publicationDate(d.telegramSource.publishedAt) : null;
     return { id: r.id, customerId: r.customer_id, name: d?.identity.name || 'Публикация удалена', birthYear: d?.identity.birthYear ?? null,
       reason: d?.reason, reasonDetails: d?.reasonDetails, response: d?.response, publicationMode: d?.publication?.mode,
       ...(d?.guarantor ? { subjectKind: 'guarantor' } : {}),
@@ -96,7 +98,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
         ...(includeBirthDate === true && d.identity.birthDate ? { birthDate: d.identity.birthDate } : {}) } : {}),
       basis: d?.basis, evidence: d?.evidence, note: d?.note, decision: d?.decision,
       status: r.deleted_at ? 'deleted' : r.status === 'published' && r.expires_at != null && new Date(r.expires_at) <= new Date() ? 'expired' : r.status,
-      version: r.version, createdAt: r.created_at, publishedAt: r.status === 'published' ? r.published_at || undefined : undefined, expiresAt: r.expires_at };
+      version: r.version, createdAt: r.created_at, publishedAt: r.status === 'published' ? sourceDate || r.published_at || undefined : undefined, expiresAt: r.expires_at };
   }
   async function entry(db, entryId, owner = null) {
     const r = await db.query('SELECT * FROM client_watchlist_entries WHERE id=$1 FOR UPDATE', [entryId]);
@@ -382,7 +384,7 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       ON CONFLICT(user_id) DO UPDATE SET last_counter=EXCLUDED.last_counter
       WHERE client_watchlist_admin_factors.last_counter<EXCLUDED.last_counter RETURNING user_id`, [user.id, counter]);
     if (!taken.rowCount) throw P.problem(403, 'Этот код уже использован. Дождитесь следующего.');
-    const proof = crypto.randomBytes(32).toString('hex'), expiresAt = new Date(Date.now() + 10 * 60000).toISOString();
+    const proof = crypto.randomBytes(32).toString('hex'), expiresAt = new Date(Date.now() + 8 * 60 * 60000).toISOString();
     await db.query('INSERT INTO client_watchlist_admin_sessions(digest,user_id,auth_digest,expires_at) VALUES($1,$2,$3,$4)',
       [digest(proof), user.id, digest(req.res.getHeader('x-renewed-token') || req.get('x-auth-token')), expiresAt]);
     await event(db, user.id, 'ADMIN_VERIFIED');

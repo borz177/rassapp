@@ -722,6 +722,9 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.equal((await adm(record+'/history')).items[0].action,'publish');
         await adm(record,{...submission,version:edited.version+1,action:'save'},409);
         const active=(await adm('/entries?name='+encodeURIComponent(name))).items[0];
+        assert.equal(active.publishedAt,'2026-04-01T09:30:15.000Z');
+        const storedPublication=(await pool.query('SELECT published_at FROM client_watchlist_entries WHERE id=$1',[active.id])).rows[0].published_at;
+        assert(Date.parse(storedPublication)>Date.parse(active.publishedAt),'Фактическая дата публикации сохраняется отдельно');
         await adm(`/entries/${active.id}/delete`,{version:active.version,confirmed:true});
         assert.equal((await adm(`/archives/${job.id}`)).items[0].state,'removed');
         assert.deepEqual((await adm(record+'/history')).items,[]);
@@ -830,6 +833,8 @@ test('общий список: реальная локальная PostgreSQL, �
         assert.equal(noBirth.reason,'other');
         assert.equal(noBirth.reasonDetails,defaults.defaultReasonDetails);
         assert.equal(noBirth.telegramSource.dateFromImport,true);
+        const actualPublication=(await pool.query('SELECT published_at FROM client_watchlist_entries WHERE id=$1',[noBirth.id])).rows[0].published_at;
+        assert.equal(new Date(noBirth.publishedAt).getTime(),new Date(actualPublication).getTime());
         const [retained] = (await adm('/entries?name='+encodeURIComponent(taggedName))).items;
         assert.equal(retained.reason,'overdue');
         assert.equal(retained.telegramSource.dateFromImport,undefined);
