@@ -43,7 +43,10 @@ function submissionReason(input) {
   if (!REASONS.includes(input.reason)) throw problem(400, 'Выберите причину.');
   // Старые сборки описывали «Другое» в note. Явно пустое новое поле не обходим.
   const description = input.reasonDetails === undefined ? input.note : input.reasonDetails;
-  return { reason: input.reason, reasonDetails: input.reason === 'other' ? text(description, 3, 1000, 'описание причины') : undefined };
+  if (input.reason !== 'other') return { reason: input.reason, reasonDetails: undefined };
+  const reasonDetails = typeof description === 'string' && description.trim() === '❌'
+    ? '❌' : text(description, 3, 1000, 'описание причины');
+  return { reason: input.reason, reasonDetails };
 }
 function legacySubmissionFields(input) {
   const fields = {};

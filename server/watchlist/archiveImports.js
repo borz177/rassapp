@@ -5,6 +5,8 @@ const P = require('./policy');
 const { MAX_BYTES, MAX_MIB, publicationDate } = require('./telegramArchive');
 const { importBirthDate } = require('./bulkImport');
 const { defaultSelection, validateSelection, matchesSelection } = require('./archiveSelection');
+const { archivePeople } = require('./archivePeople');
+const MAX_ARCHIVE_RECORDS = 20000;
 
 const jobs = 'client_watchlist_archive_jobs';
 const records = 'client_watchlist_archive_records';
@@ -14,11 +16,11 @@ const statusView = row => ({ id: row.id, filename: row.filename, status: row.sta
 const publicErrors = {
   NO_MESSAGES: 'В файле нет текстовых сообщений экспорта Telegram.',
   TOO_MANY_MESSAGES: 'Слишком много сообщений. Загрузите части архива по отдельности.',
+  TOO_MANY_RECORDS: 'Слишком много карточек. Загрузите части архива по отдельности.',
   INVALID_HTML: 'Не удалось разобрать структуру HTML-архива.',
 };
 const keyFor = (owner, job, ordinal) => `${owner}:${job}:${ordinal}`;
 const draftLimits = { name: 200, birthDate: 32, reason: 16, reasonDetails: 1000, source: 200, publishedAt: 80 };
-const knownValue = value => /^(?:[-–—?…]+|нет|не указан(?:а|о)?|неизвестн[ао])\.?$/iu.test(value) ? '' : value;
 
 function draftFields(body) {
   return Object.fromEntries(Object.entries(draftLimits).map(([key, max]) => {
@@ -46,23 +48,27 @@ function verifyDraft(fields) {
   return { valid, errors };
 }
 
-function suggestedFields(message, source) {
-  const label = pattern => message.text.match(new RegExp(`^[ \\t]*(?:${pattern})[ \\t]*[-:–—][ \\t]*([^\\r\\n]+)`, 'imu'))?.[1].trim() || '';
-  const lines = message.text.split(/\r?\n/u).map(line => line.trim()).filter(Boolean);
-  const named = label(String.raw`фио|ф\.\s*и\.\s*о\.`);
-  const inline = [named || lines[0], lines[1]].join('\n').match(/^([\p{L}\p{M}'’.-]+(?:[ \t]+[\p{L}\p{M}'’.-]+){1,3})[ \t\n]+\(?(\d{1,2}[.\/-]\d{1,2}[.\/-]\d{4}|\d{4}-\d{1,2}-\d{1,2})\)?(?:[ \t]+([^\n]+))?(?:\n|$)/u);
-  const reasonDetails = knownValue(label('причина|основание') || inline?.[3] || '');
+function suggestedFields(person, message, source) {
+  const reasonDetails = person.reasonText;
   const categories = { 'длительная просрочка': 'overdue', 'неисполнение обязательств': 'unfulfilled' };
   const reason = Object.hasOwn(categories, reasonDetails.toLowerCase()) ? categories[reasonDetails.toLowerCase()] : reasonDetails ? 'other' : '';
-  const firstLine = lines[0] || '';
-  const plainName = /^(?:\p{Lu}[\p{L}'’.-]+[ \t]+){2}\p{Lu}[\p{L}'’.-]*(?:ович|евич|овна|евна|ич|кызы|оглы)$/iu.test(firstLine)
-    && (firstLine === firstLine.toUpperCase() || /^(?:\p{Lu}\S+[ \t]+){2}\p{Lu}\S+$/u.test(firstLine)) ? firstLine : '';
-  const namedLine = reasonDetails && /^(?:\p{Lu}[\p{L}'’.-]+[ \t]+){1,3}\p{Lu}[\p{L}'’.-]+$/u.test(firstLine) ? firstLine : '';
   return draftFields({
-    name: (inline?.[1] || named || plainName || namedLine).slice(0, 200),
-    birthDate: knownValue(label(String.raw`дата рождения|д\.\s*р\.`) || inline?.[2] || '').slice(0, 32),
+    name: person.name.slice(0, 200), birthDate: person.birthDate.slice(0, 32),
     reason, reasonDetails: reason === 'other' ? reasonDetails.slice(0, 1000) : '', source,
     publishedAt: message.publishedAt || '',
+  });
+}
+
+function messageDrafts(message, source, fallback, selection) {
+  const people = archivePeople(message.text);
+  const stamp = message.publishedAt || crypto.createHash('sha256').update(message.text).digest('hex');
+  return people.flatMap((person, index) => {
+    const original = people.length > 1
+      ? { ...message, text: person.text, part: index + 1, people: people.length, stamp }
+      : message;
+    const data = withPublicationDate({ message: { ...original, source }, fields: suggestedFields(person, message, source) }, fallback);
+    const searchable = person.reasonText ? { text: person.text + '\n' + person.reasonText } : original;
+    return matchesSelection(searchable, verifyDraft(data.fields).valid, selection) ? [data] : [];
   });
 }
 
@@ -114,9 +120,8 @@ function createArchiveImports({ pool, vault, ensure }) {
       });
       const selected = [];
       for (let index = 0; index < messages.length; index++) {
-        const message = messages[index];
-        const data = withPublicationDate({ message: { ...message, source }, fields: suggestedFields(message, source) }, claimed.created_at);
-        if (matchesSelection(message, verifyDraft(data.fields).valid, selection)) selected.push(data);
+        selected.push(...messageDrafts(messages[index], source, claimed.created_at, selection));
+        if (selected.length > MAX_ARCHIVE_RECORDS) throw Error('TOO_MANY_RECORDS');
         if (index % 250 === 249) await new Promise(resolve => setImmediate(resolve));
       }
       await progressUpdate(claimed, 90);
@@ -160,7 +165,7 @@ function createArchiveImports({ pool, vault, ensure }) {
     let html;
     try { html = new TextDecoder('utf-8', { fatal: true }).decode(file.buffer); }
     catch { throw P.problem(400, 'Архив должен быть в кодировке UTF-8.'); }
-    const fileIndex = vault.index('telegram_file', [owner, crypto.createHash('sha256').update(file.buffer).digest('hex'), selection, 3]);
+    const fileIndex = vault.index('telegram_file', [owner, crypto.createHash('sha256').update(file.buffer).digest('hex'), selection, 10]);
     await db.query("SELECT pg_advisory_xact_lock(hashtextextended('watchlist:telegram-enqueue',0))");
     const existing = (await db.query(`SELECT ${jobFields} FROM ${jobs} WHERE owner_id=$1 AND file_index=$2`,[owner,fileIndex])).rows[0];
     if (existing && existing.state !== 'failed') return statusView(existing);
@@ -234,4 +239,4 @@ function createArchiveImports({ pool, vault, ensure }) {
   return { enqueue,list,detail,draftBatch,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
 }
 
-module.exports = { createArchiveImports, draftFields, verifyDraft, withPublicationDate };
+module.exports = { createArchiveImports, draftFields, verifyDraft, withPublicationDate, messageDrafts, MAX_ARCHIVE_RECORDS };

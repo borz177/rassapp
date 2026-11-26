@@ -1,7 +1,8 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { telegramMessages, publicationDate } = require('./telegramArchive');
-const { draftFields, verifyDraft, withPublicationDate } = require('./archiveImports');
+const { draftFields, verifyDraft, withPublicationDate, messageDrafts } = require('./archiveImports');
+const { defaultSelection } = require('./archiveSelection');
 
 test('Telegram HTML preserves text and message dates without interpreting the archive', () => {
   const html = '<div class="message default" id="message42"><div class="date details" title="25.11.2026 15:30:04 UTC+05:00"></div>' +
@@ -46,4 +47,85 @@ test('large archive is parsed in slices and reports progress', () => {
   assert.match(messages[3499].text,/& 3499$/u);
   assert(progress.length>10 && progress[0] < 85);
   assert.equal(progress.at(-1),85);
+});
+
+test('separate people retain their own birth dates and reasons, and filter independently', () => {
+  const message = { messageId:'50', publishedAt:'2024-01-02T10:00:00Z', text:[
+    '[5.10, 22:49] Тестовый автор: Учебный Первый Примерович (01.02.1990)г. Причина: Длительная просрочка',
+    '2. ФИО: Учебная Вторая Примеровна',
+    '03,04,1991 г.р.',
+    'Причина: Неисполнение обязательств',
+    'ФИО: Учебный Третий Примерович',
+    'Дата рождения: не указана',
+    'Не давать ❌',
+  ].join('\n') };
+  const all = messageDrafts(message,'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(all.map(row=>[row.fields.name,row.fields.birthDate,row.fields.reason,row.message.part]),[
+    ['Учебный Первый Примерович','01.02.1990','overdue',1],
+    ['Учебная Вторая Примеровна','03.04.1991','unfulfilled',2],
+    ['Учебный Третий Примерович','','other',3],
+  ]);
+  assert(all.every(row=>row.message.people===3 && row.message.stamp===message.publishedAt));
+  assert(!all[0].message.text.includes('Вторая'));
+  assert(!all[2].message.text.includes('Неисполнение'));
+  const selected = messageDrafts(message,'Тестовый источник',Date.now(),{...defaultSelection,includeAny:['вторая'],reasons:['unfulfilled']});
+  assert.equal(selected.length,1);
+  assert.equal(selected[0].message.part,2);
+});
+
+test('one comment at the end applies to everyone, while individual reasons take priority', () => {
+  const message = { messageId:'51', publishedAt:null,
+    text:'Учебный Первый Примерович 01.02.1990; Учебная Вторая Примеровна 03.04.1991\nРассрочку не оплачивают' };
+  const rows = messageDrafts(message,'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(rows.map(row=>row.fields.reason),['unfulfilled','unfulfilled']);
+  assert.equal(rows[0].message.stamp,rows[1].message.stamp);
+  const shared = messageDrafts({...message,text:message.text+'\nОбщая причина: Длительная просрочка'},'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(shared.map(row=>row.fields.reason),['overdue','unfulfilled']);
+  assert.deepEqual(messageDrafts({...message,text:'Долг не оплатил 03.04.2024'},'Тестовый источник',Date.now(),defaultSelection),[]);
+  const inline = messageDrafts({...message,text:'Учебный Первый Примерович 01.02.1990 3 месяца просрочки.    Учебная Вторая Примеровна 03.04.1991 не оплачивает.'},'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(inline.map(row=>[row.fields.birthDate,row.fields.reason,row.fields.reasonDetails]),[
+    ['01.02.1990','other','Просрочка платежа'],['03.04.1991','unfulfilled',''],
+  ]);
+});
+
+test('crosses are preserved as source marks and addresses do not become common reasons', () => {
+  const message = { messageId:'53', publishedAt:'2024-01-02T10:00:00Z',
+    text:'Учебный Первый Примерович 01.02.1990❌\nУчебная Вторая Примеровна 03.04.1991\nАдрес: Учебная улица' };
+  const read = text => messageDrafts({...message,text},'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(read(message.text).map(row=>row.fields.reasonDetails),['❌','']);
+  assert.deepEqual(read('❌ '+message.text.replace('1990❌','1990')).map(row=>row.fields.reasonDetails),['❌','']);
+  assert.deepEqual(read(message.text.replace('1990❌','1990')+'\n❌❌').map(row=>row.fields.reasonDetails),['❌','❌']);
+  assert.equal(verifyDraft(read(message.text)[0].fields).valid.reasonDetails,'❌');
+  const common = read(message.text.replace('1990❌','1990')+'\nРассрочку не давать');
+  assert.deepEqual(common.map(row=>row.fields.reasonDetails),['Не давать рассрочку','Не давать рассрочку']);
+});
+
+test('confirmed birth year and labelled dates stay with their person, and an individual reason overrides the common one', () => {
+  const message = { messageId:'52', publishedAt:'2024-01-02T10:00:00Z', text:[
+    'Покупатель: Учебный Первый Примерович 1990 г.р. не оплачивает.',
+    'Учебная Вторая Примеровна, дата рождения: 03.04.1991',
+    'ФИО: Учебный Третий Примерович',
+    'Дата договора: 25.05.2023',
+    'Д.р.: 05.06.1992',
+    'Общая причина: Длительная просрочка',
+  ].join('\n') };
+  const rows = messageDrafts(message,'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(rows.map(row=>[row.fields.birthDate,row.fields.reason]),[
+    ['1990','unfulfilled'],['03.04.1991','overdue'],['05.06.1992','overdue'],
+  ]);
+  assert.equal(verifyDraft(rows[0].fields).valid.birthYear,1990);
+  assert.equal(verifyDraft(rows[0].fields).valid.birthDate,undefined);
+});
+
+test('birth dates with a space instead of a dot are normalized on the person card', () => {
+  const message = { messageId:'54', publishedAt:'2024-01-02T10:00:00Z', text:[
+    'Учебный Первый Примерович',
+    '01.02 1990',
+    '❌❌❌',
+    'Учебная Вторая Примеровна 03 04.1991',
+  ].join('\n') };
+  const rows = messageDrafts(message,'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(rows.map(row=>[row.fields.birthDate,row.fields.reasonDetails]),[
+    ['01.02.1990','❌'],['03.04.1991',''],
+  ]);
 });

@@ -8,9 +8,11 @@ type Fields = { name: string; birthDate: string; reason: string; reasonDetails: 
 type Job = { id: string; filename: string; status: 'queued' | 'processing' | 'ready' | 'failed'; progress: number; total: number; scanned?: number | null; error?: string };
 type Selection = { from: string | null; to: string | null; reasons: string[]; includeAny: string[]; excludeAny: string[]; requireReason: boolean };
 type Row = { ordinal: number; version: number; state: 'draft' | 'submitted' | 'removed'; entryStatus?: string; fields?: Fields; errors: string[]; duplicate?: boolean; dateFromImport?: boolean; excluded?: boolean;
-  message?: { text: string; messageId: string; publishedAt: string | null; truncated?: boolean } };
+  message?: { text: string; messageId: string; publishedAt: string | null; truncated?: boolean; part?: number; people?: number } };
 type Detail = { job: Job; items: Row[]; hasMore: boolean; draftCount: number; excludedCount: number; canPublish: boolean };
-type PublishBatch = { published: number; duplicates: number; invalid: number; review: number; next: number | null };
+type ArchiveBatch = { published: number; duplicates: number; invalid: number; review: number; next: number | null };
+type ReasonBatch = { filled: number; processed: number; next: number | null };
+type ArchiveAction = 'publish' | 'fill-reason';
 type Revision = { version: number; date: string; action: string; before: Fields; fields: Fields };
 const labels: Record<keyof Fields, string> = {
   name: 'ФИО', birthDate: 'Дата рождения', reason: 'Причина', reasonDetails: 'Описание причины', source: 'Источник информации', publishedAt: 'Дата публикации сообщения',
@@ -22,10 +24,12 @@ const archivePage = (id: string, page: number, excluded = false) =>
 const maxMiB = 9;
 const maxFile = maxMiB * 1024 * 1024;
 const defaultSelection: Selection = { from: null, to: null, reasons: [], includeAny: [], excludeAny: [], requireReason: false };
-const selectionCount = (job: Job) => job.scanned == null ? `сообщений ${job.total}` : `отобрано ${job.total} из ${job.scanned}`;
-const fieldsOf = <K extends keyof Fields>(fields: Fields, key: K) => key === 'reason' ? WATCHLIST_REASONS[fields[key]] || fields[key] : fields[key];
+const selectionCount = (job: Job) => job.scanned == null ? `сообщений ${job.total}` : `карточек ${job.total} · сообщений просмотрено ${job.scanned}`;
+const fieldsOf = <K extends keyof Fields>(fields: Fields, key: K) => key === 'reason'
+  ? fields.reason === 'other' && fields.reasonDetails === '❌' ? '❌' : WATCHLIST_REASONS[fields[key]] || fields[key]
+  : fields[key];
 const rowStatus = (r: Row) => r.excluded ? 'Исключено из импорта' : r.state === 'removed' ? 'Удалена' : r.state === 'draft' ? 'Черновик' : WATCHLIST_STATUS[r.entryStatus || 'pending'] || 'На проверке';
-const revisionLabels: Record<string,string> = { submitted:'Отправлено на проверку', publish:'Опубликовано', hide:'Скрыто', reject:'Отклонено', excluded:'Исключено из импорта', restored:'Возвращено в импорт' };
+const revisionLabels: Record<string,string> = { submitted:'Отправлено на проверку', publish:'Опубликовано', hide:'Скрыто', reject:'Отклонено', excluded:'Исключено из импорта', restored:'Возвращено в импорт', reason_filled:'Добавлена общая причина' };
 
 export default function WatchlistArchiveSheet({ userId, onClose, request, onSubmitted }: {
   userId: string; onClose: () => void; request: (path: string, body?: unknown) => Promise<any>; onSubmitted: () => void;
@@ -48,11 +52,11 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
   const [fields, setFields] = useState<Fields>();
   const [history, setHistory] = useState<Revision[] | null>(null);
   const [confirmed, setConfirmed] = useState(false);
-  const [showPublish, setShowPublish] = useState(false);
+  const [archiveAction, setArchiveAction] = useState<ArchiveAction | null>(null);
   const [defaultReason, setDefaultReason] = useState('');
   const [defaultReasonDetails, setDefaultReasonDetails] = useState('');
   const [basisVerified, setBasisVerified] = useState(false);
-  const [publishProgress, setPublishProgress] = useState<number | null>(null);
+  const [archiveProgress, setArchiveProgress] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [feedback, setFeedback] = useState('');
@@ -87,7 +91,7 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
   };
   const openJob = (id: string) => {
     setJobId(id); setPage(0); setDetail(null); setSelected(null); setError(''); setFeedback('');
-    setShowPublish(false); setBasisVerified(false); setShowExcluded(false);
+    setArchiveAction(null); setBasisVerified(false); setShowExcluded(false);
   };
   const filterReady = !instruction.trim() || interpretedInstruction === instruction.trim();
   const interpret = () => run(async () => {
@@ -113,6 +117,10 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
   });
   const select = (r: Row) => { setSelected(r); setFields(r.fields); setConfirmed(false); setHistory(null); setError(''); setFeedback(''); };
   const setField = (key: keyof Fields, value: string) => { setFields(prev => prev ? { ...prev, [key]: value } : prev); setConfirmed(false); };
+  const setCardReason = (value: string) => {
+    setFields(previous => previous && ({ ...previous, reason: value === 'cross' ? 'other' : value, reasonDetails: value === 'cross' ? '❌' : '' }));
+    setConfirmed(false);
+  };
   const recordPath = selected ? `/archives/${encodeURIComponent(jobId)}/records/${selected.ordinal}` : '';
   const changeExclusion = () => run(async () => {
     if (!selected) return;
@@ -124,35 +132,49 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
     else setDetail(view);
     setFeedback(action === 'exclude' ? 'Черновик исключён из импорта' : 'Черновик возвращён в импорт');
   });
-  const publishArchive = () => run(async () => {
-    if (!detail?.draftCount || !basisVerified) return;
-    setPublishProgress(0);
+  const reasonText = defaultReasonDetails.trim();
+  const validReason = defaultReason !== 'other' || reasonText === '❌' || reasonText.length >= 3;
+  const applyArchiveAction = (action: ArchiveAction) => run(async () => {
+    if (!detail?.draftCount || !validReason || (action === 'publish' ? !basisVerified : !defaultReason)) return;
+    setArchiveProgress(0);
     const path = `/archives/${encodeURIComponent(jobId)}`;
-    let after: number | null = 0, published = 0, duplicates = 0, invalid = 0, review = 0;
+    const payload = defaultReason === 'cross'
+      ? { defaultReason: 'other', defaultReasonDetails: '❌' }
+      : { defaultReason, defaultReasonDetails };
+    let after: number | null = 0, published = 0, duplicates = 0, invalid = 0, review = 0, filled = 0, processed = 0;
     let finished = false;
     try {
       do {
-        const batch: PublishBatch = await request(path + '/publish', {
-          after, defaultReason, defaultReasonDetails, basisVerified, shownVersion: WATCHLIST_POLICY_VERSION,
-        });
-        published += batch.published;
-        duplicates += batch.duplicates;
-        invalid += batch.invalid;
-        review += batch.review;
-        setPublishProgress(published + duplicates + invalid + review);
-        after = batch.next;
+        if (action === 'fill-reason') {
+          const batch: ReasonBatch = await request(path + '/fill-reason', { after, ...payload });
+          filled += batch.filled;
+          processed += batch.processed;
+          after = batch.next;
+        } else {
+          const batch: ArchiveBatch = await request(path + '/publish', {
+            after, ...payload, basisVerified, shownVersion: WATCHLIST_POLICY_VERSION,
+          });
+          published += batch.published;
+          duplicates += batch.duplicates;
+          invalid += batch.invalid;
+          review += batch.review;
+          processed = published + duplicates + invalid + review;
+          after = batch.next;
+        }
+        setArchiveProgress(processed);
       } while (after !== null);
       finished = true;
-      setShowPublish(false);
+      setArchiveAction(null);
       setBasisVerified(false);
     } finally {
-      setPublishProgress(null);
-      if (finished || published + duplicates + invalid + review > 0) {
-        setFeedback(`Опубликовано ${published} · Дубли ${duplicates} · Требуют проверки ${invalid + review}`);
+      setArchiveProgress(null);
+      if (finished || processed > 0) {
+        setFeedback(action === 'fill-reason' ? `Заполнено причин · ${filled}`
+          : `Опубликовано ${published} · Дубли ${duplicates} · Требуют проверки ${invalid + review}`);
       }
       const latest: Detail | null = await request(archivePage(jobId, page)).catch(() => null);
       if (latest) setDetail(latest);
-      if (published || (latest && latest.draftCount < detail.draftCount)) onSubmitted();
+      if (action === 'publish' && (published || (latest && latest.draftCount < detail.draftCount))) onSubmitted();
     }
   });
   const save = (action: 'save' | 'submit') => run(async () => {
@@ -166,6 +188,7 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
     setFeedback(action === 'submit' ? 'Отправлено на ручную проверку' : 'Изменения сохранены');
   });
   const mayEdit = selected && !selected.excluded && (selected.state === 'draft' || ['pending', 'hidden'].includes(selected.entryStatus || ''));
+  const cardReason = fields?.reason === 'other' && fields.reasonDetails === '❌' ? 'cross' : fields?.reason;
   return <GlassSheet title="Импорт из Telegram" onClose={onClose} confirmClose={() => !working.current}>
     <div className="space-y-4 p-4">
       <WatchlistError message={error || null} />
@@ -221,30 +244,35 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
         {detail.job.error && <WatchlistError message={detail.job.error} />}
       </div>}
       {detail?.job.status === 'ready' && !selected && (showExcluded || detail.excludedCount > 0) && <button type="button" className={wlSecondary} disabled={busy}
-        onClick={() => { setPage(0); setDetail(null); setShowExcluded(value => !value); setShowPublish(false); setBasisVerified(false); }}>
+        onClick={() => { setPage(0); setDetail(null); setShowExcluded(value => !value); setArchiveAction(null); setBasisVerified(false); }}>
         {showExcluded ? 'К списку импорта' : `Исключённые · ${detail.excludedCount}`}
       </button>}
       {showExcluded && detail && !detail.items.length && <p className="text-sm text-slate-500">Исключённых записей нет.</p>}
       {detail?.job.status === 'ready' && detail.draftCount > 0 && !selected && !showExcluded && <div className={`${wlCard} space-y-3`}>
-        {!showPublish ? <button type="button" className={wlButton} disabled={busy || !detail.canPublish} onClick={() => setShowPublish(true)}>Опубликовать все</button> : <>
+        {!archiveAction ? <div className="flex flex-wrap gap-2">
+          <button type="button" className={wlButton} disabled={busy || !detail.canPublish} onClick={() => setArchiveAction('publish')}>Опубликовать все</button>
+          <button type="button" className={wlSecondary} disabled={busy} onClick={() => setArchiveAction('fill-reason')}>Заполнить причины</button>
+        </div> : <>
           <p className="text-sm font-semibold">Черновики в этом файле · {detail.draftCount}</p>
           <fieldset disabled={busy} className="space-y-3">
             <WatchlistField label="Причина для записей без причины">
               <select className={wlInput} value={defaultReason} onChange={e => { setDefaultReason(e.target.value); setBasisVerified(false); }}>
                 <option value="">Выберите причину</option>
+                <option value="cross">❌</option>
                 {Object.entries(WATCHLIST_REASONS).map(([key, label]) => <option value={key} key={key}>{label}</option>)}
               </select>
             </WatchlistField>
             {defaultReason === 'other' && <WatchlistField label="Описание причины"><textarea rows={2} className={wlInput} maxLength={1000} value={defaultReasonDetails}
               onChange={e => { setDefaultReasonDetails(e.target.value); setBasisVerified(false); }} /></WatchlistField>}
-            <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={basisVerified}
-              onChange={e => setBasisVerified(e.target.checked)} />Записи проверены, основание публикации подтверждаю</label>
+            {archiveAction === 'publish' && <label className="flex items-start gap-2 text-sm"><input type="checkbox" checked={basisVerified}
+              onChange={e => setBasisVerified(e.target.checked)} />Записи проверены, основание публикации подтверждаю</label>}
           </fieldset>
-          {publishProgress !== null && <p role="status" className="text-sm">Обработано {publishProgress} из {detail.draftCount}</p>}
+          {archiveProgress !== null && <p role="status" className="text-sm">Обработано {archiveProgress} из {detail.draftCount}</p>}
           <div className="flex flex-wrap gap-2">
-            <button type="button" className={wlButton} disabled={busy || !basisVerified || !detail.canPublish || (defaultReason === 'other' && defaultReasonDetails.trim().length < 3)}
-              onClick={() => void publishArchive()}>Подтвердить публикацию</button>
-            <button type="button" className={wlSecondary} disabled={busy} onClick={() => { setShowPublish(false); setBasisVerified(false); }}>Отмена</button>
+            <button type="button" className={wlButton}
+              disabled={busy || !validReason || (archiveAction === 'publish' ? !basisVerified || !detail.canPublish : !defaultReason)}
+              onClick={() => void applyArchiveAction(archiveAction)}>{archiveAction === 'publish' ? 'Подтвердить публикацию' : 'Заполнить пустые причины'}</button>
+            <button type="button" className={wlSecondary} disabled={busy} onClick={() => { setArchiveAction(null); setBasisVerified(false); }}>Отмена</button>
           </div>
         </>}
         {!detail.canPublish && <p className="text-xs text-slate-500">Публикация недоступна при текущих настройках.</p>}
@@ -252,8 +280,11 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
       {detail?.items.length && !selected ? <WatchlistPrivateContent userId={userId} showWatermark={false} className="space-y-3">
         {detail.items.map(row => <button className={`${wlCard} block w-full text-left`} type="button" key={row.ordinal} onClick={() => select(row)} disabled={row.state==='removed'}>
           <span className="block font-semibold break-words">{row.fields?.name || `Сообщение № ${row.ordinal}`}</span>
+          {row.fields && <span className="mt-1 block break-words text-sm">
+            {row.fields.birthDate && `${row.fields.birthDate} · `}
+            {row.fields.reason === 'other' ? row.fields.reasonDetails || 'Причина не указана' : WATCHLIST_REASONS[row.fields.reason] || 'Причина не указана'}
+          </span>}
           <span className="block text-sm text-slate-500">{rowStatus(row)}{row.duplicate ? ' · возможный дубль' : row.errors.length && row.state==='draft' ? ' · проверьте поля' : ''}</span>
-          {row.message?.text && <span className="mt-1 block truncate text-xs text-slate-500">{row.message.text}</span>}
         </button>)}
         {(detail.hasMore || page > 0) && <div className="flex justify-between gap-2">
           <button className={wlSecondary} disabled={!page} onClick={() => { setDetail(null); setPage(n => n-1); }}>Назад</button>
@@ -262,7 +293,9 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
       </WatchlistPrivateContent> : null}
       {selected && fields && <WatchlistPrivateContent userId={userId} showWatermark={false} className="space-y-3">
         <details className={wlCard} open>
-          <summary className="cursor-pointer font-semibold">Исходное сообщение Telegram</summary>
+          <summary className="cursor-pointer font-semibold">{selected.message?.people
+            ? `Фрагмент сообщения · ${selected.message.part} из ${selected.message.people}`
+            : 'Исходное сообщение Telegram'}</summary>
           {selected.message?.publishedAt && <p className="mt-1 text-xs text-slate-500">{watchlistDateTime(selected.message.publishedAt)}</p>}
           <p className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-sm">{selected.message?.text}</p>
           {selected.message?.truncated && <p className="mt-2 text-xs text-slate-500">Показана первая часть длинного сообщения.</p>}
@@ -274,8 +307,8 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
           <fieldset disabled={busy || !mayEdit} className="space-y-3">
             <WatchlistField label={labels.name}><input className={wlInput} maxLength={200} value={fields.name} onChange={e => setField('name', e.target.value)} /></WatchlistField>
             <WatchlistField label="Дата рождения · необязательно"><input className={wlInput} maxLength={32} placeholder="ДД.ММ.ГГГГ или год" value={fields.birthDate} onChange={e => setField('birthDate', e.target.value)} /></WatchlistField>
-            <WatchlistField label={labels.reason}><select className={wlInput} value={fields.reason} onChange={e => setField('reason', e.target.value)}><option value="">Выберите причину</option>{Object.entries(WATCHLIST_REASONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></WatchlistField>
-            {fields.reason==='other' && <WatchlistField label={labels.reasonDetails}><textarea className={wlInput} rows={3} maxLength={1000} placeholder="Описание без паспортных данных и контактов" value={fields.reasonDetails} onChange={e => setField('reasonDetails', e.target.value)} /></WatchlistField>}
+            <WatchlistField label={labels.reason}><select className={wlInput} value={cardReason} onChange={e => setCardReason(e.target.value)}><option value="">Выберите причину</option><option value="cross">❌</option>{Object.entries(WATCHLIST_REASONS).map(([key, label]) => <option key={key} value={key}>{label}</option>)}</select></WatchlistField>
+            {cardReason==='other' && <WatchlistField label={labels.reasonDetails}><textarea className={wlInput} rows={3} maxLength={1000} placeholder="Описание без паспортных данных и контактов" value={fields.reasonDetails} onChange={e => setField('reasonDetails', e.target.value)} /></WatchlistField>}
             <WatchlistField label={labels.source}><input className={wlInput} maxLength={200} value={fields.source} onChange={e => setField('source', e.target.value)} /></WatchlistField>
             <WatchlistField label={labels.publishedAt}><input className={wlInput} maxLength={80} value={fields.publishedAt} placeholder="ДД.ММ.ГГГГ ЧЧ:ММ (МСК)" onChange={e => setField('publishedAt', e.target.value)} /></WatchlistField>
             {selected.dateFromImport && fields.publishedAt === selected.fields?.publishedAt && <p className="text-xs text-slate-500">Подставлена дата импорта.</p>}

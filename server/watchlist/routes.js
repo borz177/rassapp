@@ -8,7 +8,7 @@ const P = require('./policy');
 const { parseImport } = require('./bulkImport');
 const multer = require('multer');
 const { MAX_BYTES, MAX_MIB } = require('./telegramArchive');
-const { createArchiveImports, draftFields, verifyDraft, withPublicationDate } = require('./archiveImports');
+const { createArchiveImports, draftFields, verifyDraft, withPublicationDate, MAX_ARCHIVE_RECORDS } = require('./archiveImports');
 const { interpretSelection } = require('./archiveSelection');
 const digest = value => crypto.createHash('sha256').update(String(value)).digest('hex');
 const id = () => crypto.randomUUID();
@@ -559,12 +559,36 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     if (candidate.duplicate) throw P.problem(409, 'В реестре уже есть возможный дубль с такими ФИО.');
     return candidate;
   }
-  const archiveSourceIndex = (owner, message) => vault.index('telegram_source',
-    [owner,message.source.trim().toLowerCase(),message.messageId,message.publishedAt || digest(message.text)]);
+  function archiveSourceKeys(owner, message) {
+    const base = [owner,message.source.trim().toLowerCase(),message.messageId,message.stamp || message.publishedAt || digest(message.text)];
+    const legacy = vault.index('telegram_source', base);
+    return message.part ? { index:vault.index('telegram_source', [...base,message.part]), legacy } : { index:legacy };
+  }
+  async function archiveSources(db, owner, keys) {
+    const indexes = [...new Set(keys.flatMap(key => key.legacy ? [key.index,key.legacy] : [key.index]))];
+    const { rows } = await db.query('SELECT * FROM client_watchlist_archive_records WHERE owner_id=$1 AND source_index=ANY($2::text[])',
+      [owner,indexes]);
+    return new Map(rows.map(row => [row.source_index,row]));
+  }
+  function duplicateArchiveSource(existing, keys, fields) {
+    if (existing.has(keys.index)) return true;
+    const previous = existing.get(keys.legacy);
+    if (!previous) return false;
+    if (!previous.payload) return true;
+    const old = verifyDraft(archives.open(previous).fields).valid;
+    const current = verifyDraft(fields).valid;
+    return old.name && current.name && P.normalizeName(old.name)===P.normalizeName(current.name)
+      && (!old.birthDate || !current.birthDate || old.birthDate===current.birthDate);
+  }
   const archiveProvenance = (data, candidate) => ({
     source:candidate.source,publishedAt:candidate.publishedAt,messageId:data.message.messageId,
+    ...(data.message.part ? { part:data.message.part,people:data.message.people } : {}),
     ...(data.dateFromImport ? { dateFromImport:true } : {}),
   });
+  const archiveCursor = (value = 0) => {
+    if (!Number.isInteger(value) || value < 0 || value > MAX_ARCHIVE_RECORDS) throw P.problem(400,'Некорректная страница архива.');
+    return value;
+  };
   app.post('/api/admin/watchlist/archives',auth,receiveArchive,wrap(async (req,db) => {
     requireImport();
     if ((await settings(db)).submissions_paused) throw P.problem(403, 'Приём новых записей временно приостановлен.');
@@ -594,10 +618,10 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     return { ...view, canPublish:view.job.status==='ready' && canPublishImport(await settings(db)) };
   });
   adminRoute('post', '/archives/:jobId/publish', async (req, db) => {
-    const owner = req.user.id, b = req.body || {}, after = b.after ?? 0;
+    const owner = req.user.id, b = req.body || {};
     if (b.basisVerified !== true) throw P.problem(403, 'Подтвердите основание публикации записей.');
     if (b.shownVersion !== P.POLICY_VERSION) throw P.problem(400, 'Обновите приложение, чтобы подтвердить публикацию.');
-    if (!Number.isInteger(after) || after < 0 || after > 20000) throw P.problem(400, 'Некорректная страница архива.');
+    const after = archiveCursor(b.after ?? 0);
     const defaultReason = b.defaultReason ? P.submissionReason({ reason:b.defaultReason, reasonDetails:b.defaultReasonDetails }) : null;
     await archiveLock(db);
     const s = await settings(db), revoked = requireImport();
@@ -609,20 +633,18 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
     const seen = new Set();
     const sources = new Map(rows.map(row => {
       const data = archives.open(row);
-      return [row.ordinal, { data, index:archiveSourceIndex(owner,data.message) }];
+      return [row.ordinal, { data, keys:archiveSourceKeys(owner,data.message) }];
     }));
-    const existing = await db.query('SELECT source_index FROM client_watchlist_archive_records WHERE owner_id=$1 AND source_index=ANY($2::text[])',
-      [owner,[...sources.values()].map(row=>row.index)]);
-    for (const row of existing.rows) seen.add(row.source_index);
+    const existing = await archiveSources(db,owner,[...sources.values()].map(row=>row.keys));
     for (const row of rows) {
       const source = sources.get(row.ordinal);
-      if (seen.has(source.index)) { result.duplicates++; continue; }
+      if (seen.has(source.keys.index) || duplicateArchiveSource(existing,source.keys,source.data.fields)) { result.duplicates++; continue; }
       let data = withPublicationDate(source.data, now);
       if (!data.fields.reason && defaultReason) data = { ...data, fields:draftFields({ ...data.fields, ...defaultReason }) };
       const { valid, errors } = verifyDraft(data.fields);
       if (errors.length) { result.invalid++; continue; }
-      seen.add(source.index);
-      batch.set(row.ordinal, { row, data, index:source.index, candidate:{ number:row.ordinal,...valid } });
+      seen.add(source.keys.index);
+      batch.set(row.ordinal, { row, data, index:source.keys.index, candidate:{ number:row.ordinal,...valid } });
     }
     const candidates = await inspectImportRows(db,[...batch.values()].map(item=>item.candidate),revoked,null,true);
     for (const candidate of candidates) {
@@ -635,6 +657,22 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       result.published++;
     }
     return result;
+  });
+  adminRoute('post', '/archives/:jobId/fill-reason', async (req, db) => {
+    requireImport();
+    const owner = req.user.id, b = req.body || {}, after = archiveCursor(b.after ?? 0);
+    const reason = P.submissionReason({ reason:b.defaultReason, reasonDetails:b.defaultReasonDetails });
+    await archiveLock(db);
+    const { rows, next } = await archives.draftBatch(db,owner,req.params.jobId,after);
+    let filled = 0;
+    for (const row of rows) {
+      const data = archives.open(row);
+      if (data.fields.reason) continue;
+      data.fields = draftFields({ ...data.fields, ...reason });
+      await archives.write(db,row,data,owner,'reason_filled');
+      filled++;
+    }
+    return { filled, processed:rows.length, next };
   });
   adminRoute('get', '/archives/:jobId/records/:ordinal/history', (req,db) => {
     requireImport();
@@ -686,11 +724,11 @@ function registerWatchlistRoutes(app, { pool, auth, vault = loadVault(), totpSec
       await event(db,owner,'ARCHIVE_ENTRY_CORRECTED',registered.id);
       return archives.write(db,row,data,owner,'corrected');
     }
-    const index = archiveSourceIndex(owner,data.message);
-    const duplicate = await db.query('SELECT 1 FROM client_watchlist_archive_records WHERE owner_id=$1 AND source_index=$2',[owner,index]);
-    if (duplicate.rowCount) throw P.problem(409,'Это сообщение уже было отправлено на проверку.');
+    const keys = archiveSourceKeys(owner,data.message);
+    if (duplicateArchiveSource(await archiveSources(db,owner,[keys]),keys,data.fields))
+      throw P.problem(409,'Эта карточка уже была отправлена на проверку.');
     const imported = await insertEntry(db,owner,s,candidate,fields,{adminImport:true,review:true,publicationMode:null});
-    return archives.write(db,row,data,owner,'submitted',{entryId:imported.id,state:'submitted',sourceIndex:index});
+    return archives.write(db,row,data,owner,'submitted',{entryId:imported.id,state:'submitted',sourceIndex:keys.index});
   });
   adminRoute('post', '/entries/:id/decision', async (req, db) => {
     await archiveLock(db);

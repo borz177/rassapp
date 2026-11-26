@@ -849,6 +849,50 @@ test('общий список: реальная локальная PostgreSQL, �
         const rejectedArchive = await upload(post(501,`ФИО: ${rejectedName}`));
         await waitArchive(rejectedArchive.id);
         assert.deepEqual(await adm(`/archives/${rejectedArchive.id}/publish`,defaults),{published:0,duplicates:0,invalid:0,review:1,next:null});
+        const peopleDate = '02.04.2026 10:00:00 UTC+03:00';
+        const group = [
+          'ФИО: Парный Первый Учебный<br>Дата рождения: 04.04.1991<br>Причина: Длительная просрочка',
+          'ФИО: Парный Второй Учебный<br>Дата рождения: 05.04.1991<br>Причина: Неисполнение обязательств',
+          'ФИО: Парный Третий Учебный<br>Дата рождения: 06.04.1991<br>Причина: Длительная просрочка',
+        ];
+        const oldJob = await upload(post(700,group[0],peopleDate));
+        await waitArchive(oldJob.id);
+        assert.equal((await adm(`/archives/${oldJob.id}/publish`,defaults)).published,1);
+        const splitJob = await upload(post(700,group.join('<br><br>'),peopleDate));
+        const split = await waitArchive(splitJob.id);
+        assert.deepEqual([split.job.scanned,split.job.total],[1,3]);
+        assert.deepEqual(split.items.map(row=>[row.message.messageId,row.message.part,row.fields.birthDate,row.fields.reason]),[
+          ['700',1,'04.04.1991','overdue'],['700',2,'05.04.1991','unfulfilled'],['700',3,'06.04.1991','overdue'],
+        ]);
+        const one = split.items[1];
+        assert.equal((await adm(`/archives/${splitJob.id}/records/${one.ordinal}`,{action:'submit',confirmed:true,version:one.version,fields:one.fields})).state,'submitted');
+        assert.deepEqual(await adm(`/archives/${splitJob.id}/publish`,defaults),{published:1,duplicates:1,invalid:0,review:0,next:null});
+        const republish = await upload(post(700,group.join('<br><br>'),peopleDate),'admin',proof,200,{from:null,to:null,reasons:['overdue'],includeAny:[],excludeAny:[],requireReason:true});
+        await waitArchive(republish.id);
+        assert.equal((await adm(`/archives/${republish.id}/publish`,defaults)).published,0);
+        const crossName = 'Отмеченный Учебный Тестович';
+        const fillJob = await upload([
+          post(801,`ФИО: ${crossName}\n❌`,peopleDate),
+          post(802,'ФИО: Незаданный Учебный Тестович',peopleDate),
+          post(803,'ФИО: Исключенный Учебный Тестович',peopleDate),
+        ].join(''));
+        const beforeFill = await waitArchive(fillJob.id);
+        assert.equal(beforeFill.items[0].fields.reasonDetails,'❌');
+        await adm(`/archives/${fillJob.id}/records/3`,{action:'exclude',version:beforeFill.items[2].version});
+        const fillPath = `/archives/${fillJob.id}/fill-reason`;
+        await adm(fillPath,{defaultReason:'other',defaultReasonDetails:'×'},400);
+        const filled = await adm(fillPath,{defaultReason:'overdue'});
+        assert.deepEqual(filled,{filled:1,processed:2,next:null});
+        assert.deepEqual(await adm(fillPath,{defaultReason:'unfulfilled'}),{filled:0,processed:2,next:null});
+        const afterFill = await adm(`/archives/${fillJob.id}`);
+        assert.deepEqual(afterFill.items.map(row=>[row.state,row.fields.reason,row.fields.reasonDetails]),[
+          ['draft','other','❌'],['draft','overdue',''],
+        ]);
+        assert.equal((await adm(`/archives/${fillJob.id}?excluded=1`)).items[0].fields.reason,'');
+        assert.equal((await adm(`/archives/${fillJob.id}/records/2/history`)).items[0].action,'reason_filled');
+        assert.equal((await adm('/entries?name='+encodeURIComponent(crossName))).items.length,0);
+        assert.equal((await adm(`/archives/${fillJob.id}/publish`,defaults)).published,2);
+        assert.equal((await user('/search',{name:crossName})).items[0].reasonDetails,'❌');
       } finally {
         if(entryId) await pool.query('DELETE FROM client_watchlist_entries WHERE id=$1',[entryId]);
         await adm('/settings',{...(await adm('/overview')).settings,autoPublish:existing.autoPublish,submissionsPaused:existing.submissionsPaused,reason:'Восстановление настроек теста'});
