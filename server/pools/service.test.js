@@ -87,6 +87,38 @@ for (const firstDate of ['2026-11-10', '2026-12-01']) {
     });
 }
 
+test('в новом пуле договор текущего месяца и пустой рассчитанный месяц не блокируют ранний вход', async () => {
+    const f = await fixture();
+    const first = await f.svc.mutate(f.owner, 'new', 'addInvestor', {
+        requestId: req(), newPoolName: 'Новый пул', name: 'Первый', amount: 100000, rate: 100, date: '2026-11-10',
+    });
+    const id = first.account.id;
+    await save(f.owner, 'sales', {
+        ...f.sale, id: `current_sale_${f.owner}`, accountId: id, startDate: '2026-12-01',
+        paymentPlan: [{ ...f.sale.paymentPlan[0], date: '2026-12-01T08:00:00+03:00' }],
+    });
+    const before = await f.svc.preview(f.owner, id);
+    assert.deepEqual(before.account.poolAccounting.closed.map(report => [report.month, report.gross]), [['2026-11', 0]]);
+    const second = await f.svc.mutate(f.owner, id, 'addInvestor', {
+        requestId: req(), name: 'Второй', amount: 100000, rate: 100, date: '2026-10-20',
+    });
+    assert.equal(second.account.poolAccounting.startMonth, '2026-10');
+    assert.equal(P.poolDay(second.changed.sales[0].startDate), '2026-10-20');
+    const after = await f.svc.preview(f.owner, id);
+    assert.deepEqual(after.account.poolAccounting.closed.map(report => [report.month, report.gross]), [['2026-10', 0], ['2026-11', 0]]);
+    assert.equal(after.reports.find(report => report.month === '2026-12').gross, 100000);
+    assert.equal(after.balances.manager.earned, 0);
+    const third = await f.svc.mutate(f.owner, id, 'addInvestor', {
+        requestId: req(), name: 'Третий', amount: 100000, rate: 100, date: '2026-11-18',
+    });
+    const final = await f.svc.preview(f.owner, id);
+    const thirdId = third.changed.investors[0].id;
+    const november = final.account.poolAccounting.closed.find(report => report.month === '2026-11');
+    assert.equal(november.gross, 0);
+    assert(november.shares.some(row => row.investorId === thirdId));
+    assert.equal(final.balances.investors[thirdId].earned, 33333.33);
+});
+
 // Второй капитал участвует 15 дней. База графика — 51 день, месячная — 20 дней.
 for (const [basis, expectedSecond] of [['MONTH', 18750], ['SCHEDULE_PERIOD', 7352.94]]) {
     test(`исправление первого входа в открытом месяце по способу ${basis}`, async () => {

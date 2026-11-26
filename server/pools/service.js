@@ -36,6 +36,29 @@ function isPoolOpening(data, account) {
     });
 }
 
+function canExtendPoolOpening(data, account, P) {
+    const config = account.poolAccounting;
+    if (!config || Number(account.initialBalance || 0) !== 0 || Object.keys(config.openingTerms?.members || {}).length
+        || config.adjustments?.length || config.entryDateAdjustments?.length || config.reinvestments?.length
+        || account.lossEvents?.length) return false;
+    if (config.closed.some(report => report.sources?.length || report.costRows?.length || report.issues?.length
+        || [report.gross, report.costs, report.distributable, report.carryIn, report.carryOut, report.unallocated,
+            ...report.allocations.map(row => row.amount), ...(report.managerAllocations || []).map(row => row.amount)]
+            .some(amount => Number(amount || 0) !== 0))) return false;
+
+    const start = P.poolMonthStart(config.startMonth);
+    const beforeStart = date => !(P.poolTime(date) >= start);
+    const deposits = new Map((account.poolMemberIds || []).map(id => [`dep_${id.replace(/^u_/, '')}`, `system_deposit_${id}`]));
+    return !data.expenses.some(e => e.accountId === account.id && beforeStart(e.date))
+        && !data.retailSales.some(s => s.accountId === account.id && (beforeStart(s.date) || s.payments?.some(p => beforeStart(p.date))))
+        && !data.sales.some(s => {
+            if (s.accountId !== account.id && !s.funding?.some(f => f.accountId === account.id)) return false;
+            if (s.accountId === account.id && s.type === 'CASH' && s.buyPrice === 0
+                && deposits.has(s.id) && deposits.get(s.id) === s.customerId && !s.funding?.length) return false;
+            return beforeStart(s.startDate) || P.poolMoneyIn(s).some(p => beforeStart(p.date));
+        });
+}
+
 function historyIssues(P, account, members, sales, expenses, reports, rows) {
     const issues = [];
     const capitalIssues = [];
@@ -599,9 +622,14 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                 const opening = isPoolOpening(data, account);
                 if (!account.poolAccounting && !account.poolMemberIds?.length && !data.sales.some(s => s.accountId === account.id))
                     initialize(opening ? entryMonth : currentMonth);
-                else if (opening && account.poolAccounting?.startMonth <= currentMonth && entryMonth < account.poolAccounting.startMonth) {
+                const config = account.poolAccounting;
+                const last = config?.closed?.at(-1);
+                const cutoff = config && (last ? P.poolMonthStart(P.nextPoolMonth(last.month))
+                    : Math.min(P.poolMonthStart(config.startMonth), P.poolMonthStart(currentMonth)));
+                const crossesCutoff = cutoff && P.poolTime(normalized) < cutoff;
+                const canExtend = crossesCutoff && config.startMonth <= currentMonth && canExtendPoolOpening(data, account, P);
+                if (canExtend && entryMonth < config.startMonth) {
                     if (!validMonth(entryMonth)) fail(400, 'Проверьте дату вложения.');
-                    const config = account.poolAccounting;
                     const previous = config.openingTerms.date;
                     const date = new Date(P.poolMonthStart(entryMonth)).toISOString();
                     config.startMonth = entryMonth;
@@ -609,12 +637,15 @@ function createPoolService({ pool, checkFeatureAccess, getSubscriptionState, get
                     config.terms = config.terms.map((term, index) => index === 0 && term.date === previous
                         ? { ...term, date } : term);
                 }
+                // Пустые снимки будут рассчитаны заново с учётом даты входа.
+                if (canExtend) config.closed = [];
                 const date = !account.poolAccounting && /^\d{4}-\d{2}-\d{2}$/.test(input.date || '') && input.date !== P.poolDay(now())
                     ? new Date(`${input.date}T00:00:00Z`).toISOString() : normalized;
                 const time = P.poolTime(date);
-                const last = account.poolAccounting?.closed?.at(-1);
-                if (account.poolAccounting && time < (last ? P.poolMonthStart(P.nextPoolMonth(last.month)) : Math.min(P.poolMonthStart(account.poolAccounting.startMonth), P.poolMonthStart(P.poolMonth(now())))))
-                    fail(409, 'Месяц вложения уже закрыт.');
+                if (crossesCutoff && !canExtend)
+                    fail(409, last && entryMonth >= account.poolAccounting.startMonth
+                        ? 'Прибыль за этот месяц уже рассчитана. Если инвестор уже добавлен, откройте его условия и проверьте перерасчёт через «Исправить дату входа».'
+                        : 'Дата раньше начала месячного учёта. Проверьте дату и историю общего пула.');
                 const id = `inv_pool_${crypto.createHash('sha256').update(JSON.stringify([owner, input.requestId])).digest('hex').slice(0, 20)}`;
                 let investorId = id;
                 if (input.email) {
