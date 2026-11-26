@@ -1,14 +1,14 @@
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const { telegramMessages, publicationDate } = require('./telegramArchive');
-const { draftFields, verifyDraft, withPublicationDate, messageDrafts } = require('./archiveImports');
+const { draftFields, verifyDraft, withPublicationDate, messageDrafts, linkArchiveReasons } = require('./archiveImports');
 const { defaultSelection } = require('./archiveSelection');
 
 test('Telegram HTML preserves text and message dates without interpreting the archive', () => {
   const html = '<div class="message default" id="message42"><div class="date details" title="25.11.2026 15:30:04 UTC+05:00"></div>' +
     '<div class="text">Первая строка<br>Вторая &lt;img&gt;<style>SECRET</style><svg><text>HIDE</text></svg><a href="https://example.invalid">ссылка</a></div></div>';
   assert.deepEqual(telegramMessages(html), [{
-    messageId:'42',text:'Первая строка\nВторая <img>ссылка',publishedAt:'2026-11-25T10:30:04.000Z',truncated:false,
+    messageId:'42',position:1,text:'Первая строка\nВторая <img>ссылка',publishedAt:'2026-11-25T10:30:04.000Z',truncated:false,
   }]);
   assert.throws(()=>telegramMessages('<p>Обычный HTML</p>'),/NO_MESSAGES/);
   assert.equal(publicationDate('31.02.2026 10:00'),null);
@@ -128,4 +128,63 @@ test('birth dates with a space instead of a dot are normalized on the person car
   assert.deepEqual(rows.map(row=>[row.fields.birthDate,row.fields.reasonDetails]),[
     ['01.02.1990','❌'],['03.04.1991',''],
   ]);
+});
+
+const nameOne = 'Учебный Первый Примерович';
+const nameTwo = 'Учебная Вторая Примеровна';
+const message = (messageId, text, extra = {}) => ({
+  messageId, text, publishedAt: '2024-01-02T10:00:00Z', truncated: false, ...extra,
+});
+const linkedDrafts = messages => {
+  const people = linkArchiveReasons(messages);
+  return messages.flatMap((item, index) => messageDrafts(item, 'Тестовый источник', Date.now(), defaultSelection, people[index]));
+};
+
+test('short comments remain verbatim and inline comments stay with their person', () => {
+  for (const reason of ['не давать', 'Сложный клиент', 'Проблемная клиентка', 'Не давать ему']) {
+    const [row] = messageDrafts(message('1', nameOne+' 01.02.1990\n'+reason), 'Тестовый источник', Date.now(), defaultSelection);
+    assert.equal(row.fields.reasonDetails, reason);
+  }
+  const rows = messageDrafts(message('1', nameOne+' 01.02.1990 сложный клиент\n'+nameTwo+' 03.04.1991'), 'Тестовый источник', Date.now(), defaultSelection);
+  assert.deepEqual(rows.map(row => row.fields.reasonDetails), ['сложный клиент', '']);
+  assert.equal(linkedDrafts([message('1', nameOne), message('2', 'Не давать интервью', {replyTo:'1'})])[0].fields.reason, '');
+});
+
+test('Telegram extracts reply links, authors and joined continuation metadata', () => {
+  const html = '<div class="message default" id="message1"><div class="from_name">Автор</div><div class="text">'+nameOne+'</div></div>'+
+    '<div class="message default joined" id="message2"><div class="reply_to details"><a href="#go_to_message1">ответ</a></div><div class="text">не давать</div></div>';
+  const rows = telegramMessages(html);
+  assert.equal(rows[0].author, 'Автор');
+  assert.equal(rows[1].author, 'Автор');
+  assert.equal(rows[1].replyTo, '1');
+  assert.equal(rows[1].position, 2);
+  assert.equal(linkedDrafts(rows)[0].fields.reasonDetails, 'не давать');
+});
+
+test('explicit replies attach only to an unambiguous person and preserve their source', () => {
+  const rows = linkedDrafts([message('1', nameOne), message('2', nameTwo), message('3', 'сложный клиент', {replyTo:'1'})]);
+  assert.deepEqual(rows.map(row => row.fields.reasonDetails), ['сложный клиент','']);
+  assert.equal(rows[0].reasonMessage.messageId, '3');
+  assert.equal(rows[0].reasonMessage.kind, 'reply');
+  assert.equal(rows[0].message.text, nameOne);
+  const ambiguous = linkedDrafts([message('1', nameOne+'\n'+nameTwo), message('2', 'не давать', {replyTo:'1'})]);
+  assert.deepEqual(ambiguous.map(row => row.fields.reasonDetails), ['','']);
+  const named = linkedDrafts([message('1', nameOne+'\n'+nameTwo), message('2', nameTwo+' — сложный клиент', {replyTo:'1'})]);
+  assert.deepEqual(named.map(row => row.fields.reasonDetails), ['', 'сложный клиент']);
+});
+
+test('adjacent comments need the same author, consecutive messages and a short time gap', () => {
+  const source = message('1', nameOne, {author:'Автор',position:1});
+  const comment = message('2','не давать',{author:'Автор',position:2});
+  assert.equal(linkedDrafts([source,comment])[0].fields.reasonDetails, 'не давать');
+  for(const patch of [{author:'Другой'}, {author:undefined}, {position:3}, {publishedAt:'2024-01-02T10:06:00Z'}, {replyTo:'99'}, {truncated:true}]) {
+    assert.equal(linkedDrafts([source,{...comment,...patch}])[0].fields.reasonDetails, '');
+  }
+});
+
+test('conflicting replies and existing reasons are protected against silent replacement', () => {
+  const conflict = linkedDrafts([message('1', nameOne),message('2','не давать',{replyTo:'1'}),message('3','сложный клиент',{replyTo:'1'})]);
+  assert.equal(conflict[0].fields.reasonDetails, '');
+  const existing = linkedDrafts([message('1', nameOne+' 01.02.1990\nПричина: своя причина'),message('2','не давать',{replyTo:'1'})]);
+  assert.equal(existing[0].fields.reasonDetails,'своя причина');
 });

@@ -26,9 +26,11 @@ const crossMark = /[❌❎✖]/u;
 const crossReason = '❌';
 const capitalNameWord = String.raw`\p{Lu}[\p{L}\p{M}'’.-]*`;
 const inlineSeparation = new RegExp(String.raw`[ \t]{2,}(?=(?:${capitalNameWord}[ \t]+){2,3}${capitalNameWord}[ \t]*[,:]?[ \t]*\(?${datePattern})`, 'gu');
+const unlabelledReason = /^(?:(?:пожалуйста[,\s]+)?не\s+(?:давать|выдавать|оформлять)(?:\s+(?:ему|ей|товар|кредит))?(?=$|[.,!❌⛔]|\s*[.,!❌⛔])|(?:(?:очень\s+)?сложн(?:ый|ая)|проблемн(?:ый|ая))\s+клиент(?:ка)?(?=$|[\s.,!❌⛔]))/iu;
+const inlineComment = /^(.+?)[ \t]*(?:[,:–—]|[ \t]+-[ \t]+)[ \t]*(.+)$/u;
 
 function resolveStatement(line) {
-  const text = line.replace(/^[\p{P}\p{S}\s]+/u, '');
+  const text = line.replace(/^[\p{P}\p{S}\s]+/u, '').trim();
   if (statedNonpayment.test(text) || /[,.;]\s*не\s+оплачива(?:ет|ют)\s*[.!❌⛔]*$/iu.test(text))
     return 'Неисполнение обязательств';
   if (/^(?:длительная|долгая)\s+просрочка/iu.test(text)) return 'Длительная просрочка';
@@ -37,7 +39,18 @@ function resolveStatement(line) {
     return 'Не давать рассрочку';
   if (/^не\s+выходит\s+на\s+связь(?=$|[\s.,!❌⛔])/iu.test(text)) return 'Не выходит на связь';
   if (/^не\s+отвечает(?=$|[\s.,!❌⛔])/iu.test(text)) return 'Не отвечает';
+  if (unlabelledReason.test(text)) return text;
   return '';
+}
+
+function reasonFromLine(line) {
+  return knownValue(reasonLabel.exec(line)?.[1]?.trim() || '') || resolveStatement(line);
+}
+
+function standaloneReason(text) {
+  const lines = text.trim().split(/[\r\n]+/u).map(line => line.trim()).filter(Boolean);
+  if (lines.length !== 1) return '';
+  return /^(?:[❌❎✖\uFE0F\s]+)$/u.test(lines[0]) ? crossReason : reasonFromLine(lines[0]);
 }
 
 function birthField(value, labelled = false) {
@@ -71,6 +84,12 @@ function personHeader(line, nextLine) {
       const value = body.slice(labelAt).replace(/^[\s,:–—-]+/u, '').replace(dateLabel, '');
       return { name, birth: birthField(value, true), lines: 1 };
     }
+  }
+  const withComment = body.match(inlineComment);
+  if (withComment && plainName.test(withComment[1]) && hasNameWords(withComment[1])
+      && (matchRole || capitalized.test(withComment[1]) && patronymic.test(withComment[1]))
+      && reasonFromLine(withComment[2])) {
+    return { name: withComment[1], birth: { date: '', tail: withComment[2] }, lines: 1 };
   }
   const candidate = (matchRole ? body.match(labelledName)?.groups.name || '' : body).trim();
   if (!plainName.test(candidate) || (!matchRole && !hasNameWords(candidate))) return null;
@@ -110,20 +129,20 @@ function archivePeople(text) {
       .filter(line => !sharedReasonLabel.test(line))
       .map(line => knownValue(reasonLabel.exec(line)?.[1]?.trim() || '')).find(Boolean);
     const direct = [birth.tail, ...fragment.slice(header.lines)].map(resolveStatement).find(Boolean);
-    return { name: header.name, birthDate: birth.date, comment: own || direct, cross: fragment.some(line => crossMark.test(line)),
+    return { name: header.name, birthDate: birth.date, comment: own || direct, inlineComment: !!birth.tail && !!reasonFromLine(birth.tail), cross: fragment.some(line => crossMark.test(line)),
       text: headers.length === 1 ? text : fragment.join('\n') };
   });
   const preface = lines.slice(0, headers[0]?.index ?? 0);
-  const comments = new Set([...people.map(person => person.comment), ...preface.map(resolveStatement)].filter(Boolean));
+  const comments = new Set([...people.filter(person => !person.inlineComment).map(person => person.comment), ...preface.map(resolveStatement)].filter(Boolean));
   const tail = headers.at(-1);
   const standaloneCross = people.length > 1 && [...preface, ...lines.slice(tail.index + tail.lines)]
     .some(line => /^(?:[❌❎✖\uFE0F\s]+)$/u.test(line));
   const common = sharedReasons.length === 1 ? sharedReasons[0]
     : !sharedReasons.length && comments.size === 1 ? comments.values().next().value
     : !sharedReasons.length && !comments.size && standaloneCross ? crossReason : '';
-  return people.map(({cross,comment,...person}) => ({
+  return people.map(({cross,comment,inlineComment,...person}) => ({
     ...person, reasonText: cross || (people.length === 1 && preface.some(line => crossMark.test(line))) ? crossReason : comment || common,
   }));
 }
 
-module.exports = { archivePeople };
+module.exports = { archivePeople, standaloneReason };

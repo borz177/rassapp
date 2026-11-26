@@ -5,7 +5,7 @@ const P = require('./policy');
 const { MAX_BYTES, MAX_MIB, publicationDate } = require('./telegramArchive');
 const { importBirthDate } = require('./bulkImport');
 const { defaultSelection, validateSelection, matchesSelection } = require('./archiveSelection');
-const { archivePeople } = require('./archivePeople');
+const { archivePeople, standaloneReason } = require('./archivePeople');
 const MAX_ARCHIVE_RECORDS = 20000;
 
 const jobs = 'client_watchlist_archive_jobs';
@@ -59,17 +59,60 @@ function suggestedFields(person, message, source) {
   });
 }
 
-function messageDrafts(message, source, fallback, selection) {
-  const people = archivePeople(message.text);
+function messageDrafts(message, source, fallback, selection, people = archivePeople(message.text)) {
   const stamp = message.publishedAt || crypto.createHash('sha256').update(message.text).digest('hex');
   return people.flatMap((person, index) => {
+    if (person.commentOnly) return [];
+    const { author, position, replyTo, ...sourceMessage } = message;
     const original = people.length > 1
-      ? { ...message, text: person.text, part: index + 1, people: people.length, stamp }
-      : message;
+      ? { ...sourceMessage, text: person.text, part: index + 1, people: people.length, stamp }
+      : sourceMessage;
     const data = withPublicationDate({ message: { ...original, source }, fields: suggestedFields(person, message, source) }, fallback);
-    const searchable = person.reasonText ? { text: person.text + '\n' + person.reasonText } : original;
+    if (person.reasonMessage) data.reasonMessage = person.reasonMessage;
+    const searchable = person.reasonText
+      ? { text: [person.text, person.reasonText, person.reasonMessage?.text].filter(Boolean).join('\n') }
+      : original;
     return matchesSelection(searchable, verifyDraft(data.fields).valid, selection) ? [data] : [];
   });
+}
+
+function linkArchiveReasons(messages, peopleByMessage = messages.map(message => archivePeople(message.text))) {
+  const uniqueIds = new Map(), candidates = new Map();
+  messages.forEach((message, index) => uniqueIds.set(message.messageId, uniqueIds.has(message.messageId) ? null : index));
+  for (const [index, message] of messages.entries()) {
+    if (message.truncated) continue;
+    const reply = !!message.replyTo, previous = messages[index - 1];
+    const parentIndex = reply ? uniqueIds.get(message.replyTo) : index - 1;
+    if (parentIndex == null || parentIndex < 0 || parentIndex >= index || messages[parentIndex].truncated) continue;
+    const parent = peopleByMessage[parentIndex], named = peopleByMessage[index];
+    if (!parent.length || named.length > 1 || named.length && !reply) continue;
+    if (!reply) {
+      const gap = Date.parse(message.publishedAt) - Date.parse(previous.publishedAt);
+      if (!message.author || message.author !== previous.author || message.position !== previous.position + 1
+          || !(gap >= 0 && gap <= 5 * 60 * 1000)) continue;
+    }
+
+    const comment = named[0];
+    const matches = comment ? parent.filter(person => P.normalizeName(person.name) === P.normalizeName(comment.name)
+      && (!comment.birthDate || !person.birthDate || comment.birthDate === person.birthDate)) : parent;
+    const reason = comment ? comment.reasonText : standaloneReason(message.text);
+    if (matches.length !== 1 || !reason) continue;
+    const [person] = matches;
+    if (comment) comment.commentOnly = true;
+    if (person.reasonText || person.commentOnly) continue;
+    const list = candidates.get(person) || [];
+    list.push({ reason, reply, messageId: message.messageId, text: message.text, publishedAt: message.publishedAt });
+    candidates.set(person, list);
+  }
+  for (const [person, list] of candidates) {
+    if (person.commentOnly) continue;
+    const preferred = list.some(item => item.reply) ? list.filter(item => item.reply) : list;
+    if (new Set(preferred.map(item => item.reason.toLowerCase().replace(/[.!?]+$/u, ''))).size !== 1) continue;
+    const [{reason, reply, ...message}] = preferred;
+    person.reasonText = reason;
+    person.reasonMessage = { ...message, kind: reply ? 'reply' : 'adjacent' };
+  }
+  return peopleByMessage;
 }
 
 function parseOffThread(html, progress) {
@@ -118,9 +161,15 @@ function createArchiveImports({ pool, vault, ensure }) {
         last = value;
         void progressUpdate(claimed, value).catch(() => {});
       });
+      const peopleByMessage = [];
+      for (const [index, message] of messages.entries()) {
+        peopleByMessage.push(archivePeople(message.text));
+        if (index % 250 === 249) await new Promise(resolve => setImmediate(resolve));
+      }
+      linkArchiveReasons(messages, peopleByMessage);
       const selected = [];
       for (let index = 0; index < messages.length; index++) {
-        selected.push(...messageDrafts(messages[index], source, claimed.created_at, selection));
+        selected.push(...messageDrafts(messages[index], source, claimed.created_at, selection, peopleByMessage[index]));
         if (selected.length > MAX_ARCHIVE_RECORDS) throw Error('TOO_MANY_RECORDS');
         if (index % 250 === 249) await new Promise(resolve => setImmediate(resolve));
       }
@@ -239,4 +288,4 @@ function createArchiveImports({ pool, vault, ensure }) {
   return { enqueue,list,detail,draftBatch,rowFor,revisions,open,write,purgeEntry,purgeRevoked,recordDecision,tick,close(){closed=true;clearInterval(timer);} };
 }
 
-module.exports = { createArchiveImports, draftFields, verifyDraft, withPublicationDate, messageDrafts, MAX_ARCHIVE_RECORDS };
+module.exports = { createArchiveImports, draftFields, verifyDraft, withPublicationDate, messageDrafts, linkArchiveReasons, MAX_ARCHIVE_RECORDS };

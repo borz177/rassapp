@@ -8,6 +8,7 @@ type Fields = { name: string; birthDate: string; reason: string; reasonDetails: 
 type Job = { id: string; filename: string; status: 'queued' | 'processing' | 'ready' | 'failed'; progress: number; total: number; scanned?: number | null; error?: string };
 type Selection = { from: string | null; to: string | null; reasons: string[]; includeAny: string[]; excludeAny: string[]; requireReason: boolean };
 type Row = { ordinal: number; version: number; state: 'draft' | 'submitted' | 'removed'; entryStatus?: string; fields?: Fields; errors: string[]; duplicate?: boolean; dateFromImport?: boolean; excluded?: boolean;
+  reasonMessage?: { text: string; messageId: string; publishedAt: string | null; kind: 'reply' | 'adjacent' };
   message?: { text: string; messageId: string; publishedAt: string | null; truncated?: boolean; part?: number; people?: number } };
 type Detail = { job: Job; items: Row[]; hasMore: boolean; draftCount: number; excludedCount: number; canPublish: boolean };
 type ArchiveBatch = { published: number; duplicates: number; invalid: number; review: number; next: number | null };
@@ -298,6 +299,11 @@ export default function WatchlistArchiveSheet({ userId, onClose, request, onSubm
             : 'Исходное сообщение Telegram'}</summary>
           {selected.message?.publishedAt && <p className="mt-1 text-xs text-slate-500">{watchlistDateTime(selected.message.publishedAt)}</p>}
           <p className="mt-2 max-h-60 overflow-auto whitespace-pre-wrap break-words text-sm">{selected.message?.text}</p>
+          {selected.reasonMessage && <div className="mt-3 border-t border-slate-200 pt-3 dark:border-slate-700">
+            <p className="text-xs font-medium text-slate-500">{selected.reasonMessage.kind === 'reply' ? 'Причина из ответа Telegram' : 'Причина из следующего сообщения · проверьте связь'}</p>
+            {selected.reasonMessage.publishedAt && <p className="mt-1 text-xs text-slate-500">{watchlistDateTime(selected.reasonMessage.publishedAt)}</p>}
+            <p className="mt-2 max-h-40 overflow-auto whitespace-pre-wrap break-words text-sm">{selected.reasonMessage.text}</p>
+          </div>}
           {selected.message?.truncated && <p className="mt-2 text-xs text-slate-500">Показана первая часть длинного сообщения.</p>}
         </details>
         <div className={`${wlCard} space-y-3`}>
