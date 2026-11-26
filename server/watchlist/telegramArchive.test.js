@@ -188,3 +188,52 @@ test('conflicting replies and existing reasons are protected against silent repl
   const existing = linkedDrafts([message('1', nameOne+' 01.02.1990\nПричина: своя причина'),message('2','не давать',{replyTo:'1'})]);
   assert.equal(existing[0].fields.reasonDetails,'своя причина');
 });
+
+test('conversational reasons retain both lines and stay with their person', () => {
+  const reason = 'Я больше не дам\nВсе время какие-то проблемы';
+  const rows = messageDrafts(message('1', nameOne+' 1990 г.р.\n'+reason+'\n'+nameTwo+' 03.04.1991'),
+    'Тестовый источник',Date.now(),defaultSelection);
+  assert.deepEqual(rows.map(row=>row.fields.reasonDetails),[reason,'']);
+  assert.equal(rows[0].fields.birthDate,'1990');
+  for(const text of ['Я больше не дам, всё время какие-то проблемы','С ним постоянно проблемы','Ему больше не дам','Не дам','Постоянно какие то проблемы']) {
+    const [row] = linkedDrafts([message('1',nameOne),message('2',text,{replyTo:'1'})]);
+    assert.equal(row.fields.reasonDetails,text);
+  }
+  assert.equal(linkedDrafts([message('1',nameOne),message('2',reason,{replyTo:'1'})])[0].fields.reasonDetails,reason);
+  for(const text of ['Я больше дам','Я больше не дам интервью','Все время какие-то проблемы с сайтом']) {
+    assert.equal(linkedDrafts([message('1',nameOne),message('2',text,{replyTo:'1'})])[0].fields.reasonDetails,'');
+  }
+});
+
+test('frequent payment comments stay verbatim while unrelated phrases stay empty', () => {
+  const reasons=['Не давайте','Ему не давайте','Не выдавайте ей','Не рекомендую давать рассрочку',
+    'Трудный клиент','Тяжелая клиентка','Не берёт трубку','Трубку не берет','Платит с задержками',
+    'Оплачивает с опозданием','Задерживает оплату','Кормит обещаниями','Обещает, но не платит',
+    'Еле забрали деньги','С трудом вернул долг'];
+  for(const reason of reasons) {
+    const [row]=messageDrafts(message('1',nameOne+' 01.02.1990\n'+reason),'Тестовый источник',Date.now(),defaultSelection);
+    assert.equal(row.fields.reasonDetails,reason,reason);
+    const [reply]=linkedDrafts([message('1',nameOne),message('2',reason,{replyTo:'1'})]);
+    assert.equal(reply.fields.reasonDetails,reason,reason);
+  }
+  for(const text of ['Не задерживает оплату','Платит без задержек','Не кормит обещаниями','Не рекомендую этот сайт','Трубку починили']) {
+    assert.equal(linkedDrafts([message('1',nameOne),message('2',text,{replyTo:'1'})])[0].fields.reason,'',text);
+  }
+  const combined='Трубку не берет\nКормит обещаниями';
+  assert.equal(linkedDrafts([message('1',nameOne),message('2',combined,{replyTo:'1'})])[0].fields.reasonDetails,combined);
+});
+
+test('messages6 wording variants remain readable and unrelated phrases are excluded', () => {
+  const variants=['Ничего не давать','Нечего не давать','Вообще не давать','Пока ничего не давать',
+    'Категорически ничего не давать','Никогда не давать','Не давать ничего','Не давать вообще',
+    'Проблемные','Очень проблемные','Неплатежеспособный','Неплатёжеспособная','В просрочке','Просрочки'];
+  for(const text of variants) {
+    const [row]=messageDrafts(message('1',nameOne+' 1990 г.р.\n'+text),'Тестовый источник',Date.now(),defaultSelection);
+    assert.equal(row.fields.reasonDetails,text,text);
+    assert.equal(row.fields.birthDate,'1990');
+    assert.equal(linkedDrafts([message('1',nameOne),message('2',text,{replyTo:'1'})])[0].fields.reasonDetails,text);
+  }
+  for(const text of ['Не проблемный клиент','Проблемные вопросы решили','Ничего страшного','В просрочке нет','Проблемные вопросы']) {
+    assert.equal(linkedDrafts([message('1',nameOne),message('2',text,{replyTo:'1'})])[0].fields.reason,'');
+  }
+});

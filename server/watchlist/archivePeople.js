@@ -28,9 +28,17 @@ const capitalNameWord = String.raw`\p{Lu}[\p{L}\p{M}'’.-]*`;
 const inlineSeparation = new RegExp(String.raw`[ \t]{2,}(?=(?:${capitalNameWord}[ \t]+){2,3}${capitalNameWord}[ \t]*[,:]?[ \t]*\(?${datePattern})`, 'gu');
 const unlabelledReason = /^(?:(?:пожалуйста[,\s]+)?не\s+(?:давать|выдавать|оформлять)(?:\s+(?:ему|ей|товар|кредит))?(?=$|[.,!❌⛔]|\s*[.,!❌⛔])|(?:(?:очень\s+)?сложн(?:ый|ая)|проблемн(?:ый|ая))\s+клиент(?:ка)?(?=$|[\s.,!❌⛔]))/iu;
 const inlineComment = /^(.+?)[ \t]*(?:[,:–—]|[ \t]+-[ \t]+)[ \t]*(.+)$/u;
+const conversationalReason = /^(?!.*(?:интервью|сайтом|приложением|импортом|сервером|интернетом))(?:(?:я\s+)?(?:ему\s+|ей\s+)?(?:больше\s+|никогда\s+)не\s+(?:дам|даю|выдам|выдаю|буду\s+давать)(?=$|[\s.,!])|(?:я\s+)?не\s+(?:дам|выдам)(?=$|[\s.,!])|(?:вс[её]\s+время|постоянно|вечно)\s+(?:с\s+ним\s+|с\s+ней\s+)?(?:какие[\s-]*то\s+)?проблемы(?=$|[\s.,!])|(?:с\s+ним|с\s+ней)\s+(?:(?:вс[её]\s+время|постоянно)\s+)?(?:какие[\s-]*то\s+)?проблемы(?=$|[\s.,!]))/iu;
+const paymentExperience = /^(?:(?:ему|ей|им)\s+не\s+(?:давать|давайте|выдавать|выдавайте)|не\s+(?:давайте|выдавайте)(?:\s+(?:ему|ей|им|рассрочку|товар|кредит))?|(?:я\s+)?не\s+рекомендую\s+(?:давать|выдавать|оформлять)|(?:трудн(?:ый|ая)|тяж[её]л(?:ый|ая))\s+клиент(?:ка)?|(?:не\s+бер[её]т\s+трубку|трубку\s+не\s+бер[её]т)|(?:платит|оплачивает|платежи)\s+(?:с\s+задержк(?:ой|ами)|с\s+опозданием)|(?:постоянно\s+)?задерживает\s+(?:платежи|оплату)|кормит\s+обещаниями|(?:только\s+)?обещает\s*[,—–-]?\s*(?:но\s+)?не\s+(?:платит|отда[её]т)|(?:еле|с\s+трудом)\s+(?:забрали|вернул|отдал)(?:\s+(?:деньги|долг))?)(?=$|[\s.,!❌⛔])/iu;
+const archiveReasonVariants = /^(?:(?:(?:категорически|вообще|никогда|пока)\s+)?(?:ничего|нечего)\s+не\s+давать|(?:категорически|вообще|никогда|пока)\s+не\s+давать|не\s+давать\s+(?:ничего|вообще)|(?:очень\s+)?проблемн(?:ый|ая|ые)|неплат[её]жеспособн(?:ый|ая|ые)|в\s+просрочке|просрочки)(?=$|[\s\p{P}\p{S}])/iu;
+const isExperience = text => {
+  if (/^(?:проблемные\s+вопросы|в\s+просрочке\s+нет)(?=$|[\s.,!])/iu.test(text)) return false;
+  return conversationalReason.test(text) || paymentExperience.test(text) || archiveReasonVariants.test(text);
+};
 
 function resolveStatement(line) {
   const text = line.replace(/^[\p{P}\p{S}\s]+/u, '').trim();
+  if (isExperience(text)) return text;
   if (statedNonpayment.test(text) || /[,.;]\s*не\s+оплачива(?:ет|ют)\s*[.!❌⛔]*$/iu.test(text))
     return 'Неисполнение обязательств';
   if (/^(?:длительная|долгая)\s+просрочка/iu.test(text)) return 'Длительная просрочка';
@@ -49,7 +57,10 @@ function reasonFromLine(line) {
 
 function standaloneReason(text) {
   const lines = text.trim().split(/[\r\n]+/u).map(line => line.trim()).filter(Boolean);
-  if (lines.length !== 1) return '';
+  if (lines.length > 1) {
+    return lines.every(line => isExperience(line)) ? lines.join('\n') : '';
+  }
+  if (!lines.length) return '';
   return /^(?:[❌❎✖\uFE0F\s]+)$/u.test(lines[0]) ? crossReason : reasonFromLine(lines[0]);
 }
 
@@ -128,8 +139,10 @@ function archivePeople(text) {
     const own = [first, ...fragment.slice(header.lines)]
       .filter(line => !sharedReasonLabel.test(line))
       .map(line => knownValue(reasonLabel.exec(line)?.[1]?.trim() || '')).find(Boolean);
-    const direct = [birth.tail, ...fragment.slice(header.lines)].map(resolveStatement).find(Boolean);
-    return { name: header.name, birthDate: birth.date, comment: own || direct, inlineComment: !!birth.tail && !!reasonFromLine(birth.tail), cross: fragment.some(line => crossMark.test(line)),
+    const reasonLines = [birth.tail, ...fragment.slice(header.lines)];
+    const conversational = reasonLines.filter(line => isExperience(line));
+    const direct = conversational.length ? conversational.join('\n') : reasonLines.map(resolveStatement).find(Boolean);
+    return { name: header.name, birthDate: birth.date, comment: own || direct, inlineComment: conversational.length > 0 || !!birth.tail && !!reasonFromLine(birth.tail), cross: fragment.some(line => crossMark.test(line)),
       text: headers.length === 1 ? text : fragment.join('\n') };
   });
   const preface = lines.slice(0, headers[0]?.index ?? 0);
